@@ -19,7 +19,8 @@ function screeningNotification(row: { type: string; emailPayload: Prisma.JsonVal
   const payload = row.emailPayload;
   if (!row.type.startsWith("SCREENING_") || !payload || typeof payload !== "object" || Array.isArray(payload)) return {};
   const id = typeof payload.screeningRoundId === "string" ? parseDatabaseId(payload.screeningRoundId) : null;
-  return id?.kind === "uuid" ? { screeningRoundId: id.value } : {};
+  const message = typeof payload.screeningMessageId === "string" ? parseDatabaseId(payload.screeningMessageId) : null;
+  return id?.kind === "uuid" ? { screeningRoundId: id.value, ...(row.type === "SCREENING_DISCUSSION_MESSAGE" && message?.kind === "uuid" ? { screeningMessageId: message.value } : {}) } : {};
 }
 function mentorshipRequestId(row: { type: string; emailPayload: Prisma.JsonValue | null }) {
   const payload = row.emailPayload;
@@ -33,10 +34,11 @@ function workContributionId(row: { type: string; emailPayload: Prisma.JsonValue 
   const id = parseDatabaseId(payload.entityId); return id?.kind === "uuid" ? id.value : undefined;
 }
 function manuscriptNotification(row: { type: string; emailPayload: Prisma.JsonValue | null }) {
-  if (row.type !== "MANUSCRIPT_FEEDBACK_REQUEST" || !row.emailPayload || typeof row.emailPayload !== "object" || Array.isArray(row.emailPayload)) return {};
+  if (!["MANUSCRIPT_FEEDBACK_REQUEST", "MANUSCRIPT_INTEGRITY_DECLARATION", "MANUSCRIPT_ATTRIBUTION_REVIEW", "MANUSCRIPT_ATTRIBUTION_RESPONSE"].includes(row.type) || !row.emailPayload || typeof row.emailPayload !== "object" || Array.isArray(row.emailPayload)) return {};
   const manuscript = typeof row.emailPayload.manuscriptId === "string" ? parseDatabaseId(row.emailPayload.manuscriptId) : null;
   const snapshot = typeof row.emailPayload.snapshotId === "string" ? parseDatabaseId(row.emailPayload.snapshotId) : null;
-  return manuscript?.kind === "uuid" && snapshot?.kind === "uuid" ? { manuscriptId: manuscript.value, manuscriptSnapshotId: snapshot.value } : {};
+  const record = typeof row.emailPayload.integrityRecordId === "string" ? parseDatabaseId(row.emailPayload.integrityRecordId) : null;
+  return manuscript?.kind === "uuid" && snapshot?.kind === "uuid" ? { manuscriptId: manuscript.value, manuscriptSnapshotId: snapshot.value, ...(row.type === "MANUSCRIPT_INTEGRITY_DECLARATION" && record?.kind === "uuid" ? { integrityRecordId: record.value } : {}) } : {};
 }
 
 function evaluationNotification(row: { type: string; emailPayload: Prisma.JsonValue | null }) {

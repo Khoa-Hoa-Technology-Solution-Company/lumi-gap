@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AddToProjectDropdown } from "@/features/projects/components/add-to-project-dropdown";
 import type { Paper, PaperRef } from "@trend/shared-types";
 
 export interface PaperRelationshipsSectionProps {
@@ -343,15 +344,20 @@ function PaperReferenceCard({
       <div className="flex items-start justify-between gap-2">
         <Link
           to={`/papers/${paper.id}`}
-          className="text-xs font-bold text-slate-900 hover:text-blue-600 dark:text-slate-100 dark:hover:text-blue-400 line-clamp-2 leading-snug"
+          className="text-xs font-bold text-slate-900 hover:text-blue-600 dark:text-slate-100 dark:hover:text-blue-400 line-clamp-2 leading-snug flex-1"
         >
           {paper.title}
         </Link>
-        {showSemanticSimilarity && (
-          <Badge variant="outline" className="text-[10px] font-semibold text-purple-700 border-purple-200 bg-purple-50 dark:border-purple-900 dark:bg-purple-950 dark:text-purple-300 shrink-0">
-            Semantic similarity
-          </Badge>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {showSemanticSimilarity && (
+            <Badge variant="outline" className="text-[10px] font-semibold text-purple-700 border-purple-200 bg-purple-50 dark:border-purple-900 dark:bg-purple-950 dark:text-purple-300">
+              Semantic similarity
+            </Badge>
+          )}
+          {paper.id && (
+            <AddToProjectDropdown paperId={paper.id} paper={paper as any} />
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">

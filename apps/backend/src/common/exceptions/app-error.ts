@@ -31,6 +31,9 @@ export class AppError extends Error {
   static internal(message = "Internal server error") {
     return new AppError(500, "INTERNAL", message);
   }
+  static badGateway(message = "Bad gateway", details?: unknown) {
+    return new AppError(502, "BAD_GATEWAY", message, details);
+  }
   static serviceUnavailable(message = "Service temporarily unavailable") {
     return new AppError(503, "SERVICE_UNAVAILABLE", message);
   }

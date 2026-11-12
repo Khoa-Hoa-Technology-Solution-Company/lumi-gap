@@ -43,6 +43,7 @@ export function useProject(id: string | undefined) {
     queryKey: ["project", id],
     queryFn: () => projectsApi.detail(id!),
     enabled: !!id,
+    retry: (failureCount, error) => ![401, 403, 404].includes((error as { response?: { status?: number } })?.response?.status ?? 0) && failureCount < 2,
   });
 }
 

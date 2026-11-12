@@ -1,3 +1,4 @@
+import { mountOrcidOauthRoutes } from "./orcid-oauth.routes.js";
 import { Router } from "express";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { optionalAuth, requireAuth, requireVerifiedAuth, requireSystemRole } from "../../common/middleware/auth.js";
@@ -82,6 +83,7 @@ const avatarUploadLimiter = createRateLimiter("academic-profiles:avatarUploadLim
 });
 
 export const academicProfileRouter: Router = Router();
+mountOrcidOauthRoutes(academicProfileRouter);
 academicProfileRouter.get("/me", requireAuth, academicProfileController.mine);
 academicProfileRouter.get("/me/featured-work-options", requireVerifiedAuth, validate(FeaturedWorkOptionsQuerySchema, "query"), academicProfileController.featuredWorkOptions);
 academicProfileRouter.patch("/me", requireAuth, validate(UpdateAcademicProfileDetailsSchema), academicProfileController.updateMine);

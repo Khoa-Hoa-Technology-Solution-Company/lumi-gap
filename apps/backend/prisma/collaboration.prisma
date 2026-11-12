@@ -5,6 +5,7 @@ model Project {
   description       String?
   researchField     String?   @map("research_field") @db.VarChar(200)
   researchAreas     String[]  @default([]) @map("research_areas")
+  researchClassification Json @default("{}") @map("research_classification")
   publicSummary     String?   @map("public_summary") @db.VarChar(2000)
   createdById       String?   @map("created_by_id") @db.Uuid
   creationKey       String?   @map("creation_key") @db.VarChar(128)
@@ -23,9 +24,13 @@ model Project {
   externalLookupPolicy String @default("ALLOW_PUBLIC_INDEX") @map("external_lookup_policy") @db.VarChar(24)
   mentorshipDiscovery String @default("CLOSED") @map("mentorship_discovery") @db.VarChar(24)
   mentorshipSummary String? @map("mentorship_summary") @db.VarChar(2000)
+  /// Owner-approved classification snapshot for pre-acceptance sharing.
+  mentorshipClassification Json @default("{}") @map("mentorship_classification")
   mentorshipExpertise String[] @default([]) @map("mentorship_expertise")
   mentorshipResearchAreas String[] @default([]) @map("mentorship_research_areas")
   mentorshipNeeds String @default("") @map("mentorship_needs") @db.VarChar(2000)
+  mentorshipSupportTypes String[] @default([]) @map("mentorship_support_types")
+  mentorshipMethodologies String[] @default([]) @map("mentorship_methodologies")
   ownerId           String    @map("owner_id") @db.Uuid
   archivedAt        DateTime? @map("archived_at") @db.Timestamptz(6)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -158,6 +163,7 @@ model MentorshipRequest {
   invitationSnapshot Json? @map("invitation_snapshot")
   reservationEnforced Boolean @default(true) @map("reservation_enforced")
   candidateId String? @unique @map("candidate_id") @db.Uuid
+  applicationId String? @map("application_id") @db.Uuid
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -165,6 +171,7 @@ model MentorshipRequest {
   @@index([mentorUserId, status, createdAt])
   @@index([requestedBy, createdAt])
   @@unique([requestedBy, idempotencyKey])
+  @@index([applicationId, createdAt])
   @@map("mentorship_requests")
 }
 
@@ -844,6 +851,7 @@ model DraftWorkspace {
   researchLink  Json?    @map("research_link")
 
   @@unique([projectId, createdById, clientKey])
+  @@unique([id, projectId], map: "draft_workspaces_integrity_scope")
   @@index([projectId, writingMode, updatedAt])
 
   @@map("draft_workspaces")

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 
 /// Rounds [bound] x 100 UP to one decimal, e.g. 0.1533 -> 15.4 and 0.15 -> 15.0.
@@ -34,7 +35,7 @@ String? closureJudgeLabel(String? judgeKind) {
     case 'AI':
       return 'AI';
     case 'HUMAN':
-      return 'Human-confirmed';
+      return tk('Human-confirmed');
     default:
       return null;
   }
@@ -53,53 +54,56 @@ class ClosureBadgeSpec {
 
   /// Maps a gap to its badge. "Open" shows the false-novelty risk only when
   /// the bound is known.
-  factory ClosureBadgeSpec.forGap(ResearchGapItem gap) {
+  factory ClosureBadgeSpec.forGap(
+    ResearchGapItem gap, [
+    AppLocale locale = AppLocale.en,
+  ]) {
     switch (gap.closureStatus) {
       case GapClosureStatus.closed:
-        return const ClosureBadgeSpec(
-          label: 'Already answered',
+        return ClosureBadgeSpec(
+          label: translate('Already answered', locale),
           semanticsLabel:
-              'Closure check: already answered by an existing paper',
+              translate('Closure check: already answered by an existing paper', locale),
           icon: Icons.do_not_disturb_on_outlined,
-          lightColor: Color(0xFFB91C1C),
-          darkColor: Color(0xFFFCA5A5),
+          lightColor: const Color(0xFFB91C1C),
+          darkColor: const Color(0xFFFCA5A5),
         );
       case GapClosureStatus.openCertified:
         final bound = gap.latestClosureCheck?.bound;
         if (bound == null) {
-          return const ClosureBadgeSpec(
-            label: 'Open',
-            semanticsLabel: 'Closure check: open, certified',
+          return ClosureBadgeSpec(
+            label: translate('Open', locale),
+            semanticsLabel: translate('Closure check: open, certified', locale),
             icon: Icons.verified_outlined,
-            lightColor: Color(0xFF047857),
-            darkColor: Color(0xFF6EE7B7),
+            lightColor: const Color(0xFF047857),
+            darkColor: const Color(0xFF6EE7B7),
           );
         }
         final percent = formatClosureRiskPercent(bound);
         return ClosureBadgeSpec(
-          label: 'Open · risk ≤ $percent%',
+          label: translate('Open · risk ≤ {{percent}}%', locale, {'percent': percent}),
           semanticsLabel:
-              'Closure check: open, false-novelty risk at most $percent percent',
+              translate('Closure check: open, false-novelty risk at most {{percent}} percent', locale, {'percent': percent}),
           icon: Icons.verified_outlined,
           lightColor: const Color(0xFF047857),
           darkColor: const Color(0xFF6EE7B7),
         );
       case GapClosureStatus.abstain:
-        return const ClosureBadgeSpec(
-          label: 'Needs review',
+        return ClosureBadgeSpec(
+          label: translate('Needs review', locale),
           semanticsLabel:
-              'Closure check: needs review, no decision could be made',
+              translate('Closure check: needs review, no decision could be made', locale),
           icon: Icons.rate_review_outlined,
-          lightColor: Color(0xFF92400E),
-          darkColor: Color(0xFFFCD34D),
+          lightColor: const Color(0xFF92400E),
+          darkColor: const Color(0xFFFCD34D),
         );
       case GapClosureStatus.notChecked:
-        return const ClosureBadgeSpec(
-          label: 'Not checked',
-          semanticsLabel: 'Closure check: not checked yet',
+        return ClosureBadgeSpec(
+          label: translate('Not checked', locale),
+          semanticsLabel: translate('Closure check: not checked yet', locale),
           icon: Icons.help_outline,
-          lightColor: Color(0xFF475569),
-          darkColor: Color(0xFFCBD5E1),
+          lightColor: const Color(0xFF475569),
+          darkColor: const Color(0xFFCBD5E1),
         );
     }
   }
@@ -122,7 +126,7 @@ class GapClosureBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final spec = ClosureBadgeSpec.forGap(gap);
+    final spec = ClosureBadgeSpec.forGap(gap, context.appLocale);
     final color = spec.color(
       isDark: Theme.of(context).brightness == Brightness.dark,
     );
@@ -167,7 +171,7 @@ class GapClosureSection extends StatelessWidget {
 
   final ResearchGapItem gap;
 
-  static const webNote = 'Screening and decisions are done on the web app.';
+  static final String webNote = tk('Screening and decisions are done on the web app.');
 
   @override
   Widget build(BuildContext context) {
@@ -184,20 +188,20 @@ class GapClosureSection extends StatelessWidget {
     final rows = <Widget>[
       if (bound != null)
         _row(
-          'Bound',
-          'B ≤ ${formatClosureBound(bound)} (false-novelty risk)',
+          context.t('Bound'),
+          context.t('B ≤ {{bound}} (false-novelty risk)', {'bound': formatClosureBound(bound)}),
           mutedColor,
         ),
-      if (judge != null) _row('Judge', judge, mutedColor),
+      if (judge != null) _row(context.t('Judge'), context.t(judge), mutedColor),
       if (decidedAt != null)
-        _row('Decided', formatClosureDate(decidedAt), mutedColor),
+        _row(context.t('Decided'), formatClosureDate(decidedAt), mutedColor),
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Closure check',
+          context.t('Closure check'),
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 13,
@@ -208,12 +212,12 @@ class GapClosureSection extends StatelessWidget {
         GapClosureBadge(gap: gap),
         if (progress != null) ...[
           const SizedBox(height: 8),
-          Text(progress, style: const TextStyle(fontSize: 12, height: 1.4)),
+          Text(context.t(progress), style: const TextStyle(fontSize: 12, height: 1.4)),
         ],
         if (rows.isNotEmpty) ...[const SizedBox(height: 8), ...rows],
         const SizedBox(height: 8),
         Text(
-          webNote,
+          context.t(webNote),
           style: TextStyle(
             fontSize: 12,
             fontStyle: FontStyle.italic,
@@ -232,9 +236,9 @@ class GapClosureSection extends StatelessWidget {
       case 'QUEUED':
       case 'SEARCHING':
       case 'SCREENING':
-        return 'A closure check is in progress.';
+        return tk('A closure check is in progress.');
       case 'FAILED':
-        return 'The last closure check failed.';
+        return tk('The last closure check failed.');
       default:
         return null;
     }

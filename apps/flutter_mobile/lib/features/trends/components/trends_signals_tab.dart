@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:go_router/go_router.dart';
 
@@ -18,9 +19,9 @@ class TrendsSignalsTab extends StatelessWidget {
   final void Function(String) onExplainTopic;
 
   String _getReliabilityLabel(int paperCount) {
-    if (paperCount >= 20) return 'High';
-    if (paperCount >= 5) return 'Exploratory';
-    return 'Small base';
+    if (paperCount >= 20) return tk('High');
+    if (paperCount >= 5) return tk('Exploratory');
+    return tk('Small base');
   }
 
   Color _getReliabilityColor(String label) {
@@ -89,7 +90,7 @@ class TrendsSignalsTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Scope: ${topic.taxonomy?.fieldName ?? "Unknown field"}',
+                  context.t('Scope: {{field}}', {'field': topic.taxonomy?.fieldName ?? context.t('Unknown field')}),
                   style: const TextStyle(
                     fontSize: 12,
                     color: Color(0xFF94A3B8),
@@ -98,9 +99,9 @@ class TrendsSignalsTab extends StatelessWidget {
                 const Divider(height: 24),
 
                 // Mini Line Chart
-                const Text(
-                  'Publication Timeline Trend',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                Text(
+                  context.t('Publication Timeline Trend'),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
@@ -162,17 +163,17 @@ class TrendsSignalsTab extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     _buildMetricCell(
-                      'Growth Rate',
-                      '${topic.growthRatePct.toStringAsFixed(1)}% YoY',
+                      context.t('Growth Rate'),
+                      context.t('{{percent}}% YoY', {'percent': topic.growthRatePct.toStringAsFixed(1)}),
                       Colors.green,
                     ),
                     _buildMetricCell(
-                      'Momentum Score',
+                      context.t('Momentum Score'),
                       topic.momentum.toStringAsFixed(2),
                       const Color(0xFF06B6D4),
                     ),
                     _buildMetricCell(
-                      'Publications',
+                      context.t('Publications'),
                       topic.totalPapers.toString(),
                       const Color(0xFFA78BFA),
                     ),
@@ -205,9 +206,9 @@ class TrendsSignalsTab extends StatelessWidget {
                           color: Colors.white,
                           size: 16,
                         ),
-                        label: const Text(
-                          'Search Papers',
-                          style: TextStyle(
+                        label: Text(
+                          context.t('Search Papers'),
+                          style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 13,
@@ -238,9 +239,9 @@ class TrendsSignalsTab extends StatelessWidget {
                           color: Colors.white,
                           size: 16,
                         ),
-                        label: const Text(
-                          'Generate Report',
-                          style: TextStyle(
+                        label: Text(
+                          context.t('Generate Report'),
+                          style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 13,
@@ -265,9 +266,9 @@ class TrendsSignalsTab extends StatelessWidget {
                       onExplainTopic(topic.topic);
                     },
                     icon: const Icon(Icons.auto_awesome, size: 16),
-                    label: const Text(
-                      'Explain Trend with AI',
-                      style: TextStyle(
+                    label: Text(
+                      context.t('Explain Trend with AI'),
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
                       ),
@@ -344,7 +345,7 @@ class TrendsSignalsTab extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '"${strongestTopic.topic}" is the strongest rising topic in this dataset scope with growth rate of ${strongestTopic.growthRatePct.toStringAsFixed(1)}%.',
+                    context.t('"{{topic}}" is the strongest rising topic in this dataset scope with growth rate of {{percent}}%.', {'topic': strongestTopic.topic, 'percent': strongestTopic.growthRatePct.toStringAsFixed(1)}),
                     style: const TextStyle(
                       fontSize: 13,
                       height: 1.4,
@@ -360,13 +361,13 @@ class TrendsSignalsTab extends StatelessWidget {
 
         // Rising Keywords Title & Chips
         if (overview.risingKeywords.isNotEmpty) ...[
-          const Row(
+          Row(
             children: [
-              Icon(Icons.tag, color: Color(0xFF8B5CF6), size: 18),
-              SizedBox(width: 8),
+              const Icon(Icons.tag, color: Color(0xFF8B5CF6), size: 18),
+              const SizedBox(width: 8),
               Text(
-                'Emerging Keywords',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                context.t('Emerging Keywords'),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
               ),
             ],
           ),
@@ -399,25 +400,25 @@ class TrendsSignalsTab extends StatelessWidget {
         ],
 
         // Ranked Topics Title
-        const Row(
+        Row(
           children: [
-            Icon(Icons.trending_up, color: Color(0xFF06B6D4), size: 18),
-            SizedBox(width: 8),
+            const Icon(Icons.trending_up, color: Color(0xFF06B6D4), size: 18),
+            const SizedBox(width: 8),
             Text(
-              'Rising Topics Signals',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              context.t('Rising Topics Signals'),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             ),
           ],
         ),
         const SizedBox(height: 12),
 
         if (overview.topics.isEmpty)
-          const Center(
+          Center(
             child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
+              padding: const EdgeInsets.symmetric(vertical: 24),
               child: Text(
-                'No signals found. Change scope to load topics.',
-                style: TextStyle(
+                context.t('No signals found. Change scope to load topics.'),
+                style: const TextStyle(
                   fontStyle: FontStyle.italic,
                   color: Color(0xFF94A3B8),
                 ),
@@ -465,7 +466,7 @@ class TrendsSignalsTab extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  topic.taxonomy?.fieldName ?? 'Unknown field',
+                                  topic.taxonomy?.fieldName ?? context.t('Unknown field'),
                                   style: const TextStyle(
                                     fontSize: 11,
                                     color: Color(0xFF94A3B8),
@@ -485,7 +486,7 @@ class TrendsSignalsTab extends StatelessWidget {
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
-                              reliability,
+                              context.t(reliability),
                               style: TextStyle(
                                 fontSize: 9,
                                 fontWeight: FontWeight.bold,
@@ -499,7 +500,7 @@ class TrendsSignalsTab extends StatelessWidget {
                       Row(
                         children: [
                           Text(
-                            '${topic.totalPapers} publications',
+                            context.plural(topic.totalPapers, one: '{{count}} publication', other: '{{count}} publications'),
                             style: const TextStyle(
                               fontSize: 11,
                               color: Color(0xFF94A3B8),
@@ -512,7 +513,7 @@ class TrendsSignalsTab extends StatelessWidget {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Growth: +${topic.growthRatePct.toStringAsFixed(1)}%',
+                            context.t('Growth: +{{percent}}%', {'percent': topic.growthRatePct.toStringAsFixed(1)}),
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
@@ -526,7 +527,7 @@ class TrendsSignalsTab extends StatelessWidget {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Momentum: ${topic.momentum.toStringAsFixed(2)}',
+                            context.t('Momentum: {{momentum}}', {'momentum': topic.momentum.toStringAsFixed(2)}),
                             style: const TextStyle(
                               fontSize: 11,
                               color: Color(0xFF94A3B8),
@@ -540,7 +541,7 @@ class TrendsSignalsTab extends StatelessWidget {
                         children: [
                           IconButton(
                             icon: const Icon(Icons.search, size: 18),
-                            tooltip: 'Search papers',
+                            tooltip: context.t('Search papers'),
                             onPressed: () => unawaited(
                               context.push(
                                 '/search?q=${Uri.encodeComponent(topic.topic)}',
@@ -552,7 +553,7 @@ class TrendsSignalsTab extends StatelessWidget {
                               Icons.auto_awesome_outlined,
                               size: 18,
                             ),
-                            tooltip: 'Explain trend',
+                            tooltip: context.t('Explain trend'),
                             onPressed: () => onExplainTopic(topic.topic),
                           ),
                           const Spacer(),
@@ -564,9 +565,9 @@ class TrendsSignalsTab extends StatelessWidget {
                               size: 16,
                               color: Color(0xFF06B6D4),
                             ),
-                            label: const Text(
-                              'View Trend Graph',
-                              style: TextStyle(
+                            label: Text(
+                              context.t('View Trend Graph'),
+                              style: const TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: Color(0xFF06B6D4),

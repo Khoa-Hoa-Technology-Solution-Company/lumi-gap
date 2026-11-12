@@ -14,6 +14,7 @@ interface ProjectDiscussionPanelProps {
   paperCount: number;
   ownerId?: string;
   onAddPapers?: () => void;
+  mentorView?: boolean;
 }
 
 type ChatMode = "team-chat" | "private-ai" | "team-ai";
@@ -24,17 +25,18 @@ export function ProjectDiscussionPanel(props: ProjectDiscussionPanelProps) {
   return <DiscussionChannels key={`${props.projectId}:${currentUser?.id}`} {...props} />;
 }
 
-function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers }: ProjectDiscussionPanelProps) {
+function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers, mentorView = false }: ProjectDiscussionPanelProps) {
   const { t } = useI18n();
   const id = useId();
   const currentUser = useAuthStore((s) => s.user);
   const [params, setParams] = useSearchParams();
   const requestedChannel = params.get("channel");
-  const activeMode: Channel = ["private-ai", "team-ai", "mentors"].includes(requestedChannel ?? "") ? requestedChannel as Channel : "team-chat";
+  const activeMode: Channel = mentorView ? "mentors" : ["private-ai", "team-ai", "mentors"].includes(requestedChannel ?? "") ? requestedChannel as Channel : "team-chat";
   useEffect(() => {
     document.getElementById(`${id}-${activeMode}`)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [activeMode, id]);
   const changeChannel = async (mode: Channel) => {
+    if (mentorView && mode !== "mentors") return false;
     if (activeMode === "mentors" && mode !== activeMode && !await canLeaveWorkspace()) return false;
     setParams(current => { const next = new URLSearchParams(current); next.set("channel", mode); return next; }, { replace: true });
     return true;
@@ -43,7 +45,7 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers }: Pro
   useUnsavedWorkspace(Object.values(drafts).some(value => Boolean(value.trim())));
   const setDraft = (mode: ChatMode, value: string) => setDrafts(current => ({ ...current, [mode]: value }));
   const clearSentDraft = (mode: ChatMode, content: string) => setDrafts(current => current[mode].trim() === content ? { ...current, [mode]: "" } : current);
-  const channels = [
+  const channels = mentorView ? [{ id: "mentors" as const, label: t("With mentors"), icon: GraduationCap }] : [
     { id: "team-chat" as const, label: t("Team Chat"), icon: Users },
     { id: "private-ai" as const, label: t("My AI"), icon: Sparkles },
     { id: "team-ai" as const, label: t("Team AI Room"), icon: Bot },
@@ -80,7 +82,7 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers }: Pro
         })}
       </div>
       <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${activeMode}`} key={activeMode}>
-        {activeMode === "mentors" ? <div className="project-mentor-channel"><MentorAccessWorkspace projectId={projectId} mode="conversation" /></div> : activeMode === "team-chat" ? <ProjectTeamChatPanel projectId={projectId} ownerId={ownerId} draft={drafts[activeMode]} onDraftChange={value => setDraft(activeMode, value)} onSent={content => clearSentDraft("team-chat", content)} /> : (
+        {activeMode === "mentors" ? <div className="project-mentor-channel"><MentorAccessWorkspace projectId={projectId} mentorView={mentorView} mode="conversation" /></div> : activeMode === "team-chat" ? <ProjectTeamChatPanel projectId={projectId} ownerId={ownerId} draft={drafts[activeMode]} onDraftChange={value => setDraft(activeMode, value)} onSent={content => clearSentDraft("team-chat", content)} /> : (
           <ProjectChatPanel
             projectId={projectId}
             paperCount={paperCount}

@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import type { MoveWorkspaceTask, WorkspaceTask, WorkspaceTaskBoard, WorkspaceTaskPriority, WorkspaceTaskStatus } from "@trend/shared-types";
 import { DragDropProvider, KeyboardSensor, PointerSensor, useDroppable } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
@@ -7,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useI18n } from "@/i18n";
 import { workspaceApi } from "../api/workspace.api";
+import { screeningApi } from "../api/screening.api";
+import { useResearchResource } from "../hooks/use-project-research";
+import { useScreeningClock } from "../hooks/use-screening-clock";
+import { useAuthStore } from "@/stores/auth-store";
+import { automaticWorkTask, automaticTaskStatuses, myWorkTasks, screeningWorkLink, sectionForTask, type MyWorkTask } from "../my-work-model";
+import { ScreeningError } from "./screening-common";
+import { ScreeningTeamTask, ScreeningTeamTaskDeadline, screeningTeamAction, withTaskReturn } from "./screening-team-task";
 import { useWorkspaceCommand, useWorkspaceResource } from "../hooks/use-workspace";
 import { taskLabels, WorkspaceArtifactLink, WorkspaceEmpty, WorkspaceError, WorkspaceLoading, WorkspacePager, WorkspacePeoplePicker } from "./workspace-common";
 
@@ -38,10 +46,21 @@ export function TaskPriority({ priority }: { priority: WorkspaceTaskPriority }) 
 }
 type SelectTask = (id: string, status?: WorkspaceTaskStatus) => void;
 export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: { projectId: string; readOnly: boolean; onSelect: SelectTask; mode: "board" | "list"; onMode: (mode: "board" | "list") => void }) {
-  const { t } = useI18n(); const [q, setQ] = useState(""); const [draftQ, setDraftQ] = useState("");
-  const [mine, setMine] = useState(false), [unassigned, setUnassigned] = useState(false), [overdue, setOverdue] = useState(false);
-  const [priority, setPriority] = useState(""), [status, setStatus] = useState(""), [milestone, setMilestone] = useState("");
-  const [assignee, setAssignee] = useState<string[]>([]), [sort, setSort] = useState("manual"), [page, setPage] = useState(1);
+  const [params, setParams] = useSearchParams(), location = useLocation();
+  const [source, setSource] = useState(params.get("taskSource") ?? "ALL");
+  const { t } = useI18n(); const [q, setQ] = useState(params.get("taskQ") ?? ""); const [draftQ, setDraftQ] = useState(q);
+  const actorId = useAuthStore(state => state.user?.id);
+  const screening = useResearchResource(projectId, ["screening-workspace-summary"], () => screeningApi.workspaceSummary(projectId), true, () => true, 15000);
+  const now = useScreeningClock(screening.data, screening.refetch);
+  const [mine, setMine] = useState(params.get("taskMine") === "1"), [unassigned, setUnassigned] = useState(params.get("taskUnassigned") === "1"), [overdue, setOverdue] = useState(params.get("taskOverdue") === "1");
+  const [priority, setPriority] = useState(params.get("taskPriority") ?? ""), [status, setStatus] = useState(params.get("taskStatus") ?? ""), [milestone, setMilestone] = useState(params.get("taskMilestone") ?? "");
+  const [assignee, setAssignee] = useState<string[]>(params.get("taskAssignee") ? [params.get("taskAssignee")!] : []), [sort, setSort] = useState(params.get("taskSort") ?? "manual"), [page, setPage] = useState(1);
+  useEffect(() => { setParams(previous => {
+    const next = new URLSearchParams(previous);
+    const values = { taskQ: q, taskSource: source === "ALL" ? "" : source, taskMine: mine ? "1" : "", taskUnassigned: unassigned ? "1" : "", taskOverdue: overdue ? "1" : "", taskPriority: priority, taskStatus: status, taskMilestone: milestone, taskAssignee: assignee[0] ?? "", taskSort: sort === "manual" ? "" : sort };
+    for (const [key, value] of Object.entries(values)) value ? next.set(key, value) : next.delete(key);
+    return next;
+  }, { replace: true }); }, [q, source, mine, unassigned, overdue, priority, status, milestone, assignee, sort, setParams]);
   const [pages, setPages] = useState([1, 1, 1, 1]);
   const resetPages = () => { setPage(1); setPages([1, 1, 1, 1]); };
   const query = { q, mine: mine ? "1" : undefined, unassigned: unassigned ? "1" : undefined, overdue: overdue ? "1" : undefined, assigneeId: assignee[0], priority: priority || undefined, milestoneId: milestone || undefined };
@@ -55,7 +74,9 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
   const [blocked, setBlocked] = useState<{ task: WorkspaceTask; status: WorkspaceTaskStatus; beforeId: string | null } | null>(null), [reason, setReason] = useState("");
   const moveKey = useRef(crypto.randomUUID()); const busy = useRef(false);
   const move = useWorkspaceCommand(projectId, ({ taskId, data }: { taskId: string; data: MoveWorkspaceTask }) => workspaceApi.moveTask(projectId, taskId, data));
-  const current = optimistic ?? board.data;
+  const rawCurrent = optimistic ?? board.data;
+  const current = source !== "SCREENING" || !rawCurrent ? rawCurrent : { ...rawCurrent, columns: Object.fromEntries(taskStatuses.map(key => [key, { ...rawCurrent.columns[key], items: [], total: 0, hasNext: false }])) as unknown as WorkspaceTaskBoard["columns"] };
+  const manualRows = source === "SCREENING" ? [] : tasks.data?.items ?? [];
   const doMove = async (task: WorkspaceTask, nextStatus: WorkspaceTaskStatus, beforeId: string | null, blockedReason = task.blockedReason) => {
     if (!board.data || busy.current || readOnly) return;
     if (nextStatus === "BLOCKED" && !blockedReason.trim()) { setBlocked({ task, status: nextStatus, beforeId }); setReason(""); return; }
@@ -70,19 +91,29 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
     catch { await board.refetch(); moveKey.current = crypto.randomUUID(); }
     finally { setOptimistic(null); busy.current = false; }
   };
-  const filtered = Boolean(q || mine || unassigned || overdue || priority || milestone || assignee.length || status);
-  const total = mode === "board" ? current ? taskStatuses.reduce((n, key) => n + current.columns[key].total, 0) : 0 : tasks.data?.total ?? 0;
+  const filtered = Boolean(q || mine || unassigned || overdue || priority || milestone || assignee.length || status || source !== "ALL");
+  const automaticRows = screening.data?.automaticTasks;
+  const screeningTasks = (source === "MANUAL" ? [] : automaticRows ? automaticRows.map(automaticWorkTask) : screening.data ? myWorkTasks(screening.data, readOnly, now) : []).filter(task => {
+    if (unassigned || priority || milestone || assignee[0] && assignee[0] !== (task.obligation?.assigneeId ?? actorId) || mode === "list" && status && status !== (task.obligation?.status ?? "TODO")) return false;
+    if (task.obligation && !task.obligation.endedAt && task.deadline && Date.parse(task.deadline) <= now) return false;
+    if (overdue && (!task.deadline || new Date(task.deadline).getTime() >= now)) return false;
+    return !q || `${task.title} ${task.label}`.toLocaleLowerCase().includes(q.toLocaleLowerCase());
+  });
+  const history = screeningTasks.filter(task => task.obligation && ["EXPIRED", "CANCELLED", "REPLACED"].includes(task.obligation.status));
+  const boardTasks = screeningTasks.filter(task => !history.includes(task));
+  const total = (mode === "board" ? current ? taskStatuses.reduce((n, key) => n + current.columns[key].total, 0) : 0 : source === "SCREENING" ? 0 : tasks.data?.total ?? 0) + boardTasks.length;
   return <section className="research-task-workspace" aria-label={t("Team tasks")}>
     <div className="task-toolbar"><div className="task-view-switch" aria-label={t("Task views")}>{(["board", "list"] as const).map(value => { const Icon = value === "board" ? LayoutGrid : List; return <button type="button" key={value} aria-pressed={mode === value} onClick={() => onMode(value)}><Icon size={15} />{t(value === "board" ? "Board" : "List")}</button>; })}</div>
       <form className="task-search" onSubmit={event => { event.preventDefault(); setQ(draftQ.trim()); resetPages(); }}><Search size={16} aria-hidden="true" /><input type="search" aria-label={t("Search tasks")} placeholder={t("Search tasks…")} value={draftQ} maxLength={200} onChange={event => { setDraftQ(event.target.value); if (!event.target.value) { setQ(""); resetPages(); } }} /><button type="submit" aria-label={t("Search")}><span>↵</span></button></form>
       <span className="task-result-count" role="status">{t("{{count}} tasks", { count: total })}</span>
     </div>
     <div className="task-filter-bar"><button type="button" className="task-filter-chip" aria-pressed={mine} onClick={() => { setMine(!mine); setUnassigned(false); setAssignee([]); resetPages(); }}>{t("My tasks")}</button><button type="button" className="task-filter-chip" aria-pressed={unassigned} onClick={() => { setUnassigned(!unassigned); setMine(false); setAssignee([]); resetPages(); }}>{t("Unassigned")}</button><button type="button" className="task-filter-chip" aria-pressed={overdue} onClick={() => { setOverdue(!overdue); resetPages(); }}><CalendarDays size={13} />{t("Overdue")}</button>
-      <details className="coord-filter-popover task-filters"><summary><SlidersHorizontal size={14} />{t("Filters")}{Boolean(priority || milestone || assignee.length) && <span className="task-active-dot" />}</summary><div className="task-filter-fields"><label>{t("Priority")}<select value={priority} onChange={e => { setPriority(e.target.value); resetPages(); }}><option value="">{t("All priorities")}</option>{Object.entries(taskPriorities).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label><WorkspacePeoplePicker projectId={projectId} value={assignee} onChange={ids => { setAssignee(ids); setMine(false); setUnassigned(false); resetPages(); }} /><label>{t("Milestone, optional")}<select value={milestone} onChange={e => { setMilestone(e.target.value); resetPages(); }}><option value="">{t("All milestones")}</option>{milestones.data?.items.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><WorkspacePager data={milestones.data} page={milestonePage} onPage={setMilestonePage} /></div></details>
+      <details className="coord-filter-popover task-filters"><summary><SlidersHorizontal size={14} />{t("Filters")}{Boolean(priority || milestone || assignee.length) && <span className="task-active-dot" />}</summary><div className="task-filter-fields"><label>Nguồn công việc<select aria-label="Nguồn công việc" value={source} onChange={e => { setSource(e.target.value); resetPages(); }}><option value="ALL">Tất cả nguồn</option><option value="MANUAL">Task thủ công</option><option value="SCREENING">Paper Screening</option></select></label><label>{t("Priority")}<select value={priority} onChange={e => { setPriority(e.target.value); resetPages(); }}><option value="">{t("All priorities")}</option>{Object.entries(taskPriorities).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label><WorkspacePeoplePicker projectId={projectId} value={assignee} onChange={ids => { setAssignee(ids); setMine(false); setUnassigned(false); resetPages(); }} /><label>{t("Milestone, optional")}<select value={milestone} onChange={e => { setMilestone(e.target.value); resetPages(); }}><option value="">{t("All milestones")}</option>{milestones.data?.items.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><WorkspacePager data={milestones.data} page={milestonePage} onPage={setMilestonePage} /></div></details>
       {mode === "list" && <><select aria-label={t("Task status")} value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}><option value="">{t("All statuses")}</option>{taskStatuses.map(value => <option key={value} value={value}>{t(taskLabels[value])}</option>)}</select><select aria-label={t("Sort tasks")} value={sort} onChange={e => { setSort(e.target.value); setPage(1); }}>{Object.entries({ manual: "Board order", due: "Deadline", priority: "Priority", title: "Title", updated: "Recently updated" }).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></>}
-      {filtered && <button type="button" className="task-reset" onClick={() => { setQ(""); setDraftQ(""); setMine(false); setUnassigned(false); setOverdue(false); setPriority(""); setMilestone(""); setAssignee([]); setStatus(""); resetPages(); }}><X size={13} />{t("Reset")}</button>}
+      {filtered && <button type="button" className="task-reset" onClick={() => { setQ(""); setDraftQ(""); setMine(false); setUnassigned(false); setOverdue(false); setPriority(""); setMilestone(""); setAssignee([]); setStatus(""); setSource("ALL"); resetPages(); }}><X size={13} />{t("Reset")}</button>}
     </div>
     {move.error && !blocked && <WorkspaceError error={move.error} />}
+    {screening.isError && <ScreeningError error={screening.error} retry={() => void screening.refetch()} />}
     <Dialog open={Boolean(blocked)} onOpenChange={open => { if (!open && !busy.current) setBlocked(null); }}><DialogContent closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("What is blocking this task?")}</DialogTitle><DialogDescription>{blocked?.task.title}</DialogDescription></DialogHeader>
       {blocked && <form className="task-blocker-dialog" onSubmit={e => { e.preventDefault(); if (reason.trim()) void doMove(blocked.task, blocked.status, blocked.beforeId, reason.trim()); }}><label className="sr-only" htmlFor="task-blocker-reason">{t("What is blocking this task?")}</label><textarea id="task-blocker-reason" className="project-form-textarea" autoFocus required rows={4} maxLength={2000} disabled={move.isPending} value={reason} onChange={e => setReason(e.target.value)} />{move.error && <WorkspaceError error={move.error} />}<div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={move.isPending} onClick={() => setBlocked(null)}>{t("Cancel")}</Button><Button type="submit" disabled={!reason.trim() || move.isPending}>{t(move.isPending ? "Saving…" : "Mark as blocked")}</Button></div></form>}
     </DialogContent></Dialog>
@@ -105,19 +136,25 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
         if (status === task.status && source.initialIndex === source.index && target.type !== "column") return;
         void doMove(task, status, beforeId);
       }}><div className="task-board" aria-label={t("Research Kanban board")} aria-busy={move.isPending}>
-        {taskStatuses.map((status, i) => <TaskColumn key={status} status={status} column={current.columns[status]} readOnly={readOnly || move.isPending} onSelect={onSelect} onPage={next => setPages(old => old.map((value, index) => index === i ? next : value))} onMove={(task, status) => void doMove(task, status, null)} />)}
+        {taskStatuses.map((status, i) => <TaskColumn key={status} status={status} column={current.columns[status]} readOnly={readOnly || move.isPending} onSelect={onSelect} onPage={next => setPages(old => old.map((value, index) => index === i ? next : value))} onMove={(task, status) => void doMove(task, status, null)}
+          screeningTasks={boardTasks.filter(task => (task.obligation?.status ?? "TODO") === status)} projectId={projectId} />)}
       </div></DragDropProvider><p className="task-board-help"><GripVertical size={13} />{t("Drag cards between columns or use the status menu.")}</p>
-    </> : tasks.isLoading ? <WorkspaceLoading /> : tasks.isError ? <WorkspaceError error={tasks.error} retry={() => void tasks.refetch()} /> : !tasks.data?.items.length ? <WorkspaceEmpty title={t(filtered ? "No matching tasks" : "Plan the next research step")}><p>{t("Create a task for a concrete action, such as reading a paper or comparing research methods.")}</p>{!readOnly && <Button onClick={() => onSelect("new")}>{t("Create the first task")}</Button>}</WorkspaceEmpty> : <><div className="coord-table-wrap task-list"><table className="coord-table"><thead><tr>{["Task", "Assignee", "Status", "Priority", "Deadline", "Milestones", "Linked research artifact"].map(label => <th key={label}>{t(label)}</th>)}</tr></thead><tbody>{tasks.data.items.map(task => <tr key={task.id}><td><button className="task-list-title" type="button" onClick={() => onSelect(task.id)}>{task.title}</button>{task.status === "BLOCKED" && <small className="task-blocked-reason">{task.blockedReason}</small>}</td><td><Person task={task} /></td><td><span className="task-status-label" data-status={task.status}>{t(taskLabels[task.status])}</span></td><td><TaskPriority priority={task.priority} /></td><td><TaskDueDate task={task} /></td><td>{milestones.data?.items.find(item => item.id === task.milestoneId)?.title ?? (task.milestoneId ? t("Milestone") : "–")}</td><td><WorkspaceArtifactLink projectId={projectId} link={task.link} /></td></tr>)}</tbody></table></div><WorkspacePager data={tasks.data} page={page} onPage={setPage} /></>}
+    </> : tasks.isLoading ? <WorkspaceLoading /> : tasks.isError ? <WorkspaceError error={tasks.error} retry={() => void tasks.refetch()} /> : !manualRows.length && !boardTasks.length ? <WorkspaceEmpty title={t(filtered ? "No matching tasks" : "Plan the next research step")}><p>{t("Create a task for a concrete action, such as reading a paper or comparing research methods.")}</p>{!readOnly && <Button onClick={() => onSelect("new")}>{t("Create the first task")}</Button>}</WorkspaceEmpty> : <><div className="coord-table-wrap task-list"><table className="coord-table"><thead><tr>{["Task", "Assignee", "Status", "Priority", "Deadline", "Milestones", "Linked research artifact"].map(label => <th key={label}>{t(label)}</th>)}</tr></thead><tbody>{boardTasks.map(task => <tr key={`screening:${task.obligation?.id ?? task.roundId}`} data-screening-round={task.roundId}>
+      <td><Link className="task-list-title" to={withTaskReturn(screeningWorkLink(projectId, task, sectionForTask(task)), task, location.pathname + location.search)}>{task.title}</Link><small className="task-screening-kind">{task.label}</small></td>
+      <td>Bạn</td><td><span className="task-status-label" data-status={task.obligation?.status ?? "TODO"}>{task.obligation ? automaticTaskStatuses[task.obligation.status] : t(taskLabels.TODO)}</span></td><td>–</td><td><ScreeningTeamTaskDeadline task={task} /></td><td>–</td>
+      <td><Link className="text-sm text-primary underline underline-offset-4" to={withTaskReturn(screeningWorkLink(projectId, task, sectionForTask(task)), task, location.pathname + location.search)}>{screeningTeamAction(task)}</Link></td>
+    </tr>)}{manualRows.map(task => <tr key={task.id}><td><button className="task-list-title" type="button" onClick={() => onSelect(task.id)}>{task.title}</button>{task.status === "BLOCKED" && <small className="task-blocked-reason">{task.blockedReason}</small>}</td><td><Person task={task} /></td><td><span className="task-status-label" data-status={task.status}>{t(taskLabels[task.status])}</span></td><td><TaskPriority priority={task.priority} /></td><td><TaskDueDate task={task} /></td><td>{milestones.data?.items.find(item => item.id === task.milestoneId)?.title ?? (task.milestoneId ? t("Milestone") : "–")}</td><td><WorkspaceArtifactLink projectId={projectId} link={task.link} /></td></tr>)}</tbody></table></div>{source !== "SCREENING" && <WorkspacePager data={tasks.data} page={page} onPage={setPage} />}</>}
+    {history.length > 0 && <details className="coord-history-panel"><summary>Lịch sử Task tự động ({history.length})</summary><ul className="space-y-3 pt-3">{history.map(task => <li key={task.obligation!.id} className="flex flex-wrap items-baseline justify-between gap-2 border-b pb-3 text-sm"><div className="min-w-0"><p className="font-medium break-words">{task.title}</p><p className="text-muted-foreground">{task.label} · {automaticTaskStatuses[task.obligation!.status]} · {task.description}</p></div><Link className="text-primary underline" to={withTaskReturn(screeningWorkLink(projectId, task, sectionForTask(task)), task, location.pathname + location.search)}>Xem trạng thái</Link></li>)}</ul></details>}
   </section>;
 }
-function TaskColumn({ status, column, readOnly, onSelect, onPage, onMove }: { status: WorkspaceTaskStatus; column: WorkspaceTaskBoard["columns"][WorkspaceTaskStatus]; readOnly: boolean; onSelect: SelectTask; onPage: (page: number) => void; onMove: (task: WorkspaceTask, status: WorkspaceTaskStatus) => void }) {
+function TaskColumn({ status, column, readOnly, onSelect, onPage, onMove, screeningTasks, projectId }: { status: WorkspaceTaskStatus; column: WorkspaceTaskBoard["columns"][WorkspaceTaskStatus]; readOnly: boolean; onSelect: SelectTask; onPage: (page: number) => void; onMove: (task: WorkspaceTask, status: WorkspaceTaskStatus) => void; screeningTasks: MyWorkTask[]; projectId: string }) {
   const { t } = useI18n(); const Icon = icons[status];
   const { ref, isDropTarget } = useDroppable({ id: status, type: "column", accept: "task", disabled: readOnly, collisionPriority: 1 });
   return <section ref={ref} className="task-column" data-status={status} data-over={isDropTarget} aria-label={t(taskLabels[status])}>
-    <header><span className="task-column-name"><Icon size={15} /><h3>{t(taskLabels[status])}</h3><span className="task-column-count">{column.total}</span></span>{!readOnly && <button type="button" className="task-column-add" aria-label={t("Add task to {{status}}", { status: t(taskLabels[status]) })} onClick={() => onSelect("new", status)}><Plus size={16} /></button>}</header>
-    <div className="task-column-items">{column.items.map((task, index) => <TaskCard key={task.id} task={task} index={index} readOnly={readOnly} onSelect={onSelect} onMove={onMove} />)}{!column.items.length && <div className="task-column-empty"><Icon size={25} strokeWidth={1.2} /><p>{t(status === "TODO" ? "Start with the next small step" : status === "IN_PROGRESS" ? "Ready when the team is" : status === "BLOCKED" ? "A clear path ahead" : "Progress starts here")}</p><small>{t(status === "BLOCKED" ? "Work that needs help appears here." : "Move a task here as research progresses.")}</small></div>}</div>
+    <header><span className="task-column-name"><Icon size={15} /><h3>{t(taskLabels[status])}</h3><span className="task-column-count">{column.total + screeningTasks.length}</span></span>{!readOnly && <button type="button" className="task-column-add" aria-label={t("Add task to {{status}}", { status: t(taskLabels[status]) })} onClick={() => onSelect("new", status)}><Plus size={16} /></button>}</header>
+    <div className="task-column-items">{screeningTasks.map(task => <ScreeningTeamTask key={task.obligation?.id ?? task.roundId} projectId={projectId} task={task} />)}{column.items.map((task, index) => <TaskCard key={task.id} task={task} index={index} readOnly={readOnly} onSelect={onSelect} onMove={onMove} />)}{!column.items.length && !screeningTasks.length && <div className="task-column-empty"><Icon size={25} strokeWidth={1.2} /><p>{t(status === "TODO" ? "Start with the next small step" : status === "IN_PROGRESS" ? "Ready when the team is" : status === "BLOCKED" ? "A clear path ahead" : "Progress starts here")}</p><small>{t(status === "BLOCKED" ? "Work that needs help appears here." : "Move a task here as research progresses.")}</small></div>}</div>
     {!readOnly && <button className="task-quick-add" type="button" onClick={() => onSelect("new", status)}><Plus size={15} />{t("Add task")}</button>}
-    {column.hasNext || column.page > 1 ? <><small className="task-page-count">{t("{{shown}} of {{total}} tasks", { shown: column.items.length, total: column.total })}</small><WorkspacePager data={column} page={column.page} onPage={onPage} /></> : null}
+    {column.hasNext || column.page > 1 ? <><small className="task-page-count">{t("{{shown}} of {{total}} tasks", { shown: column.items.length + screeningTasks.length, total: column.total + screeningTasks.length })}</small><WorkspacePager data={column} page={column.page} onPage={onPage} /></> : null}
   </section>;
 }
 function TaskCard({ task, index, readOnly, onSelect, onMove }: { task: WorkspaceTask; index: number; readOnly: boolean; onSelect: SelectTask; onMove: (task: WorkspaceTask, status: WorkspaceTaskStatus) => void }) {

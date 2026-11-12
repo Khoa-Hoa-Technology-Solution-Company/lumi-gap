@@ -6,6 +6,7 @@ import { zipSync, strToU8 } from "fflate";
 import { manuscriptEvents } from "./manuscript-events.js";
 import { assertCanExportProjectSource, researchLedgerService } from "../audit/research-ledger.service.js";
 import { assertVerifiedAttributionForPublish } from "./manuscript-attribution.service.js";
+import { assertIntegrityForSubmission } from "./manuscript-integrity.service.js";
 import type { CreateManuscript, ManuscriptSummary, ManuscriptDetail, ManuscriptFile, ManuscriptManifest, ManuscriptSnapshot, ManuscriptContext, ManuscriptComment, ManuscriptFeedbackSummary } from "@trend/shared-types";
 import { Prisma } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
@@ -569,10 +570,11 @@ export const manuscriptService = {
         return { submissionId: prior.submissionId, revisionId: prior.id };
       }
       const { checkId, eligibleAuthorIds } = await assertVerifiedAttributionForPublish(context.tx, projectId, id, snapshotId, authorIds);
+      const integrityReport = await assertIntegrityForSubmission(context, id, snapshotId);
       const manifest = snapshot.manifest as unknown as ManuscriptManifest;
       const content = manifest.files.filter(f => f.kind === "TEXT").map(f => `=== ${f.path} ===\n${f.text}`).join("\n\n");
       const submission = await context.tx.submission.create({ data: { projectId, createdById: actorId, title: `${manifest.title.slice(0, 135)} (${snapshot.label})`, submissionType: manifest.documentType, status: "submitted" } });
-      const revision = await context.tx.submissionRevision.create({ data: { submissionId: submission.id, revisionNumber: 1, uploadedById: actorId, contentSnapshot: content, contentType: "LATEX", checksumSha256: hashBytes(content), sizeBytes: Buffer.byteLength(content), manuscriptSnapshotId: snapshotId } });
+      const revision = await context.tx.submissionRevision.create({ data: { submissionId: submission.id, revisionNumber: 1, uploadedById: actorId, contentSnapshot: content, contentType: "LATEX", checksumSha256: hashBytes(content), sizeBytes: Buffer.byteLength(content), manuscriptSnapshotId: snapshotId, attributionCheckId: checkId, integrityReportId: integrityReport.id } });
       await context.tx.submission.update({ where: { id: submission.id }, data: { currentRevisionId: revision.id } });
       if (!authorIds.length || new Set(authorIds).size !== authorIds.length || authorIds.some(userId => !eligibleAuthorIds.has(userId))) throw AppError.badRequest("Choose declared authors from the project team or eligible contributors");
       for (const userId of authorIds) await assertActiveProjectAccount(context.tx, userId);

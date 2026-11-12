@@ -14,6 +14,7 @@ import { qualityRouter } from "../modules/quality/quality.routes.js";
 import { adminRouter } from "../modules/admin/admin.routes.js";
 import { tagRouter } from "../modules/tags/tag.routes.js";
 import { taxonomyRouter } from "../modules/taxonomy/taxonomy.routes.js";
+import { researchCatalogRouter } from "../modules/taxonomy/research-catalog.routes.js";
 import { adminTopicBackfillRouter, topicBackfillRouter } from "../modules/topic-backfill/topic-backfill.routes.js";
 import { notificationRouter } from "../modules/notifications/notification.routes.js";
 import { projectRouter } from "../modules/projects/project.routes.js";
@@ -86,6 +87,7 @@ apiRouter.use("/admin", syncRouter); // /admin/sync
 apiRouter.use("/admin", embeddingRouter); // /admin/embed
 apiRouter.use("/admin", pipelineRouter); // /admin/pipeline/status
 apiRouter.use("/admin", evaluationRouter); // /admin/evaluation/summary
+apiRouter.use("/research-catalog", researchCatalogRouter);
 apiRouter.use("/admin/taxonomy", taxonomyRouter); // taxonomy nodes + keyword catalogue
 apiRouter.use("/admin/tags", tagRouter); // curated tags + rules
 apiRouter.use("/admin/topic-backfill", adminTopicBackfillRouter); // admin-triggered OpenAlex imports

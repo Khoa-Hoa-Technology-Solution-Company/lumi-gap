@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/utils/number_format.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 
@@ -63,7 +64,7 @@ class TrendsOverviewTab extends StatelessWidget {
     );
   }
 
-  Widget _buildTimelineChart(bool isDark) {
+  Widget _buildTimelineChart(BuildContext context, bool isDark) {
     final yearly = overview.yearlyTotalPapers;
     if (yearly.isEmpty) return const SizedBox.shrink();
 
@@ -78,14 +79,14 @@ class TrendsOverviewTab extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Scope Timeline Trend',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+        Text(
+          context.t('Scope Timeline Trend'),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 4),
-        const Text(
-          'What this shows: The overall publication volume within the current scope over time.',
-          style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontStyle: FontStyle.italic),
+        Text(
+          context.t('What this shows: The overall publication volume within the current scope over time.'),
+          style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontStyle: FontStyle.italic),
         ),
         const SizedBox(height: 16),
         SizedBox(
@@ -130,7 +131,7 @@ class TrendsOverviewTab extends StatelessWidget {
     );
   }
 
-  Widget _buildTopTopicsChart(bool isDark) {
+  Widget _buildTopTopicsChart(BuildContext context, bool isDark) {
     final topics = overview.topics.take(5).toList();
     if (topics.isEmpty) return const SizedBox.shrink();
 
@@ -151,14 +152,14 @@ class TrendsOverviewTab extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Top Topics by Growth Momentum',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+        Text(
+          context.t('Top Topics by Growth Momentum'),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 4),
-        const Text(
-          'What this shows: Emerging research directions sorted by growth momentum (yearly change in publication counts).',
-          style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontStyle: FontStyle.italic),
+        Text(
+          context.t('What this shows: Emerging research directions sorted by growth momentum (yearly change in publication counts).'),
+          style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontStyle: FontStyle.italic),
         ),
         const SizedBox(height: 16),
         SizedBox(
@@ -231,18 +232,18 @@ class TrendsOverviewTab extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'DATASET SCOPE',
-                        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold),
+                      Text(
+                        context.t('DATASET SCOPE'),
+                        style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${formatNumber(overview.totalPapersInWindow)} Papers inside current scope',
+                        context.t('{{count}} Papers inside current scope', {'count': formatNumber(overview.totalPapersInWindow)}),
                         style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Computed from year ${overview.yearFrom ?? 2020} to ${overview.yearTo ?? 2026}',
+                        context.t('Computed from year {{from}} to {{to}}', {'from': overview.yearFrom ?? 2020, 'to': overview.yearTo ?? 2026}),
                         style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                       ),
                     ],
@@ -255,7 +256,7 @@ class TrendsOverviewTab extends StatelessWidget {
                   ),
                   onPressed: onOpenScopeSheet,
                   icon: const Icon(Icons.tune, color: Colors.white, size: 16),
-                  label: const Text('Filters', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  label: Text(context.t('Filters'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
@@ -266,7 +267,7 @@ class TrendsOverviewTab extends StatelessWidget {
           Row(
             children: [
               _buildMetricCard(
-                title: 'Scoped Papers',
+                title: context.t('Scoped Papers'),
                 value: formatNumber(overview.totalPapersInWindow),
                 icon: Icons.article_outlined,
                 color: const Color(0xFF06B6D4),
@@ -274,7 +275,7 @@ class TrendsOverviewTab extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               _buildMetricCard(
-                title: 'Unique Topics',
+                title: context.t('Unique Topics'),
                 value: formatNumber(overview.uniqueTopicsInScope),
                 icon: Icons.tag_outlined,
                 color: const Color(0xFF8B5CF6),
@@ -282,7 +283,7 @@ class TrendsOverviewTab extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               _buildMetricCard(
-                title: 'Topic Coverage',
+                title: context.t('Topic Coverage'),
                 value: coveragePct,
                 icon: Icons.shield_outlined,
                 color: const Color(0xFF10B981),
@@ -293,9 +294,9 @@ class TrendsOverviewTab extends StatelessWidget {
           const SizedBox(height: 24),
 
           // Charts section
-          _buildTimelineChart(isDark),
+          _buildTimelineChart(context, isDark),
           const SizedBox(height: 24),
-          _buildTopTopicsChart(isDark),
+          _buildTopTopicsChart(context, isDark),
         ],
       ),
     );

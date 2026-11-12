@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/trends/components/trends_ai_tab.dart';
@@ -69,9 +70,9 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen>
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text(
-          'Trends Workbench',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          context.t('Trends Workbench'),
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -80,11 +81,11 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen>
           indicatorColor: const Color(0xFF06B6D4),
           labelColor: const Color(0xFF06B6D4),
           unselectedLabelColor: const Color(0xFF94A3B8),
-          tabs: const [
-            Tab(text: 'Signals'),
-            Tab(text: 'Scope'),
-            Tab(text: 'Compare'),
-            Tab(text: 'Explain'),
+          tabs: [
+            Tab(text: context.t('Signals')),
+            Tab(text: context.t('Scope')),
+            Tab(text: context.t('Compare')),
+            Tab(text: context.t('Explain')),
           ],
         ),
       ),
@@ -122,9 +123,9 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen>
             ),
           ],
         ),
-        loading: () => const AppLoading(
+        loading: () => AppLoading(
           fullScreen: true,
-          message: 'Loading trends data...',
+          message: context.t('Loading trends data...'),
         ),
         error: (error, _) => AppErrorState(message: error.toString()),
       ),

@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
@@ -46,8 +48,8 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
   Future<void> _analyze() async {
     if (topic.text.trim().length < 3) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Topic must be at least 3 characters long.'),
+        SnackBar(
+          content: Text(context.t('Topic must be at least 3 characters long.')),
         ),
       );
       return;
@@ -69,7 +71,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Analysis failed to submit: ${e.toString().replaceAll('ApiException: ', '')}',
+              context.t('Analysis failed to submit: {{error}}', {'error': e.toString().replaceAll('ApiException: ', '')}),
             ),
             backgroundColor: Colors.red,
           ),
@@ -95,7 +97,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to update status: $e'),
+            content: Text(context.t('Failed to update status: {{e}}', {'e': e})),
             backgroundColor: Colors.red,
           ),
         );
@@ -132,7 +134,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('Research Gaps'),
+        title: Text(context.t('Research Gaps')),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -141,18 +143,18 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
           ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const Text(
-                'AI Research Gaps',
-                style: TextStyle(
+              Text(
+                context.t('AI Research Gaps'),
+                style: const TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
                   letterSpacing: -0.5,
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Find opportunities and research gaps recommended by Gemini.',
-                style: TextStyle(fontSize: 14, color: Color(0xFF94A3B8)),
+              Text(
+                context.t('Find opportunities and research gaps recommended by Gemini.'),
+                style: const TextStyle(fontSize: 14, color: Color(0xFF94A3B8)),
               ),
               const SizedBox(height: 20),
 
@@ -167,9 +169,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'ANALYZE NEW RESEARCH TOPIC',
-                      style: TextStyle(
+                    Text(
+                      context.t('ANALYZE NEW RESEARCH TOPIC'),
+                      style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF94A3B8),
@@ -191,9 +193,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                             child: TextField(
                               controller: topic,
                               style: const TextStyle(fontSize: 14),
-                              decoration: const InputDecoration.collapsed(
-                                hintText: 'Analyze new research topic',
-                                hintStyle: TextStyle(color: Color(0xFF64748B)),
+                              decoration: InputDecoration.collapsed(
+                                hintText: context.t('Analyze new research topic'),
+                                hintStyle: const TextStyle(color: Color(0xFF64748B)),
                               ),
                             ),
                           ),
@@ -219,9 +221,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                                       color: Colors.white,
                                     ),
                                   )
-                                : const Text(
-                                    'Analyze',
-                                    style: TextStyle(
+                                : Text(
+                                    context.t('Analyze'),
+                                    style: const TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -243,17 +245,17 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                 child: Row(
                   children: [
                     _TabButton(
-                      label: 'Active',
+                      label: context.t('Active'),
                       active: status == 'active',
                       onTap: () => setState(() => status = 'active'),
                     ),
                     _TabButton(
-                      label: 'Resolved',
+                      label: context.t('Resolved'),
                       active: status == 'resolved',
                       onTap: () => setState(() => status = 'resolved'),
                     ),
                     _TabButton(
-                      label: 'Dismissed',
+                      label: context.t('Dismissed'),
                       active: status == 'dismissed',
                       onTap: () => setState(() => status = 'dismissed'),
                     ),
@@ -295,9 +297,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                               controller: search,
                               onChanged: (_) => setState(() {}),
                               style: const TextStyle(fontSize: 12),
-                              decoration: const InputDecoration.collapsed(
-                                hintText: 'Filter gaps by topic name...',
-                                hintStyle: TextStyle(color: Color(0xFF64748B)),
+                              decoration: InputDecoration.collapsed(
+                                hintText: context.t('Filter gaps by topic name...'),
+                                hintStyle: const TextStyle(color: Color(0xFF64748B)),
                               ),
                             ),
                           ),
@@ -308,9 +310,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'SORT BY',
-                          style: TextStyle(
+                        Text(
+                          context.t('SORT BY'),
+                          style: const TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF94A3B8),
@@ -325,18 +327,18 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF06B6D4),
                           ),
-                          items: const [
+                          items: [
                             DropdownMenuItem(
                               value: 'evidence',
-                              child: Text('Evidence-backed'),
+                              child: Text(context.t('Evidence-backed')),
                             ),
                             DropdownMenuItem(
                               value: 'confidence',
-                              child: Text('Confidence'),
+                              child: Text(context.t('Confidence')),
                             ),
                             DropdownMenuItem(
                               value: 'newest',
-                              child: Text('Newest'),
+                              child: Text(context.t('Newest')),
                             ),
                           ],
                           onChanged: (val) {
@@ -350,9 +352,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'MIN CONFIDENCE',
-                      style: TextStyle(
+                    Text(
+                      context.t('MIN CONFIDENCE'),
+                      style: const TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF94A3B8),
@@ -364,7 +366,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                     Row(
                       children: [
                         _ConfidenceChip(
-                          label: 'All',
+                          label: context.t('All'),
                           active: minConfidence == null,
                           onTap: () => setState(() => minConfidence = null),
                           inputBg: inputBg,
@@ -373,7 +375,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                         ),
                         const SizedBox(width: 8),
                         _ConfidenceChip(
-                          label: 'Medium (≥40%)',
+                          label: context.t('Medium (≥40%)'),
                           active: minConfidence == 0.4,
                           onTap: () => setState(() => minConfidence = 0.4),
                           inputBg: inputBg,
@@ -382,7 +384,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                         ),
                         const SizedBox(width: 8),
                         _ConfidenceChip(
-                          label: 'High (≥70%)',
+                          label: context.t('High (≥70%)'),
                           active: minConfidence == 0.7,
                           onTap: () => setState(() => minConfidence = 0.7),
                           inputBg: inputBg,
@@ -400,10 +402,10 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
               gaps.when(
                 data: (data) {
                   if (data.data.isEmpty) {
-                    return const AppEmptyState(
+                    return AppEmptyState(
                       icon: Icons.lightbulb_outline,
-                      title: 'No research gaps found',
-                      message: 'Try another filter or submit a topic.',
+                      title: context.t('No research gaps found'),
+                      message: context.t('Try another filter or submit a topic.'),
                     );
                   }
 
@@ -436,7 +438,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '${data.total} research gap(s) found',
+                        context.plural(data.total, one: '{{count}} research gap found', other: '{{count}} research gaps found'),
                         style: const TextStyle(
                           fontSize: 12,
                           color: Color(0xFF94A3B8),
@@ -446,7 +448,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                     ],
                   );
                 },
-                loading: () => const AppLoading(message: 'Loading gaps...'),
+                loading: () => AppLoading(message: context.t('Loading gaps...')),
                 error: (error, _) => AppErrorState(message: error.toString()),
               ),
             ],
@@ -549,9 +551,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                   ),
                   const Divider(height: 24),
 
-                  const Text(
-                    'Summary Description',
-                    style: TextStyle(
+                  Text(
+                    context.t('Summary Description'),
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                       color: Color(0xFF94A3B8),
@@ -564,9 +566,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  const Text(
-                    'AI Reasoning & Grounding',
-                    style: TextStyle(
+                  Text(
+                    context.t('AI Reasoning & Grounding'),
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                       color: Color(0xFF94A3B8),
@@ -575,7 +577,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                   const SizedBox(height: 6),
                   Text(
                     gap.rationale.isEmpty
-                        ? 'Gemini identified this gap based on semantic distances in this publication corpus.'
+                        ? context.t('Gemini identified this gap based on semantic distances in this publication corpus.')
                         : gap.rationale,
                     style: const TextStyle(
                       fontSize: 13,
@@ -585,9 +587,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  const Text(
-                    'Validation Metrics',
-                    style: TextStyle(
+                  Text(
+                    context.t('Validation Metrics'),
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                       color: Color(0xFF94A3B8),
@@ -599,7 +601,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                       _ConfidenceBar(value: gap.confidence),
                       const SizedBox(width: 16),
                       Text(
-                        'Evidence Papers: ${gap.evidenceCount}',
+                        context.t('Evidence Papers: {{evidenceCount}}', {'evidenceCount': gap.evidenceCount}),
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
@@ -614,9 +616,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
 
                   if (gap.supportingPapers.isNotEmpty ||
                       gap.supportingPaperIds.isNotEmpty) ...[
-                    const Text(
-                      'Grounding Evidence Papers',
-                      style: TextStyle(
+                    Text(
+                      context.t('Grounding Evidence Papers'),
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
                         color: Color(0xFF94A3B8),
@@ -639,7 +641,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
                             title: Text(
-                              paper?.title ?? 'Supporting evidence paper',
+                              paper?.title ?? context.t('Supporting evidence paper'),
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -650,7 +652,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                             ),
                             subtitle: paper == null
                                 ? Text(
-                                    'Paper ID: $paperId',
+                                    context.t('Paper ID: {{paperId}}', {'paperId': paperId}),
                                     style: const TextStyle(
                                       fontSize: 10,
                                       color: Color(0xFF94A3B8),
@@ -690,9 +692,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                   const Divider(height: 24),
 
                   // Grounding CTA Actions
-                  const Text(
-                    'Actions',
-                    style: TextStyle(
+                  Text(
+                    context.t('Actions'),
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                       color: Color(0xFF94A3B8),
@@ -722,9 +724,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                             size: 14,
                             color: Colors.white,
                           ),
-                          label: const Text(
-                            'Search Solutions',
-                            style: TextStyle(
+                          label: Text(
+                            context.t('Search Solutions'),
+                            style: const TextStyle(
                               fontSize: 11,
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -747,14 +749,14 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                               showDialog<void>(
                                 context: context,
                                 builder: (context) => AlertDialog(
-                                  title: const Text('Draft Proposal Outline'),
-                                  content: const Text(
-                                    'Do you want to draft a research proposal outline to address this gap?',
+                                  title: Text(context.t('Draft Proposal Outline')),
+                                  content: Text(
+                                    context.t('Do you want to draft a research proposal outline to address this gap?'),
                                   ),
                                   actions: [
                                     TextButton(
                                       onPressed: () => Navigator.pop(context),
-                                      child: const Text('Cancel'),
+                                      child: Text(context.t('Cancel')),
                                     ),
                                     TextButton(
                                       onPressed: () {
@@ -765,7 +767,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                                           ),
                                         );
                                       },
-                                      child: const Text('Draft with AI'),
+                                      child: Text(context.t('Draft with AI')),
                                     ),
                                   ],
                                 ),
@@ -777,9 +779,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                             size: 14,
                             color: Colors.white,
                           ),
-                          label: const Text(
-                            'Draft Proposal',
-                            style: TextStyle(
+                          label: Text(
+                            context.t('Draft Proposal'),
+                            style: const TextStyle(
                               fontSize: 11,
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -809,9 +811,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                               );
                             },
                             icon: const Icon(Icons.check, size: 14),
-                            label: const Text(
-                              'Validate Gap',
-                              style: TextStyle(
+                            label: Text(
+                              context.t('Validate Gap'),
+                              style: const TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -835,9 +837,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                               );
                             },
                             icon: const Icon(Icons.close, size: 14),
-                            label: const Text(
-                              'Reject Gap',
-                              style: TextStyle(
+                            label: Text(
+                              context.t('Reject Gap'),
+                              style: const TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -984,7 +986,7 @@ class _ConfidenceBar extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Text(
-          '$pct% confidence',
+          context.t('{{pct}}% confidence', {'pct': pct}),
           style: const TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.bold,
@@ -1020,17 +1022,17 @@ class _GapCard extends StatelessWidget {
         : const Color(0xFF3B82F6);
 
     final statusText = gap.status == 'resolved'
-        ? 'Validated'
+        ? context.t('Validated')
         : gap.status == 'dismissed'
-        ? 'Rejected'
-        : 'Pending';
+        ? context.t('Rejected')
+        : context.t('Pending');
 
     // Mock severity based on confidence
     final severityText = gap.confidence >= 0.7
-        ? 'High Severity'
+        ? context.t('High Severity')
         : gap.confidence >= 0.4
-        ? 'Medium Severity'
-        : 'Low Severity';
+        ? context.t('Medium Severity')
+        : context.t('Low Severity');
 
     final severityColor = gap.confidence >= 0.7
         ? const Color(0xFFEF4444)
@@ -1111,7 +1113,7 @@ class _GapCard extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                'Evidence: ${gap.evidenceCount} papers',
+                context.t('Evidence: {{evidenceCount}} papers', {'evidenceCount': gap.evidenceCount}),
                 style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
               ),
             ],
@@ -1154,9 +1156,9 @@ class _GapCard extends StatelessWidget {
                             ),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Text(
-                            'Validate',
-                            style: TextStyle(
+                          child: Text(
+                            context.t('Validate'),
+                            style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
                               color: Color(0xFF059669),
@@ -1183,9 +1185,9 @@ class _GapCard extends StatelessWidget {
                             ),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Text(
-                            'Reject',
-                            style: TextStyle(
+                          child: Text(
+                            context.t('Reject'),
+                            style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
                               color: Color(0xFF94A3B8),
@@ -1255,26 +1257,26 @@ class _PollingOverlay extends ConsumerWidget {
                   const SizedBox(height: 12),
                   Text(
                     data.status == 'ready'
-                        ? 'Analysis complete'
+                        ? context.t('Analysis complete')
                         : data.status == 'failed'
-                        ? 'Gap Analysis Failed'
-                        : 'Analyzing Gaps with AI',
+                        ? context.t('Gap Analysis Failed')
+                        : context.t('Analyzing Gaps with AI'),
                   ),
                   if (data.errorMessage != null) Text(data.errorMessage!),
                   const SizedBox(height: 16),
                   FilledButton(
                     onPressed: onClose,
-                    child: Text(data.status == 'ready' ? 'View gaps' : 'Close'),
+                    child: Text(data.status == 'ready' ? context.t('View gaps') : context.t('Close')),
                   ),
                 ],
               ),
               loading: () =>
-                  const AppLoading(message: 'Queueing gap analysis job...'),
+                  AppLoading(message: context.t('Queueing gap analysis job...')),
               error: (error, _) => Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(error.toString()),
-                  TextButton(onPressed: onClose, child: const Text('Dismiss')),
+                  TextButton(onPressed: onClose, child: Text(context.t('Dismiss'))),
                 ],
               ),
             ),

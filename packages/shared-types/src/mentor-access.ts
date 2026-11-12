@@ -17,5 +17,21 @@ export interface MentorSharedResource extends MentorShareInput { id: string; cre
 export type MentorResourceSummary = Omit<MentorSharedResource, "content">;
 export interface MentorFeedback { id: string; authorId: string; authorName: string; mentor: boolean; shareId: string | null; replyToId: string | null; kind: "MESSAGE" | "COMMENT" | "SUGGESTION" | "REVIEW"; body: string; creditRoles: CreditRole[]; status: "PENDING" | "ACCEPTED" | "REJECTED" | "RESOLVED"; version: number; handledById: string | null; handledByName?: string; handledAt: string | null; response: string; resultingRevisionRef?: string | null; createdAt: string }
 export interface MentorAgreement { id: string; proposedById: string; creditRoles: CreditRole[]; acknowledgement: string; note: string; status: "PROPOSED" | "ACCEPTED" | "REJECTED" | "WITHDRAWN"; respondedById: string | null; createdAt: string }
-export interface MentorAccessWorkspace { viewerId: string; projectId: string; title: string; canManage: boolean; readOnly: boolean; page: number; pageSize: number; total: number; hasNext: boolean; policies: { policy: MentorAccessPolicy; mentorId: string; mentorName: string; invitationState: "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "EXPIRED"; shares: MentorResourceSummary[] }[] }
+export interface MentorProjectBasics {
+  summary: string | null;
+  researchField: string | null;
+  status: string;
+  team: { id: string; name: string; role: "OWNER" | "MEMBER" }[];
+}
+export interface MentorAccessWorkspace { viewerId: string; projectId: string; title: string; basics?: MentorProjectBasics; canManage: boolean; readOnly: boolean; page: number; pageSize: number; total: number; hasNext: boolean; policies: { policy: MentorAccessPolicy; mentorId: string; mentorName: string; invitationState: "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "EXPIRED"; shares: MentorResourceSummary[] }[] }
 export interface MentorAccessPage<T> { items: T[]; total: number; page: number; pageSize: number; hasNext: boolean }
+/** Only tasks assigned to the authenticated mentor in this project. */
+export interface MentorAssignedTask {
+  id: string;
+  title: string;
+  description: string;
+  status: "TODO" | "IN_PROGRESS" | "BLOCKED" | "DONE";
+  dueAt: string | null;
+  blockedReason: string;
+  submissionId: string | null;
+}

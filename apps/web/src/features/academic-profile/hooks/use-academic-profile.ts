@@ -34,9 +34,40 @@ export function useAcademicIdentityLinks(enabled = true) {
 
 function refreshAcademicIdentityQueries(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: ["academic-profile", "academic-identities"] });
+  queryClient.invalidateQueries({ queryKey: ["academic-profile", "orcid"] });
   queryClient.invalidateQueries({ queryKey: ["academic-profile", "me"] });
   queryClient.invalidateQueries({ queryKey: ["academic-profile", "public"] });
   queryClient.invalidateQueries({ queryKey: ["academic-profile", "handle"] });
+}
+
+export function useOrcidConnectionStatus(enabled = true) {
+  return useQuery({
+    queryKey: ["academic-profile", "orcid"],
+    queryFn: ({ signal }) => academicProfileApi.orcidStatus(signal),
+    enabled,
+  });
+}
+
+export function useStartOrcidConnection() {
+  return useMutation({
+    mutationFn: (returnTo?: string) => academicProfileApi.startOrcidConnection(returnTo),
+  });
+}
+
+export function useCompleteOrcidConnection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: academicProfileApi.completeOrcidConnection,
+    onSuccess: () => refreshAcademicIdentityQueries(queryClient),
+  });
+}
+
+export function useDisconnectOrcid() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: academicProfileApi.disconnectOrcid,
+    onSuccess: () => refreshAcademicIdentityQueries(queryClient),
+  });
 }
 
 export function useCreateAcademicIdentity() {
@@ -246,4 +277,8 @@ export function useDecideAcademicVerification() {
       queryClient.invalidateQueries({ queryKey: ["admin", "academic-verification"] });
     },
   });
+}
+
+export function useOrcidAvailability(enabled = true) {
+  return useQuery({ queryKey: ["academic-profile", "orcid-availability"], queryFn: academicProfileApi.orcidAvailability, enabled, retry: false });
 }

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_mobile/core/constants/api_routes.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/network/api_client.dart';
 import 'package:flutter_mobile/features/papers/data/papers_api.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
@@ -146,7 +147,7 @@ class ReportEvidencePaper {
   factory ReportEvidencePaper.fromJson(Map<String, dynamic> json) {
     return ReportEvidencePaper(
       id: (json['id'] ?? json['_id'] ?? '').toString(),
-      title: (json['title'] ?? 'Untitled paper').toString(),
+      title: (json['title'] ?? trNow('Untitled paper')).toString(),
       year: _intFromJson(json['year'] ?? json['publicationYear']),
       authors: (json['authors'] as List<dynamic>? ?? []).map((item) => item.toString()).toList(),
       source: (json['source'] ?? json['journal'] ?? json['venue'])?.toString(),

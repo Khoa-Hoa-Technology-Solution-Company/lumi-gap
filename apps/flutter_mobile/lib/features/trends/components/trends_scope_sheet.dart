@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 
 class TrendsScopeSheet extends StatefulWidget {
@@ -142,7 +143,7 @@ class _TrendsScopeSheetState extends State<TrendsScopeSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Data Scope Filters', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text(context.t('Data Scope Filters'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 TextButton(
                   onPressed: () {
                     setState(() {
@@ -156,21 +157,21 @@ class _TrendsScopeSheetState extends State<TrendsScopeSheet> {
                       _selectedSubfields.clear();
                     });
                   },
-                  child: const Text('Reset', style: TextStyle(color: Color(0xFF06B6D4))),
+                  child: Text(context.t('Reset'), style: const TextStyle(color: Color(0xFF06B6D4))),
                 ),
               ],
             ),
             const Divider(height: 24),
 
             // Years setup
-            const Text('Year Window', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF94A3B8))),
+            Text(context.t('Year Window'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF94A3B8))),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
                   child: TextField(
                     decoration: InputDecoration(
-                      hintText: 'From Year',
+                      hintText: context.t('From Year'),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     ),
@@ -185,7 +186,7 @@ class _TrendsScopeSheetState extends State<TrendsScopeSheet> {
                 Expanded(
                   child: TextField(
                     decoration: InputDecoration(
-                      hintText: 'To Year',
+                      hintText: context.t('To Year'),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     ),
@@ -201,7 +202,7 @@ class _TrendsScopeSheetState extends State<TrendsScopeSheet> {
             const SizedBox(height: 16),
 
             // Minimum papers
-            const Text('Minimum Papers threshold', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF94A3B8))),
+            Text(context.t('Minimum Papers threshold'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF94A3B8))),
             const SizedBox(height: 8),
             Slider(
               value: (_minPapers ?? 1).toDouble().clamp(1.0, 50.0),
@@ -219,20 +220,20 @@ class _TrendsScopeSheetState extends State<TrendsScopeSheet> {
             const SizedBox(height: 16),
 
             if (paperKindsOptions.isNotEmpty)
-              _buildChipSection(title: 'Paper Kind', options: paperKindsOptions, selectedList: _selectedKinds, isDark: isDark),
+              _buildChipSection(title: context.t('Paper Kind'), options: paperKindsOptions, selectedList: _selectedKinds, isDark: isDark),
             if (oaOptions.isNotEmpty)
-              _buildChipSection(title: 'Open Access Status', options: oaOptions, selectedList: _selectedOA, isDark: isDark),
+              _buildChipSection(title: context.t('Open Access Status'), options: oaOptions, selectedList: _selectedOA, isDark: isDark),
 
             // Domain Selector
             if (widget.facets.domains.isNotEmpty) ...[
-              const Text('Scientific Domains', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF94A3B8))),
+              Text(context.t('Scientific Domains'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF94A3B8))),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                hint: const Text('All Domains'),
+                hint: Text(context.t('All Domains')),
                 items: widget.facets.domains.map((d) {
                   return DropdownMenuItem(value: d.id, child: Text(d.name, overflow: TextOverflow.ellipsis));
                 }).toList(),
@@ -264,14 +265,14 @@ class _TrendsScopeSheetState extends State<TrendsScopeSheet> {
 
             // Field Selector
             if (widget.facets.fields.isNotEmpty) ...[
-              const Text('Scientific Fields', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF94A3B8))),
+              Text(context.t('Scientific Fields'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF94A3B8))),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                hint: const Text('All Fields'),
+                hint: Text(context.t('All Fields')),
                 items: widget.facets.fields.map((f) {
                   return DropdownMenuItem(value: f.id, child: Text(f.name, overflow: TextOverflow.ellipsis));
                 }).toList(),
@@ -311,7 +312,7 @@ class _TrendsScopeSheetState extends State<TrendsScopeSheet> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 onPressed: _apply,
-                child: const Text('Apply Scope Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: Text(context.t('Apply Scope Settings'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ),
           ],

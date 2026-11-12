@@ -454,7 +454,7 @@ const newUiKeys = [
   "Included",
   "INCLUDED",
   "Invitation message",
-  "Invitations expire automatically after 14 days.",
+  "New mentor invitations expire automatically after 6 days.",
   "Invite only",
   "INVITE_ONLY",
   "Leave project",

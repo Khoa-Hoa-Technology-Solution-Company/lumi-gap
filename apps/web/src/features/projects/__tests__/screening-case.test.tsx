@@ -47,8 +47,23 @@ it("shows direct assignment without accepting an invitation or opening a three-p
   expect(container.textContent).not.toContain("Trao đổi với người phân xử");
   expect(container.querySelector("textarea")).toBeNull();
 });
+it.each([false, true])("lets an independent coordinator review a conflict report with a required reason (%s)", async upheld => {
+  const coordinator = { ...base, status: "COI_REVIEW", ready: true, lockedAt: "2026-11-02T02:00:00Z", canCoordinate: true, conflicts: [{ id: "report", reason: "The assigned person collaborated on this paper", resolvedAt: null, resolution: null, upheld: null }] };
+  await render(controls(coordinator));
+  const label = upheld ? "Đổi người phân xử" : "Giữ phân công";
+  const button = [...container.querySelectorAll<HTMLButtonElement>("button")].find(element => element.textContent === label)!;
+  expect(button.disabled).toBe(true);
+  await input("Checked the declared collaboration and applicable independence policy");
+  await click(label);
+  expect(mocks.caseAction).toHaveBeenCalledWith("p", "r", expect.objectContaining({ action: "REVIEW_CONFLICT", reportId: "report", upheld, expectedCaseVersion: 2 }));
+});
+it("never renders another person's sealed supplement even if a hidden payload accidentally contains text", async () => {
+  await render(controls({ ...base, statements: base.statements.map(statement => ({ ...statement, completed: true, hidden: true, text: "SEALED SECRET STATEMENT" })) }));
+  expect(container.textContent).not.toContain("SEALED SECRET STATEMENT");
+  expect(container.textContent).toContain("Ý kiến được giữ riêng đến khi hồ sơ khóa.");
+});
 
-it("requires a written opinion and provides no use-existing-ballot shortcut", async () => {
+it("requires at least ten characters when writing a supplementary opinion", async () => {
   const reviewer = { ...base, canRespond: false, canStatement: true, statements: [{ reviewerId: "actor", name: "Reviewer A", completed: false, hidden: false, revision: 0 }, base.statements[1]!] };
   await render(controls(reviewer));
   expect(container.textContent).not.toContain("Dùng phiếu đã ghi");
@@ -60,6 +75,25 @@ it("requires a written opinion and provides no use-existing-ballot shortcut", as
   await input("  Bài đáp ứng tiêu chí về đối tượng nghiên cứu.  ");
   await click("Gửi ý kiến");
   expect(mocks.caseAction).toHaveBeenCalledWith("p", "r", expect.objectContaining({ action: "STATEMENT", useExisting: false, text: "Bài đáp ứng tiêu chí về đối tượng nghiên cứu.", expectedPacketVersion: 1, expectedStatementRevision: 0 }));
+  expect(container.textContent).toContain("Chờ gửi ý kiến");
+});
+
+it.each([0, 1])("allows either reviewer to explicitly use their own saved ballot (%s)", async mine => {
+  const statements = base.statements.map((s, i) => ({ ...s, reviewerId: i === mine ? "actor" : s.reviewerId, hidden: i !== mine }));
+  await render(controls({ ...base, canStatement: true, statements }));
+  await click("Sử dụng ý kiến đã ghi");
+  expect(mocks.caseAction).toHaveBeenCalledWith("p", "r", expect.objectContaining({ action: "STATEMENT", useExisting: true, text: "", expectedPacketVersion: 1, expectedStatementRevision: 0 }));
+});
+it("saves a statement and refreshes the case without rendering backend completion instructions", async () => {
+  const onSaved = vi.fn();
+  mocks.caseAction.mockResolvedValue({ taskFeedback: { completedAction: "Gửi quan điểm phân xử", nextStatus: "Đang thu thập ý kiến", nextActor: "Reviewer còn lại" } });
+  await render(<ScreeningCaseControls projectId="p" roundId="r" data={{ ...base, canStatement: true, statements: [{ ...base.statements[0]!, reviewerId: "actor", hidden: false }, base.statements[1]!] }} onSaved={onSaved} />);
+  await input("Quan điểm và căn cứ của riêng tôi cho hồ sơ phân xử");
+  await click("Gửi ý kiến");
+  expect(onSaved).toHaveBeenCalledOnce();
+  expect(container.querySelector("textarea")).toBeNull();
+  for (const text of ["Bạn đã hoàn thành", "Trạng thái tiếp theo", "Ai cần làm tiếp", "Quay lại Việc của tôi"]) expect(container.textContent).not.toContain(text);
+  expect(container.textContent).toContain("Ý kiến hai bên");
   expect(container.textContent).toContain("Chờ gửi ý kiến");
 });
 it.each([0, 1])("puts the current reviewer's editor first while preserving A/B labels (%s)", async mine => {

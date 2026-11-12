@@ -6,6 +6,7 @@ import { cachedGenerateJSON } from "../../llm/llm.run.js";
 import { indexPaper } from "../../knowledge/knowledge.ingest.js";
 import { digest, sourceFingerprint, RAG_INDEX_VERSION } from "../../knowledge/knowledge.text.js";
 import { projectGapResearchService as research } from "../../projects/project-gap-research.service.js";
+import { projectFeasibilityService as feasibility } from "../../projects/project-feasibility.service.js";
 import { gapsService } from "../gaps.service.js";
 
 vi.mock("../../../infrastructure/queue.js", () => ({ gapsQueue: { add: vi.fn() }, paperAnalysisQueue: { add: vi.fn() }, hasLiveJob: vi.fn() }));
@@ -109,6 +110,7 @@ describe.skipIf(!isolated).sequential("project discovery using existing gap queu
   it("requires explicit evidence review and retains candidate status after team support", async () => {
     const { project, gap, reviewedEvidence } = await ready();
     const input = { expectedVersion: gap.version, status: "TEAM_SUPPORTED" as const, rationale: "Checked source passages and bounded the interpretation" };
+    await feasibility.save(project.id, member, "GAP", gap.id, { dataAvailability: 4, expertise: 4, resources: 4, timeline: 4, risk: 4, notes: "" });
     await expect(research.assess(project.id, member, gap.id, input)).rejects.toMatchObject({ statusCode: 409 });
     const assessed = await research.assess(project.id, member, gap.id, { ...input, reviewedEvidence });
     expect(assessed.assessmentStatus).toBe("TEAM_SUPPORTED"); expect(assessed.validationStatus).toBe("CANDIDATE");
@@ -165,6 +167,7 @@ describe.skipIf(!isolated).sequential("project discovery using existing gap queu
   it("rejects simultaneous assessments and stale evidence versions atomically", async () => {
     const { project, gap, reviewedEvidence } = await ready();
     const input = { expectedVersion: gap.version, status: "TEAM_SUPPORTED" as const, rationale: "Checked these exact source revisions", reviewedEvidence };
+    await feasibility.save(project.id, owner, "GAP", gap.id, { dataAvailability: 4, expertise: 4, resources: 4, timeline: 4, risk: 4, notes: "" });
     await expect(research.assess(project.id, owner, gap.id, { ...input, reviewedEvidence: [reviewedEvidence[0]!, reviewedEvidence[0]!] })).rejects.toMatchObject({ statusCode: 400 });
     await expect(research.assess(project.id, owner, gap.id, { ...input, reviewedEvidence: reviewedEvidence.map(item => ({ ...item, version: 999 })) })).rejects.toMatchObject({ statusCode: 409 });
     const assessed = await Promise.allSettled([owner, member].map(actor => research.assess(project.id, actor, gap.id, input)));

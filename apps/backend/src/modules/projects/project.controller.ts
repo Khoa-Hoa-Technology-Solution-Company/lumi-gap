@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
+import { researchClassificationSchema } from "../taxonomy/research-classification.schema.js";
 import { databaseIdSchema } from "../../common/validation/database-id.js";
 import { researchLedgerService } from "../audit/research-ledger.service.js";
 import { projectService } from "./project.service.js";
@@ -14,6 +15,7 @@ const researchAreasSchema = z.array(z.string().trim().min(1).max(120)).max(3)
 const approachSchema = z.enum(["EXPLORATORY", "LITERATURE_REVIEW", "EMPIRICAL", "UNDECIDED"]);
 
 export const createProjectSchema = z.object({
+  researchClassification: researchClassificationSchema.optional(),
   title: z.string().trim().min(1).max(100),
   description: z.string().trim().max(5000).optional(),
   researchField: z.string().trim().max(200).optional(),
@@ -25,6 +27,7 @@ export const createProjectSchema = z.object({
 }).strict();
 
 export const updateProjectSchema = z.object({
+  researchClassification: researchClassificationSchema.optional(),
   title: z.string().trim().min(1).max(100).optional(),
   description: z.string().trim().max(5000).optional(),
   researchField: z.string().trim().max(200).nullable().optional(),

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_mobile/core/constants/api_routes.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/network/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
@@ -29,12 +30,6 @@ projectChatProvider = FutureProvider.autoDispose
           .listChat(query.projectId, scope: query.scope);
     });
 
-final FutureProviderFamily<List<ProjectTeamChatMessage>, String>
-projectTeamChatProvider = FutureProvider.autoDispose
-    .family<List<ProjectTeamChatMessage>, String>((ref, id) {
-      return ref.watch(projectsApiProvider).listTeamChat(id);
-    });
-
 class ProjectView {
   const ProjectView({
     required this.id,
@@ -48,7 +43,7 @@ class ProjectView {
   factory ProjectView.fromJson(Map<String, dynamic> json) {
     return ProjectView(
       id: (json['_id'] ?? json['id'] ?? '').toString(),
-      title: (json['title'] ?? 'Untitled project').toString(),
+      title: (json['title'] ?? trNow('Untitled project')).toString(),
       description: json['description']?.toString(),
       ownerId: json['ownerId']?.toString(),
       members: (json['members'] as List<dynamic>? ?? [])
@@ -80,21 +75,22 @@ class ProjectPaperRef {
 
   factory ProjectPaperRef.fromUnknown(Object? value) {
     if (value is String) {
-      return ProjectPaperRef(id: value, title: 'Paper $value');
+      return ProjectPaperRef(id: value, title: trNow('Paper {{id}}', {'id': value}));
     }
 
     if (value is! Map<String, dynamic>) {
-      return const ProjectPaperRef(id: '', title: 'Unknown paper');
+      return ProjectPaperRef(id: '', title: trNow('Unknown paper'));
     }
 
     final rawPaper = value['targetId'] is Map<String, dynamic>
         ? value['targetId'] as Map<String, dynamic>
         : value;
 
-    final id = (rawPaper['_id'] ?? rawPaper['id'] ?? value['targetId'] ?? '').toString();
+    final id = (rawPaper['_id'] ?? rawPaper['id'] ?? value['targetId'] ?? '')
+        .toString();
     return ProjectPaperRef(
       id: id,
-      title: (rawPaper['title'] ?? 'Untitled paper').toString(),
+      title: (rawPaper['title'] ?? trNow('Untitled paper')).toString(),
       publicationYear: (rawPaper['publicationYear'] as num?)?.toInt(),
       citationCount: (rawPaper['citationCount'] as num?)?.toInt(),
     );
@@ -118,18 +114,20 @@ class ProjectMemberRef {
     }
 
     if (value is! Map<String, dynamic>) {
-      return const ProjectMemberRef(id: '', displayName: 'Member');
+      return ProjectMemberRef(id: '', displayName: trNow('Member'));
     }
 
     final rawUser = value['userId'] is Map<String, dynamic>
         ? value['userId'] as Map<String, dynamic>
         : value;
-    final id = (rawUser['_id'] ?? rawUser['id'] ?? value['userId'] ?? '').toString();
-    final name = rawUser['displayName'] ??
+    final id = (rawUser['_id'] ?? rawUser['id'] ?? value['userId'] ?? '')
+        .toString();
+    final name =
+        rawUser['displayName'] ??
         rawUser['fullName'] ??
         rawUser['name'] ??
         rawUser['email'] ??
-        'Member';
+        trNow('Member');
 
     return ProjectMemberRef(id: id, displayName: name.toString());
   }
@@ -158,7 +156,7 @@ class ChatSender {
   final String? email;
   final String? avatarUrl;
   String get displayName =>
-      fullName?.isNotEmpty == true ? fullName! : (email ?? 'Member');
+      fullName?.isNotEmpty == true ? fullName! : (email ?? trNow('Member'));
 }
 
 class ProjectChatMessage {
@@ -201,42 +199,6 @@ class ProjectChatMessage {
   final ChatSender? requester;
   final int? creditCost;
   final bool isPinned;
-}
-
-class ProjectTeamChatMessage {
-  const ProjectTeamChatMessage({
-    required this.id,
-    required this.sender,
-    required this.content,
-    required this.createdAt,
-    this.readBy = const [],
-    this.readCount = 0,
-    this.isDeleted = false,
-  });
-
-  factory ProjectTeamChatMessage.fromJson(Map<String, dynamic> json) =>
-      ProjectTeamChatMessage(
-        id: (json['id'] ?? json['_id'] ?? '').toString(),
-        sender: ChatSender.fromJson(
-          (json['sender'] as Map<String, dynamic>?) ?? {},
-        ),
-        content: (json['content'] ?? '').toString(),
-        createdAt: (json['createdAt'] ?? '').toString(),
-        readBy: (json['readBy'] as List<dynamic>? ?? [])
-            .whereType<Map<String, dynamic>>()
-            .map(ChatSender.fromJson)
-            .toList(),
-        readCount: (json['readCount'] as num?)?.toInt() ?? 0,
-        isDeleted: json['isDeleted'] == true,
-      );
-
-  final String id;
-  final ChatSender sender;
-  final String content;
-  final String createdAt;
-  final List<ChatSender> readBy;
-  final int readCount;
-  final bool isDeleted;
 }
 
 class ProjectsApi {
@@ -307,11 +269,10 @@ class ProjectsApi {
     String projectId, {
     required String targetId,
     String role = 'member',
-  }) =>
-      _dio.post<void>(
-        ApiRoutes.projectsAddMember(projectId),
-        data: {'targetKind': 'User', 'targetId': targetId, 'role': role},
-      );
+  }) => _dio.post<void>(
+    ApiRoutes.projectsAddMember(projectId),
+    data: {'targetKind': 'User', 'targetId': targetId, 'role': role},
+  );
 
   Future<void> removeMember(String projectId, String memberId) =>
       _dio.delete<void>(ApiRoutes.projectsRemoveMember(projectId, memberId));
@@ -345,28 +306,4 @@ class ProjectsApi {
         ApiRoutes.projectsChatPin(projectId, messageId),
         data: {'pinned': pinned},
       );
-
-  Future<List<ProjectTeamChatMessage>> listTeamChat(String projectId) async {
-    final res = await _dio.get<Map<String, dynamic>>(
-      ApiRoutes.projectsTeamChat(projectId),
-      queryParameters: {'limit': 50},
-    );
-    final data = res.data?['data'] as Map<String, dynamic>? ?? {};
-    return (data['messages'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map(ProjectTeamChatMessage.fromJson)
-        .toList();
-  }
-
-  Future<void> sendTeamChat(String projectId, String content) =>
-      _dio.post<void>(
-        ApiRoutes.projectsTeamChat(projectId),
-        data: {'content': content},
-      );
-
-  Future<void> markTeamChatRead(String projectId, String messageId) =>
-      _dio.post<void>(ApiRoutes.projectsTeamChatRead(projectId, messageId));
-
-  Future<void> deleteTeamChat(String projectId, String messageId) => _dio
-      .delete<void>(ApiRoutes.projectsTeamChatMessage(projectId, messageId));
 }

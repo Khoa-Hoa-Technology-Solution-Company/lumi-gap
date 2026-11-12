@@ -29,9 +29,12 @@ import { useAuthStore } from "@/stores/auth-store";
 import { MentorProjectPanel } from "@/pages/academics/academic-support";
 import { ProjectTeamSettings } from "@/features/projects/components/project-team-settings";
 import { ProjectNextSteps } from "@/features/projects/components/project-next-steps";
+import { ResearchJourneyBar } from "@/features/projects/components/research-journey-bar";
 import { ProjectContributionsWorkspace } from "@/features/projects/components/project-contributions-workspace";
 import { ManuscriptsPanel, type ManuscriptCreationDraft } from "@/features/manuscripts/manuscripts-panel";
 import { useI18n } from "@/i18n";
+import { projectAccessDenied, useMentorProjectEntry } from "@/features/projects/hooks/use-mentor-project-entry";
+import { MentorProjectWorkspace } from "@/features/projects/components/mentor-project-workspace";
 
 const ProjectSubmissionsPanel = lazy(() => import("@/features/projects/components/project-submissions-panel").then(m => ({ default: m.ProjectSubmissionsPanel })));
 
@@ -40,6 +43,8 @@ export function ProjectDetailPage() {
   const { t } = useI18n();
   const { id } = useParams<{ id: string }>();
   const { data: project, isLoading, isError, error, isFetching, refetch } = useProject(id);
+  const mentorFallback = Boolean(currentUser && (projectAccessDenied(error) || project?.isPublicSummary));
+  const mentorEntry = useMentorProjectEntry(id, mentorFallback);
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
   const activeTab = resolveProjectTab(tabParam);
@@ -83,7 +88,10 @@ export function ProjectDetailPage() {
     );
   }
 
-  if (!project) {
+  if (mentorFallback && mentorEntry.isLoading) return <div className="project-page-width py-6" role="status"><Skeleton className="h-10 w-64" /><Skeleton className="mt-5 h-64 w-full" /><span className="sr-only">Đang tải không gian cố vấn…</span></div>;
+  if (mentorFallback && !mentorEntry.error && mentorEntry.data?.policies.some(p => p.mentorId === mentorEntry.data.viewerId && p.policy.effective)) return <MentorProjectWorkspace data={mentorEntry.data} />;
+
+  if (!project || projectAccessDenied(error)) {
     const status = (error as { response?: { status?: number } } | null)?.response?.status;
     const unavailable = status === 403 || status === 404;
     return (
@@ -119,6 +127,14 @@ export function ProjectDetailPage() {
           </div>
         ) : (
           <>
+            <ResearchJourneyBar
+              project={project}
+              activeTab={activeTab}
+              onAddPaper={() => {
+                setPaperPickerSource("search");
+                setPaperPickerOpen(true);
+              }}
+            />
             {activeTab === "overview" && (
               <ProjectNextSteps
                 key={project._id}
@@ -236,7 +252,8 @@ function GapsTab({
   onDraftProposal?: (gap: ResearchGapItem) => void;
 }) {
   const [page, setPage] = useState(1);
-  const [gapParams] = useSearchParams();
+  const [gapParams, setGapParams] = useSearchParams();
+  const linkedGapId = gapParams.get("gap");
   const analysisSetId = gapParams.get("analysisSet");
   const [latestAnalysis, setLatestAnalysis] = useState<GapAnalysisResult | null>(null);
   const { data: currentProject } = useProject(projectId);
@@ -245,6 +262,15 @@ function GapsTab({
 
   const [selectedGap, setSelectedGap] = useState<ResearchGapItem | null>(null);
   const { t } = useI18n();
+  // Candidates written by the team (manually or from a literature limitation) are not part of any AI analysis.
+  const { data: teamGaps } = useGaps({ projectId, origin: "HUMAN", status: "active", page: 1, pageSize: 50, sortBy: "newest" });
+  // Deep link (?gap=<id>) from research questions and limitations: open that candidate's drawer.
+  const { data: linkedGap } = useGaps({ projectId, gapId: linkedGapId ?? undefined, status: "active", page: 1, pageSize: 1 }, Boolean(linkedGapId));
+  useEffect(() => { const gap = linkedGap?.data[0]; if (linkedGapId && gap) setSelectedGap(gap); }, [linkedGapId, linkedGap]);
+  const closeGap = () => {
+    setSelectedGap(null);
+    if (linkedGapId) { const next = new URLSearchParams(gapParams); next.delete("gap"); setGapParams(next, { replace: true }); }
+  };
 
   useEffect(() => { if (openOnInit) onOpenChange?.(false); }, [openOnInit, onOpenChange]);
   useEffect(() => { setPage(1); }, [latestAnalysis?.id]);
@@ -264,12 +290,14 @@ function GapsTab({
         null
       )}
 
+      {!!teamGaps?.data.length && <ProjectGapResults projectId={projectId} gaps={teamGaps.data} onOpen={setSelectedGap} heading={{ title: `Gap ứng viên do nhóm đề xuất (${teamGaps.data.length})`, description: "Gồm gap viết tay và gap chuyển từ hạn chế của tài liệu. Các gap này không thuộc lần phân tích AI nào." }} />}
+
       <GapDetailDrawer
         researchProjectId={projectId}
-        gap={gapsData?.data.find(item => item.id === selectedGap?.id) ?? selectedGap}
+        gap={gapsData?.data.find(item => item.id === selectedGap?.id) ?? teamGaps?.data.find(item => item.id === selectedGap?.id) ?? selectedGap}
         isOpen={selectedGap !== null}
-        onClose={() => setSelectedGap(null)}
-        onDraftProposal={onDraftProposal ? (gap) => { setSelectedGap(null); onDraftProposal(gap); } : undefined}
+        onClose={closeGap}
+        onDraftProposal={onDraftProposal ? (gap) => { closeGap(); onDraftProposal(gap); } : undefined}
       />
     </div>
   );

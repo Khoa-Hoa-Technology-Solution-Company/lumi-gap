@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/utils/relative_time.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
@@ -16,7 +19,7 @@ class NotificationsScreen extends ConsumerWidget {
     final query = ref.watch(notificationsProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Notifications'),
+        title: Text(context.t('Notifications')),
         surfaceTintColor: Colors.transparent,
         actions: [
           TextButton.icon(
@@ -25,7 +28,7 @@ class NotificationsScreen extends ConsumerWidget {
               ref.invalidate(notificationsProvider);
             },
             icon: const Icon(Icons.done_all_rounded, size: 18),
-            label: const Text('Read all'),
+            label: Text(context.t('Read all')),
           ),
         ],
       ),
@@ -36,11 +39,11 @@ class NotificationsScreen extends ConsumerWidget {
             if (items.isEmpty) {
               return ListView(
                 padding: const EdgeInsets.all(24),
-                children: const [
+                children: [
                   AppEmptyState(
                     icon: Icons.notifications_none,
-                    title: 'No notifications',
-                    message: 'Research activity will appear here.',
+                    title: context.t('No notifications'),
+                    message: context.t('Research activity will appear here.'),
                   ),
                 ],
               );
@@ -71,9 +74,9 @@ class NotificationsScreen extends ConsumerWidget {
               },
             );
           },
-          loading: () => const AppLoading(
+          loading: () => AppLoading(
             fullScreen: true,
-            message: 'Loading notifications...',
+            message: context.t('Loading notifications...'),
           ),
           error: (error, _) => AppErrorState(message: error.toString()),
         ),
@@ -107,15 +110,13 @@ class _NotificationsHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final lumi = context.lumi;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF111C2E) : const Color(0xFFEEF7FF),
+        color: lumi.primarySoft,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isDark ? const Color(0xFF26334A) : const Color(0xFFD7E9FF),
-        ),
+        border: Border.all(color: lumi.line),
       ),
       child: Row(
         children: [
@@ -123,12 +124,12 @@ class _NotificationsHeader extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: const Color(0xFF1D4ED8).withValues(alpha: 0.12),
+              color: lumi.surface,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.notifications_active_outlined,
-              color: Color(0xFF1D4ED8),
+              color: lumi.primary,
             ),
           ),
           const SizedBox(width: 13),
@@ -137,17 +138,14 @@ class _NotificationsHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$unreadCount unread updates',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
+                  context.t('{{unreadCount}} unread updates', {'unreadCount': unreadCount}),
+                  style: theme.textTheme.titleMedium,
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '$totalCount total alerts from papers, projects, and reports.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.64),
-                  ),
+                  context.t('{{totalCount}} total alerts from papers, projects, and reports.', {'totalCount': totalCount}),
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: lumi.foregroundSecondary),
                 ),
               ],
             ),
@@ -167,11 +165,11 @@ class _NotificationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final accent = _notificationColor(item);
+    final lumi = context.lumi;
+    final accent = _notificationColor(item, lumi);
 
     return Material(
-      color: isDark ? const Color(0xFF111C2E) : Colors.white,
+      color: lumi.surface,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
@@ -180,9 +178,7 @@ class _NotificationCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: item.isRead
-                  ? (isDark ? const Color(0xFF26334A) : const Color(0xFFE2E8F0))
-                  : accent.withValues(alpha: 0.38),
+              color: item.isRead ? lumi.line : accent,
             ),
           ),
           child: Stack(
@@ -210,9 +206,7 @@ class _NotificationCard extends StatelessWidget {
                       width: 42,
                       height: 42,
                       decoration: BoxDecoration(
-                        color: accent.withValues(
-                          alpha: item.isRead ? 0.08 : 0.14,
-                        ),
+                        color: lumi.surfaceMuted,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(
@@ -234,9 +228,8 @@ class _NotificationCard extends StatelessWidget {
                                   item.title,
                                   style: theme.textTheme.titleSmall?.copyWith(
                                     fontWeight: item.isRead
-                                        ? FontWeight.w700
-                                        : FontWeight.w900,
-                                    height: 1.25,
+                                        ? FontWeight.w500
+                                        : FontWeight.w700,
                                   ),
                                 ),
                               ),
@@ -259,11 +252,8 @@ class _NotificationCard extends StatelessWidget {
                             item.message,
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurface.withValues(
-                                alpha: 0.68,
-                              ),
-                              height: 1.35,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: lumi.foregroundSecondary,
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -272,12 +262,12 @@ class _NotificationCard extends StatelessWidget {
                             runSpacing: 8,
                             children: [
                               _NotificationPill(
-                                label: _notificationTypeLabel(item),
+                                label: context.t(_notificationTypeLabel(item)),
                                 color: accent,
                               ),
                               _NotificationPill(
-                                label: _relativeTime(item.createdAt),
-                                color: const Color(0xFF64748B),
+                                label: _relativeTime(context, item.createdAt),
+                                color: lumi.muted,
                                 muted: true,
                               ),
                             ],
@@ -310,37 +300,30 @@ class _NotificationPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final lumi = context.lumi;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: muted ? 0.08 : 0.12),
-        borderRadius: BorderRadius.circular(999),
+        color: lumi.surfaceMuted,
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: muted
-              ? theme.colorScheme.onSurface.withValues(alpha: 0.58)
-              : color,
-          fontWeight: FontWeight.w800,
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: muted ? lumi.foregroundSecondary : color,
         ),
       ),
     );
   }
 }
 
-Color _notificationColor(AppNotification item) {
+Color _notificationColor(AppNotification item, LumiColors lumi) {
   final value = '${item.type ?? ''} ${item.targetKind ?? ''} ${item.title}'
       .toLowerCase();
-  if (value.contains('project') || value.contains('team')) {
-    return const Color(0xFF06B6D4);
-  }
-  if (value.contains('approve') || value.contains('level')) {
-    return const Color(0xFF16A34A);
-  }
-  if (value.contains('pending')) return const Color(0xFFF59E0B);
-  if (value.contains('report')) return const Color(0xFF8B5CF6);
-  return const Color(0xFF1D4ED8);
+  if (value.contains('approve') || value.contains('level')) return lumi.success;
+  if (value.contains('pending')) return lumi.warning;
+  if (value.contains('report')) return lumi.foregroundSecondary;
+  return lumi.primary;
 }
 
 IconData _notificationIcon(AppNotification item) {
@@ -359,16 +342,11 @@ IconData _notificationIcon(AppNotification item) {
 String _notificationTypeLabel(AppNotification item) {
   if (item.targetKind?.isNotEmpty == true) return item.targetKind!;
   if (item.type?.isNotEmpty == true) return item.type!;
-  return item.isRead ? 'Read' : 'New';
+  return item.isRead ? tk('Read') : tk('New');
 }
 
-String _relativeTime(String value) {
+String _relativeTime(BuildContext context, String value) {
   final parsed = DateTime.tryParse(value);
-  if (parsed == null) return 'recently';
-  final diff = DateTime.now().difference(parsed.toLocal());
-  if (diff.inMinutes < 1) return 'just now';
-  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-  if (diff.inHours < 24) return '${diff.inHours}h ago';
-  if (diff.inDays < 7) return '${diff.inDays}d ago';
-  return '${parsed.year}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
+  if (parsed == null) return context.t('recently');
+  return relativeTime(parsed.toLocal(), context.appLocale);
 }

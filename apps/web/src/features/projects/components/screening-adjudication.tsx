@@ -1,6 +1,7 @@
+import { ScreeningTaskGuard } from "./screening-task-feedback";
+import { ScreeningDecisionChoices } from "./screening-decision-choices";
 import { ScreeningCaseControls, adjudicatorRoleLabels } from "./screening-case-controls";
-import { ResolutionEvidenceFields, emptyResolutionEvidence } from "./screening-resolution-evidence";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import type { ScreeningAdjudicationPacket, ScreeningAdjudicationView } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,11 @@ export function ScreeningPacket({
   showDiscussion?: boolean;
 }) {
   const [sourceError, setSourceError] = useState<unknown>(null);
+  let sourceUrl: string | null = null;
+  try {
+    const url = new URL(packet.sourceUrl ?? "");
+    if (["http:", "https:"].includes(url.protocol) && !url.username && !url.password) sourceUrl = url.href;
+  } catch { /* Historical packets may not have a saved source page. */ }
   const download = async (fileId: string) => {
     if (!projectId) return;
     try {
@@ -94,11 +100,14 @@ export function ScreeningPacket({
             Quy trình phiên bản {packet.protocol.version} · Luồng sàng lọc {packet.protocol.workflowVersion ?? "lịch sử"}
           </p>
         )}
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+        {sourceUrl && <a className="inline-flex items-center gap-1 text-primary underline" href={sourceUrl} target="_blank" rel="noopener noreferrer">Trang nguồn đã lưu<ExternalLink size={13} aria-hidden="true" /></a>}
         {packet.paper.doi && (
           <a className="text-sm text-primary underline" href={`https://doi.org/${encodeURI(packet.paper.doi)}`} target="_blank" rel="noreferrer">
             Mở nguồn nhà xuất bản
           </a>
         )}
+        </div>
       </div>
       {packet.reviews.length ? (
         <div>
@@ -114,16 +123,12 @@ export function ScreeningPacket({
         ["Câu hỏi nghiên cứu", packet.researchQuestions],
         ["Tiêu chí đưa vào", packet.inclusionCriteria],
         ["Tiêu chí loại", packet.exclusionCriteria],
-      ] as const).map(([label, items]) => (
+      ] as const).filter(([, items]) => items.some(text => text.trim())).map(([label, items]) => (
         <div key={label}>
           <h4 className="text-sm font-semibold">{label}</h4>
-          {items.length ? (
-            <ul className="mt-1 list-inside list-disc space-y-1 text-sm leading-6">
-              {items.map((text, i) => <li key={i}>{text}</li>)}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">Chưa được khai báo trong quy trình này.</p>
-          )}
+          <ul className="mt-1 list-inside list-disc space-y-1 text-sm leading-6">
+            {items.filter(text => text.trim()).map((text, i) => <li key={i}>{text}</li>)}
+          </ul>
         </div>
       ))}
       {Boolean(packet.sources?.length) && projectId && (
@@ -187,30 +192,45 @@ export function ScreeningPacketPreview({ projectId, roundId, onReady, selectedDi
   </> : null;
 }
 
-export function AdjudicationBody({
+export function AdjudicationBody(props: Parameters<typeof AdjudicationBodyContent>[0]) {
+  return <ScreeningTaskGuard projectId={props.projectId} roundId={props.roundId}><AdjudicationBodyContent {...props} /></ScreeningTaskGuard>;
+}
+function AdjudicationBodyContent({
   projectId,
   roundId,
   view,
   onSaved,
+  focusSection,
 }: {
   projectId: string;
   roundId: string;
   view: ScreeningAdjudicationView;
   onSaved: () => void;
+  focusSection?: string;
 }) {
-  const [decision, setDecision] = useState<"INCLUDED" | "EXCLUDED" | "NEEDS_MORE_INFO">("INCLUDED"),
+  const focusRoot = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!["statement", "decision", "coordination"].includes(focusSection ?? "")) return;
+    const target = focusRoot.current?.querySelector<HTMLElement>(`[data-screening-section="${focusSection}"]`);
+    target?.scrollIntoView?.({ block: "center" });
+    target?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true });
+  }, [focusSection, roundId, view.canResolve, view.case?.canStatement]);
+  const [decision, setDecision] = useState<"INCLUDED" | "EXCLUDED">("INCLUDED"),
     [reason, setReason] = useState(""),
-    [confirmed, setConfirmed] = useState(false),
+    [sourceMaterial, setSourceMaterial] = useState(""),
     [version, setVersion] = useState<number | null>(null),
     [caseVersion, setCaseVersion] = useState<number | null>(null);
-  const [evidence, setEvidence] = useState(emptyResolutionEvidence);
 
+  const modern = Boolean(view.packet.protocol?.screeningMode);
+  const includeLabel = !modern ? "Qua vòng" : view.packet.protocol?.screeningMode === "TWO_STAGE" && view.packet.phase === "TITLE_ABSTRACT" ? "Qua vòng tiêu đề / tóm tắt" : "Chấp nhận cuối";
+  const needsExclusionCriterion = modern && view.packet.exclusionCriteria.length > 0;
+  const [exclusionReason, setExclusionReason] = useState("");
   const command = useScreeningCommand(projectId);
-  useUnsavedWorkspace(Boolean(reason || evidence.sourceMaterial || evidence.exclusionReason) || confirmed || command.isPending);
+  useUnsavedWorkspace(Boolean(reason || sourceMaterial || exclusionReason) || command.isPending);
   const stale = version !== null && (version !== view.version || caseVersion !== (view.case?.version ?? null));
 
   return (
-    <>
+    <div ref={focusRoot} className="space-y-5">
       {view.case ? (
         <ScreeningCaseControls key={view.case.id} projectId={projectId} roundId={roundId} data={view.case} onSaved={onSaved} />
       ) : (
@@ -236,7 +256,7 @@ export function AdjudicationBody({
           <h2 className="font-semibold">
             Đã ghi kết luận:{" "}
             {view.finalDecision.decision === "INCLUDED"
-              ? "Qua vòng sàng lọc"
+              ? modern ? includeLabel : "Qua vòng sàng lọc"
               : view.finalDecision.decision === "EXCLUDED"
               ? "Không phù hợp"
               : "Tài liệu nền"}
@@ -258,15 +278,16 @@ export function AdjudicationBody({
         </section>
       ) : !view.canResolve ? null : (
         <form
+          data-screening-section="decision"
           className="space-y-4"
           onSubmit={async e => {
             e.preventDefault();
-            if (!confirmed || stale || !view.canResolve || reason.trim().length < 10) return;
+            if (stale || !view.canResolve || reason.trim().length < 10 || modern && sourceMaterial.trim().length < 10 || needsExclusionCriterion && decision === "EXCLUDED" && !exclusionReason) return;
             const payload = {
               decision,
               reason,
-              ...evidence,
-              retrieveFullText: decision === "NEEDS_MORE_INFO" && evidence.retrieveFullText,
+              ...(modern ? { sourceMaterial } : {}),
+              ...(needsExclusionCriterion && decision === "EXCLUDED" ? { exclusionReason } : {}),
               confirmed: true,
               expectedCaseVersion: caseVersion ?? view.case?.version,
               expectedVersion: version ?? view.version,
@@ -277,8 +298,7 @@ export function AdjudicationBody({
               )
             ) {
               setReason("");
-              setEvidence(emptyResolutionEvidence);
-              setConfirmed(false);
+              setSourceMaterial("");
               setVersion(null);
               setCaseVersion(null);
               onSaved();
@@ -286,27 +306,14 @@ export function AdjudicationBody({
           }}
         >
           <fieldset disabled={command.isPending || stale} className="space-y-4">
-            <legend className="text-base font-semibold">Quyết định phân xử</legend>
-            <div className="flex flex-wrap gap-5">
-              {(["INCLUDED", "EXCLUDED", "NEEDS_MORE_INFO"] as const).map(value => (
-                <label className="flex items-center gap-2 text-sm" key={value}>
-                  <input
-                    type="radio"
-                    name="adjudication-decision"
-                    checked={decision === value}
-                    onChange={() => {
-                      setDecision(value);
-                      setConfirmed(false);
-                      setVersion(view.version);
-                      setCaseVersion(view.case?.version ?? null);
-                    }}
-                  />
-                  {value === "INCLUDED" ? "Qua vòng sàng lọc" : value === "EXCLUDED" ? "Loại khỏi vòng sàng lọc" : "Cần thêm thông tin"}
-                </label>
-              ))}
-            </div>
+            <ScreeningDecisionChoices legend="Quyết định phân xử" value={decision}
+              options={[
+                { value: "INCLUDED", label: includeLabel, tone: "success" },
+                { value: "EXCLUDED", label: "Loại theo tiêu chí", tone: "excluded" },
+              ] as const}
+              onChange={value => { setDecision(value); setVersion(view.version); setCaseVersion(view.case?.version ?? null); }} />
             <label className="block space-y-2 text-sm">
-              <span>Lý do dựa trên tiêu chí (ít nhất 10 ký tự)</span>
+              <span>Lý do và căn cứ dựa trên tiêu chí (ít nhất 10 ký tự)</span>
               <textarea
                 className="min-h-28 w-full rounded-md border bg-background p-3"
                 value={reason}
@@ -315,7 +322,6 @@ export function AdjudicationBody({
                 required
                 onChange={e => {
                   setReason(e.target.value);
-                  setConfirmed(false);
                   if (version === null) {
                     setVersion(view.version);
                     setCaseVersion(view.case?.version ?? null);
@@ -323,40 +329,8 @@ export function AdjudicationBody({
                 }}
               />
             </label>
-            <ResolutionEvidenceFields
-              value={evidence}
-              onChange={value => {
-                setEvidence(value);
-                setConfirmed(false);
-                if (version === null) {
-                  setVersion(view.version);
-                  setCaseVersion(view.case?.version ?? null);
-                }
-              }}
-              decision={decision}
-              criteria={view.packet.exclusionCriteria}
-              required
-              canRetrieveFullText={
-                view.packet.phase === "TITLE_ABSTRACT" &&
-                view.packet.protocol?.allowConservativeFullText &&
-                view.packet.protocol.stages.includes("FULL_TEXT")
-              }
-            />
-            <label className="flex items-start gap-2 text-sm leading-6">
-              <input
-                className="mt-1"
-                type="checkbox"
-                checked={confirmed}
-                onChange={e => {
-                  setConfirmed(e.target.checked);
-                  if (version === null) {
-                    setVersion(view.version);
-                    setCaseVersion(view.case?.version ?? null);
-                  }
-                }}
-              />
-              Tôi đã xem các phiếu và xác nhận kết luận này.
-            </label>
+            {needsExclusionCriterion && decision === "EXCLUDED" && <label className="block space-y-2 text-sm"><span>Tiêu chí loại của vòng</span><select required value={exclusionReason} onChange={e => setExclusionReason(e.target.value)}><option value="">Chọn tiêu chí loại</option>{view.packet.exclusionCriteria.map(item => <option key={item} value={item}>{item}</option>)}</select></label>}
+            {modern && <label className="block space-y-2 text-sm"><span>Nguồn đã đối chiếu</span><textarea className="min-h-24 w-full rounded-md border bg-background p-3" value={sourceMaterial} required minLength={10} maxLength={2000} onChange={e => { setSourceMaterial(e.target.value); if (version === null) { setVersion(view.version); setCaseVersion(view.case?.version ?? null); } }} /></label>}
           </fieldset>
           {stale && (
             <div role="alert" className="space-y-2 text-sm">
@@ -367,7 +341,6 @@ export function AdjudicationBody({
                 onClick={() => {
                   setVersion(view.version);
                   setCaseVersion(view.case?.version ?? null);
-                  setConfirmed(false);
                 }}
               >
                 Tôi đã kiểm tra gói hiện tại
@@ -375,12 +348,12 @@ export function AdjudicationBody({
             </div>
           )}
           <ScreeningError error={command.error} />
-          <Button disabled={command.isPending || stale || !confirmed || reason.trim().length < 10}>
+          <Button disabled={command.isPending || stale || reason.trim().length < 10 || modern && sourceMaterial.trim().length < 10 || needsExclusionCriterion && decision === "EXCLUDED" && !exclusionReason}>
             Ghi kết luận và lưu lịch sử
           </Button>
         </form>
       )}
-    </>
+    </div>
   );
 }
 
@@ -390,12 +363,14 @@ export function ScreeningAdjudicationDialog({
   caseId,
   open,
   onClose,
+  focusSection,
 }: {
   projectId: string;
   roundId: string;
   caseId?: string;
   open: boolean;
   onClose: () => void;
+  focusSection?: string;
 }) {
   const queryClient = useQueryClient();
   const query = useResearchResource(
@@ -416,22 +391,10 @@ export function ScreeningAdjudicationDialog({
     <Dialog open={open} onOpenChange={isOpen => { if (!isOpen) onClose(); }}>
       <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto" data-no-i18n>
         <DialogHeader>
-          <div className="flex items-center justify-between pr-6">
-            <DialogTitle className="flex items-center gap-2 text-base font-bold">
-              <Scale size={18} className="text-purple-600 dark:text-purple-400" />
-              <span>Hồ sơ phân xử</span>
-            </DialogTitle>
-            <Link
-              to={`/academic-support/projects/${encodeURIComponent(projectId)}/screening/${encodeURIComponent(roundId)}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 underline underline-offset-4"
-              title="Mở hồ sơ ở tab mới"
-            >
-              <span>Mở toàn trang</span>
-              <ExternalLink size={12} />
-            </Link>
-          </div>
+          <DialogTitle className="flex items-center gap-2 pr-6 text-base font-bold">
+            <Scale size={18} className="text-purple-600 dark:text-purple-400" />
+            <span>Hồ sơ phân xử</span>
+          </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground line-clamp-2">
             {view?.packet.paper.title || "Tài liệu nguồn, tiêu chí, phiếu đánh giá và lịch sử trao đổi của hai reviewer."}
           </DialogDescription>
@@ -450,6 +413,7 @@ export function ScreeningAdjudicationDialog({
               roundId={roundId}
               view={view}
               onSaved={handleSaved}
+              focusSection={focusSection}
             />
           ) : null}
         </div>

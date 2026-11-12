@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
@@ -84,7 +85,7 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('AI Explanation failed: $e'),
+            content: Text(context.t('AI Explanation failed: {{e}}', {'e': e})),
             backgroundColor: Colors.red,
           ),
         );
@@ -148,13 +149,13 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Row(
+        Row(
           children: [
-            Icon(Icons.query_stats, color: Color(0xFF06B6D4), size: 16),
-            SizedBox(width: 8),
+            const Icon(Icons.query_stats, color: Color(0xFF06B6D4), size: 16),
+            const SizedBox(width: 8),
             Text(
-              'Metric Trace Evidence',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              context.t('Metric Trace Evidence'),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
             ),
           ],
         ),
@@ -204,7 +205,7 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Source: ${trace.source}',
+                  context.t('Source: {{source}}', {'source': trace.source}),
                   style: const TextStyle(
                     fontSize: 9,
                     color: Color(0xFF64748B),
@@ -227,17 +228,17 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Divider(height: 32),
-        const Text(
-          'Saved Explanation History',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+        Text(
+          context.t('Saved Explanation History'),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
         historyQuery.when(
           data: (items) {
             if (items.isEmpty) {
-              return const Text(
-                'No history saved yet.',
-                style: TextStyle(
+              return Text(
+                context.t('No history saved yet.'),
+                style: const TextStyle(
                   fontSize: 12,
                   fontStyle: FontStyle.italic,
                   color: Color(0xFF94A3B8),
@@ -266,14 +267,14 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                     ),
                   ),
                   title: Text(
-                    item.topic ?? 'Dataset Overview',
+                    item.topic ?? context.t('Dataset Overview'),
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   subtitle: Text(
-                    'Language: ${item.language.toUpperCase()} · ${item.createdAt}',
+                    context.t('Language: {{language}} · {{createdAt}}', {'language': item.language.toUpperCase(), 'createdAt': item.createdAt}),
                     style: const TextStyle(fontSize: 11),
                   ),
                   trailing: const Icon(
@@ -298,7 +299,7 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
             ),
           ),
           error: (err, _) => Text(
-            'Error loading history: $err',
+            context.t('Error loading history: {{err}}', {'err': err}),
             style: const TextStyle(color: Colors.red),
           ),
         ),
@@ -333,9 +334,9 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Step 1: Select Topic',
-                  style: TextStyle(
+                Text(
+                  context.t('Step 1: Select Topic'),
+                  style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
                     color: Color(0xFF94A3B8),
@@ -368,9 +369,9 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                         },
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Step 2: Language',
-                  style: TextStyle(
+                Text(
+                  context.t('Step 2: Language'),
+                  style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
                     color: Color(0xFF94A3B8),
@@ -388,18 +389,18 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                  items: const [
+                  items: [
                     DropdownMenuItem(
                       value: ReportLanguage.auto,
-                      child: Text('Auto-detect'),
+                      child: Text(context.t('Auto-detect')),
                     ),
                     DropdownMenuItem(
                       value: ReportLanguage.en,
-                      child: Text('English (en)'),
+                      child: Text(context.t('English (en)')),
                     ),
                     DropdownMenuItem(
                       value: ReportLanguage.vi,
-                      child: Text('Vietnamese (vi)'),
+                      child: Text(context.t('Vietnamese (vi)')),
                     ),
                   ],
                   onChanged: _loading
@@ -431,9 +432,9 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                       color: Colors.white,
                       size: 18,
                     ),
-                    label: const Text(
-                      'Explain Trend with AI',
-                      style: TextStyle(
+                    label: Text(
+                      context.t('Explain Trend with AI'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                       ),
@@ -446,16 +447,16 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
           const SizedBox(height: 24),
 
           if (_loading)
-            const AppLoading(message: 'Gemini is running trend diagnostics...')
+            AppLoading(message: context.t('Gemini is running trend diagnostics...'))
           else if (_explanation != null) ...[
             // Summary Markdown display
-            const Row(
+            Row(
               children: [
-                Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 18),
-                SizedBox(width: 8),
+                const Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 18),
+                const SizedBox(width: 8),
                 Text(
-                  'AI Summary Rationale',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  context.t('AI Summary Rationale'),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
               ],
             ),
@@ -483,19 +484,19 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
             const SizedBox(height: 20),
 
             _buildListSection(
-              'Why it matters',
+              context.t('Why it matters'),
               _explanation!.whyItMatters,
               Icons.lightbulb_outline,
               const Color(0xFFF59E0B),
             ),
             _buildListSection(
-              'Cautions & Limitations',
+              context.t('Cautions & Limitations'),
               _explanation!.cautions,
               Icons.warning_amber_outlined,
               const Color(0xFFEF4444),
             ),
             _buildListSection(
-              'Suggested Actions',
+              context.t('Suggested Actions'),
               _explanation!.suggestedActions,
               Icons.task_alt_outlined,
               const Color(0xFF10B981),
@@ -526,9 +527,9 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                       size: 16,
                       color: Colors.white,
                     ),
-                    label: const Text(
-                      'Search Papers',
-                      style: TextStyle(
+                    label: Text(
+                      context.t('Search Papers'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
@@ -558,9 +559,9 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                       size: 16,
                       color: Colors.white,
                     ),
-                    label: const Text(
-                      'Generate Report',
-                      style: TextStyle(
+                    label: Text(
+                      context.t('Generate Report'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
@@ -582,22 +583,22 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                 ),
                 onPressed: () {
                   final text =
-                      'Topic: $_selectedTopic\n\nSummary:\n${_explanation!.summary}';
+                      context.t('Topic: {{selectedTopic}}\n\nSummary:\n{{summary}}', {'selectedTopic': _selectedTopic, 'summary': _explanation!.summary});
                   unawaited(
                     Clipboard.setData(ClipboardData(text: text)).then((_) {
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Explanation copied to clipboard'),
+                        SnackBar(
+                          content: Text(context.t('Explanation copied to clipboard')),
                         ),
                       );
                     }),
                   );
                 },
                 icon: const Icon(Icons.copy, size: 16),
-                label: const Text(
-                  'Copy Explanation Text',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                label: Text(
+                  context.t('Copy Explanation Text'),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                 ),
               ),
             ),

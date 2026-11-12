@@ -1,6 +1,6 @@
 -- Install once in lumigap_db. Reset every newly created ID with:
 -- SELECT public.lumigap_reset_test_account('thanhndse182854@fpt.edu.vn');
--- Deletes database rows. The companion CLI also removes uploaded media.
+-- Deletes account rows. Private evidence deletion tasks survive for storage cleanup.
 CREATE OR REPLACE FUNCTION public.lumigap_reset_test_account(p_email text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = pg_catalog, public, pg_temp
@@ -22,6 +22,7 @@ DECLARE
   removed integer;
   total_removed integer := 0;
   total_users integer := 0;
+  evidence_cleanup_pending integer := 0;
   result_counts jsonb := '{}'::jsonb;
 BEGIN
   IF target_email IS DISTINCT FROM 'thanhndse182854@fpt.edu.vn' THEN
@@ -62,7 +63,10 @@ BEGIN
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary
     JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
-    WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname <> '_prisma_migrations'
+    -- Triggers create deletion tasks during reset. Their owner UUID is required
+    -- to delete private storage objects after the account is gone.
+    WHERE n.nspname = 'public' AND c.relkind = 'r'
+      AND c.relname NOT IN ('_prisma_migrations', 'verification_evidence_deletions')
     GROUP BY c.oid, n.nspname, c.relname;
   CREATE TEMP TABLE lumigap_reset_fks ON COMMIT DROP AS
     SELECT c.conrelid AS child_oid, c.confrelid AS parent_oid, c.confdeltype AS delete_rule,
@@ -180,6 +184,12 @@ BEGIN
     total_removed := total_removed + removed;
   END LOOP;
 
+  -- Make preserved deletion tasks ready for the retention worker immediately.
+  UPDATE public.verification_evidence_deletions SET not_before = CURRENT_TIMESTAMP
+    WHERE user_id = ANY(user_ids) AND not_before > CURRENT_TIMESTAMP;
+  SELECT count(*)::integer INTO evidence_cleanup_pending
+    FROM public.verification_evidence_deletions WHERE user_id = ANY(user_ids);
+
   UPDATE public.forum_posts p SET score = coalesce((SELECT sum(value) FROM public.forum_votes WHERE post_id = p.id), 0),
     vote_score = coalesce((SELECT sum(value) FROM public.forum_votes WHERE post_id = p.id), 0)
     WHERE p.id = ANY(voted_posts);
@@ -219,7 +229,8 @@ BEGIN
     IF changed > 0 THEN RAISE EXCEPTION 'Account data remain in %.%; reset rolled back.', extra.table_name, extra.link_column; END IF;
   END LOOP;
   RETURN jsonb_build_object('email', target_email, 'accountsDeleted', total_users, 'rowsDeleted', total_removed,
-    'deletedByTable', result_counts, 'userIds', user_ids, 'mediaKeys', media_keys);
+    'deletedByTable', result_counts, 'userIds', user_ids, 'mediaKeys', media_keys,
+    'evidenceFilesPendingDeletion', evidence_cleanup_pending);
 END;
 $reset$;
 REVOKE ALL ON FUNCTION public.lumigap_reset_test_account(text) FROM PUBLIC;

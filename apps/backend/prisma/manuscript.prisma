@@ -51,6 +51,7 @@ model ManuscriptSnapshot {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   @@unique([workspaceId, createdById, clientKey])
   @@unique([id, projectId])
+  @@unique([id, projectId, workspaceId], map: "manuscript_snapshot_integrity_scope")
   @@index([workspaceId, createdAt])
   @@map("manuscript_snapshots")
 }
@@ -139,6 +140,7 @@ model ManuscriptAttributionCheck {
   proposedAuthors Json @default("[]") @map("proposed_authors")
   acknowledgements Json @default("[]")
   acknowledgementText String @default("") @map("acknowledgement_text")
+  publicationPolicy Json @default("{}") @map("publication_policy")
   omittedContributors Json @default("[]") @map("omitted_contributors")
   snapshotDigestSha256 String @map("snapshot_digest_sha256") @db.Char(64)
   createdById String @map("created_by_id") @db.Uuid

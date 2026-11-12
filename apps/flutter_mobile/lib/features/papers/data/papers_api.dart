@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_mobile/core/constants/api_routes.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/network/api_client.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -96,7 +97,7 @@ class PaperRef {
   factory PaperRef.fromJson(Map<String, dynamic> json) {
     return PaperRef(
       id: (json['id'] ?? json['_id'] ?? '').toString(),
-      title: (json['title'] ?? 'Untitled paper').toString(),
+      title: (json['title'] ?? trNow('Untitled paper')).toString(),
       publicationYear: (json['publicationYear'] as num?)?.toInt() ?? 0,
       authors: parseAuthors(json['authors']),
       doi: json['doi']?.toString(),
@@ -252,7 +253,7 @@ Paper parsePaper(Object? value) {
   return Paper.fromJson({
     'id': (json['id'] ?? json['_id'] ?? '').toString(),
     'externalIds': json['externalIds'] is Map<String, dynamic> ? json['externalIds'] : <String, dynamic>{},
-    'title': (json['title'] ?? 'Untitled paper').toString(),
+    'title': (json['title'] ?? trNow('Untitled paper')).toString(),
     'abstractText': json['abstractText'] ?? json['abstract'],
     'authors': parseAuthors(json['authors']).map((author) => author.toJson()).toList(),
     'journalName': json['journalName'],
@@ -287,7 +288,7 @@ List<PaperAuthorRef> parseAuthors(Object? value) {
     final json = item is Map<String, dynamic> ? item : <String, dynamic>{};
     return PaperAuthorRef(
       authorId: json['authorId']?.toString(),
-      displayName: (json['displayName'] ?? json['name'] ?? 'Unknown author').toString(),
+      displayName: (json['displayName'] ?? json['name'] ?? trNow('Unknown author')).toString(),
       position: (json['position'] as num?)?.toInt() ?? 1,
       isCorresponding: json['isCorresponding'] as bool?,
     );

@@ -1,0 +1,83 @@
+{
+  "activeRounds": 7,
+  "preserved": {
+    "assignments": 15,
+    "reviews": 5,
+    "decisions": 0
+  },
+  "cohorts": [
+    {
+      "mode": "INDEPENDENT",
+      "required": "2",
+      "workflow_version": "5",
+      "phase": "TITLE_ABSTRACT",
+      "status": "IN_REVIEW",
+      "assigned": "3",
+      "submitted": "0",
+      "expired": "0",
+      "count": 1
+    },
+    {
+      "mode": "INDEPENDENT",
+      "required": "2",
+      "workflow_version": "5",
+      "phase": "TITLE_ABSTRACT",
+      "status": "NOT_REVIEWED",
+      "assigned": "2",
+      "submitted": "0",
+      "expired": "0",
+      "count": 2
+    },
+    {
+      "mode": "COLLABORATIVE",
+      "required": "1",
+      "workflow_version": null,
+      "phase": "TITLE_ABSTRACT",
+      "status": "AWAITING_FINALIZATION",
+      "assigned": "1",
+      "submitted": "1",
+      "expired": "0",
+      "count": 1
+    },
+    {
+      "mode": "COLLABORATIVE",
+      "required": "1",
+      "workflow_version": null,
+      "phase": "TITLE_ABSTRACT",
+      "status": "NEEDS_RESOLUTION",
+      "assigned": "2",
+      "submitted": "2",
+      "expired": "0",
+      "count": 1
+    },
+    {
+      "mode": "INDEPENDENT",
+      "required": "2",
+      "workflow_version": "5",
+      "phase": "TITLE_ABSTRACT",
+      "status": "IN_REVIEW",
+      "assigned": "2",
+      "submitted": "0",
+      "expired": "0",
+      "count": 1
+    },
+    {
+      "mode": "INDEPENDENT",
+      "required": "2",
+      "workflow_version": "5",
+      "phase": "TITLE_ABSTRACT",
+      "status": "IN_REVIEW",
+      "assigned": "3",
+      "submitted": "2",
+      "expired": "0",
+      "count": 1
+    }
+  ],
+  "settings": [
+    {
+      "review_mode": "INDEPENDENT",
+      "required_reviewers": 2,
+      "projects": 1
+    }
+  ]
+}

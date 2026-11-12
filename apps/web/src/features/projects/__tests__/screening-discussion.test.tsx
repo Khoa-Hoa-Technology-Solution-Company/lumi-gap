@@ -23,6 +23,7 @@ async function render(actors = ["a"], value = round, readOnly = false) {
   await settle();
 }
 function view(index = 0) { return container.querySelector(`[data-view="${index}"]`)!; }
+function discussionHeading(index = 0) { return view(index).querySelector("h4")?.textContent; }
 function button(label: string, index = 0) { return [...view(index).querySelectorAll<HTMLButtonElement>("button")].find(item => item.textContent === label)!; }
 async function fill(text: string, index = 0) {
   await act(async () => {
@@ -53,33 +54,69 @@ afterEach(async () => { await act(async () => root.unmount()); clients.forEach(c
 it("shows the same ordered conversation to both reviewers and polls the other client after a send", async () => {
   await render(["a", "b"]);
   for (const index of [0, 1]) {
-    expect(button("Trao đổi (3)", index)).toBeDefined();
+    expect(discussionHeading(index)).toBe("Trao đổi (3)");
     expect([...view(index).querySelectorAll("[data-message-id]")].map(node => node.getAttribute("data-message-id"))).toEqual(["m000", "m001", "m002"]);
   }
   expect(view(0).querySelector('[data-message-id="m000"] [data-own="true"]')).not.toBeNull();
   expect(view(1).querySelector('[data-message-id="m001"] [data-own="true"]')).not.toBeNull();
   await fill("Đối chiếu tiêu chí quần thể"); await key();
-  expect(button("Trao đổi (4)", 0)).toBeDefined();
-  expect(button("Trao đổi (3)", 1)).toBeDefined();
+  expect(discussionHeading(0)).toBe("Trao đổi (4)");
+  expect(discussionHeading(1)).toBe("Trao đổi (3)");
   await settle(2500);
   for (const index of [0, 1]) {
-    expect(button("Trao đổi (4)", index)).toBeDefined();
+    expect(discussionHeading(index)).toBe("Trao đổi (4)");
     expect(view(index).querySelectorAll("[data-message-id]")).toHaveLength(4);
     expect(view(index).textContent).toContain("Đối chiếu tiêu chí quần thể");
   }
 });
 
+it.each(["INCLUDED", "EXCLUDED"] as const)("keeps both reviewers' saved chat visible after %s and stops live updates", async decision => {
+  await render(["a", "b"]);
+  const streams = api.streamEvents.mock.calls.map(call => call[2]);
+  await render(["a", "b"], { ...round, status: decision, finalDecision: { decision } } as ScreeningRoundView);
+  for (const index of [0, 1]) {
+    expect(discussionHeading(index)).toBe("Trao đổi (3)");
+    expect(view(index).querySelectorAll('[data-message-id]')).toHaveLength(3);
+    expect(view(index).querySelector('textarea')).toBeNull();
+    expect(view(index).textContent).toContain('Đã lưu trao đổi');
+    expect(view(index).textContent).toContain('Vòng đánh giá đã kết thúc');
+    expect(streams[index].signal.aborted).toBe(true);
+  }
+  const reads = api.history.mock.calls.length;
+  await settle(5000);
+  expect(api.history).toHaveBeenCalledTimes(reads);
+  expect(api.action).not.toHaveBeenCalled();
+});
+
+it("loads older saved messages when reopening an inactive completed round", async () => {
+  messages = Array.from({ length: 25 }, (_, index) => message(index));
+  await render(["a", "b"], { ...round, active: false, status: "INCLUDED", finalDecision: { decision: "INCLUDED" } } as ScreeningRoundView);
+  for (const index of [0, 1]) {
+    expect(discussionHeading(index)).toBe('Trao đổi (25)');
+    await act(async () => button('Xem tin nhắn trước', index).click()); await settle();
+    expect(view(index).querySelectorAll('[data-message-id]')).toHaveLength(25);
+    expect(view(index).querySelector('textarea')).toBeNull();
+  }
+  expect(api.streamEvents).not.toHaveBeenCalled();
+});
+
+it("does not fetch a completed independent discussion if the backend still hides its reviews", async () => {
+  await render(["a"], { ...round, status: "INCLUDED", hiddenReviews: true, finalDecision: { decision: "INCLUDED" } } as ScreeningRoundView);
+  expect(view().querySelector('.paper-discussion')).toBeNull();
+  expect(api.history).not.toHaveBeenCalled();
+});
+
 it("uses the total count, loads older messages and deduplicates overlapping pages after polling", async () => {
   messages = Array.from({ length: 25 }, (_, index) => message(index));
   await render();
-  expect(button("Trao đổi (25)")).toBeDefined(); expect(view().querySelectorAll("[data-message-id]")).toHaveLength(20);
+  expect(discussionHeading()).toBe("Trao đổi (25)"); expect(view().querySelectorAll("[data-message-id]")).toHaveLength(20);
   await act(async () => button("Xem tin nhắn trước").click()); await settle();
   expect(view().querySelectorAll("[data-message-id]")).toHaveLength(25);
   messages.push(message(25)); await settle(2500);
   expect(view().querySelectorAll("[data-message-id]")).toHaveLength(26);
   const ids = [...view().querySelectorAll("[data-message-id]")].map(node => node.getAttribute("data-message-id"));
   expect(new Set(ids).size).toBe(26); expect(ids[0]).toBe("m000"); expect(ids.at(-1)).toBe("m025");
-  expect(button("Trao đổi (26)")).toBeDefined();
+  expect(discussionHeading()).toBe("Trao đổi (26)");
 });
 
 it("keeps the draft on failure, reuses the retry key and respects multiline/IME/mobile input", async () => {
@@ -94,10 +131,11 @@ it("keeps the draft on failure, reuses the retry key and respects multiline/IME/
   expect(view().querySelector("textarea")!.value).toBe("");
 });
 
-it("retains a draft across history tabs and separates drafts and cache when the account changes", async () => {
+it("retains a discussion draft on refresh, hides evaluation history and separates drafts when the account changes", async () => {
   await render(); await fill("Bản nháp của Anh");
-  await act(async () => button("Lịch sử đánh giá").click()); await settle();
-  await act(async () => button("Trao đổi (3)").click()); await settle();
+  await act(async () => { await clients[0]!.invalidateQueries(); }); await settle();
+  expect(view().textContent).not.toContain("Lịch sử đánh giá");
+  expect(api.history.mock.calls.every(call => call[3] === "DISCUSSION")).toBe(true);
   expect(view().querySelector("textarea")!.value).toBe("Bản nháp của Anh");
   await render(["b"]);
   expect(view().querySelector("textarea")!.value).toBe("");
@@ -130,22 +168,23 @@ it("identifies my messages by the server assignment when auth uses a migrated pu
   expect(view().textContent).toContain("Anh (Bạn)");
 });
 
-it("refetches authorized history on stream events and releases the stream while history is selected", async () => {
+it("refetches authorized discussion on stream events and releases the stream when switching rounds", async () => {
   await render();
   const stream = api.streamEvents.mock.calls[0]![2];
   expect(view().textContent).toContain("Cập nhật tự động");
   await act(async () => stream.onOpen()); await settle();
-  expect(view().textContent).toContain("Đang kết nối trực tiếp");
+  expect(view().querySelector('.screening-discussion-connection[data-live="true"]')?.textContent).toBe("Trực tiếp");
+  expect(view().querySelectorAll(".screening-discussion-context h4")).toHaveLength(1);
   messages.push(message(3));
   await act(async () => stream.onEvent({ type: "comment", comment: "Untrusted stream content" })); await settle();
-  expect(button("Trao đổi (4)")).toBeDefined(); expect(view().textContent).not.toContain("Untrusted stream content");
-  await act(async () => button("Lịch sử đánh giá").click()); await settle();
+  expect(discussionHeading()).toBe("Trao đổi (4)"); expect(view().textContent).not.toContain("Untrusted stream content");
+  await render(["a"], { ...round, id: "other-round" });
   expect(stream.signal.aborted).toBe(true);
 });
 
 it("falls back to polling after stream failure", async () => {
   api.streamEvents.mockRejectedValue(new Error("disconnected"));
   await render(); messages.push(message(3)); await settle(2500);
-  expect(button("Trao đổi (4)")).toBeDefined();
+  expect(discussionHeading()).toBe("Trao đổi (4)");
   expect(view().textContent).toContain("Cập nhật tự động");
 });

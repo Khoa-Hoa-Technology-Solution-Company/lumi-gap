@@ -1,0 +1,29 @@
+.screening-decision-choices,
+.screening-form .screening-decision-choices {
+  display: block; min-inline-size: 0; padding: 0; margin: 0; border: 0;
+}
+.screening-decision-choices > legend {
+  padding: 0; margin-bottom: .5rem; color: hsl(var(--foreground));
+  font-size: .875rem; font-weight: 600; line-height: 1.5;
+}
+.screening-decision-options { display: flex; flex-wrap: wrap; gap: .5rem; }
+.screening-decision-option.screening-check {
+  display: flex; align-items: center; gap: .5rem; min-width: 0; min-height: 44px;
+  max-width: 100%; padding: .5rem .75rem; margin: 0;
+  border: 1px solid hsl(var(--border)); border-radius: .5rem;
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+  font-size: .875rem; font-weight: 500; line-height: 1.4; cursor: pointer;
+}
+.screening-decision-option input[type="radio"] {
+  width: 1rem; height: 1rem; margin: 0; flex-shrink: 0; accent-color: var(--screening-mark);
+}
+.screening-decision-option > span { min-width: 0; overflow-wrap: anywhere; }
+.screening-decision-option small { display: block; font-size: .75rem; color: inherit; font-weight: 400; }
+.screening-decision-option:hover:not([data-disabled="true"]) { background: hsl(var(--muted)); }
+.screening-decision-option[data-selected="true"] {
+  border-color: var(--screening-border); background: var(--screening-bg); color: var(--screening-fg);
+}
+.screening-decision-option[data-selected="true"]:hover:not([data-disabled="true"]) { background: var(--screening-bg); }
+.screening-decision-option:has(input:focus-visible) { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.screening-decision-option[data-disabled="true"],
+.screening-decision-option:has(input:disabled) { cursor: not-allowed; opacity: .55; }

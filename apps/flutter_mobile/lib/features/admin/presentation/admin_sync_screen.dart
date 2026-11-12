@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/admin/data/admin_api.dart';
@@ -14,6 +15,7 @@ class AdminSyncScreen extends ConsumerStatefulWidget {
 }
 
 class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
+  // i18n-ignore: default search query sent to OpenAlex, not UI text
   final searchText = TextEditingController(text: 'large language models');
   final yearFrom = TextEditingController(text: '2020');
   final maxPages = TextEditingController(text: '1');
@@ -39,13 +41,13 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
       ref.invalidate(syncRunsProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sync run triggered successfully.')),
+          SnackBar(content: Text(context.t('Sync run triggered successfully.'))),
         );
       }
     } on Object catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to trigger sync: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(context.t('Failed to trigger sync: {{e}}', {'e': e})), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -60,13 +62,13 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
       ref.invalidate(embeddingStatusProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Embedding calculation started.')),
+          SnackBar(content: Text(context.t('Embedding calculation started.'))),
         );
       }
     } on Object catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start embedding: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(context.t('Failed to start embedding: {{e}}', {'e': e})), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -91,12 +93,12 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('TRIGGER NEW SYNC', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8))),
+                Text(context.t('TRIGGER NEW SYNC'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8))),
                 const SizedBox(height: 12),
                 TextField(
                   controller: searchText,
                   decoration: InputDecoration(
-                    labelText: 'Search text (e.g. quantum computing)',
+                    labelText: context.t('Search text (e.g. quantum computing)'),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
@@ -107,7 +109,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                       child: TextField(
                         controller: yearFrom,
                         decoration: InputDecoration(
-                          labelText: 'Year from',
+                          labelText: context.t('Year from'),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         keyboardType: TextInputType.number,
@@ -118,7 +120,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                       child: TextField(
                         controller: maxPages,
                         decoration: InputDecoration(
-                          labelText: 'Max pages',
+                          labelText: context.t('Max pages'),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         keyboardType: TextInputType.number,
@@ -139,7 +141,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                     icon: _syncing
                         ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.sync, color: Colors.white),
-                    label: const Text('Start OpenAlex Sync', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    label: Text(context.t('Start OpenAlex Sync'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],
@@ -147,7 +149,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        const Text('Sync Runs History', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        Text(context.t('Sync Runs History'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         const SizedBox(height: 10),
         runs.when(
           data: (items) => Column(
@@ -171,7 +173,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 4),
-                      Text('Fetched: ${run.totalFetched} · Inserted: ${run.totalInserted}'),
+                      Text(context.t('Fetched: {{totalFetched}} · Inserted: {{totalInserted}}', {'totalFetched': run.totalFetched, 'totalInserted': run.totalInserted})),
                       if (run.errorMessage != null) ...[
                         const SizedBox(height: 4),
                         Text(run.errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 11)),
@@ -193,7 +195,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
               );
             }).toList(),
           ),
-          loading: () => const AppLoading(message: 'Loading runs...'),
+          loading: () => AppLoading(message: context.t('Loading runs...')),
           error: (error, _) => AppErrorState(message: error.toString()),
         ),
       ],
@@ -224,12 +226,12 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('EMBEDDING CALCULATIONS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8))),
+                        Text(context.t('EMBEDDING CALCULATIONS'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8))),
                         const SizedBox(height: 16),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Embedding Coverage', style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text(context.t('Embedding Coverage'), style: const TextStyle(fontWeight: FontWeight.bold)),
                             Text('${pct.toStringAsFixed(1)}%', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF06B6D4))),
                           ],
                         ),
@@ -247,21 +249,21 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                           children: [
                             Column(
                               children: [
-                                const Text('Analyzable', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                                Text(context.t('Analyzable'), style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
                                 const SizedBox(height: 4),
                                 Text('${status.analyzable}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                               ],
                             ),
                             Column(
                               children: [
-                                const Text('Embedded', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                                Text(context.t('Embedded'), style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
                                 const SizedBox(height: 4),
                                 Text('${status.embedded}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
                               ],
                             ),
                             Column(
                               children: [
-                                const Text('Pending', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                                Text(context.t('Pending'), style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
                                 const SizedBox(height: 4),
                                 Text('${status.pending}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFFF59E0B))),
                               ],
@@ -279,7 +281,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                             ),
                             onPressed: _embedding ? null : _triggerEmbedding,
                             icon: const Icon(Icons.bolt, color: Colors.white),
-                            label: const Text('Trigger Embedding Job', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            label: Text(context.t('Trigger Embedding Job'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ],
@@ -289,7 +291,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
               ],
             );
           },
-          loading: () => const AppLoading(message: 'Loading embedding status...'),
+          loading: () => AppLoading(message: context.t('Loading embedding status...')),
           error: (error, _) => AppErrorState(message: error.toString()),
         ),
       ],
@@ -328,8 +330,8 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Redis Database', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                                Text(status.redisOk ? 'Connected' : 'Offline', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                Text(context.t('Redis Database'), style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                                Text(status.redisOk ? context.t('Connected') : context.t('Offline'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                               ],
                             ),
                           ),
@@ -356,7 +358,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Active Workers', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                                Text(context.t('Active Workers'), style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
                                 Text('${status.workers.alive} / ${status.workers.expected}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                               ],
                             ),
@@ -370,7 +372,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
             ),
             const SizedBox(height: 16),
 
-            const Text('Queue Worker Backlogs', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            Text(context.t('Queue Worker Backlogs'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
             const SizedBox(height: 10),
             ...status.queues.map((q) {
               return Card(
@@ -382,7 +384,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                 ),
                 child: ListTile(
                   title: Text(q.label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  subtitle: Text('Waiting: ${q.waiting} · Active: ${q.active} · Failed: ${q.failed}'),
+                  subtitle: Text(context.t('Waiting: {{waiting}} · Active: {{active}} · Failed: {{failed}}', {'waiting': q.waiting, 'active': q.active, 'failed': q.failed})),
                   trailing: q.isBacklogged
                       ? const Icon(Icons.warning, color: Colors.orange, size: 20)
                       : const Icon(Icons.check, color: Colors.green, size: 20),
@@ -392,7 +394,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
             const SizedBox(height: 20),
 
             if (status.recommendations.isNotEmpty) ...[
-              const Text('Pipeline Diagnostics', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              Text(context.t('Pipeline Diagnostics'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
               const SizedBox(height: 10),
               ...status.recommendations.map((rec) {
                 final color = rec.severity == 'critical'
@@ -432,7 +434,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
           ],
         );
       },
-      loading: () => const AppLoading(message: 'Loading pipeline status...'),
+      loading: () => AppLoading(message: context.t('Loading pipeline status...')),
       error: (error, _) => AppErrorState(message: error.toString()),
     );
   }
@@ -442,8 +444,8 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
     final user = ref.watch(currentUserProvider);
     if (user?.role != UserRole.admin) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Admin System Workbench')),
-        body: const Center(child: Text('Access denied. Admin role required.', style: TextStyle(color: Colors.red))),
+        appBar: AppBar(title: Text(context.t('Admin System Workbench'))),
+        body: Center(child: Text(context.t('Access denied. Admin role required.'), style: const TextStyle(color: Colors.red))),
       );
     }
 
@@ -455,17 +457,17 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
       child: Scaffold(
         backgroundColor: isDark ? const Color(0xFF0F1B2D) : theme.scaffoldBackgroundColor,
         appBar: AppBar(
-          title: const Text('System Workbench', style: TextStyle(fontWeight: FontWeight.bold)),
+          title: Text(context.t('System Workbench'), style: const TextStyle(fontWeight: FontWeight.bold)),
           backgroundColor: Colors.transparent,
           elevation: 0,
-          bottom: const TabBar(
-            indicatorColor: Color(0xFF06B6D4),
-            labelColor: Color(0xFF06B6D4),
-            unselectedLabelColor: Color(0xFF94A3B8),
+          bottom: TabBar(
+            indicatorColor: const Color(0xFF06B6D4),
+            labelColor: const Color(0xFF06B6D4),
+            unselectedLabelColor: const Color(0xFF94A3B8),
             tabs: [
-              Tab(text: 'Sync Runs'),
-              Tab(text: 'Embeddings'),
-              Tab(text: 'Pipeline Health'),
+              Tab(text: context.t('Sync Runs')),
+              Tab(text: context.t('Embeddings')),
+              Tab(text: context.t('Pipeline Health')),
             ],
           ),
         ),

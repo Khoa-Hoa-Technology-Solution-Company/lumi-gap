@@ -8,6 +8,7 @@ import { projectContributionsController as c } from "./project-contributions.con
 import { contributionEvaluationController as e } from "./contribution-evaluation.controller.js";
 import * as es from "./dto/contribution-evaluation.schema.js";
 export const projectContributionsRouter = Router({ mergeParams: true });
+projectContributionsRouter.use((_req, res, next) => { res.setHeader("Cache-Control", "private, no-store"); next(); });
 const params = validate(workspaceParams, "params"), item = validate(workspaceParams.extend({ itemId: z.string().uuid() }), "params");
 const writes = createRateLimiter("projects:contribution-writes", { windowMs: 3600000, limit: 150, keyGenerator: req => req.user!.sub });
 projectContributionsRouter.get("/evaluation/rules", params, e.rules);
@@ -23,6 +24,8 @@ projectContributionsRouter.get("/evaluation/snapshots", params, validate(es.eval
 projectContributionsRouter.get("/evaluation/snapshots/:itemId", item, e.snapshot);
 projectContributionsRouter.get("/activity", params, validate(s.activitySchema, "query"), c.activity);
 projectContributionsRouter.get("/work", params, validate(s.contributionsPageSchema, "query"), c.list);
+projectContributionsRouter.get("/work-people", params, c.people);
+projectContributionsRouter.get("/overview", params, c.overview);
 projectContributionsRouter.post("/work", writes, params, validate(s.createWorkContributionSchema), c.create);
 projectContributionsRouter.get("/work/:itemId", item, c.detail);
 projectContributionsRouter.patch("/work/:itemId", writes, item, validate(s.editWorkContributionSchema), c.edit);

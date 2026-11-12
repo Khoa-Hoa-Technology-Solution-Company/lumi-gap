@@ -20,6 +20,13 @@ import type {
   IntegrityContainmentAction,
   ProjectSecurityOverview,
   ResearchIntegrityCaseView,
+  ProjectIntegrityOverview,
+  VerifyCitationInput,
+  DeclareExternalAiInput,
+  UpdateMemberCreditInput,
+  ConfirmCreditInput,
+  UpdateAuthorshipInput,
+  ConfirmAuthorshipInput,
 } from "@trend/shared-types";
 import { api } from "@/services/api-client";
 import { API_ROUTES } from "@/constants";
@@ -181,6 +188,38 @@ export const projectsApi = {
   },
   async rejectContribution(id: string, proposalId: string, data: ResolveProjectContributionRequest = {}): Promise<ProjectContributionProposal> {
     const res = await api.post(`/projects/${id}/contributions/${proposalId}/reject`, data);
+    return res.data.data;
+  },
+  async integrityOverview(id: string): Promise<ProjectIntegrityOverview> {
+    const res = await api.get(`/projects/${encodeURIComponent(id)}/scientific-integrity/overview`);
+    return res.data.data;
+  },
+  async verifyCitation(id: string, data: VerifyCitationInput): Promise<any> {
+    const res = await api.post(`/projects/${encodeURIComponent(id)}/scientific-integrity/citations/verify`, data);
+    return res.data.data;
+  },
+  async declareExternalAi(id: string, data: DeclareExternalAiInput): Promise<any> {
+    const res = await api.post(`/projects/${encodeURIComponent(id)}/scientific-integrity/ai-declarations`, data);
+    return res.data.data;
+  },
+  async deleteExternalAi(id: string, declarationId: string): Promise<any> {
+    const res = await api.delete(`/projects/${encodeURIComponent(id)}/scientific-integrity/ai-declarations/${encodeURIComponent(declarationId)}`);
+    return res.data.data;
+  },
+  async updateMemberCredit(id: string, data: UpdateMemberCreditInput): Promise<any> {
+    const res = await api.put(`/projects/${encodeURIComponent(id)}/scientific-integrity/credit`, data);
+    return res.data.data;
+  },
+  async confirmCredit(id: string, data: ConfirmCreditInput): Promise<any> {
+    const res = await api.post(`/projects/${encodeURIComponent(id)}/scientific-integrity/credit/confirm`, data);
+    return res.data.data;
+  },
+  async updateAuthorship(id: string, data: UpdateAuthorshipInput): Promise<any> {
+    const res = await api.put(`/projects/${encodeURIComponent(id)}/scientific-integrity/authorship`, data);
+    return res.data.data;
+  },
+  async confirmAuthorship(id: string, data: ConfirmAuthorshipInput): Promise<any> {
+    const res = await api.post(`/projects/${encodeURIComponent(id)}/scientific-integrity/authorship/confirm`, data);
     return res.data.data;
   },
 };

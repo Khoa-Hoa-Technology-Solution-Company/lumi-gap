@@ -64,6 +64,9 @@ model Keyword {
   legacyMongoId  String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
   keywordName    String   @map("keyword_name")
   normalizedName String   @unique @map("normalized_name")
+  openalexId     String?  @unique @map("openalex_id") @db.VarChar(300)
+  syncedAt       DateTime? @map("synced_at") @db.Timestamptz(6)
+  sourceVersion  String? @map("source_version") @db.VarChar(120)
   /// Extra spellings (abbreviations, Vietnamese names) resolved to this keyword; stored normalized.
   aliases        String[] @default([])
   /// active | hidden | merged. A merged keyword points at its survivor through mergedIntoId.
@@ -95,6 +98,8 @@ model ResearchTopic {
   aliases          String[]  @default([])
   /// Keywords OpenAlex publishes for the topic.
   openalexKeywords String[]  @default([]) @map("openalex_keywords")
+  sourceVersion    String?   @map("source_version") @db.VarChar(120)
+  labelVi          String?   @map("label_vi") @db.VarChar(300)
   /// Works in the whole of OpenAlex, from the taxonomy sync.
   worksCount       Int       @default(0) @map("works_count")
   /// Local papers classified under this node (any descendant topic counts), refreshed by the backfill.

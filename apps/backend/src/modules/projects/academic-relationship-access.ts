@@ -33,5 +33,6 @@ export const assertVerifiedLecturer = assertReviewerInTransaction;
 export async function assertAcceptingNewMentorships(db: Db, userId: string) {
   const profile = await assertVerifiedLecturer(db, userId);
   if (!(profile.supportAvailability as { enabled?: boolean } | null)?.enabled) throw AppError.conflict("This Lecturer is not open to mentoring");
+  if (!profile.allowCollaborationRequests) throw AppError.conflict("This Lecturer is not accepting collaboration requests");
   return profile;
 }

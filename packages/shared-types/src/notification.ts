@@ -11,11 +11,13 @@ export interface NotificationItem {
   verificationRequestId?: string;
   mentorshipRequestId?: string;
   screeningRoundId?: string;
+  screeningMessageId?: string;
   allocationRevisionId?: string;
   workContributionId?: string;
   contributionEvaluationId?: string;
   manuscriptId?: string;
   manuscriptSnapshotId?: string;
+  integrityRecordId?: string;
   /** TREND_VERDICT_CHANGED: the followed topic (and its OpenAlex id) whose verdict changed. */
   trendTopic?: string;
   trendTopicId?: string;

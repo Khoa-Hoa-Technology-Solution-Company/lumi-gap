@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import type { ScreeningPaperRow } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { screeningApi } from "../api/screening.api";
 import { useResearchResource } from "../hooks/use-project-research";
 import { WorkspaceLoading, canLeaveWorkspace } from "./workspace-common";
-import { ScreeningError, ScreeningPager, ScreeningStatus, screeningProgressLabel, useScreeningCommand } from "./screening-common";
+import { ScreeningError, ScreeningPager, ScreeningStatus, screeningProgressLabel } from "./screening-common";
+import { LegacyScreeningRepair } from "./screening-legacy-repair";
 import { ScreeningSettingsForm } from "./screening-management";
 import { ScreeningAnalytics } from "./screening-analytics";
 import "../screening.css";
@@ -45,7 +45,7 @@ export function ScreeningWorkspace({ projectId, readOnly }: { projectId: string;
           <div className="min-w-0 flex-1"><strong>{p.title}</strong>
             {p.round ? <><p>{p.round.phase === "FULL_TEXT" ? "Toàn văn" : "Tiêu đề và tóm tắt"} · {screeningProgressLabel(p.round)}</p><ScreeningStatus status={p.round.status} round={p.round} />{p.round.finalizerAssigned && <p>Người phân xử: {p.round.finalizer.name}</p>}</> : <p>{p.legacyProvenance ? "Phân loại lịch sử, chưa có vòng hiện tại" : "Chưa bắt đầu"}</p>}
             {p.round?.legacyOutcome && <p>Kết quả lịch sử theo quy tắc của vòng cũ.</p>}
-            {p.round?.legacyNeedsAudit && <LegacyScreeningRepair projectId={projectId} paper={p} phase={board.settings.stages?.[0] ?? "TITLE_ABSTRACT"} canManage={board.canManage && !readOnly} />}
+            {p.round?.legacyNeedsAudit && <LegacyScreeningRepair projectId={projectId} paperId={p.paperId} phase={board.settings.stages?.[0] ?? "TITLE_ABSTRACT"} canManage={board.canManage && !readOnly} />}
           </div>
           <Button size="sm" variant="outline" onClick={() => void openPaper(p.paperId)}>Mở bài trong Thư viện</Button>
         </article>)}
@@ -53,11 +53,4 @@ export function ScreeningWorkspace({ projectId, readOnly }: { projectId: string;
       </section>
     </>}
   </section>;
-}
-
-function LegacyScreeningRepair({ projectId, paper, phase, canManage }: { projectId: string; paper: ScreeningPaperRow; phase: "TITLE_ABSTRACT" | "FULL_TEXT"; canManage: boolean }) {
-  const [confirmed, setConfirmed] = useState(false), command = useScreeningCommand(projectId);
-  return <div className="space-y-2 mt-2"><p role="status">Cần rà soát dữ liệu cũ. Phân công và phiếu cũ được giữ; vòng này không nhận thêm phiếu.</p>
-    {canManage && <><label className="screening-check"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Tạo vòng mới với quy tắc hiện tại, giữ nguyên lịch sử cũ.</label><Button size="sm" variant="outline" disabled={!confirmed || command.isPending} onClick={() => void command.run({ paperId: paper.paperId, phase, action: "legacy-reopen" }, clientKey => screeningApi.start(projectId, { paperIds: [paper.paperId], phase, confirmRescreen: true, clientKey }))}>Mở vòng mới đã xác nhận</Button><ScreeningError error={command.error} /></>}
-  </div>;
 }

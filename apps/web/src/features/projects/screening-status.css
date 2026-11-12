@@ -1,0 +1,73 @@
+:root { --screening-progress-color: oklch(.55 .17 255); }
+.dark { --screening-progress-color: oklch(.75 .11 255); }
+/* Single semantic palette for Screening, independent of surface and translated copy.
+   Keep workflow labels visible: color is supplementary, never the only indicator. */
+.screening-tone {
+  --screening-fg: oklch(.44 .025 255);
+  --screening-bg: oklch(.965 .006 255);
+  --screening-border: oklch(.85 .015 255);
+  --screening-mark: oklch(.55 .025 255);
+}
+.screening-tone[data-tone="attention"] {
+  --screening-fg: oklch(.43 .15 255); --screening-bg: oklch(.97 .014 255);
+  --screening-border: oklch(.84 .06 255); --screening-mark: oklch(.55 .17 255);
+}
+.screening-tone[data-tone="warning"] {
+  --screening-fg: oklch(.43 .10 75); --screening-bg: oklch(.98 .025 85);
+  --screening-border: oklch(.85 .09 85); --screening-mark: oklch(.61 .13 75);
+}
+.screening-tone[data-tone="dispute"] {
+  --screening-fg: oklch(.44 .13 45); --screening-bg: oklch(.975 .02 55);
+  --screening-border: oklch(.85 .07 55); --screening-mark: oklch(.60 .16 45);
+}
+.screening-tone[data-tone="adjudication"] {
+  --screening-fg: oklch(.44 .15 295); --screening-bg: oklch(.97 .016 295);
+  --screening-border: oklch(.85 .06 295); --screening-mark: oklch(.57 .17 295);
+}
+.screening-tone[data-tone="success"] {
+  --screening-fg: oklch(.42 .085 155); --screening-bg: oklch(.97 .018 155);
+  --screening-border: oklch(.84 .06 155); --screening-mark: oklch(.55 .12 155);
+}
+.screening-tone[data-tone="excluded"] {
+  --screening-fg: oklch(.44 .14 15); --screening-bg: oklch(.97 .014 15);
+  --screening-border: oklch(.85 .06 15); --screening-mark: oklch(.56 .17 15);
+}
+.dark .screening-tone {
+  --screening-fg: oklch(.83 .02 255); --screening-bg: oklch(.27 .015 255);
+  --screening-border: oklch(.43 .025 255); --screening-mark: oklch(.75 .025 255);
+}
+.dark .screening-tone[data-tone="attention"] {
+  --screening-fg: oklch(.84 .075 255); --screening-bg: oklch(.27 .055 255);
+  --screening-border: oklch(.43 .085 255); --screening-mark: oklch(.75 .11 255);
+}
+.dark .screening-tone[data-tone="warning"] {
+  --screening-fg: oklch(.86 .095 85); --screening-bg: oklch(.27 .035 75);
+  --screening-border: oklch(.46 .065 75); --screening-mark: oklch(.78 .12 85);
+}
+.dark .screening-tone[data-tone="dispute"] {
+  --screening-fg: oklch(.84 .09 55); --screening-bg: oklch(.27 .045 45);
+  --screening-border: oklch(.45 .075 45); --screening-mark: oklch(.76 .12 55);
+}
+.dark .screening-tone[data-tone="adjudication"] {
+  --screening-fg: oklch(.84 .075 295); --screening-bg: oklch(.27 .055 295);
+  --screening-border: oklch(.44 .085 295); --screening-mark: oklch(.76 .11 295);
+}
+.dark .screening-tone[data-tone="success"] {
+  --screening-fg: oklch(.83 .085 155); --screening-bg: oklch(.27 .03 155);
+  --screening-border: oklch(.43 .06 155); --screening-mark: oklch(.74 .11 155);
+}
+.dark .screening-tone[data-tone="excluded"] {
+  --screening-fg: oklch(.84 .075 15); --screening-bg: oklch(.27 .045 15);
+  --screening-border: oklch(.44 .075 15); --screening-mark: oklch(.75 .11 15);
+}
+.screening-status-badge {
+  display: inline-flex; align-items: center; gap: .3125rem;
+  width: fit-content; max-width: 100%; padding: .2rem .6rem;
+  border: 1px solid var(--screening-border); border-radius: 999px;
+  background: var(--screening-bg); color: var(--screening-fg);
+  font-size: .75rem; font-weight: 600; line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.screening-status-text { color: var(--screening-fg); }
+
+.screening-status-surface.screening-tone { background: var(--screening-bg); border-color: var(--screening-border); }

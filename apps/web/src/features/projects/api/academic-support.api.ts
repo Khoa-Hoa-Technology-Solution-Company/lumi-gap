@@ -1,5 +1,5 @@
 import { api } from "@/services/api-client";
-import type { MentorRole, MentorshipDraft, MentorshipAttachment, MentorPolicyInput } from "@trend/shared-types";
+import type { LecturerMatchEvidence, MentorRole, MentorshipDraft, MentorshipAttachment, MentorPolicyInput } from "@trend/shared-types";
 import type { MentorRecruitmentPlan, MentorPlanCommand } from "@trend/shared-types";
 import type { MentorRelationship, MentorSuggestion, MentorshipRequest, MentorProjectPreview, MentorDiscoverySettings, MentorshipCollection, AcademicPageMeta, AvailableMentor, MentoringPreferences, ProjectMemberUserSummary } from "@trend/shared-types";
 export type MentorPreview = MentorProjectPreview;
@@ -14,6 +14,7 @@ export interface MentorWorkspace {
     items: { id: string; title: string; body: string; detail?: string }[]; counts: Record<ContextSection, number>; meta: AcademicPageMeta };
 }
 export const academicSupportApi = {
+  async mentorEvidence(projectId: string, mentorId: string): Promise<LecturerMatchEvidence> { return (await api.get(`/projects/${encodeURIComponent(projectId)}/available-mentors/${encodeURIComponent(mentorId)}/evidence`)).data.data; },
   async plan(id: string): Promise<MentorRecruitmentPlan> { return (await api.get(`/projects/${encodeURIComponent(id)}/mentor-plan`)).data.data; },
   async changePlan(id: string, input: MentorPlanCommand): Promise<MentorRecruitmentPlan> { return (await api.post(`/projects/${encodeURIComponent(id)}/mentor-plan`, input)).data.data; },
   async mine(params: AcademicSearch = {}): Promise<MentorshipCollection> { return (await api.get("/projects/academic-support/mine", { params })).data.data; },
@@ -24,11 +25,11 @@ export const academicSupportApi = {
   async mentors(id: string, params: AcademicSearch): Promise<{ items: AvailableMentor[]; meta: AcademicPageMeta }> { return (await api.get(`/projects/${encodeURIComponent(id)}/available-mentors`, { params })).data.data; },
   async opportunities(params: AcademicSearch): Promise<{ items: MentorPreview[]; meta: AcademicPageMeta }> { return (await api.get("/projects/academic-support/opportunities", { params })).data.data; },
   async settings(id: string): Promise<MentorDiscoverySettings> { return (await api.get(`/projects/${encodeURIComponent(id)}/mentorship-discovery`)).data.data; },
-  async saveSettings(id: string, input: { discovery: string; summary: string; expertise: string[]; researchAreas: string[]; mentoringNeeds: string; expectedVersion?: number }): Promise<MentorDiscoverySettings> { return (await api.put(`/projects/${encodeURIComponent(id)}/mentorship-discovery`, input)).data.data; },
+  async saveSettings(id: string, input: { supportTypes?: import("@trend/shared-types").ResearchSupportType[]; researchClassification?: import("@trend/shared-types").ResearchClassificationInput; discovery: string; summary: string; expertise: string[]; researchAreas: string[]; mentoringNeeds: string; methodologies?: string[]; expectedVersion?: number }): Promise<MentorDiscoverySettings> { return (await api.put(`/projects/${encodeURIComponent(id)}/mentorship-discovery`, input)).data.data; },
   async suggestions(id: string, page: number): Promise<{ items: MentorSuggestion[]; meta: AcademicPageMeta }> { return (await api.get(`/projects/${encodeURIComponent(id)}/mentor-suggestions`, { params: { page } })).data.data; },
   async suggest(id: string, mentorUserId: string, message: string) { return (await api.post(`/projects/${encodeURIComponent(id)}/mentor-suggestions`, { mentorUserId, message })).data.data; },
   async dismissSuggestion(id: string, suggestionId: string) { return (await api.post(`/projects/${encodeURIComponent(id)}/mentor-suggestions/${encodeURIComponent(suggestionId)}/dismiss`, {})).data.data; },
-  async request(id: string, mentorUserId: string, message: string, idempotencyKey: string, content?: { mentorRole: MentorRole; attachmentIds: string[]; access?: MentorPolicyInput; expectedPreviewToken?: string; candidateId?: string; expectedPlanVersion?: number }) { return (await api.post(`/projects/${encodeURIComponent(id)}/mentorships`, { mentorUserId, message, idempotencyKey, ...content })).data.data; },
+  async request(id: string, mentorUserId: string, message: string, idempotencyKey: string, content?: { mentorRole: MentorRole; attachmentIds: string[]; access?: MentorPolicyInput; expectedPreviewToken?: string; candidateId?: string; expectedPlanVersion?: number; applicationId?: string; expectedApplicationVersion?: number }) { return (await api.post(`/projects/${encodeURIComponent(id)}/mentorships`, { mentorUserId, message, idempotencyKey, ...content })).data.data; },
   async offer(id: string, message: string, idempotencyKey: string, content?: { mentorRole: MentorRole; attachmentIds: string[] }) { return (await api.post(`/projects/${encodeURIComponent(id)}/mentorship-offers`, { message, idempotencyKey, ...content })).data.data; },
   async draft(projectId: string, direction: string): Promise<MentorshipDraft> { return (await api.get("/projects/academic-support/content/draft", { params: { projectId, direction } })).data.data; },
   async saveDraft(projectId: string, direction: string, input: { message: string; mentorRole: MentorRole; attachmentIds: string[]; expectedVersion: number }): Promise<MentorshipDraft> { return (await api.put("/projects/academic-support/content/draft", { projectId, direction, ...input })).data.data; },

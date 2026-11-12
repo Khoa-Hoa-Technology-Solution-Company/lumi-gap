@@ -3,6 +3,7 @@ import type { AcademicIdentityLink } from "@trend/shared-types";
 
 const mocks = vi.hoisted(() => ({
   prisma: {
+    $transaction: vi.fn(), $queryRaw: vi.fn(),
     user: { findUnique: vi.fn() },
     academicIdentityLink: {
       findMany: vi.fn(),
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   auditLog: vi.fn(),
 }));
 
+vi.mock("../orcid-oauth-state.js", () => ({ cancelPendingOrcid: vi.fn() }));
 vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => mocks.prisma }));
 vi.mock("../../audit/audit.service.js", () => ({ auditService: { log: mocks.auditLog } }));
 
@@ -47,6 +49,7 @@ function row(overrides: Partial<Record<string, unknown>> = {}) {
 describe("academicIdentityService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.prisma.$transaction.mockImplementation((fn: (db: unknown) => unknown) => fn(mocks.prisma));
     mocks.prisma.user.findUnique.mockResolvedValue({ id: USER_ID, accountStatus: "ACTIVE" });
   });
 
@@ -151,7 +154,7 @@ describe("academicIdentityService", () => {
 
     await expect(academicIdentityService.remove(USER_ID, IDENTITY_ID)).resolves.toBeUndefined();
 
-    expect(mocks.prisma.academicIdentityLink.delete).toHaveBeenCalledWith({ where: { id: IDENTITY_ID } });
+    expect(mocks.prisma.academicIdentityLink.delete).toHaveBeenCalledWith({ where: { id: IDENTITY_ID, userId: USER_ID } });
     expect(mocks.auditLog).toHaveBeenCalledWith(
       "academic_profile.identity.deleted",
       expect.objectContaining({ userId: USER_ID, targetRecordId: IDENTITY_ID }),

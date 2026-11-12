@@ -91,6 +91,19 @@ class AuthController extends Notifier<AsyncValue<User?>> {
     }
   }
 
+  /// Reloads /auth/me without going through [AsyncLoading], which would make
+  /// the router redirect to the splash screen. Returns the fresh user, or null
+  /// if the session changed while the request was in flight (logout, other
+  /// account), in which case the result is discarded.
+  Future<User?> refreshUser() async {
+    final current = state.value;
+    if (current == null) return null;
+    final fresh = await ref.read(authApiProvider).me();
+    if (state.value?.id != current.id) return null;
+    state = AsyncData(fresh);
+    return fresh;
+  }
+
   Future<void> logout() async {
     state = const AsyncLoading();
     try {

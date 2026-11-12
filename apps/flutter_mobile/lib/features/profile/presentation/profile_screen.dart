@@ -1,8 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/i18n/locale_provider.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/theme/theme_provider.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
+import 'package:flutter_mobile/features/profile/presentation/email_verification_banner.dart';
+import 'package:flutter_mobile/features/profile/presentation/language_sheet.dart';
+import 'package:flutter_mobile/features/profile/presentation/theme_mode_sheet.dart';
 import 'package:flutter_mobile/features/rankings/domain/level_helper.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,17 +23,17 @@ class ProfileScreen extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Sign out'),
-        content: const Text('Do you want to sign out of Publication Trend?'),
+        title: Text(context.t('Sign out')),
+        content: Text(context.t('Do you want to sign out of Publication Trend?')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(context.t('Cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Sign out'),
+            style: TextButton.styleFrom(foregroundColor: context.lumi.error),
+            child: Text(context.t('Sign out')),
           ),
         ],
       ),
@@ -51,17 +59,18 @@ class ProfileScreen extends ConsumerWidget {
         .length;
 
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final lumi = context.lumi;
 
     final userPoints = user?.points ?? 0;
     final userLevel = LevelHelper.getLevel(userPoints);
     final levelAsset = LevelHelper.getLevelAsset(userLevel);
 
     final currentThemeMode = ref.watch(themeModeProvider);
+    final languageChoice = ref.watch(localeChoiceProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(context.t('Profile')),
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
@@ -77,9 +86,9 @@ class ProfileScreen extends ConsumerWidget {
                     height: 80,
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF111C2E) : Colors.white,
+                      color: lumi.surface,
                       shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFF06B6D4), width: 2),
+                      border: Border.all(color: lumi.primary, width: 2),
                     ),
                     child: Image.asset(
                       levelAsset,
@@ -88,35 +97,32 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    user?.fullName ?? 'Researcher',
-                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                    user?.fullName ?? context.t('Researcher'),
+                    style: theme.textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF06B6D4).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(16),
+                      color: lumi.primarySoft,
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       user?.role.name.toUpperCase() ?? 'RESEARCHER',
-                      style: const TextStyle(
-                        color: Color(0xFF0891B2),
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: theme.textTheme.labelMedium
+                          ?.copyWith(color: lumi.primary),
                     ),
                   ),
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.school, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                      Icon(Icons.school, size: 16, color: lumi.foregroundSecondary),
                       const SizedBox(width: 4),
                       Text(
-                        user?.institution ?? 'FPT University',
+                        user?.institution ?? context.t('FPT University'),
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                          color: lumi.foregroundSecondary,
                         ),
                       ),
                     ],
@@ -126,75 +132,79 @@ class ProfileScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 24),
 
+            const EmailVerificationBanner(),
+            const SizedBox(height: 16),
+
             // Stats Cards Row
             Row(
               children: [
-                _StatCard(label: 'Bookmarks', value: paperBookmarks.length.toString(), theme: theme),
+                _StatCard(label: context.t('Bookmarks'), value: paperBookmarks.length.toString(), theme: theme),
                 const SizedBox(width: 12),
-                _StatCard(label: 'Topics', value: topicCount.toString(), theme: theme),
+                _StatCard(label: context.t('Topics'), value: topicCount.toString(), theme: theme),
                 const SizedBox(width: 12),
-                _StatCard(label: 'Reports', value: reports.toString(), theme: theme),
+                _StatCard(label: context.t('Reports'), value: reports.toString(), theme: theme),
               ],
             ),
             const SizedBox(height: 24),
 
             // Activity section
-            const Padding(
-              padding: EdgeInsets.only(left: 4, bottom: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 8),
               child: Text(
-                'ACTIVITY',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                  letterSpacing: 1.1,
-                ),
+                context.t('ACTIVITY'),
+                style: theme.textTheme.labelMedium?.copyWith(color: lumi.muted),
               ),
             ),
             Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: theme.dividerColor),
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: lumi.line),
               ),
-              color: theme.cardColor,
+              color: lumi.surface,
               clipBehavior: Clip.antiAlias,
               child: Column(
                 children: [
                   _SettingsRow(
                     icon: Icons.cloud_upload_outlined,
-                    label: 'Submit Paper',
+                    label: context.t('Submit Paper'),
                     onTap: () => context.push('/submit-paper'),
                     theme: theme,
                   ),
                   _SettingsRow(
                     icon: Icons.description_outlined,
-                    label: 'My Papers',
+                    label: context.t('My Papers'),
                     onTap: () => context.push('/my-papers'),
                     theme: theme,
                   ),
                   _SettingsRow(
                     icon: Icons.folder_outlined,
-                    label: 'Projects',
-                    onTap: () => context.push('/projects'),
+                    label: context.t('Projects'),
+                    onTap: () => context.go('/projects'),
+                    theme: theme,
+                  ),
+                  _SettingsRow(
+                    icon: Icons.bookmark_border,
+                    label: context.t('Bookmarks'),
+                    onTap: () => context.push('/bookmarks'),
                     theme: theme,
                   ),
                   _SettingsRow(
                     icon: Icons.emoji_events_outlined,
-                    label: 'Rankings',
+                    label: context.t('Rankings'),
                     onTap: () => context.push('/rankings'),
                     theme: theme,
                   ),
                   _SettingsRow(
                     icon: Icons.notifications_none,
-                    label: 'Notifications',
+                    label: context.t('Notifications'),
                     onTap: () => context.push('/notifications'),
                     theme: theme,
                   ),
                   if (user?.role.name == 'admin')
                     _SettingsRow(
                       icon: Icons.sync,
-                      label: 'Admin Sync',
+                      label: context.t('Admin Sync'),
                       onTap: () => context.push('/admin/sync'),
                       theme: theme,
                     ),
@@ -204,41 +214,41 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox(height: 24),
 
             // Appearance section
-            const Padding(
-              padding: EdgeInsets.only(left: 4, bottom: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 8),
               child: Text(
-                'APPEARANCE',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                  letterSpacing: 1.1,
-                ),
+                context.t('APPEARANCE'),
+                style: theme.textTheme.labelMedium?.copyWith(color: lumi.muted),
               ),
             ),
             Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: theme.dividerColor),
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: lumi.line),
               ),
-              color: theme.cardColor,
+              color: lumi.surface,
               clipBehavior: Clip.antiAlias,
               child: Column(
                 children: [
                   _SettingsRow(
-                    icon: currentThemeMode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode,
-                    label: 'Theme',
-                    value: currentThemeMode == ThemeMode.dark ? 'Dark' : 'Light',
-                    onTap: () {
-                      ref.read(themeModeProvider.notifier).toggleTheme();
-                    },
+                    icon: themeModeIcon(currentThemeMode),
+                    label: context.t('Appearance'),
+                    value: context.t(themeModeLabel(currentThemeMode)),
+                    onTap: () => unawaited(showThemeModeSheet(context)),
+                    theme: theme,
+                  ),
+                  _SettingsRow(
+                    icon: Icons.language,
+                    label: context.t('Language'),
+                    value: languageChoiceLabel(context, languageChoice),
+                    onTap: () => unawaited(showLanguageSheet(context)),
                     theme: theme,
                   ),
                   _SettingsRow(
                     icon: Icons.text_fields,
-                    label: 'Font size',
-                    value: 'Default',
+                    label: context.t('Font size'),
+                    value: context.t('Default'),
                     theme: theme,
                   ),
                 ],
@@ -250,20 +260,10 @@ class ProfileScreen extends ConsumerWidget {
             OutlinedButton(
               onPressed: authState.isLoading ? null : () => _handleLogout(context, ref),
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.red,
-                side: const BorderSide(color: Colors.red),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                foregroundColor: lumi.error,
+                side: BorderSide(color: lumi.error),
               ),
-              child: const Text(
-                'Sign out',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              child: Text(context.t('Sign out')),
             ),
             const SizedBox(height: 32),
           ],
@@ -282,27 +282,26 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lumi = context.lumi;
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: theme.dividerColor),
+          color: lumi.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: lumi.line),
         ),
         child: Column(
           children: [
             Text(
               value,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+              style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 4),
             Text(
               label,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: lumi.foregroundSecondary,
               ),
             ),
           ],
@@ -328,6 +327,7 @@ class _SettingsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lumi = context.lumi;
     final rowContent = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       child: Row(
@@ -335,20 +335,17 @@ class _SettingsRow extends StatelessWidget {
           Icon(
             icon,
             size: 20,
-            color: theme.colorScheme.onSurfaceVariant,
+            color: lumi.foregroundSecondary,
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
+            child: Text(label, style: theme.textTheme.titleMedium),
           ),
           if (value != null) ...[
             Text(
               value!,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: lumi.foregroundSecondary,
               ),
             ),
             const SizedBox(width: 8),
@@ -357,7 +354,7 @@ class _SettingsRow extends StatelessWidget {
             Icon(
               Icons.chevron_right,
               size: 20,
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+              color: lumi.muted,
             ),
         ],
       ),

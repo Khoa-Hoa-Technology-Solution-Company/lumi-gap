@@ -120,6 +120,11 @@ export interface ProposedManuscriptAuthor {
   order: number;
   creditRoles: CreditRole[];
   rationale: string;
+  displayName?: string;
+  email?: string;
+  affiliation?: string;
+  orcid?: string;
+  corresponding?: boolean;
   confirmed?: boolean;
   decision?: "CONFIRM" | "CLARIFY" | "DISPUTE" | null;
   decisionNote?: string | null;
@@ -131,6 +136,7 @@ export interface ProposedManuscriptAcknowledgement {
   affiliation?: string;
   contributionSummary: string;
   creditRoles: CreditRole[];
+  permissionNote?: string;
 }
 
 export interface ReviewedNonAuthorJustification {
@@ -168,6 +174,7 @@ export interface ManuscriptAttributionDecisionView {
 }
 
 export interface ManuscriptAttributionCheckView {
+  viewerId?: string;
   checkId: string | null;
   projectId: string;
   manuscriptId: string;
@@ -195,14 +202,46 @@ export interface ManuscriptAttributionCheckView {
   viewerCanManage: boolean;
   viewerCanDecide: boolean;
   externalSubmissionNotice: string;
+  publicationPolicy?: ManuscriptPublicationPolicy;
+  pendingAcknowledgementIds?: string[];
+  sealed?: boolean;
+}
+
+export interface ManuscriptPublicationPolicy {
+  name: string;
+  version: string;
+  guidanceUrl?: string;
+  requireAcknowledgementPermission: boolean;
+}
+
+export interface CreditContributionStatement {
+  standard: string;
+  projectId: string;
+  manuscriptId: string;
+  snapshotId: string;
+  snapshotChecksum: string;
+  attributionCheckId: string;
+  attributionDigest: string;
+  authors: Array<{ userId: string; name: string; order: number; corresponding: boolean; email: string; affiliation: string; orcid?: string; roles: Array<{ code: CreditRole; id: string; name: string; source: string }> }>;
+  acknowledgements: ProposedManuscriptAcknowledgement[];
+  policy?: ManuscriptPublicationPolicy;
+  text: string;
+  latex: string;
 }
 
 export interface SaveManuscriptAttributionInput {
+  expectedVersion?: number;
+  publicationPolicy?: ManuscriptPublicationPolicy;
   proposedAuthors: Array<{
     userId: string;
     order: number;
     creditRoles: CreditRole[];
     rationale?: string;
+    displayName?: string;
+    email?: string;
+    affiliation?: string;
+    orcid?: string;
+    corresponding?: boolean;
   }>;
   acknowledgements: Array<{
     userId?: string | null;
@@ -210,6 +249,7 @@ export interface SaveManuscriptAttributionInput {
     affiliation?: string;
     contributionSummary: string;
     creditRoles?: CreditRole[];
+    permissionNote?: string;
   }>;
   acknowledgementText?: string;
   omittedContributors: Array<{
@@ -300,3 +340,207 @@ export interface CreateIntegrityCaseInput {
   evidenceRefs?: Array<{ kind: string; id: string; label?: string }>;
 }
 
+
+// ==========================================
+// Scientific Integrity & Contribution Types
+// ==========================================
+
+export type CitationIssueKind =
+  | "NONE"
+  | "MISSING_FROM_BIB"
+  | "DUPLICATE_KEY"
+  | "METADATA_MISMATCH"
+  | "UNVERIFIED"
+  | "SERVICE_UNAVAILABLE";
+
+export type CitationDoiStatus =
+  | "VALID"
+  | "INVALID_FORMAT"
+  | "NOT_FOUND"
+  | "METADATA_MISMATCH"
+  | "NO_DOI_SUPPLIED"
+  | "SERVICE_UNAVAILABLE";
+
+export interface CitationIntegrityItem {
+  key: string;
+  citationKey?: string;
+  title?: string;
+  doi?: string;
+  status?: string;
+  filePath: string;
+  line?: number;
+  bibEntry?: {
+    type?: string;
+    title?: string;
+    authors?: string[];
+    year?: number;
+    doi?: string;
+    journal?: string;
+  } | null;
+  matchedPaperId?: string | null;
+  matchedPaperTitle?: string | null;
+  doiStatus: CitationDoiStatus;
+  issueKind: CitationIssueKind;
+  issueMessage: string;
+  verifiedById?: string | null;
+  verifiedByName?: string | null;
+  verifiedAt?: string | null;
+  verificationNote?: string | null;
+}
+
+export type AiPurpose =
+  | "SEARCH"
+  | "OUTLINE"
+  | "SUMMARY"
+  | "LANGUAGE_POLISH"
+  | "ANALYSIS"
+  | "CODE_ASSISTANCE"
+  | "OTHER";
+
+export interface AiTransparencyItem {
+  id: string;
+  source: "PLATFORM" | "MANUAL_EXTERNAL";
+  toolName: string;
+  userId: string;
+  userName: string;
+  purpose: AiPurpose;
+  purposeDescription: string;
+  affectedScope?: string | null;
+  humanOversightVerified: boolean;
+  humanOversightNote?: string | null;
+  verifiedById?: string | null;
+  verifiedByName?: string | null;
+  verifiedAt?: string | null;
+  verificationNote?: string | null;
+  createdAt: string;
+}
+
+export interface MemberCreditItem {
+  userId: string;
+  name: string;
+  email: string;
+  role: "OWNER" | "MEMBER" | "ADVISOR";
+  creditRoles: CreditRole[];
+  systemEvidence: {
+    tasksCompleted: number;
+    wordsWritten: number;
+    papersScreened: number;
+    activeDays: number;
+  };
+  externalContribution?: string | null;
+  confirmationStatus: "CONFIRMED" | "PENDING" | "DISPUTED";
+  confirmedAt?: string | null;
+  confirmationNote?: string | null;
+}
+
+export interface AuthorshipRegistryItem {
+  userId: string;
+  name: string;
+  email: string;
+  order: number;
+  isCorresponding: boolean;
+  creditRoles: CreditRole[];
+  rationale: string;
+  confirmationStatus: "CONFIRMED" | "PENDING" | "DISPUTED";
+  confirmationNote?: string | null;
+  confirmedAt?: string | null;
+}
+
+export interface AccessProvenanceItem {
+  userId: string;
+  name: string;
+  email: string;
+  systemRole: string;
+  projectRole: "OWNER" | "CONTRIBUTOR" | "AUTHOR" | "COPYRIGHT_HOLDER" | "MENTOR" | "VIEWER";
+  documentPermissions: {
+    canViewManuscript: boolean;
+    canEditManuscript: boolean;
+    canComment: boolean;
+    mentorScope?: string | null;
+  };
+  copyrightHolder: boolean;
+}
+
+export interface ProjectIntegrityOverview {
+  projectId: string;
+  projectTitle: string;
+  citations: {
+    totalCount: number;
+    validCount: number;
+    brokenCount: number;
+    mismatchedCount: number;
+    unverifiedCount: number;
+    items: CitationIntegrityItem[];
+  };
+  aiTransparency: {
+    platformRunsCount: number;
+    manualDeclarationsCount: number;
+    unverifiedCount: number;
+    items: AiTransparencyItem[];
+    declarationSummaryMarkdown: string;
+  };
+  contributions: {
+    members: MemberCreditItem[];
+    authors: AuthorshipRegistryItem[];
+    allConfirmed: boolean;
+  };
+  access: {
+    roles: AccessProvenanceItem[];
+    recentEvents: ProjectSecurityEventView[];
+    openDisputesCount: number;
+  };
+  submissionChecklist: {
+    citationsReady: boolean;
+    citationsWarning: string | null;
+    aiDeclarationsReady: boolean;
+    aiWarning: string | null;
+    authorshipReady: boolean;
+    authorshipWarning: string | null;
+    accessReady: boolean;
+    accessWarning: string | null;
+    readyForOfficialSubmission: boolean;
+  };
+}
+
+export interface VerifyCitationInput {
+  citationKey: string;
+  note?: string;
+  action: "VERIFY" | "UNVERIFY";
+}
+
+export interface DeclareExternalAiInput {
+  id?: string;
+  toolName: string;
+  purpose: AiPurpose;
+  purposeDescription: string;
+  affectedScope?: string;
+  humanOversightVerified: boolean;
+  humanOversightNote?: string;
+}
+
+export interface UpdateMemberCreditInput {
+  memberUserId: string;
+  creditRoles: CreditRole[];
+  externalContribution?: string;
+}
+
+export interface ConfirmCreditInput {
+  decision: "CONFIRM" | "DISPUTE";
+  note?: string;
+}
+
+export interface UpdateAuthorshipInput {
+  authors: Array<{
+    userId: string;
+    order: number;
+    isCorresponding: boolean;
+    creditRoles: CreditRole[];
+    rationale?: string;
+  }>;
+  copyrightHolders?: string[];
+}
+
+export interface ConfirmAuthorshipInput {
+  decision: "CONFIRM" | "DISPUTE";
+  note?: string;
+}

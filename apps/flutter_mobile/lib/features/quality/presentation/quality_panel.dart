@@ -167,7 +167,7 @@ class _QualityPanelState extends ConsumerState<QualityPanel> {
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 style: qualityButtonStyle,
-                onPressed: widget.onCreateProject ?? () => context.push('/projects'),
+                onPressed: widget.onCreateProject ?? () => context.go('/projects'),
                 icon: const Icon(Icons.add),
                 label: Text(s.createProject),
               ),

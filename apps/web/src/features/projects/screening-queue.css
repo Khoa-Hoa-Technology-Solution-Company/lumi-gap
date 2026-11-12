@@ -1,0 +1,43 @@
+.screening-queue-container { min-width: 0; }
+.queue-heading { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .75rem; }
+.queue-heading h2 { margin: 0; font-size: 1.25rem; font-weight: 650; line-height: 1.4; }
+.queue-description, .queue-help, .queue-results { color: hsl(var(--muted-foreground)); font-size: .8125rem; line-height: 1.5; }
+.queue-description { margin: .375rem 0 0; }
+.queue-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+.queue-slot-filters { display: flex; flex-wrap: wrap; gap: .375rem; }
+.queue-slot-filters button { display: inline-flex; align-items: center; gap: .5rem; min-height: 2.5rem; padding: .375rem .75rem; border: 1px solid hsl(var(--border)); border-radius: .5rem; background: hsl(var(--background)); font-size: .8125rem; color: hsl(var(--muted-foreground)); }
+.queue-slot-filters button[aria-pressed="true"] { background: hsl(var(--primary) / .08); border-color: hsl(var(--primary) / .5); color: hsl(var(--foreground)); font-weight: 600; }
+.queue-slot-filters button:hover { background: hsl(var(--muted)); }
+.queue-slot-filters button:focus-visible, .queue-help summary:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.queue-slot-filters button > span { font-variant-numeric: tabular-nums; font-size: .75rem; }
+.queue-help { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .25rem 1rem; }
+.queue-help p { margin: 0; }
+.queue-help details { max-width: 65ch; }
+.queue-help summary { cursor: pointer; }
+.queue-help details p { padding-top: .375rem; }
+.screening-queue-container .queue-paper-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: 1rem; }
+.screening-queue-container .screening-paper-card { display: flex; flex-direction: column; }
+.screening-queue-container .screening-paper-card-content { flex: 1; display: grid; align-content: start; gap: .75rem; padding-block: .75rem; }
+.screening-queue-container .screening-paper-card-footer { align-items: flex-end; gap: .875rem; }
+.screening-queue-container .screening-paper-card-tracking { width: 100%; }
+.screening-queue-container .screening-paper-card-progress { width: 100%; justify-content: space-between; }
+.screening-queue-container .screening-paper-card-segments { --screening-progress-color: hsl(var(--primary)); width: 4.5rem; }
+.screening-queue-container .screening-paper-card-actions { margin-inline-start: auto; flex-wrap: wrap; }
+.screening-queue-container .screening-paper-card-actions button { min-height: 2.5rem; }
+.screening-queue-container .screening-paper-card-actions .queue-claim-button { color: hsl(var(--primary-foreground)); }
+.queue-doi { color: hsl(var(--muted-foreground)); font-size: .75rem; overflow-wrap: anywhere; }
+.screening-queue-container .queue-abstract-preview { margin: 0; font-size: .875rem; line-height: 1.6; overflow-wrap: anywhere; }
+.screening-queue-container .queue-proposal-reason { margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-size: .8125rem; }
+.queue-slot-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem .5rem; font-size: .8125rem; }
+.queue-slot-summary strong { font-weight: 500; }
+.queue-slot-summary span { color: hsl(var(--muted-foreground)); }
+.queue-card-skeleton { display: grid; gap: 1rem; padding: 1.25rem; border: 1px solid hsl(var(--border)); border-radius: .75rem; }
+.queue-command-error { margin: 0; padding: .75rem; border: 1px solid hsl(var(--destructive) / .35); border-radius: .5rem; font-size: .875rem; color: hsl(var(--destructive)); }
+.queue-results { margin-bottom: .75rem; }
+.screening-queue-container .queue-empty-state { gap: .75rem; }
+@media (max-width: 479px) {
+  .screening-queue-header > button { width: 100%; }
+  .screening-queue-container .screening-paper-card { padding: 1rem; }
+  .queue-slot-filters { width: 100%; }
+  .queue-slot-filters button { flex: 1; justify-content: center; min-height: 2.75rem; padding-inline: .5rem; font-size: .75rem; }
+}

@@ -25,7 +25,7 @@ export function AssessmentContextFields({
 }) {
   const questions = settings.questionOptions ?? [];
   const isFullText = value.scope === "FULL_TEXT";
-  const isLocked = fixedScope || disabled;
+  const isLocked = disabled;
 
   return (
     <div className="assessment-context">

@@ -9,6 +9,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { I18nProvider } from "@/i18n";
+import { AppErrorBoundary } from "@/components/app-error-boundary";
 import "./theme/globals.css";
 import "./theme/lumi-surface.css";
 
@@ -31,6 +32,7 @@ if (!root) throw new Error("Missing #root element");
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
+    <AppErrorBoundary>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider delayDuration={150}>
@@ -61,5 +63,6 @@ ReactDOM.createRoot(root).render(
         ) : null}
       </QueryClientProvider>
     </ThemeProvider>
+    </AppErrorBoundary>
   </React.StrictMode>,
 );

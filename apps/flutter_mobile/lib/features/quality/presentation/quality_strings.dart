@@ -1,12 +1,12 @@
-import 'dart:ui' as ui;
-
+import 'package:flutter_mobile/core/i18n/locale_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// The app has no localization framework yet, so the quality feature carries its own
-/// vi/en pairs. The language follows the device locale (Vietnamese -> "vi", else "en")
-/// and is also what is sent to the backend as the evaluation language.
+/// The quality feature carries its own vi/en pairs (its wording is shared with
+/// the backend rubric, so each pair stays together). The language is the app
+/// language chosen in Profile and is also what is sent to the backend as the
+/// evaluation language.
 final qualityLanguageProvider = Provider<String>((ref) {
-  return ui.PlatformDispatcher.instance.locale.languageCode == 'vi' ? 'vi' : 'en';
+  return ref.watch(appLocaleProvider).code;
 });
 
 final qualityStringsProvider = Provider<Qs>((ref) => Qs(ref.watch(qualityLanguageProvider)));

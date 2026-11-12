@@ -1,0 +1,53 @@
+// An application grants no mentorship or project-resource access.
+model MentorshipApplication {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  lecturerId String @map("lecturer_id") @db.Uuid
+  mentorRole String @default("PRIMARY") @map("mentor_role") @db.VarChar(16)
+  message String @db.VarChar(2000)
+  areas String[] @default([])
+  methodologies String[] @default([])
+  capabilities String[] @default([])
+  availability String @db.VarChar(1000)
+  status String @default("APPLIED") @db.VarChar(24)
+  version Int @default(1)
+  submissionKey String @map("submission_key") @db.Uuid
+  submissionHash String @map("submission_hash") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([projectId, lecturerId])
+  @@unique([lecturerId, submissionKey])
+  @@unique([id, projectId])
+  @@unique([id, projectId, lecturerId])
+  @@index([projectId, status, createdAt])
+  @@index([lecturerId, updatedAt])
+  @@map("mentorship_applications")
+}
+
+model MentorshipApplicationEvent {
+  id String @id @default(uuid()) @db.Uuid
+  applicationId String @map("application_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  type String @db.VarChar(32)
+  clientKey String? @map("client_key") @db.Uuid
+  commandHash String? @map("command_hash") @db.VarChar(64)
+  details Json @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([applicationId, createdAt])
+  @@index([actorId, type, createdAt])
+  @@unique([actorId, clientKey])
+  @@map("mentorship_application_events")
+}
+
+// A bounded private clarification thread; never a project chat membership.
+model MentorshipApplicationNote {
+  id String @id @default(uuid()) @db.Uuid
+  applicationId String @map("application_id") @db.Uuid
+  authorId String @map("author_id") @db.Uuid
+  body String @db.VarChar(2000)
+  clientKey String @map("client_key") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([applicationId, authorId, clientKey])
+  @@index([applicationId, createdAt])
+  @@map("mentorship_application_notes")
+}

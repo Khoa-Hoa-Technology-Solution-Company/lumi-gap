@@ -1,6 +1,8 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
@@ -51,8 +53,8 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
   Future<void> _submitRating() async {
     if (rating < 1) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select 1-5 stars before submitting.'),
+        SnackBar(
+          content: Text(context.t('Please select 1-5 stars before submitting.')),
         ),
       );
       return;
@@ -71,13 +73,13 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
       ref.invalidate(qualityViewProvider(target));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Review submitted successfully.')),
+          SnackBar(content: Text(context.t('Review submitted successfully.'))),
         );
       }
     } on Exception catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to submit review: $e')),
+          SnackBar(content: Text(context.t('Failed to submit review: {{e}}', {'e': e}))),
         );
       }
     }
@@ -89,17 +91,17 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete review'),
-        content: const Text('Remove your review for this paper?'),
+        title: Text(context.t('Delete review')),
+        content: Text(context.t('Remove your review for this paper?')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(context.t('Cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
+            child: Text(context.t('Delete')),
           ),
         ],
       ),
@@ -138,7 +140,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Add to project',
+                            context.t('Add to project'),
                             style: theme.textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.bold,
                             ),
@@ -161,10 +163,10 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                                 child: OutlinedButton(
                                   onPressed: () {
                                     Navigator.pop(context);
-                                    unawaited(context.push('/projects'));
+                                    context.go('/projects');
                                   },
-                                  child: const Text(
-                                    'Create your first project',
+                                  child: Text(
+                                    context.t('Create your first project'),
                                   ),
                                 ),
                               ),
@@ -196,7 +198,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   subtitle: Text(
-                                    '${project.papers.length} papers',
+                                    context.plural(project.papers.length, one: '{{count}} paper', other: '{{count}} papers'),
                                   ),
                                   trailing: const Icon(
                                     Icons.add,
@@ -213,9 +215,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                                         ScaffoldMessenger.of(
                                           context,
                                         ).showSnackBar(
-                                          const SnackBar(
+                                          SnackBar(
                                             content: Text(
-                                              'Added paper to project',
+                                              context.t('Added paper to project'),
                                             ),
                                           ),
                                         );
@@ -226,7 +228,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                                           context,
                                         ).showSnackBar(
                                           SnackBar(
-                                            content: Text('Failed to add: $e'),
+                                            content: Text(context.t('Failed to add: {{e}}', {'e': e})),
                                           ),
                                         );
                                       }
@@ -239,7 +241,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                         },
                         loading: () =>
                             const Center(child: CircularProgressIndicator()),
-                        error: (e, _) => Text('Error loading projects: $e'),
+                        error: (e, _) => Text(context.t('Error loading projects: {{e}}', {'e': e})),
                       ),
                     ],
                   ),
@@ -288,9 +290,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
           icon: const Icon(Icons.chevron_left, size: 28),
           onPressed: () => context.pop(),
         ),
-        title: const Text(
-          'Paper Detail',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          context.t('Paper Detail'),
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
@@ -303,7 +305,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
               await Clipboard.setData(ClipboardData(text: link));
               if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Paper link copied to clipboard')),
+                SnackBar(content: Text(context.t('Paper link copied to clipboard'))),
               );
             },
           ),
@@ -387,9 +389,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                         size: 16,
                         color: Color(0xFF0F1B2D),
                       ),
-                      label: const Text(
-                        'Open full text',
-                        style: TextStyle(
+                      label: Text(
+                        context.t('Open full text'),
+                        style: const TextStyle(
                           color: Color(0xFF0F1B2D),
                           fontWeight: FontWeight.bold,
                         ),
@@ -409,7 +411,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
           );
         },
         loading: () =>
-            const AppLoading(fullScreen: true, message: 'Loading paper...'),
+            AppLoading(fullScreen: true, message: context.t('Loading paper...')),
         error: (error, _) => AppErrorState(message: error.toString()),
       ),
     );
@@ -444,7 +446,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              '${paper.journalName != null ? "${paper.journalName} · " : ""}${paper.publicationYear}',
+              paper.journalName != null ? '${paper.journalName} · ${paper.publicationYear}' : '${paper.publicationYear}',
               style: const TextStyle(
                 color: Color(0xFF06B6D4),
                 fontWeight: FontWeight.bold,
@@ -466,7 +468,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    '${paper.citationCount} Citations',
+                    context.plural(paper.citationCount, one: '{{count}} Citation', other: '{{count}} Citations'),
                     style: const TextStyle(
                       color: Color(0xFFA5B4FC),
                       fontSize: 10,
@@ -484,18 +486,18 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                       color: const Color(0xFF064E3B),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.auto_awesome,
                           color: Color(0xFF34D399),
                           size: 10,
                         ),
-                        SizedBox(width: 4),
+                        const SizedBox(width: 4),
                         Text(
-                          'AI Analyzable',
-                          style: TextStyle(
+                          context.t('AI Analyzable'),
+                          style: const TextStyle(
                             color: Color(0xFF34D399),
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
@@ -514,18 +516,18 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                       color: const Color(0xFF451A03),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.lock_open,
                           color: Color(0xFFFBBF24),
                           size: 10,
                         ),
-                        SizedBox(width: 4),
+                        const SizedBox(width: 4),
                         Text(
-                          'Open Access',
-                          style: TextStyle(
+                          context.t('Open Access'),
+                          style: const TextStyle(
                             color: Color(0xFFFBBF24),
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
@@ -537,9 +539,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            const Text(
-              'AUTHORS',
-              style: TextStyle(
+            Text(
+              context.t('AUTHORS'),
+              style: const TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF94A3B8),
@@ -595,9 +597,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'All Authors',
-                                  style: TextStyle(
+                                Text(
+                                  context.t('All Authors'),
+                                  style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -614,7 +616,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                                         paper.authors[idx].displayName,
                                       ),
                                       subtitle: Text(
-                                        'Author Position: ${paper.authors[idx].position}',
+                                        context.t('Author Position: {{position}}', {'position': paper.authors[idx].position}),
                                       ),
                                     ),
                                   ),
@@ -626,7 +628,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                       );
                     },
                     child: Text(
-                      'View all (${paper.authors.length})',
+                      context.t('View all ({{length}})', {'length': paper.authors.length}),
                       style: const TextStyle(
                         color: Color(0xFF06B6D4),
                         fontSize: 11,
@@ -662,53 +664,55 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
         children: [
           _ActionButton(
             icon: Icons.bookmark,
-            label: isBookmarked ? 'Saved' : 'Save',
+            label: isBookmarked ? context.t('Saved') : context.t('Save'),
             active: isBookmarked,
             onTap: () => _toggleBookmark(isBookmarked, bookmarkId),
             isDark: isDark,
           ),
           _ActionButton(
             icon: Icons.add_box,
-            label: 'Add to Project',
+            label: context.t('Add to Project'),
             onTap: () => _openProjectPicker(context),
             isDark: isDark,
           ),
           _ActionButton(
             icon: Icons.format_quote,
-            label: 'Cite Paper',
+            label: context.t('Cite Paper'),
             onTap: () {
               unawaited(
                 showDialog<void>(
                   context: context,
                   builder: (context) => AlertDialog(
-                    title: const Text('Cite Publication'),
+                    title: Text(context.t('Cite Publication')),
                     content: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'APA Style:',
-                          style: TextStyle(
+                        Text(
+                          context.t('APA Style:'),
+                          style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
                           ),
                         ),
                         const SizedBox(height: 4),
                         SelectableText(
-                          '${paper.authors.isNotEmpty ? paper.authors.first.displayName : "Unknown"} et al. (${paper.publicationYear}). ${paper.title}. ${paper.journalName ?? ""}.',
+                          // i18n-ignore: APA/MLA citation format
+                          '${paper.authors.isNotEmpty ? paper.authors.first.displayName : context.t("Unknown")} et al. (${paper.publicationYear}). ${paper.title}. ${paper.journalName ?? ""}.',
                           style: const TextStyle(fontSize: 12),
                         ),
                         const Divider(height: 24),
-                        const Text(
-                          'MLA Style:',
-                          style: TextStyle(
+                        Text(
+                          context.t('MLA Style:'),
+                          style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
                           ),
                         ),
                         const SizedBox(height: 4),
                         SelectableText(
-                          '${paper.authors.isNotEmpty ? paper.authors.first.displayName : "Unknown"}, et al. "${paper.title}." ${paper.journalName ?? "N/A"}, ${paper.publicationYear}.',
+                          // i18n-ignore: APA/MLA citation format
+                          '${paper.authors.isNotEmpty ? paper.authors.first.displayName : context.t("Unknown")}, et al. "${paper.title}." ${paper.journalName ?? "N/A"}, ${paper.publicationYear}.',
                           style: const TextStyle(fontSize: 12),
                         ),
                       ],
@@ -716,7 +720,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text('Close'),
+                        child: Text(context.t('Close')),
                       ),
                     ],
                   ),
@@ -727,7 +731,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
           ),
           _ActionButton(
             icon: Icons.picture_as_pdf,
-            label: 'PDF Link',
+            label: context.t('PDF Link'),
             disabled: paper.openAccessUrl == null,
             onTap: paper.openAccessUrl == null
                 ? null
@@ -747,16 +751,16 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
     return ExpansionTile(
       initiallyExpanded: true,
       leading: const Icon(Icons.subject, color: Color(0xFF06B6D4)),
-      title: const Text(
-        'Abstract & Description',
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      title: Text(
+        context.t('Abstract & Description'),
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
       ),
       children: [
         Padding(
           padding: const EdgeInsets.all(12),
           child: Text(
             paper.abstractText ??
-                'No abstract description available for this publication.',
+                context.t('No abstract description available for this publication.'),
             style: TextStyle(
               color: theme.colorScheme.onSurfaceVariant,
               fontSize: 13,
@@ -776,9 +780,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
   ) {
     return ExpansionTile(
       leading: const Icon(Icons.image_outlined, color: Color(0xFF22C55E)),
-      title: const Text(
-        'Figures & Scientific Media',
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      title: Text(
+        context.t('Figures & Scientific Media'),
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
       ),
       children: [
         Padding(
@@ -793,13 +797,13 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
             children: [
               _buildMockMediaItem(
                 context,
-                'Methodology Flowchart',
+                context.t('Methodology Flowchart'),
                 Icons.account_tree_outlined,
                 const Color(0xFF06B6D4),
               ),
               _buildMockMediaItem(
                 context,
-                'Statistical Performance',
+                context.t('Statistical Performance'),
                 Icons.bar_chart_outlined,
                 const Color(0xFF22C55E),
               ),
@@ -854,16 +858,16 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
       (t) => t.isPrimary == true,
       orElse: () => paper.topics.isNotEmpty
           ? paper.topics.first
-          : const PaperTopic(topicName: 'Unknown'),
+          : PaperTopic(topicName: context.t('Unknown')),
     );
     final hasTaxonomy = paper.topics.isNotEmpty;
 
     return ExpansionTile(
       initiallyExpanded: true,
       leading: const Icon(Icons.category_outlined, color: Color(0xFFA78BFA)),
-      title: const Text(
-        'OpenAlex Taxonomy Scope',
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      title: Text(
+        context.t('OpenAlex Taxonomy Scope'),
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
       ),
       children: [
         Padding(
@@ -872,31 +876,31 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (!hasTaxonomy)
-                const Text(
-                  'No taxonomy scope metadata found.',
-                  style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
+                Text(
+                  context.t('No taxonomy scope metadata found.'),
+                  style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
                 )
               else ...[
                 _buildTaxonomyRow(
-                  'Domain',
+                  context.t('Domain'),
                   primaryTopic.domainName ?? 'N/A',
                   const Color(0xFF3B82F6),
                 ),
                 const SizedBox(height: 8),
                 _buildTaxonomyRow(
-                  'Field',
+                  context.t('Field'),
                   primaryTopic.fieldName ?? 'N/A',
                   const Color(0xFF10B981),
                 ),
                 const SizedBox(height: 8),
                 _buildTaxonomyRow(
-                  'Subfield',
+                  context.t('Subfield'),
                   primaryTopic.subfieldName ?? 'N/A',
                   const Color(0xFFF59E0B),
                 ),
                 const SizedBox(height: 8),
                 _buildTaxonomyRow(
-                  'Topic',
+                  context.t('Topic'),
                   primaryTopic.topicName,
                   const Color(0xFF8B5CF6),
                 ),
@@ -950,9 +954,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
     return ExpansionTile(
       initiallyExpanded: true,
       leading: const Icon(Icons.analytics_outlined, color: Color(0xFFF59E0B)),
-      title: const Text(
-        'Analytical Insights & Critique',
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      title: Text(
+        context.t('Analytical Insights & Critique'),
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
       ),
       children: [
         Padding(
@@ -980,7 +984,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'RAG Grounding Suitability: ${(paper.dataQualityScore * 100).round()}%',
+                        context.t('RAG Grounding Suitability: {{percent}}%', {'percent': (paper.dataQualityScore * 100).round()}),
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
@@ -1015,15 +1019,15 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Workspace Reviews',
-                            style: TextStyle(
+                          Text(
+                            context.t('Workspace Reviews'),
+                            style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
                           ),
                           Text(
-                            '${view.ratingCount} ratings · ${view.ratingAvg.toStringAsFixed(1)} avg',
+                            context.t('{{ratingCount}} ratings · {{average}} avg', {'ratingCount': view.ratingCount, 'average': view.ratingAvg.toStringAsFixed(1)}),
                             style: const TextStyle(
                               fontSize: 11,
                               color: Color(0xFF94A3B8),
@@ -1052,7 +1056,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                         controller: commentController,
                         maxLines: 2,
                         decoration: InputDecoration(
-                          hintText: 'Add review notes...',
+                          hintText: context.t('Add review notes...'),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -1064,9 +1068,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                         width: double.infinity,
                         child: ElevatedButton(
                           onPressed: rating == 0 ? null : _submitRating,
-                          child: const Text(
-                            'Submit Review',
-                            style: TextStyle(
+                          child: Text(
+                            context.t('Submit Review'),
+                            style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
                             ),
@@ -1078,7 +1082,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Text(
-                  'Error loading quality: $e',
+                  context.t('Error loading quality: {{e}}', {'e': e}),
                   style: const TextStyle(color: Colors.red),
                 ),
               ),
@@ -1098,9 +1102,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
     return ExpansionTile(
       initiallyExpanded: true,
       leading: const Icon(Icons.chat_bubble_outline, color: Color(0xFF8B5CF6)),
-      title: const Text(
-        'Workspace Interactive Chat',
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      title: Text(
+        context.t('Workspace Interactive Chat'),
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
       ),
       children: [
         Padding(
@@ -1120,13 +1124,13 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                   size: 24,
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Ground Grounding Assistant',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                Text(
+                  context.t('Ground Grounding Assistant'),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Add this paper to a project workspace workspace to start asking questions, writing papers, and detecting research gaps.',
+                  context.t('Add this paper to a project workspace workspace to start asking questions, writing papers, and detecting research gaps.'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 11,
@@ -1144,9 +1148,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                   ),
                   onPressed: () => _openProjectPicker(context),
                   icon: const Icon(Icons.add, color: Colors.white, size: 16),
-                  label: const Text(
-                    'Add to Project Workspace',
-                    style: TextStyle(
+                  label: Text(
+                    context.t('Add to Project Workspace'),
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
@@ -1224,13 +1228,13 @@ class _ReferencesTabContent extends ConsumerWidget {
     return query.when(
       data: (data) {
         if (data.references.isEmpty) {
-          return const Text('No in-library references found yet.');
+          return Text(context.t('No in-library references found yet.'));
         }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Showing ${data.inCorpus} of ${data.totalReferenced} cited works found in this library.',
+              context.t('Showing {{inCorpus}} of {{totalReferenced}} cited works found in this library.', {'inCorpus': data.inCorpus, 'totalReferenced': data.totalReferenced}),
               style: TextStyle(
                 color: theme.colorScheme.onSurfaceVariant,
                 fontSize: 12,
@@ -1296,7 +1300,7 @@ class _ReferencesTabContent extends ConsumerWidget {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'DOI: ${reference.doi}',
+                                  context.t('DOI: {{doi}}', {'doi': reference.doi}),
                                   style: TextStyle(
                                     color: theme.colorScheme.onSurfaceVariant,
                                     fontSize: 11,
@@ -1317,7 +1321,7 @@ class _ReferencesTabContent extends ConsumerWidget {
           ],
         );
       },
-      loading: () => const AppLoading(message: 'Loading references...'),
+      loading: () => AppLoading(message: context.t('Loading references...')),
       error: (error, _) => AppErrorState(message: error.toString()),
     );
   }
@@ -1371,7 +1375,7 @@ class OpenAlexMetadataCard extends StatelessWidget {
       (t) => t.isPrimary == true,
       orElse: () => paper.topics.isNotEmpty
           ? paper.topics.first
-          : const PaperTopic(topicName: 'Unknown'),
+          : PaperTopic(topicName: context.t('Unknown')),
     );
     final hasTaxonomy = paper.topics.isNotEmpty;
 
@@ -1385,47 +1389,47 @@ class OpenAlexMetadataCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.shield, color: Color(0xFF06B6D4), size: 16),
-              SizedBox(width: 8),
+              const Icon(Icons.shield, color: Color(0xFF06B6D4), size: 16),
+              const SizedBox(width: 8),
               Text(
-                'OpenAlex Metadata',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                context.t('OpenAlex Metadata'),
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
               ),
             ],
           ),
           const Divider(height: 20),
-          _buildMetaRow('Year', paper.publicationYear.toString(), isDark),
-          _buildMetaRow('Type', paper.paperKind ?? 'Not available', isDark),
-          _buildMetaRow('Source', paper.journalName ?? 'Not available', isDark),
-          _buildMetaRow('Language', paper.language ?? 'Not available', isDark),
-          _buildMetaRow('Cited by', paper.citationCount.toString(), isDark),
+          _buildMetaRow(context.t('Year'), paper.publicationYear.toString(), isDark),
+          _buildMetaRow(context.t('Type'), paper.paperKind ?? context.t('Not available'), isDark),
+          _buildMetaRow(context.t('Source'), paper.journalName ?? context.t('Not available'), isDark),
+          _buildMetaRow(context.t('Language'), paper.language ?? context.t('Not available'), isDark),
+          _buildMetaRow(context.t('Cited by'), paper.citationCount.toString(), isDark),
           if (paper.fwci != null)
             _buildMetaRow('FWCI', paper.fwci!.toStringAsFixed(2), isDark),
           if (paper.relatedWorksCount != null)
             _buildMetaRow(
-              'Related works',
+              context.t('Related works'),
               paper.relatedWorksCount.toString(),
               isDark,
             ),
           if (paper.primaryProvider != null)
-            _buildMetaRow('Provider', paper.primaryProvider!, isDark),
+            _buildMetaRow(context.t('Provider'), paper.primaryProvider!, isDark),
           if (paper.openAccessStatus != null)
             _buildMetaRow(
-              'Open Access',
+              context.t('Open Access'),
               paper.openAccessStatus!.toUpperCase(),
               isDark,
             ),
           if (paper.externalIds.doi != null)
             _buildMetaRow('DOI', paper.externalIds.doi!, isDark),
           if (paper.paperLink != null)
-            _buildMetaRow('Link', paper.paperLink!, isDark),
+            _buildMetaRow(context.t('Link'), paper.paperLink!, isDark),
 
           const Divider(height: 20),
-          const Text(
-            'TAXONOMY SCOPE',
-            style: TextStyle(
+          Text(
+            context.t('TAXONOMY SCOPE'),
+            style: const TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.bold,
               color: Color(0xFF94A3B8),
@@ -1433,22 +1437,22 @@ class OpenAlexMetadataCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           if (!hasTaxonomy)
-            const Text(
-              'OpenAlex taxonomy metadata is not backfilled yet for this publication.',
-              style: TextStyle(
+            Text(
+              context.t('OpenAlex taxonomy metadata is not backfilled yet for this publication.'),
+              style: const TextStyle(
                 fontSize: 12,
                 fontStyle: FontStyle.italic,
                 color: Color(0xFFEF4444),
               ),
             )
           else ...[
-            _buildMetaRow('Topic', primaryTopic.topicName, isDark),
+            _buildMetaRow(context.t('Topic'), primaryTopic.topicName, isDark),
             if (primaryTopic.subfieldName != null)
-              _buildMetaRow('Subfield', primaryTopic.subfieldName!, isDark),
+              _buildMetaRow(context.t('Subfield'), primaryTopic.subfieldName!, isDark),
             if (primaryTopic.fieldName != null)
-              _buildMetaRow('Field', primaryTopic.fieldName!, isDark),
+              _buildMetaRow(context.t('Field'), primaryTopic.fieldName!, isDark),
             if (primaryTopic.domainName != null)
-              _buildMetaRow('Domain', primaryTopic.domainName!, isDark),
+              _buildMetaRow(context.t('Domain'), primaryTopic.domainName!, isDark),
           ],
         ],
       ),

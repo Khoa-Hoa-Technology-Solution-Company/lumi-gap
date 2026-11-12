@@ -243,7 +243,7 @@ export const workspaceCoordinationVi = {
   "Discussion views": "Chế độ xem thảo luận",
   "Threads": "Chủ đề thảo luận",
   "Decision log": "Nhật ký quyết định",
-  "Team chat & AI": "Trò chuyện nhóm và AI",
+  "Team chat & AI": "Trò chuyện nhóm",
   "Talk with your team, explore with AI and keep research decisions together.": "Trao đổi cùng nhóm, khám phá với AI và lưu lại các quyết định nghiên cứu.",
   "Back to chat": "Về trò chuyện",
   "Define the problem, set objectives and refine your research questions.": "Xác định vấn đề, đặt mục tiêu và phát triển câu hỏi nghiên cứu.",

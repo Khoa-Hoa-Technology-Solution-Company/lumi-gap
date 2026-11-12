@@ -15,7 +15,7 @@ export const projectSections: Array<{
   { key: "papers", label: "Literature", group: "Research", icon: BookOpen, iconColor: "text-indigo-500" },
   { key: "gaps", label: "Research Gaps", group: "Research", icon: Compass, iconColor: "text-amber-500" },
   { key: "tasks", label: "Tasks & milestones", group: "Collaboration", icon: ListChecks, iconColor: "text-emerald-500" },
-  { key: "chat", label: "Team chat & AI", group: "Collaboration", icon: MessageSquare, iconColor: "text-cyan-500" },
+  { key: "chat", label: "Team Chat", group: "Collaboration", icon: MessageSquare, iconColor: "text-cyan-500" },
   { key: "support", label: "Find Mentors", group: "Collaboration", icon: GraduationCap, iconColor: "text-purple-500" },
   { key: "manuscripts", label: "Manuscripts", group: "Writing & review", icon: FileText, iconColor: "text-indigo-500" },
   { key: "submissions", label: "Submissions", group: "Writing & review", icon: Send, iconColor: "text-teal-500" },
@@ -31,18 +31,19 @@ export function resolveProjectTab(value: string | null): ProjectTab {
 
 const groups = ["Workspace", "Research", "Collaboration", "Writing & review", "Team"];
 
-export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount, loading = false }: {
-  activeTab: ProjectTab; onChange: (tab: ProjectTab) => void; paperCount: number; memberCount: number; loading?: boolean;
+export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount, loading = false, allowedTabs }: {
+  activeTab: ProjectTab; onChange: (tab: ProjectTab) => void; paperCount: number; memberCount: number; loading?: boolean; allowedTabs?: readonly ProjectTab[];
 }) {
   const { t } = useI18n();
   const nav = useRef<HTMLElement>(null);
+  const sections = projectSections.filter(section => !allowedTabs || allowedTabs.includes(section.key));
 
   const keyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    const last = projectSections.length - 1;
-    const next = event.key === "ArrowDown" || event.key === "ArrowRight" ? (index + 1) % projectSections.length : event.key === "ArrowUp" || event.key === "ArrowLeft" ? (index + last) % projectSections.length : event.key === "Home" ? 0 : event.key === "End" ? last : -1;
+    const last = sections.length - 1;
+    const next = event.key === "ArrowDown" || event.key === "ArrowRight" ? (index + 1) % sections.length : event.key === "ArrowUp" || event.key === "ArrowLeft" ? (index + last) % sections.length : event.key === "Home" ? 0 : event.key === "End" ? last : -1;
     if (next < 0) return;
     event.preventDefault();
-    const section = projectSections[next]!;
+    const section = sections[next]!;
     onChange(section.key);
     const selected = nav.current?.querySelector<HTMLButtonElement>(`#project-tab-${section.key}`);
     selected?.focus({ preventScroll: true });
@@ -60,9 +61,9 @@ export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount
           disabled={loading}
           onChange={e => onChange(e.target.value as ProjectTab)}
         >
-          {groups.map(group => (
+          {groups.filter(group => sections.some(section => section.group === group)).map(group => (
             <optgroup key={group} label={t(group)}>
-              {projectSections.filter(section => section.group === group).map(section => (
+              {sections.filter(section => section.group === group).map(section => (
                 <option key={section.key} value={section.key}>{t(section.label)}</option>
               ))}
             </optgroup>
@@ -71,10 +72,10 @@ export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount
       </div>
 
       <div className="coord-nav-tabs" role="tablist" aria-label={t("Project sections")} aria-orientation="vertical">
-        {groups.map(group => (
+        {groups.filter(group => sections.some(section => section.group === group)).map(group => (
           <div className="coord-nav-group" role="presentation" key={group}>
             {group !== "Workspace" && <span className="coord-nav-label" aria-hidden="true">{t(group)}</span>}
-            {projectSections.filter(section => section.group === group).map(section => {
+            {sections.filter(section => section.group === group).map(section => {
               const count = section.key === "papers" ? paperCount : section.key === "members" ? memberCount : undefined;
               const Icon = section.icon;
               const isSelected = activeTab === section.key;
@@ -86,9 +87,10 @@ export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount
                   id={`project-tab-${section.key}`}
                   role="tab"
                   aria-selected={isSelected}
+                  aria-current={isSelected ? "page" : undefined}
                   aria-controls={`project-panel-${section.key}`}
                   tabIndex={isSelected ? 0 : -1}
-                  onKeyDown={e => keyDown(e, projectSections.indexOf(section))}
+                  onKeyDown={e => keyDown(e, sections.indexOf(section))}
                   onClick={() => onChange(section.key)}
                 >
                   <Icon className={`h-[18px] w-[18px] shrink-0 transition-colors ${isSelected ? "text-primary" : section.iconColor}`} />

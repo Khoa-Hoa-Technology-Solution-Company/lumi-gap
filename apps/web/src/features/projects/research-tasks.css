@@ -191,3 +191,9 @@
 .milestone-dialog-form .coord-form-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .milestone-dialog-form .coord-form-actions { justify-content: flex-end; gap: 8px; }
 @media (max-width: 400px) { .milestone-dialog-form .coord-form-pair { grid-template-columns: 1fr; } }
+.task-screening-kind { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; line-height: 1.5; color: var(--task-muted); }
+.task-screening-card > .task-card-footer { margin-bottom: 9px; flex-wrap: wrap; }
+.task-screening-card > a:last-child { width: 100%; justify-content: space-between; white-space: normal; height: auto; min-height: 32px; text-align: left; font-size: 12px; }
+.task-screening-card :is(a,button):focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
+
+.task-screening-card .task-card-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; padding-bottom: 0; margin-bottom: 7px; }

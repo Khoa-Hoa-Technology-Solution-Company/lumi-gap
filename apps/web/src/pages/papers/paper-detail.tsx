@@ -550,14 +550,30 @@ export function PaperDetailPage() {
                 )}
 
                 {currentUser && (
-                  <AddToProjectDropdown paperId={id!}>
-                    <Button
-                      variant="outline"
-                      className="h-11 px-4 gap-2 font-bold rounded-xl text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700 min-h-[44px]"
-                    >
-                      <FolderPlus className="w-4 h-4" />
-                      Add to Project
-                    </Button>
+                  <AddToProjectDropdown paperId={id!} paper={paper}>
+                    {({ isAdded, addedCount }) => (
+                      <Button
+                        variant="outline"
+                        className={`h-11 px-4 gap-2 font-bold rounded-xl min-h-[44px] transition-colors ${
+                          isAdded
+                            ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                            : "text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700"
+                        }`}
+                      >
+                        {isAdded ? (
+                          <>
+                            <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                            {t("Đã thêm") || "Đã thêm"}
+                            {addedCount > 1 && ` (${addedCount})`}
+                          </>
+                        ) : (
+                          <>
+                            <FolderPlus className="w-4 h-4" />
+                            {t("Add to Project") || "Thêm vào dự án"}
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </AddToProjectDropdown>
                 )}
 

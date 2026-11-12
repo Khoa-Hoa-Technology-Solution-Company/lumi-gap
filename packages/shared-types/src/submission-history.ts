@@ -25,14 +25,25 @@ export interface ResearchVersion {
   checksumSha256: string | null;
   sizeBytes: number;
   sourceRevisionId: string | null;
+  manuscriptSnapshotId?: string | null;
   responseToReview: string | null;
   createdAt: string;
   hasPdf: boolean;
   reviews: SubmittedVersionReview[];
 }
 
+export interface AssignedMentor {
+  id: string;
+  fullName: string;
+  email: string;
+  avatarUrl?: string | null;
+  role: string;
+}
+
 export interface SubmissionHistory {
   canManage: boolean;
+  canProvideFeedback?: boolean;
+  assignedMentor?: AssignedMentor | null;
   canRunAiPreReview?: boolean;
   canRequestReview?: boolean;
   reviewRequests?: Array<{

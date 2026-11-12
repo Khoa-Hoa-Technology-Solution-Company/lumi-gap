@@ -1,10 +1,15 @@
-import { classifyScreeningPair } from "../screening.calculator.js";
+import { classifyScreeningPair, automaticFullTextStage } from "../screening.calculator.js";
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { balancedReviewers, cohenKappa, screeningConsensus } from "../screening.calculator.js";
 import { screeningAssignSchema, screeningConfigSchema, screeningSubmitSchema, screeningActionSchema, screeningResolveSchema } from "../dto/screening.schema.js";
 import type { ScreeningChoice } from "@trend/shared-types";
 describe("screening consensus and agreement", () => {
+  it("completes current screening in one round while retaining old explicit stage protocols", () => {
+    const settings = { reviewMode: "INDEPENDENT" as const, stages: ["TITLE_ABSTRACT", "FULL_TEXT"] as const };
+    for (const workflowVersion of [5, 6, 7, 8, 9, 10]) expect(automaticFullTextStage({ ...settings, stages: [...settings.stages], workflowVersion })).toBe(false);
+    expect(automaticFullTextStage({ ...settings, stages: [...settings.stages], workflowVersion: 3 })).toBe(true);
+  });
   it.each<[ScreeningChoice, ScreeningChoice, string]>([
     ["INCLUDE", "INCLUDE", "INCLUDED"], ["EXCLUDE", "EXCLUDE", "EXCLUDED"], ["INCLUDE", "EXCLUDE", "NEEDS_RESOLUTION"],
     ["EXCLUDE", "INCLUDE", "NEEDS_RESOLUTION"], ["INCLUDE", "UNSURE", "NEEDS_RESOLUTION"], ["UNSURE", "INCLUDE", "NEEDS_RESOLUTION"],

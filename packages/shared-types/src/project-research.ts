@@ -2,6 +2,7 @@ import type { WorkspacePage, WorkspacePerson } from "./project-workspace.js";
 import type { ProjectScreeningStatus } from "./project.js";
 import type { PaperAiAnalysis } from "./paper.js";
 import type { PaperKnowledge } from "./knowledge.js";
+import type { FeasibilitySummary } from "./project-literature.js";
 export interface ProjectPaperAnalysis { paperId: string; title: string; screeningStatus: ProjectScreeningStatus; analysis: PaperAiAnalysis | null; knowledge: PaperKnowledge }
 
 export type ScreeningPhase = "TITLE_ABSTRACT" | "FULL_TEXT";
@@ -13,6 +14,8 @@ export type GapAssessment = "PROPOSED" | "IN_REVIEW" | "NEEDS_MORE_EVIDENCE" | "
 export interface EvidenceContent {
   claim: string; quotation: string; locator: string; context: string; methodology: string;
   population: string; results: string; limitations: string; themes: string[];
+  /** Values of the project's custom literature-matrix criteria, keyed by criterion id. */
+  criteriaValues?: Record<string, string>;
 }
 export interface ProjectEvidence extends EvidenceContent {
   id: string; projectId: string; paperId: string; version: number; origin: "HUMAN" | "AI_SUGGESTED";
@@ -87,5 +90,9 @@ export interface GapResearchView {
     evidenceItemId: string | null; evidenceRevisionId: string | null; sourceTitle: string; reviewed: boolean; sourceChanged: boolean;
     evidenceVersion?: number; reviewState?: EvidenceReviewState; discovery?: boolean; claim?: string; methodology?: string; limitations?: string }>;
   questions: Array<{ id: string; text: string; sourceGapVersion?: number }>;
+  /** Team feasibility of this candidate; recording team support needs at least one assessment that is not NOT_FEASIBLE. */
+  feasibility?: FeasibilitySummary;
+  /** Limitations promoted into this candidate. */
+  limitations?: Array<{ id: string; statement: string; paperCount: number }>;
   history: Array<{ id: string; version: number; actorId: string | null; createdAt: string; snapshot: Record<string, unknown> }>;
 }

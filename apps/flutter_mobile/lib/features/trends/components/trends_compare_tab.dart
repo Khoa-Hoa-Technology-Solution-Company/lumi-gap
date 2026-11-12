@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/utils/number_format.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -115,9 +116,9 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Recommended Comparisons',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8)),
+        Text(
+          context.t('Recommended Comparisons'),
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8)),
         ),
         const SizedBox(height: 10),
         SizedBox(
@@ -172,7 +173,7 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                         ),
                         onPressed: () => _useComparison(rec.topics),
-                        child: const Text('Compare', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                        child: Text(context.t('Compare'), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -196,7 +197,7 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('SELECTED TOPICS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8))),
+          Text(context.t('SELECTED TOPICS'), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8))),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -240,7 +241,7 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
       children: [
         TextField(
           decoration: InputDecoration(
-            hintText: 'Search topics in current scope...',
+            hintText: context.t('Search topics in current scope...'),
             prefixIcon: const Icon(Icons.search, size: 16),
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -275,7 +276,7 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                               _selectedTopics.add(t.topic);
                             } else {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Compare up to 5 topics at once to keep the chart readable.')),
+                                SnackBar(content: Text(context.t('Compare up to 5 topics at once to keep the chart readable.'))),
                               );
                             }
                           } else {
@@ -337,11 +338,11 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
 
     var explanation = '';
     if (_metricMode == 'papers') {
-      explanation = 'What this shows: Shows how many papers were published each year. Use this to compare research activity.';
+      explanation = context.t('What this shows: Shows how many papers were published each year. Use this to compare research activity.');
     } else if (_metricMode == 'citations') {
-      explanation = 'What this shows: Shows accumulated citation volume. Older topics may look stronger because they had more time to collect citations.';
+      explanation = context.t('What this shows: Shows accumulated citation volume. Older topics may look stronger because they had more time to collect citations.');
     } else {
-      explanation = 'What this shows: Normalizes citation impact per paper. Useful when one topic has much larger volume.';
+      explanation = context.t('What this shows: Normalizes citation impact per paper. Useful when one topic has much larger volume.');
     }
 
     return Column(
@@ -350,13 +351,13 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Multi-Topic Trend Chart', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            Text(context.t('Multi-Topic Trend Chart'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
             DropdownButton<String>(
               value: _metricMode,
-              items: const [
-                DropdownMenuItem(value: 'papers', child: Text('Papers / year')),
-                DropdownMenuItem(value: 'citations', child: Text('Total Citations')),
-                DropdownMenuItem(value: 'avg_citations', child: Text('Avg Citations')),
+              items: [
+                DropdownMenuItem(value: 'papers', child: Text(context.t('Papers / year'))),
+                DropdownMenuItem(value: 'citations', child: Text(context.t('Total Citations'))),
+                DropdownMenuItem(value: 'avg_citations', child: Text(context.t('Avg Citations'))),
               ],
               onChanged: (val) {
                 if (val != null) {
@@ -436,21 +437,21 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Total Papers', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                      Text(context.t('Total Papers'), style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
                       Text(formatNumber(t.totalPapers), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                     ],
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Momentum', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                      Text(context.t('Momentum'), style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
                       Text(formatSigned(t.momentum), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                     ],
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('YoY Growth', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                      Text(context.t('YoY Growth'), style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
                       Text('${t.growthRatePct.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                     ],
                   ),
@@ -463,13 +464,13 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                   TextButton.icon(
                     onPressed: () => context.push(_scopedSearchPath(t.topic)),
                     icon: const Icon(Icons.search, size: 14, color: Color(0xFF06B6D4)),
-                    label: const Text('Search Papers', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF06B6D4))),
+                    label: Text(context.t('Search Papers'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF06B6D4))),
                   ),
                   const SizedBox(width: 8),
                   TextButton.icon(
                     onPressed: () => widget.onExplainTopic(t.topic),
                     icon: const Icon(Icons.auto_awesome, size: 14, color: Color(0xFF8B5CF6)),
-                    label: const Text('AI Explain', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF8B5CF6))),
+                    label: Text(context.t('AI Explain'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF8B5CF6))),
                   ),
                 ],
               ),
@@ -501,10 +502,10 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
           const SizedBox(height: 20),
 
           if (_selectedTopics.length < 2)
-            const Center(
+            Center(
               child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 36),
-                child: Text('Select at least 2 topics above to load trend comparisons.', style: TextStyle(fontStyle: FontStyle.italic, color: Color(0xFF94A3B8))),
+                padding: const EdgeInsets.symmetric(vertical: 36),
+                child: Text(context.t('Select at least 2 topics above to load trend comparisons.'), style: const TextStyle(fontStyle: FontStyle.italic, color: Color(0xFF94A3B8))),
               ),
             )
           else if (compareQuery != null)
@@ -526,7 +527,7 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
               error: (err, _) => Center(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 36),
-                  child: Text('Compare failed: $err', style: const TextStyle(color: Colors.red)),
+                  child: Text(context.t('Compare failed: {{err}}', {'err': err}), style: const TextStyle(color: Colors.red)),
                 ),
               ),
             ),

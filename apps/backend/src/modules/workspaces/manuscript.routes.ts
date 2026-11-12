@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { mountManuscriptIntegrityRoutes } from "./manuscript-integrity.routes.js";
 import multer from "multer";
 import { z } from "zod";
 import { requireAuth } from "../../common/middleware/auth.js";
@@ -52,6 +53,7 @@ const ids = async (req: { params: Record<string, unknown>; user?: { sub: string 
   if (!actor) throw AppError.unauthorized("Account not found");
   return { project, actor, id: String(req.params.id) };
 };
+mountManuscriptIntegrityRoutes(manuscriptRouter, ids, writes);
 manuscriptRouter.get("/", async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.list(a.project, a.actor) }); });
 manuscriptRouter.post("/", writes, validate(createManuscriptSchema), async (req, res) => { const a = await ids(req); res.status(201).json({ success: true, data: await manuscriptService.create(a.project, a.actor, req.body) }); });
 manuscriptRouter.post("/import", uploads, async (req, _res, next) => { const a = await ids(req); await manuscriptService.list(a.project, a.actor); next(); }, archiveUpload.single("archive"), validate(importManuscriptSchema), async (req, res) => {
@@ -132,6 +134,8 @@ manuscriptRouter.get("/:id/snapshots/:snapshotId", validate(manuscriptParams, "p
 manuscriptRouter.get("/:id/snapshots/:snapshotId/source-bundle", validate(manuscriptParams, "params"), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptRepository.source(a.project, a.actor, a.id, String(req.params.snapshotId)) }); });
 manuscriptRouter.post("/:id/snapshots/:snapshotId/restore", writes, validate(manuscriptParams, "params"), validate(restoreSchema), async (req, res) => { const a = await ids(req); res.status(201).json({ success: true, data: await manuscriptService.restore(a.project, a.actor, a.id, String(req.params.snapshotId), req.body) }); });
 manuscriptRouter.get("/:id/snapshots/:snapshotId/attribution-check", validate(manuscriptParams, "params"), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptAttributionService.getAttributionCheck(a.project, a.actor, a.id, String(req.params.snapshotId)) }); });
+manuscriptRouter.get("/:id/snapshots/:snapshotId/credit-statement", validate(manuscriptParams, "params"), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptAttributionService.statement(a.project, a.actor, a.id, String(req.params.snapshotId)) }); });
+manuscriptRouter.get("/:id/snapshots/:snapshotId/attribution-document", validate(manuscriptParams, "params"), async (req, res) => { const a = await ids(req); const bytes = await manuscriptAttributionService.reviewPdf(a.project, a.actor, a.id, String(req.params.snapshotId)); res.set({ "Content-Type": "application/pdf", "Content-Disposition": 'inline; filename="attribution-review.pdf"', "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox" }).send(Buffer.from(bytes)); });
 manuscriptRouter.post("/:id/snapshots/:snapshotId/attribution-check", writes, validate(manuscriptParams, "params"), validate(saveManuscriptAttributionSchema), async (req, res) => { const a = await ids(req); res.status(201).json({ success: true, data: await manuscriptAttributionService.saveAttributionCheck(a.project, a.actor, a.id, String(req.params.snapshotId), req.body) }); });
 const checkDecisionParams = manuscriptParams.extend({ checkId: z.string().uuid() });
 manuscriptRouter.post("/:id/attribution-checks/:checkId/decisions", writes, validate(checkDecisionParams, "params"), validate(manuscriptAttributionDecisionSchema), async (req, res) => { const a = await ids(req); res.status(201).json({ success: true, data: await manuscriptAttributionService.decideAttributionCheck(a.project, a.actor, a.id, String(req.params.checkId), req.body) }); });

@@ -10,6 +10,9 @@ import { projectWorkspaceHref } from "@/features/projects/utils/project-workspac
 import { ProjectsListPage } from "./projects-list";
 import { ProjectSectionNav, resolveProjectTab, type ProjectTab } from "@/features/projects/components/project-section-nav";
 import { canLeaveWorkspace } from "@/features/projects/components/workspace-common";
+import { useMentorProjectEntry } from "@/features/projects/hooks/use-mentor-project-entry";
+import { MentorProjectNav } from "@/features/projects/components/mentor-project-workspace";
+import { useMentoredProjects } from "@/features/projects/hooks/use-mentored-projects";
 import "@/features/projects/project-browser.css";
 import "@/features/projects/workspace-coordination.css";
 
@@ -39,6 +42,7 @@ function WorkspaceSidebar() {
   const { t, language } = useI18n();
   const userId = useAuthStore(state => state.user?.id);
   const { data: projects, isLoading: projectsLoading, isFetching: projectsFetching, isError: projectsError } = useProjects();
+  const mentoring = useMentoredProjects();
   const { data: currentProject, isLoading: projectLoading, error: projectError } = useProject(id);
   const [params, setParams] = useSearchParams();
   const detailsRef = useRef<HTMLDetailsElement>(null);
@@ -47,11 +51,13 @@ function WorkspaceSidebar() {
   // still contain an older row while its background refresh is in progress.
   const status = (projectError as { response?: { status?: number } } | null)?.response?.status;
   const unavailable = status === 403 || status === 404;
+  const mentorEntry = useMentorProjectEntry(id, Boolean(id && (unavailable || currentProject?.isPublicSummary)));
+  const mentor = !mentorEntry.error && mentorEntry.data?.policies.some(p => p.mentorId === mentorEntry.data.viewerId && p.policy.effective) ? mentorEntry.data : undefined;
   const project = unavailable ? undefined : currentProject ? (currentProject.accessRole ? currentProject : undefined) : projects?.find(item => item._id === id);
   const loading = !!id && !unavailable && !project && (projectsLoading || projectLoading);
   // The directory redirects as soon as its query settles. Opening its picker
   // before that decision flashes a dropdown on the first visit.
-  const directoryNeedsChoice = !id && params.get("view") !== "invitations" && !projectsLoading && !projectsFetching && (
+  const directoryNeedsChoice = !id && !mentoring.isLoading && !mentoring.data?.length && !mentoring.isError && params.get("view") !== "invitations" && !projectsLoading && !projectsFetching && (
     projectsError || params.get("create") === "1" ||
     !selectDirectoryProjects(projects ?? [], readProjectSearchFilters(params), userId, language).length
   );
@@ -91,6 +97,8 @@ function WorkspaceSidebar() {
     }
   };
 
+  if (mentor && (unavailable || currentProject?.isPublicSummary)) return <div className="space-y-4 p-3" data-no-i18n><div className="border-b pb-4"><p className="break-words font-semibold">{mentor.title}</p><p className="mt-1 text-xs text-muted-foreground">Cố vấn dự án</p></div><MentorProjectNav /></div>;
+
   return <>
     <details ref={detailsRef} className="coord-project-picker" open={directoryNeedsChoice || undefined} key={id ? "selected" : "directory"}>
       <summary className="group">
@@ -123,13 +131,16 @@ function ProjectWorkspaceLoading() {
 
 export function ProjectWorkspaceStart() {
   const { data: projects, isLoading, isError, isFetching } = useProjects();
+  const mentoring = useMentoredProjects();
   const userId = useAuthStore(state => state.user?.id);
   const { t, language } = useI18n();
   const [params] = useSearchParams();
   const candidates = useMemo(() => selectDirectoryProjects(projects ?? [], readProjectSearchFilters(params), userId, language), [projects, params, userId, language]);
   const first = candidates.find(project => project.status !== "ARCHIVED") ?? candidates[0];
   if (params.get("view") === "invitations") return <ProjectsListPage invitationsOnly />;
-  if (isLoading || isFetching) return <ProjectWorkspaceLoading />;
+  if (isLoading || mentoring.isLoading) return <ProjectWorkspaceLoading />;
+  if (mentoring.isError || (!mentoring.error && mentoring.data?.length)) return <ProjectsListPage />;
+  if (isFetching) return <ProjectWorkspaceLoading />;
   if (first && !isError && params.get("create") !== "1") return <Navigate to={projectWorkspaceHref(first._id, params)} replace />;
   return <div className="project-browser-welcome" data-no-i18n>
     <FolderOpen aria-hidden="true" />

@@ -7,6 +7,7 @@ import { gapsService } from "../../gaps/gaps.service.js";
 import { projectEvidenceService as evidence } from "../project-evidence.service.js";
 import { projectSynthesisService as synthesis } from "../project-synthesis.service.js";
 import { projectGapResearchService as gaps } from "../project-gap-research.service.js";
+import { projectFeasibilityService as feasibility } from "../project-feasibility.service.js";
 import { projectPaperAnalysisService } from "../project-paper-analysis.service.js";
 import { assertSynthesisCitations } from "../research-synthesis.js";
 import { sourceFingerprint, RAG_INDEX_VERSION } from "../../knowledge/knowledge.text.js";
@@ -115,6 +116,7 @@ describe.skipIf(!isolated).sequential("reviewed project research flow (isolated 
     expect(gap.assessmentStatus).toBe("PROPOSED");
     const links = await db.gapEvidenceRecord.findMany({ where: { gapId: gap.id } }); expect(links).toHaveLength(3);
     expect(links.every(link => accepted.sources.some(source => source.revisionId === link.evidenceRevisionId))).toBe(true);
+    await feasibility.save(project.id, member, "GAP", gap.id, { dataAvailability: 4, expertise: 4, resources: 4, timeline: 4, risk: 4, notes: "" });
     const assessed = await gaps.assess(project.id, member, gap.id, { expectedVersion: gap.version, status: "TEAM_SUPPORTED", rationale: "Evidence supports testing replication, not a global absence claim" });
     const plan = await db.researchPlan.findUniqueOrThrow({ where: { projectId: project.id } });
     await gaps.derive(project.id, owner, gap.id, { expectedVersion: assessed.version, expectedPlanVersion: plan.version, text: "Do these outcomes replicate across institutions?", clientKey: crypto.randomUUID() });

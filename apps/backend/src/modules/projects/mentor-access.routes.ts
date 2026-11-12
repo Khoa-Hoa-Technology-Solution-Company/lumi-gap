@@ -11,6 +11,7 @@ const writes = createRateLimiter("projects:mentor-resource-access", { windowMs: 
 mentorAccessRouter.use((_r, res, next) => { res.set("Cache-Control", "private, no-store"); next(); });
 mentorAccessRouter.get("/", base, validate(s.mentorAccessPageSchema, "query"), c.workspace);
 mentorAccessRouter.get("/catalog", base, validate(s.mentorAccessPageSchema, "query"), c.catalog);
+mentorAccessRouter.get("/tasks", base, validate(s.mentorAccessPageSchema, "query"), c.tasks);
 mentorAccessRouter.put("/:accessId", writes, access, validate(s.configureMentorAccessSchema), c.configure);
 mentorAccessRouter.post("/:accessId/revoke", writes, access, validate(s.mentorAccessActionSchema), c.revoke);
 mentorAccessRouter.post("/:accessId/shares", writes, access, validate(s.mentorShareSchema.innerType().extend({ expectedVersion: z.number().int().positive() }).refine(v => v.kind !== "MANUSCRIPT" || Boolean(v.sectionKey), "Chọn phần bản thảo")), c.share);

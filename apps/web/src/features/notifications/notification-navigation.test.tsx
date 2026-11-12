@@ -56,6 +56,16 @@ async function openMenu(container: HTMLElement) {
 }
 
 describe("notification navigation", () => {
+  it("opens a reviewer message without marking it read before the conversation loads", async () => {
+    const item = { ...notification, type: "SCREENING_DISCUSSION_MESSAGE", targetKind: "project" as const, targetId: "project", paperId: "paper", screeningRoundId: "round" };
+    const view = await mount(<NotificationMenu notifications={[item]} isLoading={false} unreadCount={1} isAdmin={false} />);
+    try {
+      await openMenu(view.container);
+      await act(async () => document.querySelector<HTMLElement>('[role="menuitem"]')!.click());
+      expect(view.container.querySelector("[data-location]")!.textContent).toBe("/projects/project?tab=papers&view=my-work&paper=paper&round=round&section=discussion");
+      expect(mocks.markRead).not.toHaveBeenCalled();
+    } finally { await view.close(); }
+  });
   it.each(["pending", "failed"])("opens the report queue from the notifications page when marking read is %s", async (state) => {
     if (state === "failed") mocks.markRead.mockRejectedValueOnce(new Error("Read API unavailable"));
     const view = await mount(<NotificationsPage />);

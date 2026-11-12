@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/papers/data/papers_api.dart';
 import 'package:flutter_mobile/features/papers/domain/submit_paper_validation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,7 +55,8 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
     final file = result?.files.single;
     if (file == null || file.path == null) return;
     if ((file.size) > 10 * 1024 * 1024) {
-      _show('PDF must be 10MB or smaller.');
+      if (!mounted) return;
+      _show(context.t('PDF must be 10MB or smaller.'));
       return;
     }
     setState(
@@ -77,7 +79,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
       keywords: keywords.text,
     );
     if (error != null) {
-      _show(error);
+      _show(context.t(error));
       return;
     }
     setState(() => submitting = true);
@@ -117,6 +119,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
 
   void _autoFillTestData() {
     setState(() {
+      // i18n-ignore-start: sample paper used to prefill the demo form
       title.text = 'Attention Is All You Need';
       doi.text = '10.48550/arXiv.1706.03762';
       paperLink.text = 'https://arxiv.org/abs/1706.03762';
@@ -126,6 +129,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
       authors.text = 'Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, Illia Polosukhin';
       keywords.text = 'attention mechanism, transformer, deep learning, NLP';
       topics.text = 'Deep Learning, Natural Language Processing';
+      // i18n-ignore-end
       openAccessUrl.text = 'https://arxiv.org/pdf/1706.03762.pdf';
     });
   }
@@ -143,7 +147,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.editId == null ? 'Submit Paper' : 'Resubmit Paper'),
+        title: Text(widget.editId == null ? context.t('Submit Paper') : context.t('Resubmit Paper')),
         centerTitle: false,
         scrolledUnderElevation: 0,
         actions: [
@@ -153,9 +157,9 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
               child: TextButton.icon(
                 onPressed: _autoFillTestData,
                 icon: const Icon(Icons.auto_awesome, size: 16, color: Color(0xFF06B6D4)),
-                label: const Text(
-                  'Fill Test',
-                  style: TextStyle(
+                label: Text(
+                  context.t('Fill Test'),
+                  style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF06B6D4),
                   ),
@@ -202,8 +206,8 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
                     children: [
                       Text(
                         widget.editId == null
-                            ? 'Direct submission'
-                            : 'Fix and resubmit',
+                            ? context.t('Direct submission')
+                            : context.t('Fix and resubmit'),
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
@@ -211,7 +215,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Your paper will stay pending until an admin completes the review.',
+                        context.t('Your paper will stay pending until an admin completes the review.'),
                         style: TextStyle(
                           fontSize: 12,
                           height: 1.4,
@@ -225,43 +229,43 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
             ),
           ),
           const SizedBox(height: 22),
-          const _SectionTitle(
+          _SectionTitle(
             icon: Icons.description_outlined,
-            title: 'Paper information',
-            subtitle: 'Add the publication details',
+            title: context.t('Paper information'),
+            subtitle: context.t('Add the publication details'),
           ),
           const SizedBox(height: 10),
           _FormCard(
             children: [
               _Field(
-                label: 'Paper title',
-                hint: 'Enter the full paper title',
+                label: context.t('Paper title'),
+                hint: context.t('Enter the full paper title'),
                 controller: title,
                 icon: Icons.title_rounded,
               ),
               _Field(
-                label: 'DOI',
-                hint: '10.xxxx/xxxxx',
+                label: context.t('DOI'),
+                hint: context.t('10.xxxx/xxxxx'),
                 controller: doi,
                 icon: Icons.fingerprint_rounded,
               ),
               _Field(
-                label: 'Paper link',
-                hint: 'https://…',
+                label: context.t('Paper link'),
+                hint: context.t('https://…'),
                 controller: paperLink,
                 icon: Icons.link_rounded,
                 keyboardType: TextInputType.url,
               ),
               _Field(
-                label: 'Abstract',
-                hint: 'Summarize the purpose, method, and findings…',
-                helper: '${countWords(abstractText.text)} / 350 words',
+                label: context.t('Abstract'),
+                hint: context.t('Summarize the purpose, method, and findings…'),
+                helper: context.t('{{count}} / 350 words', {'count': countWords(abstractText.text)}),
                 controller: abstractText,
                 maxLines: 6,
                 onChanged: (_) => setState(() {}),
               ),
               _Field(
-                label: 'Publication year',
+                label: context.t('Publication year'),
                 controller: year,
                 icon: Icons.calendar_today_outlined,
                 keyboardType: TextInputType.number,
@@ -270,7 +274,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Publication type',
+            context.t('Publication type'),
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -305,35 +309,35 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
             }).toList(),
           ),
           const SizedBox(height: 24),
-          const _SectionTitle(
+          _SectionTitle(
             icon: Icons.hub_outlined,
-            title: 'Research metadata',
-            subtitle: 'Separate multiple values with commas',
+            title: context.t('Research metadata'),
+            subtitle: context.t('Separate multiple values with commas'),
           ),
           const SizedBox(height: 10),
           _FormCard(
             children: [
               _Field(
-                label: 'Authors',
-                hint: 'Nguyen Van A, Tran Thi B',
+                label: context.t('Authors'),
+                hint: context.t('Nguyen Van A, Tran Thi B'),
                 controller: authors,
                 icon: Icons.people_outline_rounded,
               ),
               _Field(
-                label: 'Keywords',
-                hint: 'machine learning, RAG, education',
+                label: context.t('Keywords'),
+                hint: context.t('machine learning, RAG, education'),
                 controller: keywords,
                 icon: Icons.tag_rounded,
               ),
               _Field(
-                label: 'Topics',
-                hint: 'Academic search, Trend analysis',
+                label: context.t('Topics'),
+                hint: context.t('Academic search, Trend analysis'),
                 controller: topics,
                 icon: Icons.category_outlined,
               ),
               _Field(
-                label: 'Open access URL',
-                hint: 'https://…',
+                label: context.t('Open access URL'),
+                hint: context.t('https://…'),
                 controller: openAccessUrl,
                 icon: Icons.public_rounded,
                 keyboardType: TextInputType.url,
@@ -341,10 +345,10 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
             ],
           ),
           const SizedBox(height: 24),
-          const _SectionTitle(
+          _SectionTitle(
             icon: Icons.picture_as_pdf_outlined,
-            title: 'Paper file',
-            subtitle: 'Optional PDF, maximum 10 MB',
+            title: context.t('Paper file'),
+            subtitle: context.t('Optional PDF, maximum 10 MB'),
           ),
           const SizedBox(height: 10),
           InkWell(
@@ -381,7 +385,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          pdf?.name ?? 'Choose a PDF file',
+                          pdf?.name ?? context.t('Choose a PDF file'),
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 13,
@@ -391,8 +395,8 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
                         const SizedBox(height: 3),
                         Text(
                           pdf == null
-                              ? 'Tap to browse files'
-                              : 'Ready to upload',
+                              ? context.t('Tap to browse files')
+                              : context.t('Ready to upload'),
                           style: TextStyle(
                             fontSize: 11,
                             color: colors.onSurfaceVariant,
@@ -433,8 +437,8 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
                 : const Icon(Icons.send_rounded, size: 20),
             label: Text(
               widget.editId == null
-                  ? 'Submit for review'
-                  : 'Resubmit for review',
+                  ? context.t('Submit for review')
+                  : context.t('Resubmit for review'),
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
@@ -444,7 +448,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
   }
 
   String _kindLabel(String kind) {
-    if (kind == 'book-chapter') return 'Book chapter';
+    if (kind == 'book-chapter') return context.t('Book chapter');
     return '${kind[0].toUpperCase()}${kind.substring(1)}';
   }
 }

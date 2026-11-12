@@ -155,6 +155,7 @@ export function ManuscriptsPanel({ projectId, readOnly, draft, onDraftConsumed }
               </Link>
               {!readOnly ? (
                 <div className="writing-manuscript-actions-col">
+                  <Link className="text-xs text-primary underline underline-offset-4" to={`/projects/${projectId}/manuscripts/${row.id}/integrity`}>{t("Research Integrity Center")}</Link>
                   <DeleteManuscript
                     projectId={projectId}
                     manuscript={row}

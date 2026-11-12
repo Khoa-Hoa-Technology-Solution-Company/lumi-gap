@@ -1,39 +1,84 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import type { StructuredSubmissionInput } from "@trend/shared-types";
-import { submissionsApi } from "../api/submissions.api";
+import { submissionsApi, type MentorFeedbackPayload } from "../api/submissions.api";
 
 export function useSubmissions(projectId?: string) {
-  return useQuery({ queryKey: ["submissions", "list", projectId ?? "mine"], queryFn: () => submissionsApi.list(projectId) });
+  return useQuery({ queryKey: ["submissions", "list", projectId ?? "mine"], queryFn: ({ signal }) => submissionsApi.list(projectId, signal) });
 }
 
 export function useSubmission(id: string, projectId?: string) {
-  return useQuery({ queryKey: ["submissions", id, "detail", projectId ?? "standalone"], queryFn: () => submissionsApi.detail(id, projectId), enabled: Boolean(id) });
+  return useQuery({ queryKey: ["submissions", id, "detail", projectId ?? "standalone"], queryFn: ({ signal }) => submissionsApi.detail(id, projectId, signal), enabled: Boolean(id) });
 }
 
 export function useSubmissionRevisions(id: string) {
-  return useQuery({ queryKey: ["submissions", id, "revisions"], queryFn: () => submissionsApi.revisions(id), enabled: Boolean(id) });
+  return useQuery({ queryKey: ["submissions", id, "revisions"], queryFn: ({ signal }) => submissionsApi.revisions(id, signal), enabled: Boolean(id) });
+}
+
+export function useActiveMentors(projectId?: string) {
+  return useQuery({
+    queryKey: ["submissions", "active-mentors", projectId],
+    queryFn: () => submissionsApi.activeMentors(projectId!),
+    enabled: Boolean(projectId),
+  });
 }
 
 export function useCreateSubmission() {
   const client = useQueryClient();
-  return useMutation({ mutationFn: ({ input, file }: { input: StructuredSubmissionInput; file: File }) => submissionsApi.create(input, file), onSuccess: () => client.invalidateQueries({ queryKey: ["submissions"] }) });
+  return useMutation({
+    mutationFn: ({ input, file }: { input: StructuredSubmissionInput & { mentorId?: string; contentSnapshot?: string; message?: string }; file?: File }) =>
+      submissionsApi.create(input, file),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["submissions"] });
+      client.invalidateQueries({ queryKey: ["workspace-tasks"] });
+    },
+  });
+}
+
+export function useSubmitFeedback(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: MentorFeedbackPayload) => submissionsApi.submitFeedback(id, payload),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["submissions", id] });
+      client.invalidateQueries({ queryKey: ["submissions", "list"] });
+      client.invalidateQueries({ queryKey: ["workspace-tasks"] });
+      client.invalidateQueries({ queryKey: ["mentor-access"] });
+    },
+  });
 }
 
 export function useAddSubmissionRevision(id: string) {
   const client = useQueryClient();
-  return useMutation({ mutationFn: ({ file, responseToReview }: { file: File; responseToReview?: string }) => submissionsApi.addRevision(id, file, responseToReview), onSuccess: () => {
-    client.invalidateQueries({ queryKey: ["submissions", id] });
-    client.invalidateQueries({ queryKey: ["submissions", "list"] });
-    client.invalidateQueries({ queryKey: ["submissions", id, "revisions"] });
-    client.invalidateQueries({ queryKey: ["review-opportunities"] });
-  } });
+  return useMutation({
+    mutationFn: ({ file, responseToReview }: { file: File; responseToReview?: string }) => submissionsApi.addRevision(id, file, responseToReview),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["submissions", id] });
+      client.invalidateQueries({ queryKey: ["submissions", "list"] });
+      client.invalidateQueries({ queryKey: ["submissions", id, "revisions"] });
+      client.invalidateQueries({ queryKey: ["review-opportunities"] });
+      client.invalidateQueries({ queryKey: ["workspace-tasks"] });
+    },
+  });
+}
+
+export function useCreateSubmissionVersion(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { content: string; summary: string; expectedRevisionNumber: number }) => submissionsApi.createVersion(id, input),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["submissions", id] });
+      void client.invalidateQueries({ queryKey: ["submissions", "list"] });
+      void client.invalidateQueries({ queryKey: ["review-opportunities"] });
+      void client.invalidateQueries({ queryKey: ["workspace-tasks"] });
+    },
+  });
 }
 
 export function useAiPreReviews(id: string, enabled = true) {
   const client = useQueryClient();
   // Pre-reviews run in a worker; poll while the latest one is still queued or processing.
-  const query = useQuery({ queryKey: ["submissions", id, "ai-pre-reviews"], queryFn: () => submissionsApi.aiPreReviews(id), enabled: Boolean(id) && enabled, refetchInterval: (query) => ["QUEUED", "PROCESSING"].includes(query.state.data?.[0]?.status ?? "") ? 3000 : false });
+  const query = useQuery({ queryKey: ["submissions", id, "ai-pre-reviews"], queryFn: ({ signal }) => submissionsApi.aiPreReviews(id, signal), enabled: Boolean(id) && enabled, refetchInterval: (query) => ["QUEUED", "PROCESSING"].includes(query.state.data?.[0]?.status ?? "") ? 3000 : false });
   const latestId = query.data?.[0]?.id;
   const latestStatus = query.data?.[0]?.status;
   useEffect(() => {
@@ -51,4 +96,4 @@ export function useRunAiPreReview(id: string) {
   } });
 }
 
-export function useSubmissionHistory(id: string, enabled = true) { return useQuery({ queryKey: ["submissions", id, "history"], queryFn: () => submissionsApi.history(id), enabled: Boolean(id) && enabled }); }
+export function useSubmissionHistory(id: string, enabled = true) { return useQuery({ queryKey: ["submissions", id, "history"], queryFn: ({ signal }) => submissionsApi.history(id, signal), enabled: Boolean(id) && enabled }); }

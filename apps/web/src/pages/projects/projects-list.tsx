@@ -13,6 +13,8 @@ import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 import { ProjectDirectory } from "@/features/projects/components/project-directory";
 import { ProjectSwitcher } from "@/features/projects/components/project-switcher";
+import { useMentoredProjects } from "@/features/projects/hooks/use-mentored-projects";
+import { MentoredProjectDirectory } from "@/features/projects/components/mentored-project-directory";
 import { ownsProject, PROJECT_STATUSES, PROJECT_STATUS_LABELS, readProjectDirectoryFilters, readProjectSearchFilters, selectDirectoryProjects } from "@/features/projects/utils/project-directory";
 import "@/features/projects/project-workspace.css";
 import "@/features/projects/project-directory.css";
@@ -102,6 +104,8 @@ function ProjectInvitationRow({
 
 export function ProjectsListPage({ compact = false, invitationsOnly = false }: { compact?: boolean; invitationsOnly?: boolean }) {
   const { data: projects, isLoading, isError, isFetching, refetch } = useProjects();
+  const mentoring = useMentoredProjects(!invitationsOnly);
+  const mentoredProjects = mentoring.error ? [] : (mentoring.data ?? []).filter(item => !projects?.some(project => project._id === item.projectId));
   const { data: invitations = [], isLoading: invitationsLoading, isError: invitationsError, isFetching: invitationsFetching, refetch: refetchInvitations } = useMyProjectInvitations();
   const respondToInvitation = useRespondToProjectInvitation();
   const navigate = useNavigate();
@@ -205,7 +209,7 @@ export function ProjectsListPage({ compact = false, invitationsOnly = false }: {
         {!compact ? <p className="project-directory-breadcrumb">{t("Workspace")}</p> : null}
         <div className="project-directory-heading-row">
           <div>
-            <div className="project-directory-heading-title">{compact ? <h2>{t("Projects")}</h2> : <h1>{t("Your projects")}</h1>}{!isLoading && !isError && projects ? <span>{number.format(projects.length)}</span> : null}</div>
+            <div className="project-directory-heading-title">{compact ? <h2>{t("Projects")}</h2> : <h1>{t("Your projects")}</h1>}{!isLoading && !isError && projects ? <span>{number.format(projects.length + mentoredProjects.length)}</span> : null}</div>
             {!compact ? <p>{t("Review your research projects and pick up where you left off.")}</p> : null}
           </div>
           <Dialog open={isDialogOpen} onOpenChange={next => { if (!createBusy) setIsDialogOpen(next); }}>
@@ -225,7 +229,9 @@ export function ProjectsListPage({ compact = false, invitationsOnly = false }: {
       {invitationSection}
 
       <section aria-label={t("Your research projects")}>
-        {compact ? <div className="project-switcher-search">{searchControl}</div> : <div className="project-directory-toolbar">
+        {mentoring.isLoading && <p role="status" className="py-3 text-sm text-muted-foreground">{t("Loading…")}</p>}
+        {mentoring.isError && <div role="alert" className="space-y-2 py-3"><p className="text-sm">{t("Unable to load mentorship requests.")}</p><Button variant="outline" size="sm" disabled={mentoring.isFetching} onClick={() => void mentoring.refetch()}>{t("Try again")}</Button></div>}
+        {compact || (!projects?.length && mentoredProjects.length > 0) ? <div className="project-switcher-search">{searchControl}</div> : <div className="project-directory-toolbar">
           <div className="project-switcher-filters">
             <div className="project-switcher-filter-fields">
           <div className="project-directory-scopes" role="group" aria-label={t("Filter projects by ownership")}>
@@ -262,6 +268,8 @@ export function ProjectsListPage({ compact = false, invitationsOnly = false }: {
           </div>
         </div>}
 
+        <MentoredProjectDirectory projects={mentoredProjects} compact={compact} search={filters.search} />
+
         {compact && filters.search.trim() && !isLoading && !isError && projects?.length ? <div className="project-search-feedback">
           <p role="status">{t(filteredProjects.length === 1 ? "{{count}} project found" : "{{count}} projects found", { count: number.format(filteredProjects.length) })}</p>
         </div> : null}
@@ -288,7 +296,7 @@ export function ProjectsListPage({ compact = false, invitationsOnly = false }: {
             <p className="mt-1 max-w-sm text-sm text-muted-foreground">{t("Please check your connection and try again.")}</p>
             <Button variant="outline" className="mt-5" onClick={() => void refetch()} disabled={isFetching}>{isFetching ? t("Loading...") : t("Try again")}</Button>
           </div>
-        ) : !projects?.length ? (
+        ) : !projects?.length && (mentoredProjects.length || mentoring.isLoading || mentoring.isError) ? null : !projects?.length ? (
           <div className="project-directory-empty">
             <FolderOpen aria-hidden="true" />
             <h2 className="text-lg font-semibold tracking-tight">{t("No projects yet")}</h2>

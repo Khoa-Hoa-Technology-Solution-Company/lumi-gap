@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
   creditRoles,
+  canonicalCreditRoles,
+  creditRoleMetadata,
+  CREDIT_STANDARD,
+  escapeCreditLatex,
+  type CreditContributionStatement,
+  type ManuscriptPublicationPolicy,
   type CreditRole,
   type DetectedScopeContributor,
   type ManuscriptAttributionCheckView,
@@ -18,6 +25,9 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { researchLedgerService } from "../audit/research-ledger.service.js";
 import { assertActiveProjectAccount, lockProjectAccounts } from "../projects/project-transaction.js";
 import { jsonSnapshot, workspacePeople } from "../projects/workspace-access.js";
+import { isValidOrcid } from "../academic-profiles/dto/academic-profile.schema.js";
+import { contributionEvidenceChanged } from "../projects/contribution-evidence.js";
+import { notificationService } from "../notifications/notification.service.js";
 
 type Db = Prisma.TransactionClient;
 
@@ -26,6 +36,8 @@ const EXTERNAL_SUBMISSION_NOTICE =
 
 export const saveManuscriptAttributionSchema = z
   .object({
+    expectedVersion: z.number().int().min(0).optional(),
+    publicationPolicy: z.object({ name: z.string().trim().min(3).max(200), version: z.string().trim().min(1).max(80), guidanceUrl: z.string().url().max(1000).refine(value => value.startsWith("https://"), "Use an HTTPS policy link").optional(), requireAcknowledgementPermission: z.boolean() }).strict().optional(),
     proposedAuthors: z
       .array(
         z
@@ -38,6 +50,11 @@ export const saveManuscriptAttributionSchema = z
               .max(creditRoles.length)
               .refine(r => new Set(r).size === r.length, "Duplicate CRediT role"),
             rationale: z.string().trim().max(1000).optional().default(""),
+            displayName: z.string().trim().min(1).max(200).optional(),
+            email: z.string().trim().email().max(254).optional(),
+            affiliation: z.string().trim().max(240).optional(),
+            orcid: z.string().regex(/^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/).refine(isValidOrcid, "Invalid ORCID checksum").optional(),
+            corresponding: z.boolean().optional(),
           })
           .strict(),
       )
@@ -51,6 +68,7 @@ export const saveManuscriptAttributionSchema = z
             name: z.string().trim().min(1).max(200),
             affiliation: z.string().trim().max(240).optional().default(""),
             contributionSummary: z.string().trim().min(3).max(1000),
+            permissionNote: z.string().trim().max(1000).optional(),
             creditRoles: z
               .array(z.enum(creditRoles))
               .max(creditRoles.length)
@@ -81,6 +99,8 @@ export const saveManuscriptAttributionSchema = z
 export const manuscriptAttributionDecisionSchema = z
   .object({
     decision: z.enum(["CONFIRM", "CLARIFY", "DISPUTE"]),
+    expectedVersion: z.number().int().positive().optional(),
+    expectedDecisionId: z.string().uuid().nullable().optional(),
     note: z.string().trim().max(2000).optional().default(""),
   })
   .strict()
@@ -93,6 +113,18 @@ function formatBasisPoints(bps: number): string {
   const whole = Math.floor(bps / 100);
   const frac = bps % 100;
   return `${whole}.${String(frac).padStart(2, "0")}%`;
+}
+
+// Role order carries no CRediT meaning. Preserve all other metadata and author order.
+function compareRoleSets(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.map(entry => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+    const roles = (entry as Record<string, unknown>).creditRoles;
+    return Array.isArray(roles) && roles.every(role => typeof role === "string")
+      ? { ...entry, creditRoles: [...roles].sort() }
+      : entry;
+  });
 }
 
 async function gatherScopeState(
@@ -122,7 +154,7 @@ async function gatherScopeState(
     acceptedSuggestions,
     writingReport,
     successfulCompilations,
-    proposals,
+    allProposals,
     revisions,
     mentorAccesses,
     mentorRelationships,
@@ -147,7 +179,7 @@ async function gatherScopeState(
     tx.manuscriptWritingReport.findUnique({ where: { snapshotId } }),
     tx.manuscriptCompilation.count({ where: { snapshotId, status: "SUCCESS" } }),
     tx.projectContributionProposal.findMany({
-      where: { projectId, status: { not: "DRAFT" } },
+      where: { projectId },
     }),
     tx.allocationRevision.findMany({
       where: { projectId, status: { in: ["FINALIZED", "DISPUTED", "AWAITING_APPROVAL"] } },
@@ -168,6 +200,7 @@ async function gatherScopeState(
     }),
   ]);
 
+  const proposals = allProposals.filter(proposal => proposal.status !== "DRAFT");
   const proposalIds = proposals.map(p => p.id);
   const participants = proposalIds.length
     ? await tx.contributionParticipant.findMany({ where: { proposalId: { in: proposalIds } } })
@@ -202,6 +235,14 @@ async function gatherScopeState(
         orderBy: { createdAt: "asc" },
       })
     : [];
+
+  // Only a participant's later response can clear their objection across snapshots.
+  const checks = await tx.manuscriptAttributionCheck.findMany({ where: { projectId, workspaceId: manuscriptId }, select: { id: true } });
+  const allDecisions = await tx.manuscriptAttributionDecision.findMany({ where: { checkId: { in: checks.map(check => check.id) } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+  const latestAcrossSnapshots = new Map(allDecisions.map(decision => [decision.userId, decision]));
+  // A later objection also blocks an older snapshot that already has this author's
+  // approval. Never import another snapshot's positive approval as consent here.
+  for (const decision of latestAcrossSnapshots.values()) if (decision.decision !== "CONFIRM" && !decisions.some(current => current.id === decision.id)) decisions.push(decision);
 
   const sourceMap = new Map<string, Set<string>>();
   const roleMap = new Map<string, Set<CreditRole>>();
@@ -253,6 +294,15 @@ async function gatherScopeState(
         addRoles(proposal.contributorId, proposal.roles);
       }
     }
+  }
+
+  // A correction draft must not erase the original contributor or their challenge.
+  const workReviews = await tx.contributionReview.findMany({ where: { proposalId: { in: allProposals.map(proposal => proposal.id) } } });
+  const disputedReviews = workReviews.filter(review => ["DISPUTE", "NEEDS_CHANGES"].includes(review.decision));
+  const unresolvedWork: typeof disputedReviews = [];
+  for (const challenge of disputedReviews) {
+    const resolution = workReviews.some(review => review.proposalId === challenge.proposalId && review.userId === challenge.userId && review.version > challenge.version && ["ACKNOWLEDGE", "ACCEPT"].includes(review.decision));
+    if (!resolution) { if (!unresolvedWork.some(item => item.proposalId === challenge.proposalId && item.userId === challenge.userId)) unresolvedWork.push(challenge); addSource(challenge.userId, "Unresolved contribution correction"); }
   }
 
   const allocationShareMap = new Map(allocationShares.map(s => [s.userId, s.basisPoints]));
@@ -357,6 +407,7 @@ async function gatherScopeState(
     .map(a => {
       const dec = latestDecisionByUser.get(a.userId);
       return {
+        ...a,
         userId: a.userId,
         name: people.get(a.userId)?.name ?? "Researcher",
         order: a.order,
@@ -374,6 +425,7 @@ async function gatherScopeState(
     affiliation: a.affiliation ?? "",
     contributionSummary: a.contributionSummary,
     creditRoles: a.creditRoles ?? [],
+    permissionNote: a.permissionNote,
   }));
 
   const omittedContributors: ReviewedNonAuthorJustification[] = rawOmitted.map(o => ({
@@ -399,8 +451,13 @@ async function gatherScopeState(
   const pendingAuthorIds = proposedAuthors
     .filter(a => a.decision !== "CONFIRM")
     .map(a => a.userId);
+  const publicationPolicy = latestCheck?.publicationPolicy as unknown as ManuscriptPublicationPolicy | undefined;
+  const modernPolicy = Boolean(publicationPolicy?.name);
+  const pendingAcknowledgementIds = modernPolicy && publicationPolicy?.requireAcknowledgementPermission
+    ? acknowledgements.flatMap(a => a.userId && latestDecisionByUser.get(a.userId)?.decision !== "CONFIRM" ? [a.userId] : []) : [];
 
   const unresolvedDisputes: Array<{ source: string; userId?: string; summary: string }> = [];
+  for (const proposal of proposals) if (Array.isArray(proposal.evidenceRefs) && proposal.evidenceRefs.length && await contributionEvidenceChanged(tx, projectId, proposal.id, proposal.version, proposal.evidenceRefs as unknown as import("@trend/shared-types").ContributionArtifactLink[])) unresolvedDisputes.push({ source: "CHANGED_CONTRIBUTION_EVIDENCE", summary: "Linked contribution evidence changed. Its record creator must submit a correction in Contributions for renewed review." });
   for (const [uid, dec] of latestDecisionByUser.entries()) {
     if (dec.decision === "DISPUTE" || dec.decision === "CLARIFY") {
       unresolvedDisputes.push({
@@ -410,13 +467,14 @@ async function gatherScopeState(
       });
     }
   }
-  for (const disputedWork of proposals.filter(p => p.status === "DISPUTED")) {
+  for (const disputedWork of proposals.filter(p => p.status === "DISPUTED" && !unresolvedWork.some(challenge => challenge.proposalId === p.id))) {
     unresolvedDisputes.push({
       source: "WORK_CONTRIBUTION",
       userId: disputedWork.contributorId,
       summary: `Disputed contribution record: ${disputedWork.title || disputedWork.description.slice(0, 80)}`,
     });
   }
+  for (const challenge of unresolvedWork) unresolvedDisputes.push({ source: challenge.decision === "DISPUTE" ? "WORK_CORRECTION" : "WORK_CLARIFICATION", userId: challenge.userId, summary: "The affected reviewer must acknowledge the corrected contribution or seek institutional review." });
   for (const disputedAlloc of revisions.filter(r => r.status === "DISPUTED")) {
     unresolvedDisputes.push({
       source: "ALLOCATION_REVISION",
@@ -432,6 +490,9 @@ async function gatherScopeState(
   }
 
   const blockingReasons: string[] = [];
+  if (modernPolicy && proposedAuthors.filter(a => a.corresponding).length !== 1) blockingReasons.push("Select exactly one corresponding author in Manuscript Attribution.");
+  if (modernPolicy && proposedAuthors.some(a => !a.displayName || !a.email || !a.affiliation)) blockingReasons.push("Each proposed author must review their display name, email and affiliation in Manuscript Attribution.");
+  if (pendingAcknowledgementIds.length || modernPolicy && publicationPolicy?.requireAcknowledgementPermission && acknowledgements.some(a => !a.userId && !a.permissionNote?.trim())) blockingReasons.push("Acknowledged contributors must confirm permission, or documented permission is required for people without an account.");
   if (!latestCheck || proposedAuthors.length === 0) {
     blockingReasons.push("Save an ordered author list and CRediT contribution roles before internal submission.");
   }
@@ -454,7 +515,7 @@ async function gatherScopeState(
   const readyForInternalSubmission = Boolean(latestCheck) && blockingReasons.length === 0;
   const computedStatus: ManuscriptAttributionStatus = !latestCheck
     ? "UNINITIALIZED"
-    : unresolvedDisputes.some(d => d.source === "ATTRIBUTION_DECISION" || d.source === "ATTRIBUTION_DISPUTE" || d.source === "CONTRIBUTION_DISPUTE")
+    : unresolvedDisputes.some(d => ["ATTRIBUTION_DECISION", "ATTRIBUTION_DISPUTE", "CONTRIBUTION_DISPUTE", "WORK_CONTRIBUTION", "WORK_CORRECTION", "ALLOCATION_REVISION"].includes(d.source))
       ? "DISPUTED"
       : readyForInternalSubmission
         ? "VERIFIED"
@@ -475,6 +536,9 @@ async function gatherScopeState(
     decisionViews,
     unreviewedContributorIds,
     pendingAuthorIds,
+    pendingAcknowledgementIds,
+    publicationPolicy: modernPolicy ? publicationPolicy : undefined,
+    sealed: Boolean(await tx.submissionRevision.findFirst({ where: { manuscriptSnapshotId: snapshotId }, select: { id: true } })),
     unresolvedDisputes,
     blockingReasons,
     readyForInternalSubmission,
@@ -489,15 +553,15 @@ function buildView(
 ): ManuscriptAttributionCheckView {
   const activeMember =
     state.project.ownerId === actorId || state.memberMap.get(actorId)?.status === "ACTIVE";
-  const writable =
-    activeMember && state.project.status !== "ARCHIVED" && !state.draft.archivedAt;
+  const writable = activeMember && !state.sealed && state.project.status !== "ARCHIVED" && !state.draft.archivedAt;
   const isInvolved =
     state.proposedAuthors.some(a => a.userId === actorId) ||
     state.acknowledgements.some(a => a.userId === actorId) ||
     state.omittedContributors.some(o => o.userId === actorId) ||
-    state.detectedContributors.some(c => c.userId === actorId);
+    state.detectedContributors.some(c => c.userId === actorId) || state.decisionViews.some(d => d.userId === actorId);
 
   return {
+    viewerId: actorId,
     checkId: state.latestCheck?.id ?? null,
     projectId: state.project.id,
     manuscriptId: state.draft.id,
@@ -523,9 +587,17 @@ function buildView(
     verifiedAt: state.latestCheck?.verifiedAt?.toISOString() ?? null,
     createdAt: state.latestCheck?.createdAt?.toISOString() ?? null,
     viewerCanManage: writable,
-    viewerCanDecide: Boolean(state.latestCheck) && isInvolved && state.project.status !== "ARCHIVED",
+    viewerCanDecide: Boolean(state.latestCheck) && !state.sealed && isInvolved && state.project.status !== "ARCHIVED",
+    publicationPolicy: state.publicationPolicy,
+    pendingAcknowledgementIds: state.pendingAcknowledgementIds,
+    sealed: state.sealed,
     externalSubmissionNotice: EXTERNAL_SUBMISSION_NOTICE,
   };
+}
+
+/** Read-only orchestration adapter; the existing attribution decision logic remains authoritative. */
+export async function readManuscriptAttribution(tx: Db, projectId: string, manuscriptId: string, snapshotId: string, actorId: string): Promise<ManuscriptAttributionCheckView> {
+  return buildView(await gatherScopeState(tx, projectId, manuscriptId, snapshotId), actorId);
 }
 
 export async function assertVerifiedAttributionForPublish(
@@ -561,6 +633,27 @@ export async function assertVerifiedAttributionForPublish(
 }
 
 export const manuscriptAttributionService = {
+  async reviewPdf(projectId: string, actorId: string, manuscriptId: string, snapshotId: string) {
+    return getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [actorId], projectId); await assertActiveProjectAccount(tx, actorId);
+      const state = await gatherScopeState(tx, projectId, manuscriptId, snapshotId);
+      const member = state.project.ownerId === actorId || state.memberMap.get(actorId)?.status === "ACTIVE";
+      if (!member && !state.proposedAuthors.some(author => author.userId === actorId)) throw AppError.notFound("Attribution review PDF not found");
+      const compiled = await tx.manuscriptCompilation.findFirst({ where: { snapshotId, status: "SUCCESS" }, orderBy: { completedAt: "desc" }, select: { id: true, pdfData: true } });
+      if (!compiled?.pdfData) throw AppError.notFound("Ask the team to compile this exact snapshot before opening its review PDF.");
+      await researchLedgerService.record({ tx, projectId, actorId, eventType: "ATTRIBUTION_REVIEW_PDF_READ", resourceKind: "MANUSCRIPT_COMPILATION", resourceId: compiled.id, checksumSha256: state.snapshot.checksum, visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { manuscriptId, snapshotId } });
+      return compiled.pdfData;
+    }, { maxWait: 10000, timeout: 20000 });
+  },
+  async statement(projectId: string, actorId: string, manuscriptId: string, snapshotId: string): Promise<CreditContributionStatement> {
+    const check = await this.getAttributionCheck(projectId, actorId, manuscriptId, snapshotId);
+    if (!check.checkId || !check.readyForInternalSubmission) throw AppError.conflict("Complete attribution, individual approvals and unresolved disputes before exporting the final CRediT statement.");
+    const authors = check.proposedAuthors.map(author => ({ userId: author.userId, name: author.displayName || author.name || "Researcher", order: author.order, corresponding: author.corresponding === true, email: author.email ?? "", affiliation: author.affiliation ?? "", ...(author.orcid ? { orcid: author.orcid } : {}), roles: canonicalCreditRoles(author.creditRoles).map(code => ({ code, id: creditRoleMetadata[code].id, name: creditRoleMetadata[code].name, source: creditRoleMetadata[code].source })) }));
+    const text = authors.map(author => `${author.name}: ${author.roles.map(role => role.name).join(", ")}.`).join("\n");
+    const latex = "\\section*{CRediT author contribution statement}\n" + authors.map(author => `${escapeCreditLatex(author.name)}: ${author.roles.map(role => escapeCreditLatex(role.name)).join(", ")}.`).join("\n\n");
+    await researchLedgerService.record({ projectId, actorId, eventType: "CREDIT_STATEMENT_EXPORTED", resourceKind: "MANUSCRIPT_ATTRIBUTION", resourceId: check.checkId, artifactVersion: String(check.version), checksumSha256: check.snapshotDigestSha256, visibility: "PROJECT_TEAM", retentionClass: "ATTRIBUTION_RECORD", metadata: { manuscriptId, snapshotId, standard: CREDIT_STANDARD } });
+    return { standard: CREDIT_STANDARD, projectId, manuscriptId, snapshotId, snapshotChecksum: check.snapshotChecksum, attributionCheckId: check.checkId, attributionDigest: check.snapshotDigestSha256!, authors, acknowledgements: check.acknowledgements, policy: check.publicationPolicy, text, latex };
+  },
   async getAttributionCheck(
     projectId: string,
     actorId: string,
@@ -577,12 +670,12 @@ export const manuscriptAttributionService = {
         state.detectedContributors.some(c => c.userId === actorId) ||
         state.proposedAuthors.some(a => a.userId === actorId) ||
         state.acknowledgements.some(a => a.userId === actorId) ||
-        state.omittedContributors.some(o => o.userId === actorId);
+        state.omittedContributors.some(o => o.userId === actorId) || state.decisionViews.some(d => d.userId === actorId);
       if (!activeMember && !involved) {
         throw AppError.notFound("Manuscript snapshot not found");
       }
       return buildView(state, actorId);
-    });
+    }, { maxWait: 10000, timeout: 20000 });
   },
 
   async saveAttributionCheck(
@@ -610,6 +703,11 @@ export const manuscriptAttributionService = {
       if (state.project.status === "ARCHIVED" || state.draft.archivedAt) {
         throw AppError.conflict("Archived manuscripts or projects are read-only");
       }
+      if (state.sealed) throw AppError.conflict("This snapshot is sealed. Create a new manuscript snapshot for attribution changes.");
+      const currentVersion = state.latestCheck?.version ?? 0;
+      if (currentVersion > 0 && input.expectedVersion !== currentVersion) throw AppError.conflict("Attribution changed. Reload before saving.");
+      if (input.expectedVersion !== undefined && input.expectedVersion !== currentVersion) throw AppError.conflict("Attribution changed. Reload before saving.");
+      const publicationPolicy = input.publicationPolicy ?? { name: "Team publication policy", version: "1", requireAcknowledgementPermission: true };
 
       const sortedAuthors = [...input.proposedAuthors].sort((a, b) => a.order - b.order);
       if (
@@ -636,6 +734,7 @@ export const manuscriptAttributionService = {
         ...input.acknowledgements.flatMap(a => (a.userId ? [a.userId] : [])),
         ...input.omittedContributors.map(o => o.userId),
       ]) {
+        if (!state.historicalUserSet.has(uid)) throw AppError.badRequest("Choose a documented project contributor");
         if (bucketUsers.has(uid)) {
           throw AppError.badRequest(
             "Each contributor may appear in only one category: Author, Acknowledged, or Justified Non-Author",
@@ -650,6 +749,8 @@ export const manuscriptAttributionService = {
         select: { version: true },
       });
       const nextVersion = (maxRow?.version ?? 0) + 1;
+
+      if (state.latestCheck && isDeepStrictEqual({ authors: compareRoleSets(state.latestCheck.proposedAuthors), acknowledgements: compareRoleSets(state.latestCheck.acknowledgements), omitted: state.latestCheck.omittedContributors, text: state.latestCheck.acknowledgementText, policy: state.latestCheck.publicationPolicy }, { authors: compareRoleSets(jsonSnapshot(sortedAuthors)), acknowledgements: compareRoleSets(jsonSnapshot(input.acknowledgements)), omitted: jsonSnapshot(input.omittedContributors), text: input.acknowledgementText, policy: jsonSnapshot(publicationPolicy) })) return buildView(state, actorId);
 
       await tx.manuscriptAttributionCheck.updateMany({
         where: { snapshotId, status: { not: "SUPERSEDED" } },
@@ -666,6 +767,7 @@ export const manuscriptAttributionService = {
         acknowledgements: input.acknowledgements,
         acknowledgementText: input.acknowledgementText,
         omittedContributors: input.omittedContributors,
+        publicationPolicy,
       };
       const snapshotDigestSha256 = createHash("sha256")
         .update(JSON.stringify(digestSource))
@@ -681,24 +783,16 @@ export const manuscriptAttributionService = {
           proposedAuthors: jsonSnapshot(sortedAuthors),
           acknowledgements: jsonSnapshot(input.acknowledgements),
           acknowledgementText: input.acknowledgementText,
+          publicationPolicy: jsonSnapshot(publicationPolicy),
           omittedContributors: jsonSnapshot(input.omittedContributors),
           snapshotDigestSha256,
           createdById: actorId,
         },
       });
 
-      if (sortedAuthors.some(a => a.userId === actorId)) {
-        await tx.manuscriptAttributionDecision.create({
-          data: {
-            checkId: created.id,
-            projectId,
-            userId: actorId,
-            participantKind: "AUTHOR",
-            decision: "CONFIRM",
-            note: "Confirmed when proposing attribution",
-          },
-        });
-      }
+      // An editor cannot resolve another person's challenge by superseding a check.
+      const latestDecisions = new Map(state.decisionViews.map(decision => [decision.userId, decision]));
+      for (const decision of latestDecisions.values()) if (decision.decision !== "CONFIRM") await tx.manuscriptAttributionDecision.create({ data: { checkId: created.id, projectId, userId: decision.userId, participantKind: decision.participantKind, decision: decision.decision, note: `[Carried forward from decision ${decision.id}] ${decision.note}`, createdAt: new Date(decision.createdAt) } });
 
       const refreshed = await gatherScopeState(tx, projectId, manuscriptId, snapshotId);
       if (refreshed.computedStatus !== created.status) {
@@ -729,10 +823,11 @@ export const manuscriptAttributionService = {
           status: refreshed.computedStatus,
         },
       });
+      for (const userId of new Set([...sortedAuthors.map(author => author.userId), ...input.acknowledgements.flatMap(person => person.userId ? [person.userId] : []), ...input.omittedContributors.map(person => person.userId), ...refreshed.detectedContributors.map(person => person.userId)])) await notificationService.create({ userId, type: "MANUSCRIPT_ATTRIBUTION_REVIEW", title: "Review manuscript attribution", message: "A saved manuscript version needs your individual attribution review.", targetKind: "project", targetId: projectId, eventKey: `ATTRIBUTION_REVIEW:${created.id}:${userId}`, emailStatus: "SKIPPED", emailPayload: { manuscriptId, snapshotId } }, tx);
 
-      const finalState = await gatherScopeState(tx, projectId, manuscriptId, snapshotId);
-      return buildView(finalState, actorId);
-    });
+      refreshed.latestCheck = await tx.manuscriptAttributionCheck.findUnique({ where: { id: created.id } });
+      return buildView(refreshed, actorId);
+    }, { maxWait: 10000, timeout: 20000 });
   },
 
   async decideAttributionCheck(
@@ -759,6 +854,8 @@ export const manuscriptAttributionService = {
       if (state.project.status === "ARCHIVED") {
         throw AppError.conflict("Archived projects are read-only");
       }
+      if (state.sealed || state.draft.archivedAt) throw AppError.conflict("Sealed or archived attribution is read-only. Raise an integrity case for a post-submission concern.");
+      if (input.expectedVersion !== undefined && input.expectedVersion !== check.version) throw AppError.conflict("Attribution changed. Reload before deciding.");
 
       const isAuthor = state.proposedAuthors.some(a => a.userId === actorId);
       const isAcknowledged = state.acknowledgements.some(a => a.userId === actorId);
@@ -767,7 +864,8 @@ export const manuscriptAttributionService = {
         state.detectedContributors.some(c => c.userId === actorId) ||
         state.omittedContributors.some(o => o.userId === actorId);
 
-      if (!isAuthor && !isAcknowledged && !isAdvisor && !isDetectedOrOmitted) {
+      const carriedChallenge = state.decisionViews.some(d => d.userId === actorId && d.decision !== "CONFIRM");
+      if (!isAuthor && !isAcknowledged && !isDetectedOrOmitted && !carriedChallenge) {
         throw AppError.forbidden("Only listed authors, acknowledged contributors, or scope contributors can record a decision");
       }
 
@@ -779,6 +877,10 @@ export const manuscriptAttributionService = {
             ? "ADVISOR"
             : "CONTRIBUTOR";
 
+      const latestOwn = state.decisionViews.filter(d => d.userId === actorId).at(-1);
+      if (latestOwn?.decision === input.decision && latestOwn.note === input.note) return buildView(state, actorId);
+      if ((latestOwn?.id ?? null) !== (input.expectedDecisionId ?? null)) throw AppError.conflict("Your attribution response changed. Reload before replacing it.");
+
       await tx.manuscriptAttributionDecision.create({
         data: {
           checkId: check.id,
@@ -787,6 +889,7 @@ export const manuscriptAttributionService = {
           participantKind,
           decision: input.decision,
           note: input.note ?? "",
+          createdAt: new Date(),
         },
       });
 
@@ -819,10 +922,11 @@ export const manuscriptAttributionService = {
           resultingStatus: refreshed.computedStatus,
         },
       });
+      if (check.createdById !== actorId) await notificationService.create({ userId: check.createdById, type: "MANUSCRIPT_ATTRIBUTION_RESPONSE", title: "Manuscript attribution updated", message: "A participant responded to the saved attribution declaration.", targetKind: "project", targetId: projectId, eventKey: `ATTRIBUTION_RESPONSE:${check.id}:${state.decisionViews.length + 1}:${actorId}`, emailStatus: "SKIPPED", emailPayload: { manuscriptId, snapshotId: check.snapshotId } }, tx);
 
-      const finalState = await gatherScopeState(tx, projectId, manuscriptId, check.snapshotId);
-      return buildView(finalState, actorId);
-    });
+      refreshed.latestCheck = await tx.manuscriptAttributionCheck.findUnique({ where: { id: check.id } });
+      return buildView(refreshed, actorId);
+    }, { maxWait: 10000, timeout: 20000 });
   },
 };
 

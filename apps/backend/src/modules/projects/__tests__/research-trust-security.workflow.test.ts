@@ -638,14 +638,15 @@ describe.sequential("Research Contribution, Integrity & Security Workflow — Al
     // Save declaration
     const saved = await manuscriptAttributionService.saveAttributionCheck(cleanProject.id, ownerId, ms.id, snap.id, {
       proposedAuthors: [
-        { userId: ownerId, order: 1, creditRoles: ["WRITING_ORIGINAL_DRAFT"], rationale: "Lead" },
-        { userId: memberCId, order: 2, creditRoles: ["WRITING_REVIEW_EDITING"], rationale: "Coauthor" },
+        { userId: ownerId, order: 1, displayName: "Research owner", email: "owner@example.invalid", affiliation: "Test institution", corresponding: true, creditRoles: ["WRITING_ORIGINAL_DRAFT"], rationale: "Lead" },
+        { userId: memberCId, order: 2, displayName: "Research coauthor", email: "coauthor@example.invalid", affiliation: "Test institution", creditRoles: ["WRITING_REVIEW_EDITING"], rationale: "Coauthor" },
       ],
       omittedContributors: [],
       acknowledgements: [],
     });
 
-    // Member C confirms (Owner auto-confirms on save)
+    // Every author explicitly approves the exact snapshot.
+    await manuscriptAttributionService.decideAttributionCheck(cleanProject.id, ownerId, ms.id, saved.checkId!, { decision: "CONFIRM", note: "I approve this version and attribution" });
     await manuscriptAttributionService.decideAttributionCheck(cleanProject.id, memberCId, ms.id, saved.checkId!, {
       decision: "CONFIRM",
       note: "Confirmed",

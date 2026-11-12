@@ -12,6 +12,7 @@ import { canLeaveWorkspace, linkLabels, taskLabels, useUnsavedWorkspace, Workspa
 import { taskPriorities, taskStatuses, taskToForm } from "./workspace-task-utils";
 const TaskBoardView = lazy(() => import("./workspace-task-board").then(module => ({ default: module.TaskBoardView })));
 import { WorkspaceTaskHistory } from "./workspace-task-history";
+import { ScreeningAdjudicationDialog } from "./screening-adjudication";
 import "../research-tasks.css";
 
 const newTask: SaveWorkspaceTask = { title: "", description: "", status: "TODO", blockedReason: "", assigneeId: null, milestoneId: null, dueAt: null, link: null, priority: "MEDIUM", parentTaskId: null, checklist: [] };
@@ -19,7 +20,8 @@ const dateValue = (value: string | null) => value?.slice(0, 10) ?? "";
 const fromDate = (value: string) => value ? `${value}T00:00:00.000Z` : null;
 export function WorkspaceTasksPanel({ projectId, readOnly }: { projectId: string; readOnly: boolean }) {
   const { t } = useI18n(); const [params, setParams] = useSearchParams(); const view = params.get("view"), selected = params.get("task");
-  const changeView = async (value: string) => { if (!(await canLeaveWorkspace())) return; const next = new URLSearchParams(params); next.set("view", value); setParams(next, { replace: true }); };
+  const changeView = async (value: string) => { if (!(await canLeaveWorkspace())) return; const next = new URLSearchParams(params); next.set("view", value); next.delete("screeningTab"); next.delete("screeningHistory"); setParams(next, { replace: true }); };
+  const closeScreening = () => { const next = new URLSearchParams(params); for (const key of ["screeningRound", "screeningPaper", "screeningSection"]) next.delete(key); setParams(next, { replace: true }); };
   const select = (value: string | null, status?: WorkspaceTaskStatus, parent?: string) => { const next = new URLSearchParams(params); for (const key of ["task", "taskStatus", "parentTask", "linkKind", "linkId"]) next.delete(key); if (value) next.set("task", value); if (status) next.set("taskStatus", status); if (parent) next.set("parentTask", parent); setParams(next, { replace: true }); };
   const open = async (value: string, status?: WorkspaceTaskStatus, parent?: string) => { if ((await canLeaveWorkspace())) select(value, status, parent); };
   const close = async () => { if ((await canLeaveWorkspace())) select(null); };
@@ -27,8 +29,9 @@ export function WorkspaceTasksPanel({ projectId, readOnly }: { projectId: string
   const initialLink = Object.hasOwn(linkLabels, params.get("linkKind") ?? "") && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(params.get("linkId") ?? "") ? { kind: params.get("linkKind") as WorkspaceLink["kind"], id: params.get("linkId")! } : null;
   return <div className="coord-tasks research-tasks" data-no-i18n>
     <WorkspaceHeading title={t("Team tasks")} description={t("Divide work and follow your research progress.")} action={!readOnly && <Button size="sm" onClick={() => open("new")}><Plus className="mr-2 h-4 w-4" />{t("Create task")}</Button>} />
-    <div className="task-section-nav"><button type="button" aria-current={view !== "milestones" ? "page" : undefined} onClick={() => changeView("board")}>{t("Tasks")}</button><button type="button" aria-current={view === "milestones" ? "page" : undefined} onClick={() => changeView("milestones")}><Flag size={14} />{t("Milestones")}</button></div>
+    <div className="task-section-nav flex-wrap"><button type="button" aria-current={view !== "milestones" ? "page" : undefined} onClick={() => changeView("board")}>{t("Team tasks")}</button><button type="button" aria-current={view === "milestones" ? "page" : undefined} onClick={() => changeView("milestones")}><Flag size={14} />{t("Milestones")}</button></div>
     {view === "milestones" ? <Milestones projectId={projectId} readOnly={readOnly} /> : <Suspense fallback={<WorkspaceLoading />}><TaskBoardView projectId={projectId} readOnly={readOnly} onSelect={open} mode={view === "list" ? "list" : "board"} onMode={changeView} /></Suspense>}
+    {params.get("screeningRound") && <ScreeningAdjudicationDialog key={params.get("screeningRound")} projectId={projectId} roundId={params.get("screeningRound")!} focusSection={params.get("screeningSection") ?? undefined} open onClose={closeScreening} />}
     {selected && <Sheet open onOpenChange={isOpen => { if (!isOpen) close(); }}><SheetContent className="research-task-drawer" closeLabel={t("Close task details")} data-no-i18n><header className="task-drawer-heading"><SheetTitle>{t(selected === "new" ? "New task" : "Task details")}</SheetTitle><SheetDescription>{t("Keep the next step clear for everyone.")}</SheetDescription></header><TaskDetail key={`${selected}:${params.get("parentTask") ?? ""}`} projectId={projectId} selected={selected} readOnly={readOnly} onClose={close} onSaved={id => select(id || null)} onSelect={open} initialStatus={initialStatus} parentTaskId={params.get("parentTask")} initialLink={initialLink} /></SheetContent></Sheet>}
   </div>;
 }

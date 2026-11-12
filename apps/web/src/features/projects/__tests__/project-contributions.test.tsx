@@ -389,10 +389,10 @@ describe("contribution UI governance", () => {
     expect(container.textContent).toContain("Research protocol & methodology");
   });
 
-  it("defaults ProjectContributionsWorkspace to Contribution allocation and updates live totals in AllocationEditor", async () => {
+  it("defaults ProjectContributionsWorkspace to work records and keeps allocation totals separate", async () => {
     await render(<ProjectContributionsWorkspace projectId="p" currentUserId="me" isOwner={true} readOnly={false} />);
     const activeTab = container.querySelector('.contribution-tabs button[aria-current="page"]');
-    expect(activeTab?.textContent).toBe("Contribution allocation");
+    expect(activeTab?.textContent).toBe("Work contributions");
 
     const period = revision().period;
     await render(

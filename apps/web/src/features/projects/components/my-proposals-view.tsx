@@ -1,11 +1,8 @@
-import { screeningStatusLabel } from "./screening-common";
+import { ScreeningStatusBadge } from "./screening-status-badge";
+import { ScreeningStatus } from "./screening-common";
 import { useState } from "react";
 import {
   Search,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  Clock,
   Pencil,
   ArrowRight,
   Plus,
@@ -73,16 +70,18 @@ export function MyProposalsView({
   );
 
   const board = boardQuery.data;
+  const canSaveReason = !readOnly && !!board?.items.find(p => p.paperId === editingPaper?.paperId)?.canEditProposal;
 
   const handleSaveReason = async () => {
-    if (!editingPaper) return;
+    if (!editingPaper || !canSaveReason || command.isPending) return;
     try {
       const ok = await command.run(
         { paperId: editingPaper.paperId, reason: editReasonText.trim() },
-        async () => {
+        async clientKey => {
           return await screeningApi.proposal(projectId, editingPaper.paperId, {
             reason: editReasonText.trim(),
             expectedUpdatedAt: editingPaper.updatedAt,
+            clientKey,
           });
         }
       );
@@ -92,6 +91,7 @@ export function MyProposalsView({
         void boardQuery.refetch();
       } else {
         toast.error("Không thể lưu lý do đề xuất.");
+        void boardQuery.refetch();
       }
     } catch {
       toast.error("Không thể lưu lý do đề xuất.");
@@ -243,9 +243,6 @@ export function MyProposalsView({
               const requiredCount = round?.settings.requiredReviewers ?? 2;
               const status = round?.status ?? "NOT_REVIEWED";
               const isExcluded = status === "EXCLUDED" || round?.finalDecision?.decision === "EXCLUDED";
-              const isIncluded = status === "INCLUDED" || round?.finalDecision?.decision === "INCLUDED";
-              const hasConflict = status === "NEEDS_RESOLUTION" || status === "ADJUDICATING";
-              const needsMoreInfo = status === "NEEDS_MORE_INFO";
 
               return (
                 <article key={p.paperId} className="my-proposal-card">
@@ -263,36 +260,11 @@ export function MyProposalsView({
                     </div>
 
                     <div className="proposal-status-wrap">
-                      {!round && p.legacyProvenance ? <span className="proposal-status-badge">Phân loại lịch sử, chưa xác nhận theo vòng mới</span> : round?.legacyNeedsAudit ? <span className="proposal-status-badge">Cần rà soát dữ liệu cũ</span> : isIncluded ? (
-                        <span className="proposal-status-badge status-included">
-                          <CheckCircle2 size={12} className="inline mr-1" />
-                          {round?.phase === "FULL_TEXT" ? "Đủ điều kiện sau toàn văn" : "Qua sàng lọc sơ bộ"}
-                        </span>
-                      ) : isExcluded ? (
-                        <span className="proposal-status-badge status-excluded">
-                          <XCircle size={12} className="inline mr-1" />
-                          Không chọn cho phân tích
-                        </span>
-                      ) : hasConflict ? (
-                        <span className="proposal-status-badge status-conflict">
-                          <AlertCircle size={12} className="inline mr-1" />
-                          {screeningStatusLabel(status, round)}{status === "NEEDS_RESOLUTION" && " · Đang thảo luận"}
-                        </span>
-                      ) : needsMoreInfo ? (
-                        <span className="proposal-status-badge status-more-info">
-                          <BookOpen size={12} className="inline mr-1" />
-                          {screeningStatusLabel(status, round)}
-                        </span>
-                      ) : round?.status === "IN_REVIEW" ? (
-                        <span className="proposal-status-badge status-reviewing">
-                          <Clock size={12} className="inline mr-1" />
-                          Đang đánh giá
-                        </span>
-                      ) : (
-                        <span className="proposal-status-badge status-not-reviewed">
-                          Chưa có reviewer
-                        </span>
-                      )}
+                      {!round && p.legacyProvenance
+                        ? <ScreeningStatusBadge tone="neutral">Phân loại lịch sử, chưa xác nhận theo vòng mới</ScreeningStatusBadge>
+                        : round?.legacyNeedsAudit
+                          ? <ScreeningStatusBadge tone="warning">Cần rà soát dữ liệu cũ</ScreeningStatusBadge>
+                          : <ScreeningStatus status={status} round={round} />}
                     </div>
                   </header>
 
@@ -468,13 +440,15 @@ export function MyProposalsView({
               />
             </div>
 
+            {!canSaveReason && <p role="status" className="text-sm text-muted-foreground">Lý do đề xuất không còn được phép sửa. Bản nháp vẫn được giữ để bạn sao chép.</p>}
+            <ScreeningError error={command.error} />
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditingPaper(null)}>
                 Hủy bỏ
               </Button>
               <Button
                 onClick={() => void handleSaveReason()}
-                disabled={command.isPending || editReasonText.trim().length < 3}
+                disabled={command.isPending || !canSaveReason || editReasonText.trim().length < 3}
               >
                 Lưu lý do đề xuất
               </Button>

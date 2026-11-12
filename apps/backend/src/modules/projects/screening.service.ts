@@ -1,5 +1,12 @@
+import { getDiscussionTiming } from "./screening-context.js";
+import { updateConsensusEvaluation, maintainProjectConsensus, consensusPending, usesTwoReviewerConsensus } from "./screening-consensus.js";
+import { invalidateDependentStages } from "./screening-reopen.js";
+import { screeningFullTextAvailable } from "./screening-fulltext.js";
 import { screeningCaseService } from "./screening-case.service.js";
-import { latestCase, caseReady, caseView, closeCase, refreshCasePacket } from "./screening-case-context.js";
+import { reconcileScreeningObligations, screeningObligationDtos } from "./screening-obligations.js";
+import { acceptedScreeningPapers } from "./screening-accepted.js";
+import { screeningWorkPapers } from "./screening-work-papers.js";
+import { latestCase, caseReady, caseView, closeCase, ensureAssignment } from "./screening-case-context.js";
 import { screeningClassification, validateResolutionEvidence, notifyScreeningParticipants } from "./screening-resolution-context.js";
 import { assertScreeningCapacity, occupiedScreeningSlot, claimScreeningSlot, screeningQueue } from "./screening-slots.js";
 import { initializePaperScreening } from "./screening-bootstrap.js";
@@ -11,24 +18,27 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { withWorkspace, workspaceId, jsonSnapshot, expectWorkspaceVersion, assertWorkspaceAssignee } from "./workspace-access.js";
 import { researchPaper } from "./project-evidence.service.js";
-import { balancedReviewers, cohenKappa, screeningConsensus, independentWorkflow } from "./screening.calculator.js";
+import { balancedReviewers, cohenKappa, independentWorkflow, automaticFullTextStage } from "./screening.calculator.js";
 import { advanceScreeningStage, effectiveAssignments, projectScreeningStatus, recomputeScreening, roundView, roundSettings, screeningCommand, screeningPeople, screeningRound, screeningSettings, settingsForNewScreening, screeningReviewsVisible } from "./screening-context.js";
 import { screeningConfigSchema, screeningFinalizerSchema, screeningResolveSchema, screeningClaimSchema, screeningReleaseSchema, screeningExtendSchema, screeningDiscoveryGoalUpdateSchema, screeningProposerExceptionSchema, screeningAgreementSchema } from "./dto/screening.schema.js";
 import type { ScreeningWorkspaceSummary, ScreeningPhase, ScreeningState } from "@trend/shared-types";
-import { adjudicationPacket, adjudicationSection, screeningAdjudicatorPool, screeningAdjudicators, screeningDiscussionReady, screeningEscalationReady, sharedAdjudicationPacket } from "./screening-adjudication-context.js";
+import { adjudicationPacket, adjudicationSection, screeningAdjudicatorPool, screeningAdjudicators, screeningDiscussionReady, screeningEscalationReady, sharedAdjudicationPacket, adjudicationTeamRequirement } from "./screening-adjudication-context.js";
 import { effectiveMentorAccess, publishMentorShare } from "./mentor-access.service.js";
 import { notificationService } from "../notifications/notification.service.js";
 import * as s from "./dto/screening.schema.js";
 import { assessmentContext, meaningfulLegacyScreening } from "./screening-review-context.js";
+import { reviewedProposalPapers } from "./screening-proposal.js";
 
 type Page = Omit<z.infer<typeof s.screeningPageSchema>, "sort" | "slots"> & { slots?: "ALL" | "UNCLAIMED" | "LAST_SLOT"; sort?: "newest" | "oldest" | "title" | "year" };
 export const screeningService = {
   async config(project: string, actor: string) { return withWorkspace(project, actor, {}, async c => ({ settings: await screeningSettings(c), canManage: c.role === "OWNER" && !["ARCHIVED", "COMPLETED"].includes(c.project.status), people: await screeningPeople(c), ...(c.role === "OWNER" ? { adjudicatorOptions: await screeningAdjudicatorPool(c) } : {}) })); },
   async configure(project: string, actor: string, raw: z.input<typeof s.screeningConfigSchema>) {
-    const parsed = screeningConfigSchema.parse(raw);
-    const input = { ...parsed, blindReview: parsed.reviewMode === "INDEPENDENT" || parsed.blindReview };
+    const command = screeningConfigSchema.parse(raw);
+    const parsed = { ...command, screeningMode: command.screeningMode ?? (command.workflowKind === "TEAM_SCREENING" ? "SINGLE_STAGE" as const : command.workflowKind === "SYSTEMATIC_REVIEW" ? "TWO_STAGE" as const : undefined) };
+    const input = { ...parsed, ...(parsed.reviewMode === "INDEPENDENT" ? { resolutionPolicy: "CONSENSUS" as const, preferredAdjudicatorId: null, authorizedAdjudicatorIds: [], adjudicationCoordinatorIds: [] } : {}), ...(parsed.screeningMode ? { stages: parsed.screeningMode === "TWO_STAGE" ? ["TITLE_ABSTRACT", "FULL_TEXT"] : [parsed.stages?.[0] ?? "TITLE_ABSTRACT"] } : {}), blindReview: parsed.reviewMode === "INDEPENDENT" || parsed.blindReview };
     return screeningCommand(project, actor, "CONFIGURED", input, { owner: true }, async c => {
       const previous = await screeningSettings(c);
+      if (previous.screeningMode && !input.screeningMode && previous.version > 0) throw AppError.badRequest("Chọn rõ chế độ sàng lọc cho phiên bản quy trình mới");
       if (input.reviewMode === "COLLABORATIVE" && previous.reviewMode !== "COLLABORATIVE") throw AppError.badRequest("Chọn hai reviewer độc lập hoặc cấu hình rõ ngoại lệ một reviewer");
       expectWorkspaceVersion(previous.version, input.expectedVersion);
       if (input.authorizedAdjudicatorIds.length || input.preferredAdjudicatorId || input.adjudicationCoordinatorIds.length) {
@@ -38,7 +48,7 @@ export const screeningService = {
         for (const policy of policies) if (await effectiveMentorAccess(c.tx, policy)) eligible.add(policy.mentorUserId);
         if ([...input.authorizedAdjudicatorIds, ...input.preferredAdjudicatorId ? [input.preferredAdjudicatorId] : [], ...input.adjudicationCoordinatorIds].some(id => !eligible.has(id))) throw AppError.badRequest("Chỉ chọn thành viên hiện tại hoặc giảng viên đã nhận lời và có quyền phù hợp");
       }
-      const { clientKey: _key, expectedVersion: _version, ...data } = input;
+      const { clientKey: _key, expectedVersion: _version, workflowKind: _kind, ...data } = input;
       const row = await c.tx.screeningSettings.upsert({ where: { projectId: c.project.id }, create: { projectId: c.project.id, ...data }, update: { ...data, version: { increment: 1 } } });
       // Legacy votes have no round snapshot. Never unblind them by changing future-round settings.
       await c.tx.project.update({ where: { id: c.project.id }, data: { screeningMode: "INDEPENDENT", screeningBlinded: true, inclusionCriteria: data.inclusionCriteria, exclusionCriteria: data.exclusionCriteria, version: { increment: 1 } } });
@@ -53,11 +63,12 @@ export const screeningService = {
         const link = await researchPaper(c, paperId);
         const previous = await c.tx.screeningRound.findFirst({ where: { projectId: c.project.id, paperId }, orderBy: { number: "desc" } });
         if (previous && !previous.legacyNeedsAudit && !["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(previous.status)) throw AppError.conflict("Hoàn thành vòng hiện tại trước khi mở vòng mới");
+        if (input.phase === "FULL_TEXT" && settings.screeningMode && !await screeningFullTextAvailable(c, paperId)) throw AppError.conflict("Bổ sung nguồn toàn văn trước khi mở vòng đánh giá toàn văn");
         if (!previous?.legacyNeedsAudit && settings.reviewMode !== "COLLABORATIVE" && input.phase === "FULL_TEXT" && settings.stages?.includes("TITLE_ABSTRACT") && !(previous?.phase === "TITLE_ABSTRACT" && previous.status === "INCLUDED") && previous?.phase !== "FULL_TEXT") throw AppError.conflict("Hoàn thành lựa chọn ở giai đoạn tiêu đề / tóm tắt trước khi đánh giá toàn văn");
         if ((previous || ["INCLUDED", "EXCLUDED"].includes(link.screeningStatus)) && !input.confirmRescreen) throw AppError.conflict("Cần xác nhận đánh giá lại; kết quả cũ vẫn được giữ trong lịch sử");
         if (!previous && meaningfulLegacyScreening({ ...link, status: link.screeningStatus })) await c.tx.screeningLegacyRecord.upsert({ where: { projectId_paperId: { projectId: c.project.id, paperId } }, create: { projectId: c.project.id, paperId, snapshot: jsonSnapshot({ provenance: "PRE_PROTOCOL_STATUS", status: link.screeningStatus, screenedById: link.screenedById, screenedAt: link.screenedAt, inclusionReason: link.inclusionReason, exclusionReason: link.exclusionReason, exclusionNote: link.exclusionNote }) }, update: {} });
         if (previous) await c.tx.screeningRound.update({ where: { id: previous.id }, data: { active: false, version: { increment: 1 } } });
-        const row = await c.tx.screeningRound.create({ data: { projectId: c.project.id, paperId, phase: input.phase, number: (previous?.number ?? 0)+1, settings: jsonSnapshot(settings), createdById: c.actorId } });
+        const row = await c.tx.screeningRound.create({ data: { projectId: c.project.id, paperId, phase: input.phase, number: (previous?.number ?? 0)+1, settings: jsonSnapshot(input.phase === "FULL_TEXT" && previous?.phase === "TITLE_ABSTRACT" && roundSettings(previous.settings).screeningMode ? previous.settings : settings), createdById: c.actorId } });
         await projectScreeningStatus(c, row, "NOT_REVIEWED"); roundIds.push(row.id);
       }
       await c.tx.project.update({ where: { id: c.project.id }, data: { screeningMode: "INDEPENDENT", screeningBlinded: true, version: { increment: 1 } } });
@@ -72,9 +83,21 @@ export const screeningService = {
       return { roundId: row.id, result: { roundId: row.id, version: row.version } };
     });
   },
+  async resumeFullText(project: string, actor: string, roundId: string, input: z.infer<typeof s.screeningActionSchema>) {
+    return screeningCommand(project, actor, "FULLTEXT_READY", { ...input, roundId }, {}, async c => {
+      const row = await screeningRound(c, roundId);
+      expectWorkspaceVersion(row.version, input.expectedVersion);
+      if (!(await roundView(c, row)).canResumeFullText) throw AppError.forbidden("Chỉ chủ dự án hoặc người đề xuất được xác nhận nguồn toàn văn cho vòng đang chờ");
+      if (!await screeningFullTextAvailable(c, row.paperId)) throw AppError.conflict("Chưa có toàn văn. Đính kèm PDF hoặc bổ sung liên kết toàn văn trước khi tiếp tục");
+      await advanceScreeningStage(c, row, await effectiveAssignments(c, row.id));
+      const next = await c.tx.screeningRound.findFirstOrThrow({ where: { projectId: c.project.id, paperId: row.paperId, active: true } });
+      return { roundId, result: { roundId: next.id, version: next.version }, details: { previousRoundId: row.id, reason: input.reason } };
+    });
+  },
   async advanceConservatively(project: string, actor: string, roundId: string, input: z.infer<typeof s.screeningActionSchema>) {
     return screeningCommand(project, actor, "PROVISIONAL_FULL_TEXT", { ...input, roundId }, {}, async c => {
-      const row = await screeningRound(c, roundId); expectWorkspaceVersion(row.version, input.expectedVersion);
+      const row = await screeningRound(c, roundId);
+      if (usesTwoReviewerConsensus(row.settings)) throw AppError.conflict("Hai reviewer cập nhật phiếu trong phần thảo luận; không có phân xử hoặc ghi kết quả thủ công"); expectWorkspaceVersion(row.version, input.expectedVersion);
       const view = await roundView(c, row);
       if (!view.canAdvanceConservatively) throw AppError.forbidden("Cần đề xuất kết quả chung và reviewer còn lại xác nhận trước khi chuyển đọc toàn văn");
       const next = await c.tx.screeningRound.update({ where: { id: roundId }, data: { status: "NEEDS_MORE_INFO", version: { increment: 1 } } });
@@ -84,7 +107,8 @@ export const screeningService = {
   },
   async declineAgreement(project: string, actor: string, roundId: string, input: z.infer<typeof s.screeningAgreementDeclineSchema>) {
     return screeningCommand(project, actor, "AGREEMENT_DECLINED", { ...input, roundId }, {}, async c => {
-      const row = await screeningRound(c, roundId); expectWorkspaceVersion(row.version, input.expectedVersion);
+      const row = await screeningRound(c, roundId);
+      if (usesTwoReviewerConsensus(row.settings)) throw AppError.conflict("Hai reviewer cập nhật phiếu trong phần thảo luận; không có phân xử hoặc ghi kết quả thủ công"); expectWorkspaceVersion(row.version, input.expectedVersion);
       const agreement = await screeningAgreement(c, row);
       if (!agreement?.canDecline || agreement.id !== input.proposalId) throw AppError.conflict("Đề xuất đã thay đổi hoặc bạn không có quyền phản hồi");
       const next = await c.tx.screeningRound.update({ where: { id: roundId }, data: { version: { increment: 1 } } });
@@ -94,10 +118,16 @@ export const screeningService = {
   },
   requestAdjudication: screeningCaseService.request,
   async reassess(project: string, actor: string, roundId: string, input: z.infer<typeof s.screeningReassessSchema>) {
+    input = s.screeningReassessSchema.parse(input);
     return screeningCommand(project, actor, "REVIEW_REASSESSED", { ...input, roundId }, {}, async c => {
       const row = await screeningRound(c, roundId);
+      if (usesTwoReviewerConsensus(row.settings)) {
+        const value = await updateConsensusEvaluation(c, row, input);
+        return { roundId, result: { roundId, version: value.next.version, expired: value.expired },
+          details: { assignmentId: value.assignmentId, reviewId: value.reviewId, reviewerId: c.actorId, revision: value.revision, decision: input.decision, reason: input.reason, expired: value.expired } };
+      }
       if (input.expectedRevision) expectWorkspaceVersion(row.version, input.expectedRevision);
-      if (!row.active || ["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(row.status)) {
+      if (!row.active || ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT", "CLOSED_UNRESOLVED"].includes(row.status)) {
         throw AppError.conflict("Vòng sàng lọc đã hoàn thành hoặc không còn hiệu lực");
       }
       if (row.legacyNeedsAudit) {
@@ -110,6 +140,14 @@ export const screeningService = {
       });
       if (!assignment || !assignment.submittedAt) {
         throw AppError.forbidden("Bạn chưa hoàn thành đánh giá ban đầu cho bài này");
+      }
+
+      const assignments = await effectiveAssignments(c, row.id);
+      if (!roundSettings(row.settings).screeningMode && assignments.some(a => a.id !== assignment.id && a.submittedAt)) {
+        const current = await c.tx.screeningReview.findUniqueOrThrow({
+          where: { assignmentId_revision: { assignmentId: assignment.id, revision: assignment.revision } },
+        });
+        if (input.decision === current.decision) throw AppError.conflict("Hai reviewer đã gửi phiếu. Chỉ có thể đổi sang kết luận khác với phiếu hiện tại");
       }
 
       const nextRevision = assignment.revision + 1;
@@ -134,52 +172,6 @@ export const screeningService = {
       });
 
       const next = await recomputeScreening(c, row);
-
-      if (!["INCLUDED", "EXCLUDED"].includes(next.status)) await refreshCasePacket(c, next);
-      // Check if effective decisions now agree (auto-resolve!)
-      if (["INCLUDED", "EXCLUDED"].includes(next.status)) {
-        if (row.finalizerId) {
-          await c.tx.screeningRound.update({
-            where: { id: row.id },
-            data: { finalizerId: null }
-          });
-          await c.tx.mentorResourceShare.updateMany({
-            where: { projectId: c.project.id, sectionKey: adjudicationSection(row.id), revokedAt: null },
-            data: { revokedAt: new Date() }
-          });
-        }
-        await c.tx.screeningAudit.create({
-          data: {
-            projectId: c.project.id,
-            roundId: row.id,
-            actorId: c.actorId,
-            type: "ADJUDICATION_CANCELLED",
-            details: { reason: "CANCELLED_AS_RESOLVED", revisedBy: c.actorId }
-          }
-        });
-        await notifyScreeningParticipants(c, row, "RESOLVED_BY_REVISION", "Hai reviewer đã thống nhất sau khi xem xét lại", next.version);
-      } else if (row.finalizerId) {
-        await c.tx.screeningAudit.create({
-          data: {
-            projectId: c.project.id,
-            roundId: row.id,
-            actorId: c.actorId,
-            type: "ADJUDICATION_EVIDENCE_UPDATED",
-            details: { roundId: row.id, revision: nextRevision, reviewerId: c.actorId, version: next.version }
-          }
-        });
-        await notificationService.create({
-          userId: row.finalizerId,
-          type: "SCREENING_ACTION_REQUIRED",
-          paperId: row.paperId,
-          title: "Hồ sơ phân xử có cập nhật đánh giá mới",
-          message: "Một reviewer đã xem xét lại đánh giá của mình. Hãy kiểm tra hồ sơ mới nhất.",
-          targetKind: "project",
-          targetId: c.project.id,
-          eventKey: `SCREENING:${row.id}:EVIDENCE_UPDATE:${next.version}`,
-          emailStatus: "SKIPPED"
-        }, c.tx);
-      }
 
       return {
         roundId,
@@ -225,11 +217,22 @@ export const screeningService = {
           const old = all.find(a => a.reviewerId === reviewerId);
           if (old?.submittedAt) continue;
           await assertWorkspaceAssignee(c, reviewerId);
-          await c.tx.screeningAssignment.upsert({ where: { roundId_reviewerId: { roundId, reviewerId } }, create: { projectId: c.project.id, roundId, reviewerId, dueAt: input.dueAt ? new Date(input.dueAt) : null }, update: { active: true, dueAt: input.dueAt ? new Date(input.dueAt) : null } });
+          // PostgreSQL's BEFORE INSERT capacity trigger runs before ON CONFLICT.
+          // Update existing rows directly so an unchanged reviewer is not counted as a third slot.
+          const dueAt = input.dueAt ? new Date(input.dueAt) : null;
+          if (old) await c.tx.screeningAssignment.update({ where: { id: old.id }, data: { active: true, dueAt } });
+          else await c.tx.screeningAssignment.create({ data: { projectId: c.project.id, roundId, reviewerId, dueAt } });
         }
         await recomputeScreening(c, round);
       }
       return { result: { roundIds: input.roundIds }, roundAudits };
+    });
+  },
+  async confirmConsensus(project: string, actor: string, roundId: string, raw: z.input<typeof s.screeningConsensusConfirmSchema>) {
+    s.screeningConsensusConfirmSchema.parse(raw);
+    return withWorkspace(project, actor, { write: true }, async c => {
+      await screeningRound(c, roundId);
+      throw AppError.conflict("Bước xác nhận riêng đã ngừng sử dụng. Cập nhật đánh giá của bạn trong cuộc thảo luận");
     });
   },
   async submit(project: string, actor: string, roundId: string, input: z.infer<typeof s.screeningSubmitSchema>) {
@@ -237,14 +240,16 @@ export const screeningService = {
     return screeningCommand(project, actor, "REVIEW_SUBMITTED", { ...input, roundId }, {}, async c => {
       const row = await screeningRound(c, roundId);
       assertScreeningCapacity(row);
-      if (!row.active || ["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(row.status)) throw AppError.conflict("Vòng sàng lọc đã kết thúc");
+      if (usesTwoReviewerConsensus(row.settings) && input.decision === "UNSURE") throw AppError.badRequest("Chọn Phù hợp hoặc Không phù hợp và ghi căn cứ đánh giá");
+      if (consensusPending(row.status)) throw AppError.conflict("Cập nhật đánh giá trong phần thảo luận; phiếu ban đầu và các phiên bản được giữ trong lịch sử");
+      if (!row.active || ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT", "CLOSED_UNRESOLVED"].includes(row.status)) throw AppError.conflict("Vòng sàng lọc đã kết thúc");
       const assignment = await c.tx.screeningAssignment.findFirst({ where: { id: input.assignmentId, roundId, projectId: c.project.id, reviewerId: c.actorId, active: true } });
       if (!assignment || !occupiedScreeningSlot(assignment)) throw AppError.forbidden("Suất đánh giá đã hết hạn hoặc bạn chưa nhận bài. Nhận lại suất hợp lệ trước khi gửi");
       const occupied = await effectiveAssignments(c, row.id);
       if (occupied.length > roundSettings(row.settings).requiredReviewers) throw AppError.conflict("Cần rà soát phân công cũ trước khi gửi phiếu");
       expectWorkspaceVersion(assignment.revision, input.expectedRevision);
       if (assignment.submittedAt) {
-        if (row.unblindedAt || ["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(row.status)) {
+        if (row.unblindedAt || occupied.some(a => a.id !== assignment.id && a.submittedAt) || ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT", "CLOSED_UNRESOLVED"].includes(row.status)) {
           throw AppError.conflict("Phiếu đã công bố hoặc vòng đã kết thúc. Mở lại phiếu để gửi phiên bản mới");
         }
         const nextRevision = assignment.revision + 1;
@@ -262,6 +267,7 @@ export const screeningService = {
     input = screeningResolveSchema.parse(input);
     return screeningCommand(project, actor, "FINALIZED", { ...input, roundId }, { mentor: true, mentorScope: "SHARED_RESOURCES" }, async c => {
       const row = await screeningRound(c, roundId);
+      if (usesTwoReviewerConsensus(row.settings)) throw AppError.conflict("Hai reviewer cập nhật phiếu trong phần thảo luận; không có phân xử hoặc ghi kết quả thủ công");
       if (c.project.status === "COMPLETED") throw AppError.conflict("Dự án đã hoàn tất, không thể ghi kết luận mới");
       if (c.actorId !== (row.finalizerId ?? (independentWorkflow(roundSettings(row.settings)) ? null : c.project.ownerId))) throw AppError.forbidden("Chỉ người được phân công chốt mới có quyền ghi quyết định cuối");
       if (independentWorkflow(roundSettings(row.settings)) && !(await screeningAdjudicators(c, row)).some(p => p.id === c.actorId)) throw AppError.forbidden("Bạn không còn đủ điều kiện phân xử độc lập");
@@ -271,16 +277,16 @@ export const screeningService = {
         if (!cv.canResolve || input.expectedCaseVersion === undefined) throw AppError.forbidden("Chỉ người được phân công được kết luận sau khi hồ sơ đã khóa");
         expectWorkspaceVersion(disputeCase.version, input.expectedCaseVersion);
         if (input.reason.trim().length < 10) throw AppError.badRequest("Cần ghi lý do phân xử ít nhất 10 ký tự");
-        if (!input.sourceMaterial || input.sourceMaterial.trim().length < 10) throw AppError.badRequest("Cần ghi căn cứ nguồn cụ thể");
         const packet = disputeCase.packet as unknown as import("@trend/shared-types").ScreeningAdjudicationPacket;
         const sufficientSource = row.phase === "FULL_TEXT" ? Boolean(packet.sources?.length || packet.reviews.some(r => r.fullTextReference?.trim())) : Boolean(packet.paper.abstractText?.trim() || packet.sources?.length);
-        if (input.decision === "EXCLUDED" && !sufficientSource) throw AppError.badRequest("Nguồn chưa đủ để chốt loại. Chọn cần bổ sung thông tin và ghi bước tiếp theo");
+        if (input.decision === "EXCLUDED" && !sufficientSource) throw AppError.badRequest("Nguồn chưa đủ để chốt loại. Cần bổ sung tài liệu nguồn trước khi kết luận");
         const criteria = (row.settings as { exclusionCriteria?: string[] }).exclusionCriteria ?? [];
-        if (input.decision === "EXCLUDED" && (!criteria.length || !criteria.includes(input.exclusionReason ?? ""))) throw AppError.badRequest("Không thể chốt loại khi thiếu tiêu chí loại thực tế");
+        if (input.decision === "EXCLUDED" && input.exclusionReason && !criteria.includes(input.exclusionReason)) throw AppError.badRequest("Lý do loại phải thuộc tiêu chí đã lưu của vòng");
       } else if (independentWorkflow(roundSettings(row.settings))) {
         if ((roundSettings(row.settings).workflowVersion ?? 0) >= 5) throw AppError.conflict("Cần hồ sơ đã khóa và người phân xử được phân công");
         if (!(await screeningPeople(c)).some(p => p.id === c.actorId)) await sharedAdjudicationPacket(c, row);
       }
+      if ((disputeCase || independentWorkflow(roundSettings(row.settings)) || row.status === "ADJUDICATING") && !["INCLUDED", "EXCLUDED"].includes(input.decision)) throw AppError.badRequest("Phân xử chỉ có hai kết quả: Qua vòng hoặc Loại theo tiêu chí");
       expectWorkspaceVersion(row.version, input.expectedVersion);
       if (!row.active || !["AWAITING_FINALIZATION", "NEEDS_RESOLUTION", "NEEDS_MORE_INFO", "ADJUDICATING"].includes(row.status) || !row.unblindedAt) throw AppError.conflict("Chỉ chốt sau khi hoàn thành tất cả phiếu");
       const view = await roundView(c, row);
@@ -290,7 +296,7 @@ export const screeningService = {
       const unanimous = view.reviews.every(r => r.decision === (input.decision === "INCLUDED" ? "INCLUDE" : "EXCLUDE"));
       if (view.settings.reviewMode !== "COLLABORATIVE" && !unanimous && view.settings.resolutionPolicy !== "ADJUDICATION") throw AppError.conflict("Quy tắc yêu cầu reviewer thống nhất quyết định. Thảo luận rồi mở lại phiếu cần cập nhật");
       if (input.decision === "NEEDS_MORE_INFO" && !independentWorkflow(view.settings)) throw AppError.badRequest("Kết quả này chỉ dành cho quy trình độc lập mới");
-      validateResolutionEvidence(row, input);
+      validateResolutionEvidence(row, input, true);
       if (independentWorkflow(view.settings) && input.decision === "BACKGROUND") throw AppError.badRequest("Chọn kết quả của giai đoạn sàng lọc, không đổi sang tài liệu nền khi phân xử");
       const next = await c.tx.screeningRound.update({ where: { id: roundId }, data: { status: input.decision, version: { increment: 1 } } });
       const final = await c.tx.screeningFinalDecision.create({ data: { projectId: c.project.id, roundId, roundVersion: next.version, decision: input.decision, source: "MANUAL", resolutionType: disputeCase || independentWorkflow(view.settings) ? "ADJUDICATION" : null, exclusionReason: input.exclusionReason, sourceMaterial: input.sourceMaterial, reason: input.reason, resolverId: c.actorId, reviewIds: view.reviews.map(r => r.id) } });
@@ -308,8 +314,9 @@ export const screeningService = {
   async finalizer(project: string, actor: string, roundId: string, raw: z.input<typeof s.screeningFinalizerSchema>) {
     const input = screeningFinalizerSchema.parse(raw);
     return screeningCommand(project, actor, "FINALIZER_ASSIGNED", { ...input, roundId }, { owner: true, accounts: [input.finalizerId] }, async c => {
-      const row = await screeningRound(c, roundId); expectWorkspaceVersion(row.version, input.expectedVersion);
-      if (!row.active || ["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(row.status)) throw AppError.conflict("Chỉ giao người chốt khi vòng chưa có kết quả cuối");
+      const row = await screeningRound(c, roundId);
+      if (usesTwoReviewerConsensus(row.settings)) throw AppError.conflict("Hai reviewer cập nhật phiếu trong phần thảo luận; không có phân xử hoặc ghi kết quả thủ công"); expectWorkspaceVersion(row.version, input.expectedVersion);
+      if (!row.active || ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT", "CLOSED_UNRESOLVED"].includes(row.status)) throw AppError.conflict("Chỉ giao người chốt khi vòng chưa có kết quả cuối");
       if ((await roundView(c, row)).resolution) throw AppError.conflict("Đã ghi kết quả cần thêm thông tin. Mở lại có lý do trước khi giao phân xử mới");
       const protocol = independentWorkflow(roundSettings(row.settings));
       if (protocol && (roundSettings(row.settings).workflowVersion ?? 0) >= 5 || await latestCase(c, roundId)) throw AppError.conflict("Dùng phân công trong hồ sơ đã khóa theo chính sách Project");
@@ -343,17 +350,19 @@ export const screeningService = {
     input = screeningAgreementSchema.parse(input);
     return screeningCommand(project, actor, "AGREEMENT_PROPOSED", { ...input, roundId }, {}, async c => {
       const row = await screeningRound(c, roundId);
+      if (usesTwoReviewerConsensus(row.settings)) throw AppError.conflict("Hai reviewer cập nhật phiếu trong phần thảo luận; không có phân xử hoặc ghi kết quả thủ công");
       if ((roundSettings(row.settings).workflowVersion ?? 0) >= 8) throw AppError.conflict("Mỗi reviewer tự sửa phiếu hoặc mở hồ sơ phân xử, không xác nhận thay người còn lại"); expectWorkspaceVersion(row.version, input.expectedVersion);
       const view = await roundView(c, row);
-      if ((view.settings.workflowVersion ?? 0) >= 5 || await latestCase(c, roundId)) throw AppError.conflict("Reviewer tự sửa phiếu của mình để ghi nhận thống nhất sau thảo luận");
+      const isTeamScreening = view.settings.workflowKind === "TEAM_SCREENING" || view.settings.resolutionPolicy === "CONSENSUS";
+      if (!isTeamScreening && ((view.settings.workflowVersion ?? 0) >= 5 || await latestCase(c, roundId))) throw AppError.conflict("Reviewer tự sửa phiếu của mình để ghi nhận thống nhất sau thảo luận");
       if (!view.canProposeAgreement || view.completed !== view.assigned || view.hiddenReviews) throw AppError.forbidden("Chỉ reviewer đã hoàn tất phiếu trong vòng bất đồng được đề xuất quyết định chung");
-      if ((view.settings.workflowVersion ?? 0) >= 5 && !await screeningDiscussionReady(c, row)) throw AppError.conflict("Hai reviewer cần trao đổi trước khi đề xuất quyết định chung");
+      if (!isTeamScreening && (view.settings.workflowVersion ?? 0) >= 5 && !await screeningDiscussionReady(c, row)) throw AppError.conflict("Hai reviewer cần trao đổi trước khi đề xuất quyết định chung");
       validateResolutionEvidence(row, input);
       if (!(await screeningPeople(c)).some(p => p.id === c.actorId)) throw AppError.forbidden("Bạn không còn là reviewer đang hoạt động");
       const live = new Set((await screeningPeople(c)).map(p => p.id));
       if (view.assignments.some(a => !live.has(a.reviewerId))) throw AppError.conflict("Reviewer không còn tham gia. Cần phân xử độc lập, không thể ghi đồng thuận thay họ");
       const proposalId = randomUUID();
-      if ((view.settings.workflowVersion ?? 0) >= 5) await c.tx.screeningAudit.create({ data: { projectId: c.project.id, roundId, actorId: c.actorId, type: "AGREEMENT_CONFIRMED", details: { proposalId, authorConsent: true } } });
+      if ((view.settings.workflowVersion ?? 0) >= 5 || isTeamScreening) await c.tx.screeningAudit.create({ data: { projectId: c.project.id, roundId, actorId: c.actorId, type: "AGREEMENT_CONFIRMED", details: { proposalId, authorConsent: true } } });
       const next = await c.tx.screeningRound.update({ where: { id: row.id }, data: { version: { increment: 1 } } });
       for (const reviewerId of view.assignments.map(a => a.reviewerId).filter(id => id !== c.actorId)) await notificationService.create({ userId: reviewerId, type: "SCREENING_ACTION_REQUIRED", paperId: row.paperId, title: "Có đề xuất quyết định chung cần phản hồi", message: "Đọc kết luận và lý do trong thư viện dự án, rồi xác nhận hoặc tiếp tục thảo luận.", targetKind: "project", targetId: c.project.id, eventKey: `SCREENING:${proposalId}:${reviewerId}`, emailStatus: "SKIPPED" }, c.tx);
       return { roundId, result: { id: proposalId, roundId, version: next.version }, details: { ...input, proposalId, reviewIds: view.reviews.map(r => r.id).sort(), reviewerIds: view.assignments.map(a => a.reviewerId).sort(), ruleVersion: view.settings.version } };
@@ -362,6 +371,7 @@ export const screeningService = {
   async confirmAgreement(project: string, actor: string, roundId: string, input: z.infer<typeof s.screeningAgreementConfirmSchema>) {
     return screeningCommand(project, actor, "AGREEMENT_CONFIRMED", { ...input, roundId }, {}, async c => {
       const row = await screeningRound(c, roundId);
+      if (usesTwoReviewerConsensus(row.settings)) throw AppError.conflict("Hai reviewer cập nhật phiếu trong phần thảo luận; không có phân xử hoặc ghi kết quả thủ công");
       if ((roundSettings(row.settings).workflowVersion ?? 0) >= 8) throw AppError.conflict("Mỗi reviewer tự sửa phiếu hoặc mở hồ sơ phân xử, không xác nhận thay người còn lại"); expectWorkspaceVersion(row.version, input.expectedVersion);
       if ((roundSettings(row.settings).workflowVersion ?? 0) >= 5 || await latestCase(c, roundId)) throw AppError.conflict("Reviewer tự sửa phiếu của mình sau thảo luận");
       const agreement = await screeningAgreement(c, row);
@@ -383,6 +393,8 @@ export const screeningService = {
     return screeningCommand(project, actor, "PROPOSAL_REASON_UPDATED", { ...input, paperId }, {}, async c => {
       const link = await researchPaper(c, paperId);
       if (link.addedById !== c.actorId) throw AppError.forbidden("Chỉ người đề xuất được sửa lý do đề xuất của mình");
+      // screeningCommand holds the same project lock as ballot submission.
+      if ((await reviewedProposalPapers(c, [paperId])).has(paperId)) throw AppError.conflict("Bài đã có phiếu đánh giá. Lý do đề xuất đã khóa.");
       if (link.updatedAt.toISOString() !== input.expectedUpdatedAt) throw AppError.conflict("Thông tin bài đã thay đổi, tải lại trước khi lưu");
       const updated = await c.tx.projectPaper.update({ where: { id: link.id }, data: { proposalReason: input.reason, updatedAt: new Date(Math.max(Date.now(), link.updatedAt.getTime()+1)) } });
       return { result: { id: link.id, updatedAt: updated.updatedAt.toISOString() }, details: { paperId, before: link.proposalReason, reason: input.reason } };
@@ -391,6 +403,7 @@ export const screeningService = {
   async unblind(project: string, actor: string, roundId: string, input: z.infer<typeof s.screeningActionSchema>) {
     return screeningCommand(project, actor, "EARLY_UNBLIND", { ...input, roundId }, { owner: true }, async c => {
       const row = await screeningRound(c, roundId);
+      if (usesTwoReviewerConsensus(row.settings)) throw AppError.conflict("Hai reviewer cập nhật phiếu trong phần thảo luận; không có phân xử hoặc ghi kết quả thủ công");
       if ((roundSettings(row.settings).workflowVersion ?? 0) >= 8) throw AppError.conflict("Mỗi reviewer tự sửa phiếu hoặc mở hồ sơ phân xử, không xác nhận thay người còn lại"); expectWorkspaceVersion(row.version, input.expectedVersion);
       if (roundSettings(row.settings).blindReview) throw AppError.conflict("Cần hoàn thành tất cả phiếu trước khi công bố theo quy tắc đã lưu");
       if (!row.active || row.unblindedAt) throw AppError.conflict("Vòng đã công bố phiếu hoặc không còn hoạt động");
@@ -401,11 +414,15 @@ export const screeningService = {
   async reopen(project: string, actor: string, roundId: string, input: z.infer<typeof s.screeningReopenSchema>) {
     const assignee = await getPrisma().screeningAssignment.findUnique({ where: { id: input.assignmentId }, select: { reviewerId: true } });
     return screeningCommand(project, actor, "REVIEW_REOPENED", { ...input, roundId }, { accounts: assignee ? [assignee.reviewerId] : [] }, async c => {
-      const row = await screeningRound(c, roundId); expectWorkspaceVersion(row.version, input.expectedVersion);
+      const row = await screeningRound(c, roundId);
+      if (usesTwoReviewerConsensus(row.settings)) throw AppError.conflict("Hai reviewer cập nhật phiếu trong phần thảo luận; không có phân xử hoặc ghi kết quả thủ công"); expectWorkspaceVersion(row.version, input.expectedVersion);
+      assertScreeningCapacity(row);
       const assignment = await c.tx.screeningAssignment.findFirst({ where: { id: input.assignmentId, roundId, projectId: c.project.id, active: true } });
-      if (!row.active || !assignment?.submittedAt) throw AppError.conflict("Chỉ mở lại phiếu đã gửi trong vòng hiện tại");
+      if (!assignment?.submittedAt) throw AppError.conflict("Chỉ mở lại phiếu đã gửi trong vòng hiện tại");
+      if (!row.active && c.role !== "OWNER") throw AppError.forbidden("Chỉ chủ dự án được mở lại vòng trước");
+      await invalidateDependentStages(c, row, input.reason);
       const protocol = independentWorkflow(roundSettings(row.settings));
-      if (["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(row.status) && c.role !== "OWNER") throw AppError.forbidden("Kết quả đã chốt. Cần chủ dự án mở lại có lý do và lưu lịch sử");
+      if (["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT", "CLOSED_UNRESOLVED"].includes(row.status) && c.role !== "OWNER") throw AppError.forbidden("Kết quả đã chốt. Cần chủ dự án mở lại có lý do và lưu lịch sử");
       const dispute = await latestCase(c, roundId);
       if (dispute && (Boolean(dispute.finalDecisionId) || dispute.active && await caseReady(c, dispute)) && c.role !== "OWNER") throw AppError.forbidden("Hồ sơ đã khóa hoặc có kết luận. Cần chủ dự án mở lại có lý do và lưu lịch sử");
       if (c.role !== "OWNER" && !(protocol && assignment.reviewerId === c.actorId)) throw AppError.forbidden("Chỉ chủ dự án hoặc reviewer tự mở lại phiếu của mình");
@@ -413,7 +430,7 @@ export const screeningService = {
       await assertWorkspaceAssignee(c, assignment.reviewerId);
       if (protocol) await c.tx.mentorResourceShare.updateMany({ where: { projectId: c.project.id, sectionKey: adjudicationSection(row.id), revokedAt: null }, data: { revokedAt: new Date() } });
       await c.tx.screeningAssignment.update({ where: { id: assignment.id }, data: { submittedAt: null, dueAt: null, revision: { increment: 1 } } });
-      const next = await c.tx.screeningRound.update({ where: { id: roundId }, data: { status: "IN_REVIEW", ...(protocol ? { finalizerId: null } : {}), independenceCompromised: row.independenceCompromised || Boolean(row.unblindedAt), version: { increment: 1 } } });
+      const next = await c.tx.screeningRound.update({ where: { id: roundId }, data: { active: true, status: "IN_REVIEW", ...(protocol ? { finalizerId: null } : {}), independenceCompromised: row.independenceCompromised || Boolean(row.unblindedAt), version: { increment: 1 } } });
       await projectScreeningStatus(c, row, "IN_REVIEW");
       await notifyScreeningParticipants(c, row, "REOPENED", "Một phiếu đánh giá đã được mở lại", next.version, [assignment.reviewerId]);
       return { roundId, result: { roundId, version: next.version }, details: { ...input, reviewerId: assignment.reviewerId, previousRevision: assignment.revision } };
@@ -425,10 +442,12 @@ export const screeningService = {
       if (input.shareWithAdjudicator || !c.role) throw AppError.forbidden("Không có kênh trao đổi với người phân xử");
       const ownAssignment = await c.tx.screeningAssignment.findFirst({ where: { roundId, reviewerId: c.actorId, active: true, submittedAt: { not: null } } });
       const activeCase = await latestCase(c, roundId);
-      if (activeCase?.active) throw AppError.conflict("Hồ sơ đã mở. Bổ sung ý kiến riêng trong thời hạn chung");
+      if (["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT", "CLOSED_UNRESOLVED"].includes(row.status)) throw AppError.conflict("Vòng đã có kết quả, thảo luận chỉ được xem lại");
+      if (activeCase?.active && !usesTwoReviewerConsensus(row.settings)) throw AppError.conflict("Hồ sơ đã mở. Bổ sung ý kiến riêng trong thời hạn chung");
       const assignments = await effectiveAssignments(c, row.id);
       if (!row.active || !screeningReviewsVisible(row, roundSettings(row.settings), assignments)) throw AppError.conflict("Thảo luận chỉ mở sau khi công bố đánh giá độc lập");
       if (independentWorkflow(roundSettings(row.settings)) && !ownAssignment) throw AppError.forbidden("Thảo luận riêng dành cho hai reviewer");
+      if (row.status === "CONSENSUS_REQUIRED") await c.tx.screeningRound.update({ where: { id: row.id }, data: { status: "CONSENSUS_IN_PROGRESS", version: { increment: 1 } } });
       const reviews = await c.tx.screeningReview.findMany({ where: { projectId: c.project.id, OR: assignments.filter(a => a.submittedAt).map(a => ({ assignmentId: a.id, revision: a.revision })) }, select: { id: true } });
       return { roundId, result: { roundId }, details: { comment: input.comment, reviewIds: reviews.map(r => r.id).sort() } };
     });
@@ -436,18 +455,22 @@ export const screeningService = {
   async detail(project: string, actor: string, roundId: string) { return withWorkspace(project, actor, {}, async c => roundView(c, await screeningRound(c, roundId))); },
   async board(project: string, actor: string, query: Page): Promise<ScreeningBoard> {
     return withWorkspace(project, actor, {}, async c => {
+      await maintainProjectConsensus(c);
       const rounds = await c.tx.screeningRound.findMany({ where: { projectId: c.project.id, active: true }, });
       const allLinks = await c.tx.projectPaper.findMany({ where: { projectId: c.project.id }, select: { paperId: true, screeningStatus: true, addedById: true, tags: true, notes: true } });
       const isSpecialFilter = ["ALL", "CONFLICT", "PROPOSED_BY_ME", "QUEUE"].includes(query.filter);
       const mine = !isSpecialFilter ? await c.tx.screeningAssignment.findMany({ where: { projectId: c.project.id, reviewerId: c.actorId, active: true, ...(query.filter === "COMPLETED" ? { submittedAt: { not: null } } : ["PENDING", "OVERDUE"].includes(query.filter) ? { submittedAt: null } : {}), ...(query.filter === "OVERDUE" ? { dueAt: { lt: new Date() } } : {}) }, select: { roundId: true } }) : null;
       const roundIds = mine ? new Set(mine.map(a => a.roundId)) : null;
       let paperIds: string[] | null = null;
+      let queueSummary: ScreeningBoard["queueSummary"];
       if (query.filter === "CONFLICT") {
-        paperIds = rounds.filter(r => ["NEEDS_RESOLUTION", "ADJUDICATING"].includes(r.status)).map(r => r.paperId);
+        paperIds = rounds.filter(r => ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS", "NEEDS_RESOLUTION", "ADJUDICATING"].includes(r.status)).map(r => r.paperId);
       } else if (query.filter === "PROPOSED_BY_ME") {
         paperIds = allLinks.filter(l => l.addedById === c.actorId).map(l => l.paperId);
       } else if (query.filter === "QUEUE") {
         const queue = await screeningQueue(c);
+        queueSummary = { available: queue.length, unclaimed: queue.filter(r => r.occupiedCount === 0).length,
+          lastSlot: queue.filter(r => r.occupiedCount === 1).length, awaitingSecondReview: queue.filter(r => r.completedCount === 1).length };
         paperIds = queue.filter(r => !query.slots || query.slots === "ALL" || (query.slots === "UNCLAIMED" ? r.occupiedCount === 0 : r.occupiedCount === 1)).map(r => r.paperId);
       } else if (roundIds) {
         paperIds = rounds.filter(r => roundIds.has(r.id)).map(r => r.paperId);
@@ -468,7 +491,7 @@ export const screeningService = {
       const reviewerRounds = new Set(allAssignments.filter(a => a.reviewerId === query.reviewerId).map(a => a.roundId));
       const classified = new Map<string, string | null>();
       if (query.status && ["CONFLICT", "NEEDS_CLARIFICATION", "NEEDS_MORE_INFORMATION", "EXCLUSION_REASON_MISMATCH", "RESOLVED"].includes(query.status)) {
-        for (const r of rounds) classified.set(r.paperId, ["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(r.status) && !r.legacyNeedsAudit ? "RESOLVED" : ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(r.status) ? await screeningClassification(c, r) : null);
+        for (const r of rounds) classified.set(r.paperId, ["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(r.status) && !r.legacyNeedsAudit ? "RESOLVED" : ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS", "NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(r.status) ? await screeningClassification(c, r) : null);
       }
       // Shared legacy labels are evidence of a past classification, never of a completed protocol.
       const state = (l: typeof allLinks[number]) => roundByPaper.get(l.paperId)?.status ?? "NOT_REVIEWED";
@@ -498,8 +521,9 @@ export const screeningService = {
       const filterPeople = proposers.map(p => ({ id: p.id, name: p.fullName || "Thành viên" }));
       const filters = { proposers: filterPeople.filter(p => proposerIds.has(p.id)), reviewers: filterPeople.filter(p => reviewerIds.has(p.id)) };
       if (sortedPage) links.sort((a, b) => sortedPage.indexOf(a.paperId) - sortedPage.indexOf(b.paperId));
-      const items = await Promise.all(links.map(async l => { const paper = papers.find(p => p.id === l.paperId)!, round = pageRounds.find(r => r.paperId === l.paperId); return { tags: l.tags, notes: l.notes, importSource: l.importSource, proposer: l.addedById ? { id: l.addedById, name: proposers.find(p => p.id === l.addedById)?.fullName || "Thành viên" } : null, proposedAt: l.createdAt.toISOString(), proposalReason: l.proposalReason, updatedAt: l.updatedAt.toISOString(), canEditProposal: l.addedById === c.actorId && c.project.status !== "ARCHIVED", paperId: l.paperId, title: paper.title, abstractText: paper.abstractText, doi: paper.doi, publicationYear: paper.publicationYear, journalName: paper.journalName, paperKind: paper.paperKind, authors: authors.filter(a => a.paperId === l.paperId).map(a => a.displayName), paperLink: paper.paperLink ?? paper.openAccessUrl, fullTextAvailable: Boolean(paper.openAccessUrl || paper.pdfPath || files.some(f => f.paperId === l.paperId)), citationCount: paper.citationCount, openAccessStatus: paper.openAccessStatus, keywords: keywords.filter(k => k.paperId === l.paperId).map(k => k.keywordName), legacyStatus: l.screeningStatus, legacyProvenance: !round && (legacy.some(r => r.paperId === l.paperId && meaningfulLegacyScreening(r.snapshot)) || ["INCLUDED", "EXCLUDED"].includes(l.screeningStatus)), round: round ? await roundView(c, round) : null }; }));
-      return { ...(c.role === "OWNER" ? { adjudicatorOptions: await screeningAdjudicatorPool(c) } : {}), librarySummary: { selected: rounds.filter(r => r.status === "INCLUDED").length, attention: allLinks.length - progress.finalized, discussion: rounds.filter(r => ["NEEDS_RESOLUTION", "ADJUDICATING"].includes(r.status)).length }, tags: [...new Set(allLinks.flatMap(l => l.tags))].sort(), filters, progress, items, page: query.page, pageSize: query.pageSize, total, hasNext: query.page*query.pageSize<total, people, settings, myProgress, canManage: c.role === "OWNER" && !["ARCHIVED", "COMPLETED"].includes(c.project.status) };
+      const reviewedProposals = await reviewedProposalPapers(c, links.map(l => l.paperId));
+      const items = await Promise.all(links.map(async l => { const paper = papers.find(p => p.id === l.paperId)!, round = pageRounds.find(r => r.paperId === l.paperId); return { tags: l.tags, notes: l.notes, importSource: l.importSource, proposer: l.addedById ? { id: l.addedById, name: proposers.find(p => p.id === l.addedById)?.fullName || "Thành viên" } : null, proposedAt: l.createdAt.toISOString(), proposalReason: l.proposalReason, updatedAt: l.updatedAt.toISOString(), canEditProposal: l.addedById === c.actorId && !["ARCHIVED", "COMPLETED"].includes(c.project.status) && !reviewedProposals.has(l.paperId), paperId: l.paperId, title: paper.title, abstractText: paper.abstractText, doi: paper.doi, publicationYear: paper.publicationYear, journalName: paper.journalName, paperKind: paper.paperKind, authors: authors.filter(a => a.paperId === l.paperId).map(a => a.displayName), paperLink: paper.paperLink ?? paper.openAccessUrl, fullTextAvailable: Boolean(paper.openAccessUrl || paper.pdfPath || files.some(f => f.paperId === l.paperId)), citationCount: paper.citationCount, openAccessStatus: paper.openAccessStatus, keywords: keywords.filter(k => k.paperId === l.paperId).map(k => k.keywordName), legacyStatus: l.screeningStatus, legacyProvenance: !round && (legacy.some(r => r.paperId === l.paperId && meaningfulLegacyScreening(r.snapshot)) || ["INCLUDED", "EXCLUDED"].includes(l.screeningStatus)), round: round ? await roundView(c, round) : null }; }));
+      return { ...(queueSummary ? { queueSummary } : {}), ...(c.role === "OWNER" ? { adjudicatorOptions: await screeningAdjudicatorPool(c) } : {}), librarySummary: { selected: rounds.filter(r => r.status === "INCLUDED").length, attention: allLinks.length - progress.finalized, discussion: rounds.filter(r => ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS", "NEEDS_RESOLUTION", "ADJUDICATING"].includes(r.status)).length }, tags: [...new Set(allLinks.flatMap(l => l.tags))].sort(), filters, progress, items, page: query.page, pageSize: query.pageSize, total, hasNext: query.page*query.pageSize<total, people, settings, myProgress, canManage: c.role === "OWNER" && !["ARCHIVED", "COMPLETED"].includes(c.project.status) };
     });
   },
   async history(project: string, actor: string, roundId: string, page = 1, kind: "ALL" | "DISCUSSION" | "HISTORY" = "ALL") {
@@ -523,6 +547,7 @@ export const screeningService = {
   },
   async rounds(project: string, actor: string, paperId: string, page = 1) {
     return withWorkspace(project, actor, {}, async c => {
+      await maintainProjectConsensus(c);
       await researchPaper(c, paperId);
       const where = { projectId: c.project.id, paperId };
       const [rows, total, legacy] = await Promise.all([c.tx.screeningRound.findMany({ where, orderBy: { number: "desc" }, skip: (page-1)*10, take: 10 }), c.tx.screeningRound.count({ where }), c.tx.screeningLegacyRecord.findUnique({ where: { projectId_paperId: { projectId: c.project.id, paperId } } })]);
@@ -531,14 +556,15 @@ export const screeningService = {
   },
   async analytics(project: string, actor: string): Promise<ScreeningMetrics> {
     return withWorkspace(project, actor, {}, async c => {
+      await maintainProjectConsensus(c);
       const rounds = await c.tx.screeningRound.findMany({ where: { projectId: c.project.id, active: true } });
-      const metrics: ScreeningMetrics = { reviewedPapers: 0, finalizedPapers: 0, legacyPapers: 0, totalPapers: await c.tx.projectPaper.count({ where: { projectId: c.project.id } }), evaluatedPapers: rounds.length, fullyParticipated: 0, fullyReviewed: 0, agreements: 0, disagreements: 0, pendingReviews: 0, submittedReviews: 0, assignedReviews: 0, completionRate: null, agreementRate: null, conflictRate: null, unresolved: 0, resolved: 0, excludedFromAgreement: 0, distribution: { NOT_REVIEWED: 0, IN_REVIEW: 0, NEEDS_RESOLUTION: 0, NEEDS_MORE_INFO: 0, ADJUDICATING: 0, AWAITING_FINALIZATION: 0, INCLUDED: 0, EXCLUDED: 0, BACKGROUND: 0 }, exclusionReasons: [], workload: [], kappa: cohenKappa([]) };
+      const metrics: ScreeningMetrics = { reviewedPapers: 0, finalizedPapers: 0, legacyPapers: 0, totalPapers: await c.tx.projectPaper.count({ where: { projectId: c.project.id } }), evaluatedPapers: rounds.length, fullyParticipated: 0, fullyReviewed: 0, agreements: 0, disagreements: 0, pendingReviews: 0, submittedReviews: 0, assignedReviews: 0, completionRate: null, agreementRate: null, conflictRate: null, unresolved: 0, resolved: 0, excludedFromAgreement: 0, distribution: { CONSENSUS_REQUIRED: 0, CONSENSUS_IN_PROGRESS: 0, WAITING_FULLTEXT: 0, NOT_REVIEWED: 0, IN_REVIEW: 0, NEEDS_RESOLUTION: 0, NEEDS_MORE_INFO: 0, ADJUDICATING: 0, AWAITING_FINALIZATION: 0, INCLUDED: 0, EXCLUDED: 0, BACKGROUND: 0, CLOSED_UNRESOLVED: 0 }, exclusionReasons: [], workload: [], kappa: cohenKappa([]) };
       const pairs: { reviewers: string[]; decisions: ScreeningChoice[] }[] = [], workload = new Map<string, ScreeningMetrics["workload"][number]>(), reasons = new Map<string, number>(); let conflicts = 0;
       for (const row of rounds) {
         const view = await roundView(c, row);
         metrics.distribution[view.status]++; if (view.completed) metrics.reviewedPapers++; if (view.finalDecision) metrics.finalizedPapers++; metrics.assignedReviews+=view.assigned; metrics.submittedReviews+=view.completed;
         for (const a of view.assignments) { const load = workload.get(a.reviewerId) ?? { reviewerId: a.reviewerId, name: a.name, assigned: 0, completed: 0, overdue: 0 }; load.assigned++; if (a.completed) load.completed++; if (a.overdue) load.overdue++; workload.set(a.reviewerId, load); }
-        if (["NEEDS_RESOLUTION", "NEEDS_MORE_INFO", "ADJUDICATING"].includes(view.status)) metrics.unresolved++;
+        if (["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS", "NEEDS_RESOLUTION", "NEEDS_MORE_INFO", "ADJUDICATING"].includes(view.status)) metrics.unresolved++;
         if (view.finalDecision?.source === "MANUAL" && new Set(view.reviews.map(r => r.decision)).size > 1) metrics.resolved++;
         // Never compute any decision-derived statistic on still-blinded/incomplete rounds.
         if (!view.unblindedAt || view.assigned < view.settings.requiredReviewers || view.completed !== view.assigned) continue;
@@ -670,6 +696,205 @@ export const screeningService = {
     });
   },
 
+  async extendDiscussion(project: string, actor: string, roundId: string, rawInput: z.infer<typeof s.screeningDiscussionExtendSchema>) {
+    const input = s.screeningDiscussionExtendSchema.parse(rawInput);
+    return screeningCommand(project, actor, "DISCUSSION_EXTENDED", { ...input, roundId }, { owner: true }, async c => {
+      const row = await screeningRound(c, roundId);
+      if (usesTwoReviewerConsensus(row.settings)) throw AppError.conflict("Vòng hai reviewer sử dụng thời hạn và kết quả đồng thuận đã lưu; không thay đổi bằng thao tác cũ");
+      expectWorkspaceVersion(row.version, input.expectedVersion);
+      if (!row.active || !["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(row.status)) {
+        throw AppError.conflict("Chỉ gia hạn thảo luận cho vòng đang có bất đồng hoặc cần làm rõ.");
+      }
+      const timing = await getDiscussionTiming(c, row);
+      if (!timing) {
+        throw AppError.conflict("Vòng chưa bắt đầu giai đoạn thảo luận.");
+      }
+      if (timing.extensionCount >= timing.maxExtensions) {
+        throw AppError.conflict(`Đã đạt giới hạn gia hạn tối đa (${timing.maxExtensions} lần).`);
+      }
+      const hardDeadline = new Date(timing.hardDeadlineAt);
+      const currentEffective = new Date(timing.effectiveDeadlineAt);
+      const newEffectiveDeadline = new Date(Math.min(currentEffective.getTime() + input.hours * 3600 * 1000, hardDeadline.getTime()));
+
+      await c.tx.screeningAudit.create({
+        data: {
+          projectId: c.project.id,
+          roundId,
+          actorId: c.actorId,
+          type: "DISCUSSION_EXTENDED",
+          details: {
+            hours: input.hours,
+            reason: input.reason,
+            extendedBy: c.actorId,
+            newEffectiveDeadline: newEffectiveDeadline.toISOString(),
+            extensionCount: timing.extensionCount + 1,
+          },
+          clientKey: input.clientKey,
+        }
+      });
+      const next = await c.tx.screeningRound.update({ where: { id: roundId }, data: { version: { increment: 1 } } });
+      await notifyScreeningParticipants(c, row, "DISCUSSION_EXTENDED", `Thời hạn thảo luận được gia hạn thêm ${input.hours} giờ`, next.version);
+      return { roundId, result: { roundId, version: next.version, effectiveDeadlineAt: newEffectiveDeadline.toISOString() }, details: { hours: input.hours, reason: input.reason } };
+    });
+  },
+
+  async closeUnresolved(project: string, actor: string, roundId: string, rawInput: z.infer<typeof s.screeningCloseUnresolvedSchema>) {
+    const input = s.screeningCloseUnresolvedSchema.parse(rawInput);
+    return screeningCommand(project, actor, "ROUND_CLOSED_UNRESOLVED", { ...input, roundId }, { owner: true }, async c => {
+      const row = await screeningRound(c, roundId);
+      if (usesTwoReviewerConsensus(row.settings)) throw AppError.conflict("Vòng hai reviewer sử dụng thời hạn và kết quả đồng thuận đã lưu; không thay đổi bằng thao tác cũ");
+      expectWorkspaceVersion(row.version, input.expectedVersion);
+      if (!row.active || !["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(row.status)) {
+        throw AppError.conflict("Vòng đã hoàn tất hoặc đã đóng.");
+      }
+      const timing = await getDiscussionTiming(c, row);
+      const now = new Date();
+      if (!timing || now < new Date(timing.effectiveDeadlineAt)) {
+        throw AppError.conflict("Thời gian thảo luận ban đầu (48 giờ) chưa kết thúc. Hãy để 2 reviewer thảo luận thêm.");
+      }
+
+      const next = await c.tx.screeningRound.update({
+        where: { id: roundId },
+        data: { status: "CLOSED_UNRESOLVED", version: { increment: 1 } }
+      });
+
+      const details = {
+        actorType: "OWNER",
+        actorId: c.actorId,
+        reason: input.reason,
+        note: input.note ?? "",
+        closedAt: now.toISOString(),
+      };
+      await c.tx.screeningAudit.create({
+        data: {
+          projectId: c.project.id,
+          roundId,
+          actorId: c.actorId,
+          type: "ROUND_CLOSED_UNRESOLVED",
+          details: jsonSnapshot(details),
+          clientKey: input.clientKey,
+        }
+      });
+
+      await projectScreeningStatus(c, next, "CLOSED_UNRESOLVED", input.note || input.reason);
+      await reconcileScreeningObligations(c);
+      await notifyScreeningParticipants(c, row, "ROUND_CLOSED", "Quy trình đánh giá đã đóng do không đạt đồng thuận", next.version);
+      return { roundId, result: { roundId, version: next.version, status: "CLOSED_UNRESOLVED" }, details };
+    });
+  },
+
+  async reopenUnresolved(project: string, actor: string, roundId: string, rawInput: z.infer<typeof s.screeningReopenUnresolvedSchema>) {
+    const input = s.screeningReopenUnresolvedSchema.parse(rawInput);
+    return screeningCommand(project, actor, "SCREENING_REOPENED_NEW_ATTEMPT", { ...input, roundId }, { owner: true }, async c => {
+      const row = await screeningRound(c, roundId);
+      expectWorkspaceVersion(row.version, input.expectedVersion);
+      if (!row.active || row.status !== "CLOSED_UNRESOLVED") {
+        throw AppError.conflict("Chỉ mở lại cho bài báo có vòng đánh giá đã đóng không đạt đồng thuận.");
+      }
+
+      // Deactivate previous round so the new round is the active one
+      await c.tx.screeningRound.update({
+        where: { id: row.id },
+        data: { active: false, version: { increment: 1 } }
+      });
+
+      const settings = await settingsForNewScreening(c);
+      const newRound = await c.tx.screeningRound.create({
+        data: {
+          projectId: c.project.id,
+          paperId: row.paperId,
+          number: row.number + 1,
+          phase: row.phase,
+          settings: jsonSnapshot(settings),
+          createdById: c.actorId,
+          status: "NOT_REVIEWED",
+          active: true,
+        }
+      });
+
+      const details = {
+        previousRoundId: row.id,
+        previousRoundNumber: row.number,
+        newRoundId: newRound.id,
+        newRoundNumber: newRound.number,
+        reason: input.reason,
+        reopenedBy: c.actorId,
+        reopenedAt: new Date().toISOString(),
+      };
+      await c.tx.screeningAudit.create({
+        data: {
+          projectId: c.project.id,
+          roundId: newRound.id,
+          actorId: c.actorId,
+          type: "SCREENING_REOPENED_NEW_ATTEMPT",
+          details: jsonSnapshot(details),
+          clientKey: input.clientKey,
+        }
+      });
+
+      await projectScreeningStatus(c, newRound, "NOT_REVIEWED");
+      await reconcileScreeningObligations(c);
+      await notifyScreeningParticipants(c, row, "ROUND_REOPENED", "Chủ đề tài đã mở lại vòng đánh giá mới cho bài báo", newRound.version);
+      return { roundId: newRound.id, result: { previousRoundId: row.id, newRoundId: newRound.id, version: newRound.version }, details };
+    });
+  },
+
+  async requestMoreInfo(project: string, actor: string, roundId: string, rawInput: z.infer<typeof s.screeningRequestMoreInfoSchema>) {
+    const input = s.screeningRequestMoreInfoSchema.parse(rawInput);
+    return screeningCommand(project, actor, "MORE_INFO_REQUESTED", { ...input, roundId }, {}, async c => {
+      const row = await screeningRound(c, roundId);
+      if (usesTwoReviewerConsensus(row.settings)) throw AppError.conflict("Vòng hai reviewer sử dụng thời hạn và kết quả đồng thuận đã lưu; không thay đổi bằng thao tác cũ");
+      expectWorkspaceVersion(row.version, input.expectedVersion);
+      if (!row.active || !["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(row.status)) {
+        throw AppError.conflict("Chỉ có thể yêu cầu thêm thông tin cho vòng đang có bất đồng hoặc cần làm rõ.");
+      }
+      const ownAssignment = await c.tx.screeningAssignment.findFirst({
+        where: { roundId, reviewerId: c.actorId, active: true, submittedAt: { not: null } }
+      });
+      if (!ownAssignment) {
+        throw AppError.forbidden("Chỉ reviewer đã gửi phiếu trong vòng mới có thể yêu cầu làm rõ thêm thông tin.");
+      }
+      const next = await c.tx.screeningRound.update({
+        where: { id: roundId },
+        data: { status: "NEEDS_MORE_INFO", version: { increment: 1 } }
+      });
+      const now = new Date();
+      const details = {
+        reason: input.reason.trim(),
+        requestedBy: c.actorId,
+        requestedAt: now.toISOString(),
+      };
+      await c.tx.screeningAudit.create({
+        data: {
+          projectId: c.project.id,
+          roundId,
+          actorId: c.actorId,
+          type: "MORE_INFO_REQUESTED",
+          details: jsonSnapshot(details),
+          clientKey: input.clientKey,
+        }
+      });
+      await projectScreeningStatus(c, next, "NEEDS_MORE_INFO", input.reason);
+      const otherReviewers = (await effectiveAssignments(c, row.id))
+        .map(a => a.reviewerId)
+        .filter(id => id !== c.actorId);
+      for (const reviewerId of otherReviewers) {
+        await notificationService.create({
+          userId: reviewerId,
+          type: "SCREENING_ACTION_REQUIRED",
+          paperId: row.paperId,
+          title: "Reviewer yêu cầu làm rõ thêm thông tin cho bài báo",
+          message: input.reason.trim(),
+          targetKind: "project",
+          targetId: c.project.id,
+          eventKey: `SCREENING:MORE_INFO:${roundId}:${now.getTime()}`,
+          emailStatus: "SKIPPED",
+        }, c.tx);
+      }
+      return { roundId, result: { roundId, version: next.version, status: "NEEDS_MORE_INFO" }, details };
+    });
+  },
+
   async claimNext(project: string, actor: string, rawInput: { clientKey?: string } = {}) {
     const input = screeningClaimSchema.parse(rawInput);
     return screeningCommand(project, actor, "NEXT_ROUND_CLAIMED", input, {}, async c => {
@@ -682,6 +907,7 @@ export const screeningService = {
 
   async workspaceSummary(project: string, actor: string): Promise<ScreeningWorkspaceSummary> {
     return withWorkspace(project, actor, {}, async c => {
+      await maintainProjectConsensus(c);
       const now = new Date();
       const liveReviewers = new Set((await screeningPeople(c)).map(p => p.id));
       const effectiveSlot = (a: { active: boolean; submittedAt: Date | null; dueAt: Date | null; reviewerId: string }) =>
@@ -757,7 +983,7 @@ export const screeningService = {
           id: { in: mySubmittedAssigns.map(a => a.roundId) },
           projectId: c.project.id,
           active: true,
-          status: { in: ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"] }
+          status: { in: ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS", "NEEDS_RESOLUTION", "NEEDS_MORE_INFO"] }
         }
       });
       const pendingConsensus: ScreeningWorkspaceSummary["pendingConsensus"] = [];
@@ -779,15 +1005,17 @@ export const screeningService = {
         }
       }
 
-      // Invitations and coordination use the existing My Work area.
+      // Reconcile the common deadline under the project lock. Tasks and Papers share this projection.
+      const adjudicationBlockedReason = await adjudicationTeamRequirement(c);
       const activeCases = await c.tx.screeningAdjudicationCase.findMany({ where: { projectId: c.project.id, active: true } });
       const pendingAdjudications: ScreeningWorkspaceSummary["pendingAdjudications"] = [];
-      for (const dispute of activeCases) {
-        const r = await screeningRound(c, dispute.roundId);
+      for (const initial of activeCases) {
+        const r = await screeningRound(c, initial.roundId);
+        const dispute = await ensureAssignment(c, r, initial);
         if (!r.active || dispute.reviewerIds.includes(c.actorId)) continue;
         try {
           const cv = await caseView(c, r, dispute);
-          if (cv.invitation?.userId === c.actorId || cv.canCoordinate && (cv.status === "WAITING_ASSIGNMENT" || cv.status === "COI_REVIEW")) {
+          if (!cv.adjudicationBlockedReason && (cv.canResolve || cv.canCoordinate && (cv.status === "WAITING_ASSIGNMENT" || cv.status === "COI_REVIEW"))) {
             pendingAdjudications.push({ paperId: r.paperId, roundId: r.id, title: (dispute.packet as unknown as { paper: { title: string } }).paper.title, status: r.status as ScreeningState, caseStatus: cv.status });
           }
         } catch (error) { if (error instanceof AppError && error.statusCode === 404) continue; throw error; }
@@ -913,8 +1141,10 @@ export const screeningService = {
       for (const r of consensusRounds.filter(r => !pendingConsensus.some(p => p.roundId === r.id))) {
         const view = await roundView(c, r);
         const agreement = view.agreement;
+        const activeDispute = activeCases.find(row => row.roundId === r.id);
         const departedReviewer = view.assignments.some(a => !liveReviewerIds.has(a.reviewerId));
-        if (r.legacyNeedsAudit || view.hiddenReviews || view.resolution || r.finalizerId || agreement && !agreement.canConfirm && !agreement.canDecline && !departedReviewer) continue;
+        if (view.consensus && !view.consensus.canUpdate) continue;
+        if (r.legacyNeedsAudit || activeDispute?.active || view.hiddenReviews || view.resolution || r.finalizerId || agreement && !agreement.canConfirm && !agreement.canDecline && !departedReviewer) continue;
         pendingDiscussions.push({ paperId: r.paperId, roundId: r.id, status: r.status as ScreeningState, classification: view.classification, phase: view.phase, title: (await c.tx.paper.findUnique({ where: { id: r.paperId }, select: { title: true } }))?.title || "Bài báo" });
       }
       const expired = await c.tx.screeningAssignment.findMany({ where: { projectId: c.project.id, reviewerId: c.actorId, submittedAt: null, dueAt: { lte: now } }, select: { roundId: true } });
@@ -924,17 +1154,19 @@ export const screeningService = {
       // Tracked disputes and completed evaluations for the current reviewer
       const myTrackedDisputes: NonNullable<ScreeningWorkspaceSummary["myTrackedDisputes"]> = [];
       const myCompletedEvaluations: NonNullable<ScreeningWorkspaceSummary["myCompletedEvaluations"]> = [];
+      const myEvaluations: NonNullable<ScreeningWorkspaceSummary["myEvaluations"]> = [];
 
-      const mySubmittedAllAssigns = await c.tx.screeningAssignment.findMany({
-        where: { projectId: c.project.id, reviewerId: c.actorId, active: true, submittedAt: { not: null } },
-        select: { id: true, roundId: true, submittedAt: true }
+      const myReviewAssignments = await c.tx.screeningAssignment.findMany({
+        where: { projectId: c.project.id, reviewerId: c.actorId },
+        orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+        select: { id: true, roundId: true, submittedAt: true, active: true }
       });
 
-      if (mySubmittedAllAssigns.length > 0) {
-        const submittedRoundIds = Array.from(new Set(mySubmittedAllAssigns.map(a => a.roundId)));
+      if (myReviewAssignments.length > 0) {
+        const submittedRoundIds = Array.from(new Set(myReviewAssignments.map(a => a.roundId)));
         const submittedRounds = await c.tx.screeningRound.findMany({
           where: { id: { in: submittedRoundIds }, projectId: c.project.id },
-          select: { id: true, paperId: true, phase: true, status: true, active: true }
+          select: { id: true, paperId: true, phase: true, status: true, active: true, settings: true, number: true, consensusStartedAt: true }
         });
 
         const submittedPaperIds = Array.from(new Set(submittedRounds.map(r => r.paperId)));
@@ -945,21 +1177,23 @@ export const screeningService = {
         const paperMap = new Map(papers.map(p => [p.id, p]));
 
         const myReviews = await c.tx.screeningReview.findMany({
-          where: { projectId: c.project.id, assignmentId: { in: mySubmittedAllAssigns.map(a => a.id) } },
+          where: { projectId: c.project.id, assignmentId: { in: myReviewAssignments.map(a => a.id) } },
           orderBy: { revision: "desc" },
-          select: { assignmentId: true, decision: true }
+          select: { assignmentId: true, decision: true, submittedAt: true }
         });
-        const myReviewMap = new Map();
+        const myReviewMap = new Map<string, (typeof myReviews)[number]>();
         for (const rev of myReviews) {
-          if (!myReviewMap.has(rev.assignmentId)) myReviewMap.set(rev.assignmentId, rev.decision);
+          if (!myReviewMap.has(rev.assignmentId)) myReviewMap.set(rev.assignmentId, rev);
         }
 
+        const invalidations = await c.tx.screeningAudit.findMany({ where: { projectId: c.project.id, roundId: { in: submittedRoundIds }, type: "DEPENDENCY_INVALIDATED" }, select: { roundId: true } });
+        const invalidatedRounds = new Set(invalidations.map(a => a.roundId));
         const finalDecisions = await c.tx.screeningFinalDecision.findMany({
           where: { projectId: c.project.id, roundId: { in: submittedRoundIds } },
           orderBy: { roundVersion: "desc" },
-          select: { roundId: true, decision: true, resolverId: true, createdAt: true }
+          select: { roundId: true, decision: true, resolverId: true, createdAt: true, resolutionType: true, reason: true, sourceMaterial: true }
         });
-        const finalDecisionMap = new Map();
+        const finalDecisionMap = new Map<string, (typeof finalDecisions)[number]>();
         for (const fd of finalDecisions) {
           if (!finalDecisionMap.has(fd.roundId)) finalDecisionMap.set(fd.roundId, fd);
         }
@@ -978,7 +1212,7 @@ export const screeningService = {
           }
         });
         const activeCases = allCases.filter(ac => ac.active);
-        const adjudicatedRoundIds = new Set(allCases.map(ac => ac.roundId));
+        const adjudicatedRoundIds = new Set(allCases.filter(ac => ac.status === "COMPLETED").map(ac => ac.roundId));
         const caseIds = activeCases.map(ac => ac.id);
         // Only inspect the caller's submission metadata. Never return sealed text here.
         const ownStatements = caseIds.length ? await c.tx.screeningAdjudicationStatement.findMany({
@@ -987,7 +1221,8 @@ export const screeningService = {
         }) : [];
         const invitations = caseIds.length
           ? await c.tx.screeningAdjudicationInvitation.findMany({
-              where: { caseId: { in: caseIds } },
+              where: { caseId: { in: caseIds }, status: "ASSIGNED" },
+              orderBy: { createdAt: "desc" },
               select: { caseId: true, userId: true, role: true, status: true }
             })
           : [];
@@ -1008,7 +1243,7 @@ export const screeningService = {
           if (!adjudicationCaseMap.has(ac.roundId)) {
             adjudicationCaseMap.set(ac.roundId, {
               ...ac,
-              needsMyStatement: !["ARCHIVED", "COMPLETED"].includes(c.project.status) && !ac.lockedAt && ac.deadline > now && ac.status === "COLLECTING" && !ownStatements.some(s => s.caseId === ac.id && s.packetVersion === ac.packetVersion),
+              needsMyStatement: !adjudicationBlockedReason && !["ARCHIVED", "COMPLETED"].includes(c.project.status) && !ac.lockedAt && ac.deadline > now && ["COLLECTING", "COI_REVIEW"].includes(ac.status) && !ownStatements.some(s => s.caseId === ac.id && s.packetVersion === ac.packetVersion),
               adjudicatorName: caseAdjudicatorMap.get(ac.id) || null
             });
           }
@@ -1020,16 +1255,47 @@ export const screeningService = {
           : [];
         const resolverNameMap = new Map(resolvers.map(u => [u.id, u.fullName]));
 
-        for (const assign of mySubmittedAllAssigns) {
+        for (const assign of myReviewAssignments) {
           const r = submittedRounds.find(round => round.id === assign.roundId);
           if (!r) continue;
           const paper = paperMap.get(r.paperId);
           const title = paper?.title || "Bài báo";
-          const myDecision = myReviewMap.get(assign.id) || "INCLUDE";
-          const fd = finalDecisionMap.get(r.id);
+          const review = myReviewMap.get(assign.id);
+          if (!review) continue;
+          const myDecision = review.decision as ScreeningChoice;
+          const latestFinal = finalDecisionMap.get(r.id);
+          const fd = latestFinal?.decision === r.status ? latestFinal : undefined;
+          const ac = consensusPending(r.status) || r.consensusStartedAt ? undefined : adjudicationCaseMap.get(r.id);
+          const finalDecision = fd?.decision ?? (["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(r.status) ? r.status : null);
+          const isAdjudicated = fd?.resolutionType === "ADJUDICATION" || Boolean(fd?.resolverId && adjudicatedRoundIds.has(r.id));
+          const classification = r.status === "NEEDS_RESOLUTION" || consensusPending(r.status) ? await screeningClassification(c, await screeningRound(c, r.id)) : null;
+          // Own ballot and team outcome are independent. Never infer a ballot from the final decision.
+          if (!myEvaluations.some(item => item.roundId === r.id)) myEvaluations.push({
+            invalidated: !r.active && invalidatedRounds.has(r.id), paperId: r.paperId, roundId: r.id, title,
+            publicationYear: paper?.publicationYear ?? null, journalName: paper?.journalName ?? null,
+            phase: r.phase as ScreeningPhase, myDecision,
+            submittedAt: review.submittedAt.toISOString(),
+            groupStatus: r.status === "WAITING_FULLTEXT" ? "WAITING_FULLTEXT"
+              : finalDecision === "INCLUDED" && r.phase === "TITLE_ABSTRACT" && automaticFullTextStage(roundSettings(r.settings)) ? "ADVANCE_TO_FULLTEXT"
+              : finalDecision === "INCLUDE" || finalDecision === "INCLUDED" ? "INCLUDED"
+              : finalDecision === "EXCLUDE" || finalDecision === "EXCLUDED" ? "EXCLUDED"
+              : finalDecision === "BACKGROUND" ? "BACKGROUND"
+              : ac || r.status === "ADJUDICATING" ? "ADJUDICATING"
+              : finalDecision === "NEEDS_MORE_INFO" || r.status === "NEEDS_MORE_INFO" ? "NEEDS_MORE_INFO"
+              : consensusPending(r.status) ? r.status as "CONSENSUS_REQUIRED" | "CONSENSUS_IN_PROGRESS"
+              : r.status === "NEEDS_RESOLUTION" ? classification === "NEEDS_CLARIFICATION" || classification === "NEEDS_MORE_INFORMATION" ? "NEEDS_MORE_INFO" : "CONFLICT"
+              : r.status === "AWAITING_FINALIZATION" ? "AWAITING_FINALIZATION" : "WAITING_REVIEWER",
+            finalDecision, isAdjudicated,
+            decidedAt: fd?.createdAt?.toISOString() ?? null,
+            resolverName: fd?.resolverId ? resolverNameMap.get(fd.resolverId) ?? null : null,
+            roundNumber: r.number,
+            acceptedForAnalysis: r.active && r.status === "INCLUDED" && !(r.phase !== "FULL_TEXT" && automaticFullTextStage(roundSettings(r.settings))),
+            caseStatus: ac?.status ?? null,
+            groupReason: fd?.reason ?? null,
+            groupSourceMaterial: fd?.sourceMaterial ?? null,
+          });
 
-          if (fd || ["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(r.status)) {
-            const isAdjudicated = adjudicatedRoundIds.has(r.id) || Boolean(fd?.resolverId);
+          if (finalDecision && finalDecision !== "NEEDS_MORE_INFO") {
             myCompletedEvaluations.push({
               paperId: r.paperId,
               roundId: r.id,
@@ -1043,8 +1309,8 @@ export const screeningService = {
               resolverName: fd?.resolverId ? resolverNameMap.get(fd.resolverId) ?? null : null,
               isAdjudicated,
             });
-          } else if (r.status === "ADJUDICATING" || adjudicationCaseMap.has(r.id) || ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(r.status)) {
-            const ac = adjudicationCaseMap.get(r.id);
+          } else if (!r.consensusStartedAt && r.active && assign.active && (r.status === "ADJUDICATING" || adjudicationCaseMap.has(r.id) || ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS", "NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(r.status))) {
+            const ac = consensusPending(r.status) || r.consensusStartedAt ? undefined : adjudicationCaseMap.get(r.id);
             myTrackedDisputes.push({
               paperId: r.paperId,
               roundId: r.id,
@@ -1062,9 +1328,25 @@ export const screeningService = {
           }
         }
       }
+      const informationRounds = await c.tx.screeningRound.findMany({ where: { projectId: c.project.id, active: true, status: { in: ["WAITING_FULLTEXT", "NEEDS_MORE_INFO"] } } });
+      const pendingInformation: NonNullable<ScreeningWorkspaceSummary["pendingInformation"]> = [];
+      for (const r of informationRounds) {
+        const view = await roundView(c, r);
+        if (!(r.status === "WAITING_FULLTEXT" ? view.canResumeFullText : c.role === "OWNER" && view.resolution)) continue;
+        const paper = await c.tx.paper.findUniqueOrThrow({ where: { id: r.paperId }, select: { title: true } });
+        pendingInformation.push({ paperId: r.paperId, roundId: r.id, title: paper.title, kind: r.status === "WAITING_FULLTEXT" ? "FULLTEXT" : "INFORMATION", reason: view.resolution?.reason ?? "Bổ sung nguồn toàn văn rồi mở vòng đánh giá độc lập tiếp theo." });
+      }
+      const acceptedPapers = await acceptedScreeningPapers(c);
+      await reconcileScreeningObligations(c);
+      const automaticTasks = await screeningObligationDtos(c);
+      const workPapers = await screeningWorkPapers(c, [...myActiveClaims, ...pendingConsensus, ...pendingDiscussions, ...pendingAdjudications, ...myEvaluations, ...acceptedPapers, ...pendingInformation].map(item => item.roundId));
       return {
+        automaticTasks,
+        readOnly: ["ARCHIVED", "COMPLETED"].includes(c.project.status),
+        workPapers, pendingInformation,
         pendingDiscussions, expiredClaims, completedPersonalReviews,
-        myTrackedDisputes, myCompletedEvaluations,
+        acceptedPapers,
+        myTrackedDisputes, myCompletedEvaluations, myEvaluations,
         myActiveClaims,
         pendingConsensus,
         pendingAdjudications,

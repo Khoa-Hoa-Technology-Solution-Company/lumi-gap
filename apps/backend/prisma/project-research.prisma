@@ -12,6 +12,8 @@ model ProjectEvidenceItem {
   results String @default("")
   limitations String @default("")
   themes String[] @default([])
+  /// Values of the project's custom literature-matrix criteria, keyed by ProjectMatrixCriterion id.
+  criteriaValues Json @default("{}") @map("criteria_values")
   origin String @db.VarChar(24)
   reviewState String @default("PENDING") @map("review_state") @db.VarChar(16)
   reviewRationale String @default("") @map("review_rationale")
@@ -59,4 +61,77 @@ model ProjectPaperFile {
   @@unique([projectId, paperId, sha256])
   @@index([projectId, paperId])
   @@map("project_paper_files")
+}
+
+// Literature matrix: project-defined comparison criteria beside the built-in extraction fields.
+// Values live on ProjectEvidenceItem.criteriaValues so they are versioned and reviewed with the extraction.
+model ProjectMatrixCriterion {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  label String @db.VarChar(80)
+  description String @default("") @db.VarChar(500)
+  position Int @default(0)
+  createdById String @map("created_by_id") @db.Uuid
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(6)
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([projectId, id])
+  @@index([projectId, position])
+  @@map("project_matrix_criteria")
+}
+
+// A limitation shared by one or more reviewed extractions. Category: DATA | METHOD | CONTEXT | OUTCOME | TEMPORAL | OTHER.
+// Status: OPEN | PROMOTED (turned into gapId) | DISMISSED (statusRationale required).
+model ProjectLimitation {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  statement String
+  category String @db.VarChar(24)
+  status String @default("OPEN") @db.VarChar(16)
+  statusRationale String @default("") @map("status_rationale")
+  gapId String? @map("gap_id") @db.Uuid
+  createdById String @map("created_by_id") @db.Uuid
+  clientKey String @map("client_key") @db.Uuid
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([projectId, createdById, clientKey])
+  @@unique([projectId, id])
+  @@index([projectId, status, updatedAt])
+  @@map("project_limitations")
+}
+
+model ProjectLimitationSource {
+  limitationId String @map("limitation_id") @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  evidenceItemId String @map("evidence_item_id") @db.Uuid
+  addedById String @map("added_by_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@id([limitationId, evidenceItemId])
+  @@index([projectId, evidenceItemId])
+  @@map("project_limitation_sources")
+}
+
+// One feasibility assessment per assessor and target. targetKind: LIMITATION | GAP (polymorphic, validated in the service).
+// Each dimension is scored 1 (blocking) .. 5 (clearly feasible); risk 5 means low risk.
+model ProjectFeasibilityAssessment {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  targetKind String @map("target_kind") @db.VarChar(16)
+  targetId String @map("target_id") @db.Uuid
+  targetVersion Int @map("target_version")
+  assessorId String @map("assessor_id") @db.Uuid
+  dataAvailability Int @map("data_availability") @db.SmallInt
+  expertise Int @db.SmallInt
+  resources Int @db.SmallInt
+  timeline Int @db.SmallInt
+  risk Int @db.SmallInt
+  notes String @default("")
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([projectId, targetKind, targetId, assessorId])
+  @@index([projectId, targetKind, targetId])
+  @@map("project_feasibility_assessments")
 }

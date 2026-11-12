@@ -4,6 +4,7 @@ import { mentorAccessPageSchema } from "./dto/mentor-access.schema.js";
 const project = (r: Request) => String(r.params.id), actor = (r: Request) => r.user!.sub, access = (r: Request) => String(r.params.accessId), item = (r: Request) => String(r.params.itemId);
 const send = (r: Response, data: unknown, status = 200) => r.status(status).json({ success: true, data });
 export const mentorAccessController = {
+  tasks: async (r: Request, res: Response) => send(res, await service.tasks(project(r), actor(r), mentorAccessPageSchema.parse(r.query).page)),
   workspace: async (r: Request, res: Response) => send(res, await service.workspace(project(r), actor(r), mentorAccessPageSchema.parse(r.query).page)),
   catalog: async (r: Request, res: Response) => send(res, await service.catalog(project(r), actor(r), mentorAccessPageSchema.parse(r.query))),
   configure: async (r: Request, res: Response) => send(res, await service.configure(project(r), actor(r), access(r), r.body)),

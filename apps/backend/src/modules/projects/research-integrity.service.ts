@@ -579,9 +579,10 @@ export const researchIntegrityService = {
       const isEscalated = row.status === "ESCALATED";
 
       // Owner cannot resolve if accused or if escalated to institutional admin!
-      if (isAccused && isOwner) {
+      if (isAccused) {
         throw AppError.forbidden("An accused project owner cannot self-adjudicate this dispute. Institutional review is required.");
       }
+      if (["CONTRIBUTION_DISPUTE", "ATTRIBUTION_DISPUTE"].includes(row.kind) && !isAdmin) throw AppError.forbidden("Authorship and contribution disputes require documented institutional administrator resolution; the owner may respond or escalate.");
       if (isEscalated && !isAdmin) {
         throw AppError.forbidden("Escalated cases require institutional administrator resolution.");
       }
@@ -685,11 +686,12 @@ export const researchIntegrityService = {
       row.status !== "RESOLVED" &&
       row.status !== "CLOSED" &&
       (isOwner || isAdmin || isInvolved);
+    const contributionCase = ["CONTRIBUTION_DISPUTE", "ATTRIBUTION_DISPUTE"].includes(row.kind);
     const viewerCanResolve =
       project.status !== "ARCHIVED" &&
       row.status !== "RESOLVED" &&
       row.status !== "CLOSED" &&
-      !isAccusedOwner &&
+      row.respondentUserId !== actorId && (!contributionCase || isAdmin) &&
       ((isOwner && !isEscalated) || isAdmin);
 
     return {

@@ -122,3 +122,6 @@ it("opens the exact project paper for screening assignment and consensus notific
     expect(getNotificationDestination({ type, targetKind: "project", targetId: "project", paperId: "paper" }, false)).toBe("/projects/project?tab=papers&paper=paper");
   }
 });
+it("opens a new screening message in the exact round's discussion", () => {
+  expect(getNotificationDestination({ type: "SCREENING_DISCUSSION_MESSAGE", targetKind: "project", targetId: "p", paperId: "paper", screeningRoundId: "round" }, false)).toBe("/projects/p?tab=papers&view=my-work&paper=paper&round=round&section=discussion");
+});

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_mobile/core/config/app_config.dart';
 import 'package:flutter_mobile/core/constants/api_routes.dart';
 import 'package:flutter_mobile/core/errors/api_exception.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/network/api_envelope.dart';
 import 'package:flutter_mobile/core/storage/secure_token_store.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
@@ -35,7 +36,7 @@ class ApiClient {
               DioException(
                 requestOptions: options,
                 type: DioExceptionType.cancel,
-                error: 'The original sign-in session has ended.',
+                error: trNow('The original sign-in session has ended.'),
               ),
             );
           }
@@ -107,7 +108,7 @@ class ApiClient {
               response: e.response,
               type: e.type,
               error: ApiException(
-                message: apiError?.message ?? e.message ?? 'Unknown error',
+                message: apiError?.message ?? e.message ?? trNow('Unknown error'),
                 errorDetail: apiError,
                 statusCode: e.response?.statusCode,
               ),

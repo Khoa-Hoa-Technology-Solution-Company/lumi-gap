@@ -1,0 +1,51 @@
+import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
+import { chromium } from "playwright";
+await mkdir("scratch/paper-card-ui", { recursive: true });
+const browser = await chromium.launch({ headless: true });
+const errors = [];
+try {
+  for (const width of [1280, 390]) {
+    const page = await browser.newPage({ viewport: { width, height: 1000 } });
+    await page.addInitScript(() => localStorage.setItem('lumigap.uiLanguage', 'vi'));
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto('http://127.0.0.1:8095/__cards.html');
+    await page.getByRole('button', { name: 'Tiếp tục đánh giá' }).first().waitFor();
+    assert.equal(await page.locator('article').count(), 5);
+    assert.deepEqual((await page.getByRole('progressbar').evaluateAll(bars => bars.map(bar => bar.getAttribute('aria-valuenow')))).sort(), ['0', '1', '2', '2', '2']);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/paper-card-ui/${width}-pending.png`, fullPage: true });
+    await page.getByRole('button', { name: 'Thảo luận và giải quyết' }).click();
+    assert.deepEqual(await page.evaluate(() => window.__opened), { paperId: 'conflict', roundId: 'conflict-round', section: 'discussion' });
+    await page.getByRole('tab', { name: /Đã đánh giá/ }).click();
+    assert.equal(await page.locator('article').count(), 6);
+    await page.getByText('Chờ đánh giá thứ hai', { exact: true }).first().waitFor();
+    assert.equal(await page.getByText('Đánh giá của tôi', { exact: true }).count(), 6);
+    const reason = page.locator('.screening-paper-card-reason');
+    assert.equal(await reason.count(), 1);
+    assert.ok(await reason.evaluate(el => el.scrollHeight > el.clientHeight));
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/paper-card-ui/${width}-reviewed.png`, fullPage: true });
+    await page.evaluate(() => document.documentElement.classList.add('dark'));
+    await page.screenshot({ path: `scratch/paper-card-ui/${width}-dark.png`, fullPage: true });
+    await page.goto('http://127.0.0.1:8095/__cards.html?surface=tasks');
+    await page.getByRole('link', { name: 'Tiếp tục đánh giá' }).first().waitFor();
+    const todo = page.locator('.task-column[data-status="TODO"]');
+    assert.equal(await todo.locator('.task-screening-card').count(), 5);
+    assert.equal(await todo.locator('.task-card').count(), 6);
+    assert.equal(await todo.locator('.task-column-count').textContent(), '6');
+    assert.equal(await page.getByRole('tablist').count(), 0);
+    assert.equal(await page.getByRole('button', {name: 'Đánh giá tài liệu', exact: true}).count(), 0);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/paper-card-ui/${width}-team-todo.png`, fullPage: true });
+    await page.getByRole('button', { name: 'Danh sách', exact: true }).click();
+    await page.locator('.task-list tbody tr[data-screening-round]').first().waitFor();
+    assert.equal(await page.locator('.task-list tbody tr[data-screening-round]').count(), 5);
+    assert.equal(await page.locator('.task-list tbody tr').count(), 6);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/paper-card-ui/${width}-team-list.png`, fullPage: true });
+    await page.close();
+  }
+  assert.deepEqual(errors, []);
+  console.log(JSON.stringify({ viewports: [1280, 390], surfaces: ['papers/my-work', 'tasks'], states: ['0/2', '1/2', '2/2', 'disagreement', 'statement', 'adjudicator', 'waiting', 'selected', 'excluded', 'unsure'], overflow: false, longReasonClamped: true, browserErrors: errors }));
+} finally { await browser.close(); }
