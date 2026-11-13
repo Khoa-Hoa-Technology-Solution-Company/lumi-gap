@@ -339,13 +339,6 @@ describe("Smart Completed-Task Management (Jira/Linear inspired)", () => {
     expect(doneColumn.querySelectorAll(".task-card")).toHaveLength(1);
     expect(doneColumn.textContent).toContain("Screening Paper s-done");
     expect(doneColumn.textContent).not.toContain("Screening Paper s-expired");
-
-    // Expired/cancelled/replaced are rendered in history panel
-    const historyPanel = container.querySelector(".coord-history-panel")!;
-    expect(historyPanel).not.toBeNull();
-    expect(historyPanel.textContent).toContain("Hết hạn");
-    expect(historyPanel.textContent).toContain("Đã hủy");
-    expect(historyPanel.textContent).toContain("Đã chuyển bước");
   });
 
   it("switches to full searchable Completed Tasks view on clicking 'View all completed tasks'", async () => {

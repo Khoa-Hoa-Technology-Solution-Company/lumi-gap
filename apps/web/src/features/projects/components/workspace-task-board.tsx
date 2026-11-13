@@ -121,7 +121,7 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
   });
   const history = screeningTasks.filter(task => task.obligation && ["EXPIRED", "CANCELLED", "REPLACED"].includes(task.obligation.status));
   const boardTasks = screeningTasks.filter(task => !history.includes(task));
-  const listScreeningRows = (source === "MANUAL" ? [] : screeningPage.data?.items ? screeningPage.data.items.map(automaticWorkTask) : boardTasks).filter(task => {
+  const listScreeningRows = (source === "MANUAL" ? [] : screeningPage.data?.items && screeningPage.data.items.length > 0 ? screeningPage.data.items.map(automaticWorkTask) : boardTasks).filter(task => {
     if (unassigned || priority || milestone || assignee[0] && assignee[0] !== (task.obligation?.assigneeId ?? actorId) || (status && status !== (task.obligation?.status ?? "TODO"))) return false;
     if (task.obligation && !task.obligation.endedAt && task.deadline && Date.parse(task.deadline) <= now) return false;
     if (overdue && (!task.deadline || new Date(task.deadline).getTime() >= now)) return false;
@@ -195,7 +195,6 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
         onPage={setPage}
       />
     </>}
-    {history.length > 0 && <details className="coord-history-panel"><summary>Lịch sử Task tự động ({history.length})</summary><ul className="space-y-3 pt-3">{history.map(task => <li key={task.obligation!.id} className="flex flex-wrap items-baseline justify-between gap-2 border-b pb-3 text-sm"><div className="min-w-0"><p className="font-medium break-words">{task.title}</p><p className="text-muted-foreground">{task.label} · {automaticTaskStatuses[task.obligation!.status]} · {task.description}</p></div><Link className="text-primary underline" to={withTaskReturn(screeningWorkLink(projectId, task, sectionForTask(task)), task, location.pathname + location.search)}>Xem trạng thái</Link></li>)}</ul></details>}
   </section>;
 }
 function TaskColumn({ status, column, readOnly, onSelect, onPage, onMove, screeningTasks, screeningDoneTotal, projectId, onViewAllCompleted, doneDays = 14, onDoneDaysChange }: {
