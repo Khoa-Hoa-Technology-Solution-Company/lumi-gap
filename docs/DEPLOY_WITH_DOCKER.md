@@ -2,7 +2,7 @@
 
 Run commands from `lumi-gap/`. Docker Desktop must run Linux containers.
 The stack includes PostgreSQL 16/pgvector, Redis, API, nginx web, AI Reviewer,
-and nine default workers (a tenth, OpenAlex ingest, is opt-in via the `ingest` profile). Docker serves production web bundles and `node dist`.
+and its default workers, including OpenAlex ingest (idle until `OPENALEX_API_KEY` is set). Docker serves production web bundles and `node dist`.
 Production keeps its Jenkins credential contract; see [production](../README_PRODUCTION.md).
 
 ## Configure and start
@@ -60,17 +60,16 @@ then adjust to measured workload. Stop workers on a smaller machine:
 docker compose stop worker-sync worker-report worker-gaps worker-ai-jobs worker-embedding worker-paper-analysis worker-notifications worker-corpus-validation worker-community-summary worker-tagging worker-topic-backfill
 ```
 
-They start again on the next full `up`. Optional profiles:
+They start again on the next full `up`. Optional profile:
 
 ```bash
 # Set TRANSLATION_PROVIDER=libretranslate in root .env first.
 docker compose --profile translation up -d --build
-# Set OPENALEX_API_KEY before requesting new provider data.
-docker compose --profile ingest up -d --build
 ```
 
-Ingest does not start a campaign automatically; an admin starts it through the
-application. LibreTranslate may take longer on first startup to load models.
+The OpenAlex ingest worker (`worker-openalex-ingest`) starts with the stack. It needs
+`OPENALEX_API_KEY`; without it the worker stays idle. It does not start a campaign
+automatically: an admin plans one from a tag and starts it on the tag page. LibreTranslate may take longer on first startup to load models.
 
 ## Native apps with the same .env
 

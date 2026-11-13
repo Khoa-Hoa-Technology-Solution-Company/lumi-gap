@@ -266,7 +266,11 @@ export const topicBackfillService = {
         const present = await presentInCorpus(works.map(openAlexId));
         const missing = works.filter((work) => !present.has(openAlexId(work)));
         const toImport = missing.slice(0, run.maxNewPapers - inserted);
-        const result = toImport.length ? await ingestOpenAlexWorks(toImport, provider.id) : null;
+        const result = toImport.length
+          ? await ingestOpenAlexWorks(toImport, provider.id, {
+            origin: { source: run.trigger === "search" ? "search-import" : "catalogue-import", detail: `${run.targetKind}: ${run.targetName}` },
+          })
+          : null;
 
         const newlyInserted = result?.insertedCount ?? 0;
         // A work that raced into the corpus between the check and the import comes back as an update, not an insert.

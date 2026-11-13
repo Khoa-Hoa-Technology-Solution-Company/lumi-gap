@@ -1,18 +1,21 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { ChevronRight, DatabaseZap, FolderTree, Search } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { CalendarClock, ChevronRight, DatabaseZap, FolderTree, Search } from "lucide-react";
 import { toast } from "sonner";
 import type { TaxonomyNode, TaxonomyNodeDetail, TaxonomyNodeStatus } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/i18n";
+import { tagsApi } from "../api/catalog.api";
+import { useCreateTag } from "../hooks/use-tags";
 import { useTaxonomyNode, useUpdateTaxonomyNode } from "../hooks/use-taxonomy";
 import { nodeSearchHref } from "../utils/tag-rules";
 import { BackfillDialog } from "./backfill-dialog";
 import { BackfillRunsSection } from "./backfill-runs-section";
 import { LevelBadge } from "./catalog-badges";
 import { ChipInput } from "./chip-input";
+import { TopicWatchControl } from "./topic-watch-control";
 import { apiErr, ErrorState, formatCompact, SELECT_CLASS } from "./catalog-ui";
 
 const TEXTAREA_CLASS =
@@ -72,6 +75,35 @@ function NodeEditor({ node, onSelectNode, onBrowseChildren }: {
   const [fetchOpen, setFetchOpen] = useState(false);
   // Only topics and subfields carry papers of their own that OpenAlex can be asked for.
   const backfillKind = node.level === "topic" || node.level === "subfield" ? node.level : undefined;
+  // A domain or field is too broad for a backfill: it is imported as a sampled campaign, which is planned from a tag.
+  const campaignLevel = node.level === "domain" || node.level === "field";
+  const createTag = useCreateTag();
+  const navigate = useNavigate();
+
+  /** Creates a tag whose only rule is this node, then opens its page with the campaign planner. */
+  async function createCampaign() {
+    const planner = (tagId: string) => navigate(`/admin/tags/${tagId}?campaign=1`);
+    try {
+      const tag = await createTag.mutateAsync({
+        name: node.name,
+        rules: [{ ruleKind: "topic", researchTopicId: node.id, effect: "include" }],
+      });
+      toast.success(t("Tag “{{name}}” created with this node as its rule.", { name: tag.name }));
+      planner(tag.id);
+    } catch (error) {
+      // The tag was made on an earlier visit: reuse it instead of failing.
+      if ((error as { response?: { status?: number } } | null)?.response?.status === 409) {
+        const existing = await tagsApi.list({ q: node.name, status: "active", pageSize: 20 }).catch(() => undefined);
+        const match = existing?.data.find((tag) => tag.name.toLowerCase() === node.name.toLowerCase());
+        if (match) {
+          toast.info(t("A tag named “{{name}}” already exists. Opened it instead.", { name: match.name }));
+          planner(match.id);
+          return;
+        }
+      }
+      toast.error(t(apiErr(error)));
+    }
+  }
 
   const dirty =
     status !== node.status ||
@@ -185,6 +217,19 @@ function NodeEditor({ node, onSelectNode, onBrowseChildren }: {
           )}
         </div>
 
+        {campaignLevel ? (
+          <div className="space-y-2 rounded-md border bg-muted/40 p-3">
+            <p className="text-sm text-muted-foreground">
+              {t("Imports of a whole domain or field go through a tag: this creates a tag with this node as its rule and opens the campaign planner.")}
+            </p>
+            <Button variant="outline" className="h-11 sm:h-9" onClick={() => void createCampaign()} disabled={createTag.isPending}>
+              <CalendarClock className="h-4 w-4" />
+              {createTag.isPending ? t("Creating…") : t("Create campaign")}
+            </Button>
+          </div>
+        ) : null}
+
+        {backfillKind ? <TopicWatchControl targetKind={backfillKind} targetId={node.id} /> : null}
         {backfillKind ? <BackfillRunsSection embedded targetKind={backfillKind} targetId={node.id} /> : null}
       </div>
 

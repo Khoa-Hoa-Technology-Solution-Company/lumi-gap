@@ -1,3 +1,4 @@
+import { STALE_SYNC_RUN_MS } from "../api-sync/stale-runs.js";
 import type { Job } from "bullmq";
 import type { Queue } from "bullmq";
 import { aiJobsQueue, apiSyncQueue, communitySummaryQueue, corpusValidationQueue, embeddingQueue, gapsQueue, notificationQueue, openAlexIngestQueue, paperAnalysisQueue, reportQueue, taggingQueue, topicBackfillQueue } from "../../infrastructure/queue.js";
@@ -7,7 +8,6 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 
 const STUCK_GENERATING_MS = 5 * 60_000;
 const STUCK_QUEUED_MS = 30 * 60_000;
-const STUCK_SYNC_RUNNING_MS = 2 * 60 * 60_000;
 const BACKLOG_THRESHOLD = 50;
 const HIGH_QUEUE_LATENCY_MS = 10 * 60_000;
 const WORKER_HEARTBEAT_STALE_MS = 2 * 60_000;
@@ -333,7 +333,7 @@ async function getCorpus(repository: CorpusRepository): Promise<PipelineStatus["
 async function getStale(repository: StaleRepository, currentTime: Date): Promise<PipelineStatus["stale"]> {
   const queuedBefore = new Date(currentTime.getTime() - STUCK_QUEUED_MS);
   const generatingBefore = new Date(currentTime.getTime() - STUCK_GENERATING_MS);
-  const syncRunningBefore = new Date(currentTime.getTime() - STUCK_SYNC_RUNNING_MS);
+  const syncRunningBefore = new Date(currentTime.getTime() - STALE_SYNC_RUN_MS);
   const [reportsQueuedTooLong, reportsGeneratingTooLong, gapsQueuedTooLong, gapsAnalyzingTooLong, syncRunningTooLong] =
     await Promise.all([
       repository.countReportsQueuedBefore(queuedBefore),
@@ -347,7 +347,7 @@ async function getStale(repository: StaleRepository, currentTime: Date): Promise
 }
 
 async function getSync(repository: SyncRepository, currentTime = new Date()): Promise<PipelineStatus["sync"]> {
-  const freshRunningSince = new Date(currentTime.getTime() - STUCK_SYNC_RUNNING_MS);
+  const freshRunningSince = new Date(currentTime.getTime() - STALE_SYNC_RUN_MS);
   const [latestRun, running] = await Promise.all([
     repository.getLatestRun(),
     repository.hasFreshRunningRun(freshRunningSince),

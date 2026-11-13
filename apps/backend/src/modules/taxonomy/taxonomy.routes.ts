@@ -13,6 +13,8 @@ export const taxonomyRouter: Router = Router();
 taxonomyRouter.use(requireAuth, requireSystemRole("ADMIN"));
 
 taxonomyRouter.get("/stats", taxonomyController.stats);
+taxonomyRouter.get("/sync", taxonomyController.syncStatus);
+taxonomyRouter.post("/sync", taxonomyController.requestSync);
 taxonomyRouter.get("/nodes", validate(ListNodesQuerySchema, "query"), taxonomyController.listNodes);
 taxonomyRouter.get("/nodes/:id", validate(CatalogIdParamsSchema, "params"), taxonomyController.getNode);
 taxonomyRouter.patch(

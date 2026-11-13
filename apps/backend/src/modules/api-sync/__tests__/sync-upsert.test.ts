@@ -33,11 +33,13 @@ beforeEach(() => {
   mocks.update.mockImplementation(async ({ data }) => ({ id, ...data }));
   mocks.authorDelete.mockResolvedValue({}); mocks.keywordDelete.mockResolvedValue({}); mocks.topicDelete.mockResolvedValue({});
 });
+
+const origin = { source: "free-text-sync" as const, detail: "test query" };
 
 describe("upsertPaper through ingestOpenAlexWorks", () => {
   it("only enriches a user-owned paper and never touches its workflow state or related rows", async () => {
     mocks.find.mockResolvedValue({ id, doi: "10.1038/171737a0", openalexId: null, title: "My draft title", primaryProvider: "user", paperStatus: "pending", dataStatus: "draft", isAiAnalyzable: false, abstractText: null, journalName: "Kept Journal", citationCount: 100 });
-    const result = await ingestOpenAlexWorks([work], "provider");
+    const result = await ingestOpenAlexWorks([work], "provider", { origin });
     expect(result.rejectedCount).toBe(0);
     expect(result.records[0]).toMatchObject({ action: "update", paper: { id } });
     expect(mocks.create).not.toHaveBeenCalled();
@@ -59,18 +61,18 @@ describe("upsertPaper through ingestOpenAlexWorks", () => {
     const userRow = { id, doi: "10.1038/171737a0", openalexId: null, primaryProvider: "user", paperStatus: "pending", dataStatus: "draft", citationCount: 0 };
     mocks.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id, ...data }));
     mocks.find.mockResolvedValue({ ...userRow, isAiAnalyzable: false, abstractText: "u".repeat(300) });
-    await ingestOpenAlexWorks([work], "provider");
+    await ingestOpenAlexWorks([work], "provider", { origin });
     expect(mocks.update.mock.calls[0]![0].data).not.toHaveProperty("abstractText");
     expect(mocks.update.mock.calls[0]![0].data.isAiAnalyzable).toBe(true);
     mocks.find.mockResolvedValue({ ...userRow, isAiAnalyzable: true, abstractText: "u".repeat(100) });
-    await ingestOpenAlexWorks([work], "provider");
+    await ingestOpenAlexWorks([work], "provider", { origin });
     expect(mocks.update.mock.calls[1]![0].data.isAiAnalyzable).toBe(false);
     expect(mocks.update.mock.calls[1]![0].data).not.toHaveProperty("dataStatus");
   });
 
   it("keeps overwriting an OpenAlex-owned paper as before", async () => {
     mocks.find.mockResolvedValue({ id, primaryProvider: "openalex", paperStatus: "not-downloaded", dataStatus: "low-quality", isAiAnalyzable: false, abstractText: "old", citationCount: 5 });
-    const result = await ingestOpenAlexWorks([work], "provider");
+    const result = await ingestOpenAlexWorks([work], "provider", { origin });
     expect(result.records[0]?.action).toBe("update");
     expect(mocks.update.mock.calls[0]![0].data).toMatchObject({ primaryProvider: "openalex", dataStatus: "active", isAiAnalyzable: true, title: work.title, citationCount: 40 });
     expect(mocks.authorDelete).toHaveBeenCalled();
@@ -81,7 +83,7 @@ describe("upsertPaper through ingestOpenAlexWorks", () => {
     const row = { id, primaryProvider: "openalex", paperStatus: "not-downloaded", dataStatus: "active", isAiAnalyzable: true, citationCount: 1 };
     mocks.find.mockResolvedValueOnce(null).mockResolvedValueOnce(row);
     mocks.create.mockRejectedValueOnce({ code: "P2002" });
-    const result = await ingestOpenAlexWorks([work], "provider");
+    const result = await ingestOpenAlexWorks([work], "provider", { origin });
     expect(result.rejectedCount).toBe(0);
     expect(result.records[0]).toMatchObject({ action: "update", paper: { id } });
     expect(mocks.find).toHaveBeenCalledTimes(2);
@@ -91,15 +93,22 @@ describe("upsertPaper through ingestOpenAlexWorks", () => {
 
   it("rejects the work when the retried lookup still loses to P2002 on create", async () => {
     mocks.create.mockRejectedValue({ code: "P2002" });
-    const result = await ingestOpenAlexWorks([work], "provider");
+    const result = await ingestOpenAlexWorks([work], "provider", { origin });
     expect(result.rejectedCount).toBe(1);
     expect(mocks.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("never rewrites the ingest source of a paper that is already in the corpus", async () => {
+    mocks.find.mockResolvedValue({ id, primaryProvider: "openalex", citationCount: 1, ingestSource: "campaign" });
+    await ingestOpenAlexWorks([work], "provider", { origin });
+    expect(mocks.update.mock.calls[0]![0].data).not.toHaveProperty("ingestSource");
+    expect(mocks.update.mock.calls[0]![0].data).not.toHaveProperty("ingestSourceDetail");
   });
 
   it("does not retry a P2002 raised by an update", async () => {
     mocks.find.mockResolvedValue({ id, primaryProvider: "openalex", citationCount: 1 });
     mocks.update.mockRejectedValue({ code: "P2002" });
-    const result = await ingestOpenAlexWorks([work], "provider");
+    const result = await ingestOpenAlexWorks([work], "provider", { origin });
     expect(result.rejectedCount).toBe(1);
     expect(mocks.find).toHaveBeenCalledTimes(1);
   });

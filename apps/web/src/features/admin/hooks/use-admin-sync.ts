@@ -12,6 +12,15 @@ export function useSyncRuns(enabled = true) {
   });
 }
 
+export function useSyncOptions(enabled = true) {
+  return useQuery({
+    queryKey: ["admin", "sync-options"],
+    queryFn: adminApi.getSyncOptions,
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
 export function useTriggerSync() {
   const qc = useQueryClient();
   return useMutation({

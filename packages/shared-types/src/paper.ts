@@ -94,6 +94,10 @@ export interface Paper {
   pdfAvailable?: boolean;
   paperLink?: string;
   rejectionReason?: string;
+  /** How the record first entered the corpus. Admin responses only. */
+  ingestSource?: PaperIngestSource;
+  /** What was asked for, e.g. "topic: Topic Modeling" or the search text. Admin responses only. */
+  ingestSourceDetail?: string;
   paperStatus?: "pending" | "not-downloaded" | "downloaded" | "rejected" | "pending-requester-acceptance";
   requestedBy?: {
     _id: string;
@@ -211,3 +215,12 @@ export interface PaperComparison {
   /** LLM qualitative comparison; each dimension has one entry per paper (same order). */
   llmComparison: { dimensions: Array<{ name: string; perPaper: string[] }> };
 }
+
+/**
+ * How a provider record first entered the corpus. Set once, when the paper is inserted.
+ * `legacy`: imported before the source was recorded.
+ */
+export const PAPER_INGEST_SOURCES = [
+  "free-text-sync", "topic-watch", "catalogue-import", "search-import", "campaign", "gap-enrichment", "forum-citation", "legacy",
+] as const;
+export type PaperIngestSource = (typeof PAPER_INGEST_SOURCES)[number];

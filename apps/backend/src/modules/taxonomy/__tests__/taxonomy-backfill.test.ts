@@ -14,11 +14,12 @@ const valuesOf = (call: unknown[]) => (Array.isArray(call[0]) ? call.slice(1) : 
 const calls = (fn: typeof mocks.queryRaw) => fn.mock.calls.map((call) => ({ sql: sqlOf(call), values: valuesOf(call) }));
 
 /** Routes $queryRaw by the statement it receives, so tests only declare the tables they care about. */
-function routeQueries(routes: { names?: string[]; exact?: unknown[]; alias?: unknown[]; inserted?: unknown[]; byId?: unknown[] }) {
+function routeQueries(routes: { names?: string[]; exact?: unknown[]; alias?: unknown[]; inserted?: unknown[]; byId?: unknown[]; similar?: unknown[] }) {
   mocks.queryRaw.mockImplementation(async (...args: unknown[]) => {
     const sql = sqlOf(args);
     if (sql.includes("SELECT DISTINCT keyword_name")) return (routes.names ?? []).map((keyword_name) => ({ keyword_name }));
     if (sql.includes("aliases &&")) return routes.alias ?? [];
+    if (sql.includes("replace(normalized_name")) return routes.similar ?? [];
     if (sql.includes("WHERE id = ANY")) return routes.byId ?? [];
     if (sql.includes("normalized_name = ANY")) {
       // The first lookup is the exact one; the re-select after the insert happens once an INSERT ran.
@@ -63,6 +64,25 @@ describe("linkPaperTaxonomy keyword resolution", () => {
 });
 
 describe("linkKeywords resolver", () => {
+  it("resolves a plural or spacing variant to the existing keyword and keeps it as an alias", async () => {
+    routeQueries({ names: ["Large Language Model"], similar: [{ ...kw("k1", "large language models"), paper_count: 10 }] });
+    const result = await taxonomyBackfillService.linkKeywords();
+    const executes = calls(mocks.executeRaw);
+    expect(executes.some((call) => call.sql.includes("INSERT INTO keywords"))).toBe(false);
+    const alias = executes.find((call) => call.sql.includes("SET aliases"))!;
+    expect(alias.values).toEqual([["large language model"], "k1"]);
+    const update = executes.find((call) => call.sql.includes("UPDATE paper_keywords"))!;
+    expect(update.values).toEqual([["Large Language Model"], ["k1"]]);
+    expect(result.keywordsCreated).toBe(0);
+  });
+
+  it("never matches an acronym by spelling", async () => {
+    routeQueries({ names: ["GRADE"], similar: [{ ...kw("k1", "grades"), paper_count: 3 }] });
+    await taxonomyBackfillService.linkKeywords();
+    expect(calls(mocks.executeRaw).some((call) => call.sql.includes("INSERT INTO keywords"))).toBe(true);
+    expect(calls(mocks.executeRaw).some((call) => call.sql.includes("SET aliases"))).toBe(false);
+  });
+
   it("normalizes spellings so Deep-Learning meets deep learning, and prefers the normalized_name match", async () => {
     routeQueries({ names: ["Deep-Learning", "deep learning"], exact: [kw("k1", "deep learning")], alias: [kw("k9", "other", { aliases: ["deep learning"] })] });
     const result = await taxonomyBackfillService.linkKeywords();

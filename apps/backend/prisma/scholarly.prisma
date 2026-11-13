@@ -198,6 +198,10 @@ model Paper {
   uploadedAt                   DateTime?                   @map("uploaded_at") @db.Timestamptz(6)
   uploadRewardedAt             DateTime?                   @map("upload_rewarded_at") @db.Timestamptz(6)
   rejectionReason              String?                     @map("rejection_reason")
+  /// How the record first entered the corpus (PaperIngestSource). Set on insert only; null for user-owned records.
+  ingestSource                 String?                     @map("ingest_source") @db.VarChar(32)
+  /// What was asked for: "topic: <name>", "tag: <name>", a search text, a DOI.
+  ingestSourceDetail           String?                     @map("ingest_source_detail")
   paperStatus                  String                      @default("pending") @map("paper_status") @db.VarChar(40)
   dataStatus                   String                      @default("draft") @map("data_status") @db.VarChar(24)
   dataQualityScore             Float                       @default(0) @map("data_quality_score")
@@ -237,6 +241,7 @@ model Paper {
   @@index([publicationYear, citationCount])
   @@index([language])
   @@index([paperStatus])
+  @@index([ingestSource])
   @@index([dataStatus])
   @@index([isAiAnalyzable, dataStatus])
   @@index([requestedById])

@@ -316,6 +316,14 @@ const EnvSchema = z.object({
   TAG_EMBEDDING_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.82),
   TAG_EMBEDDING_MAX_PAPERS: z.coerce.number().int().min(1).default(300),
 
+  // Daily topic watches (sync worker, on SYNC_CRON). One run imports at most TOPIC_WATCH_DAILY_MAX_PAPERS new papers
+  // (never more than EMBED_MAX_PAPERS_PER_RUN, or the embedding backlog would only grow) and reads at most
+  // SYNC_MAX_PAGES_PER_RUN pages, both shared across the enabled watches. A tracking window starts
+  // TOPIC_WATCH_OVERLAP_DAYS before the last completed one, because OpenAlex often lists a work days after its date.
+  TOPIC_WATCH_DAILY_MAX_PAPERS: z.coerce.number().int().min(1).default(500),
+  TOPIC_WATCH_OVERLAP_DAYS: z.coerce.number().int().min(0).default(7),
+  TOPIC_WATCH_DEFAULT_BACKLOG_PAPERS: z.coerce.number().int().min(0).default(1000),
+
   // On-demand topic backfill (topic-backfill worker). A run imports at most TOPIC_BACKFILL_DEFAULT_NEW_PAPERS papers the
   // corpus is missing (admins may ask for up to TOPIC_BACKFILL_MAX_NEW_PAPERS), reading at most TOPIC_BACKFILL_MAX_PAGES
   // OpenAlex pages. Below TOPIC_BACKFILL_THIN_MAX_PAPERS local papers, search offers signed-in users a backfill, limited
@@ -341,6 +349,9 @@ const EnvSchema = z.object({
   // team can demo before an admin user is seeded. Never enable in production.
   // (Plain z.coerce.boolean() is unsafe — "false" would coerce to true — so we
   //  parse an explicit "true"/"false" string instead.)
+  // Admin sync by free search text (POST /admin/sync). Off by default: imports should be planned from the catalogue
+  // (topic backfill, tag campaign, topic watch). Turn on only to debug the OpenAlex client.
+  SYNC_FREE_TEXT_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   SYNC_ADMIN_BYPASS: z
     .enum(["true", "false"])
     .default("false")

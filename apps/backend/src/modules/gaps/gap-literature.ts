@@ -65,11 +65,11 @@ export async function measureTopicCoverage(topic: string): Promise<GapCorpusCove
 }
 
 /** Ingests works into the corpus and queues their embeddings. Returns internal ids of the active papers, by OpenAlex id. */
-async function ingestWorks(works: OpenAlexWork[]): Promise<Map<string, string>> {
+async function ingestWorks(works: OpenAlexWork[], asked: string): Promise<Map<string, string>> {
   if (!works.length) return new Map();
   const provider = await getPrisma().apiProvider.findUnique({ where: { providerName: "openalex" } });
   if (!provider) { logger.warn("openalex provider not seeded; cannot ingest gap literature"); return new Map(); }
-  const result = await ingestOpenAlexWorks(works, provider.id);
+  const result = await ingestOpenAlexWorks(works, provider.id, { origin: { source: "gap-enrichment", detail: asked } });
   if (result.insertedCount) await embeddingQueue.add("manual-embedding", {}).catch((error) => logger.warn({ err: error }, "could not queue embeddings for ingested gap literature"));
   return new Map(result.records.filter((row) => row.paper?.dataStatus === "active").map((row) => [openAlexId(row.work), String(row.paper.id)]));
 }
@@ -79,7 +79,7 @@ export async function enrichCorpusForTopic(topic: string): Promise<{ checked: nu
   const works = (await searchWorks(topic, env.GAP_COVERAGE_TOP_WORKS || 25)).filter((work) => openAlexId(work));
   const present = await presentInCorpus(works.map(openAlexId));
   const missing = works.filter((work) => !present.has(openAlexId(work)));
-  const added = await ingestWorks(missing);
+  const added = await ingestWorks(missing, topic);
   logger.info({ topic, checked: works.length, added: added.size }, "gap corpus enriched from OpenAlex");
   return { checked: works.length, added: added.size };
 }
@@ -97,7 +97,7 @@ export async function findOpenAlexCounterPapers(query: string, probe: GapProbe |
       const paper = normalizeOpenAlexWork(work), text = [`${paper.title} ${paper.abstractText ?? ""}`];
       return openAlexId(work) && probeAppearsIn(probe.topicA, text) && probeAppearsIn(probe.topicB, text);
     }).slice(0, env.GAP_COUNTER_OPENALEX_PER_GAP);
-    const ids = await ingestWorks(onIntersection);
+    const ids = await ingestWorks(onIntersection, query);
     const excluded = new Set(excludeIds);
     return onIntersection.flatMap((work) => { const id = ids.get(openAlexId(work)); return id && !excluded.has(id) ? [id] : []; });
   } catch (error) {
