@@ -11,6 +11,13 @@ export function isAiAnalyzableAbstract(text: string | null | undefined): boolean
   return typeof text === "string" && text.length >= AI_ANALYZABLE_MIN_ABSTRACT_CHARS;
 }
 
+/** Why an imported record is "low-quality": it cannot be embedded or analysed. Stored in `papers.rejection_reason`. */
+export function lowQualityReason(abstractText: string | null | undefined): string {
+  return typeof abstractText === "string" && abstractText.trim().length > 0
+    ? `Abstract shorter than ${AI_ANALYZABLE_MIN_ABSTRACT_CHARS} characters`
+    : "No abstract from the provider";
+}
+
 type PaperOrigin = { primaryProvider?: string | null; requestedBy?: unknown; requestedById?: unknown };
 
 /**

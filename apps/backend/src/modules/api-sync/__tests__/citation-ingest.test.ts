@@ -22,19 +22,23 @@ beforeEach(() => {
   mocks.create.mockImplementation(async ({ data }) => ({ id, ...data }));
   mocks.update.mockImplementation(async ({ data }) => ({ id, ...data }));
 });
+
+const origin = { source: "free-text-sync" as const, detail: "test query" };
 
 describe("DOI citation ingestion through existing Paper storage", () => {
   it("imports bibliographic metadata for citation without enabling AI analysis, while keeping the normal import gate", async () => {
-    const ordinary = await ingestOpenAlexWorks([work], "provider");
+    const ordinary = await ingestOpenAlexWorks([work], "provider", { origin });
     expect(ordinary.records[0]?.paper).toMatchObject({ dataStatus: "low-quality", isAiAnalyzable: false });
-    const citation = await ingestOpenAlexWorks([work], "provider", { purpose: "citation" });
+    // The first import records where the paper came from and why it is low-quality.
+    expect(ordinary.records[0]?.paper).toMatchObject({ ingestSource: "free-text-sync", ingestSourceDetail: "test query", rejectionReason: expect.stringMatching(/abstract/i) });
+    const citation = await ingestOpenAlexWorks([work], "provider", { purpose: "citation", origin });
     expect(citation.records[0]?.paper).toMatchObject({ id, dataStatus: "active", isAiAnalyzable: false, doi: "10.1038/171737a0", publicationYear: 1953, paperStatus: "not-downloaded" });
     expect(mocks.authorCreate).toHaveBeenCalledWith({ data: expect.arrayContaining([expect.objectContaining({ paperId: id, displayName: "Watson" }), expect.objectContaining({ paperId: id, displayName: "Crick" })]) });
     expect(mocks.sourceCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ paperId: id, providerId: "provider", externalRecordId: "https://openalex.org/W123" }) });
   });
   it.each(["draft", "low-quality"])("does not republish an existing %s source discovered during import", async (dataStatus) => {
     mocks.find.mockResolvedValue({ id, dataStatus });
-    const result = await ingestOpenAlexWorks([work], "provider", { purpose: "citation" });
+    const result = await ingestOpenAlexWorks([work], "provider", { purpose: "citation", origin });
     expect(result.rejectedCount).toBe(1);
     expect(result.records).toEqual([]);
     expect(mocks.create).not.toHaveBeenCalled();
@@ -42,18 +46,18 @@ describe("DOI citation ingestion through existing Paper storage", () => {
     expect(mocks.sourceCreate).not.toHaveBeenCalled();
   });
   it("rejects incomplete metadata even when citation ingestion is requested", async () => {
-    const result = await ingestOpenAlexWorks([{ ...work, authorships: [] }], "provider", { purpose: "citation" });
+    const result = await ingestOpenAlexWorks([{ ...work, authorships: [] }], "provider", { purpose: "citation", origin });
     expect(result.rejectedCount).toBe(1);
     expect(mocks.create).not.toHaveBeenCalled();
   });
   it("imports a DOI-less citation using its OpenAlex identity", async () => {
-    const result = await ingestOpenAlexWorks([{ ...work, doi: null }], "provider", { purpose: "citation" });
+    const result = await ingestOpenAlexWorks([{ ...work, doi: null }], "provider", { purpose: "citation", origin });
     expect(result.records[0]?.paper).toMatchObject({ id, openalexId: "W123", dataStatus: "active", isAiAnalyzable: false });
     expect(result.records[0]?.paper.doi).toBeUndefined();
   });
   it("keeps an active citation source available after a later ordinary sync", async () => {
     mocks.find.mockResolvedValue({ id, primaryProvider: "openalex", dataStatus: "active", isAiAnalyzable: false, citationCount: 12 });
-    const result = await ingestOpenAlexWorks([work], "provider");
+    const result = await ingestOpenAlexWorks([work], "provider", { origin });
     expect(result.records[0]?.paper).toMatchObject({ dataStatus: "active", isAiAnalyzable: false, citationCount: 12 });
   });
 });

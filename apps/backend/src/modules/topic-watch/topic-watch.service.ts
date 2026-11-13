@@ -135,7 +135,9 @@ async function runWatch(watch: WatchRow, providerId: string, budget: number, pag
       const present = await presentInCorpus(works.map(openAlexId));
       const missing = works.filter((work) => !present.has(openAlexId(work)));
       const toImport = missing.slice(0, pageBudget(position, budgetLeft));
-      const result = toImport.length ? await ingestOpenAlexWorks(toImport, providerId) : null;
+      const result = toImport.length
+        ? await ingestOpenAlexWorks(toImport, providerId, { origin: { source: "topic-watch", detail: `${watch.targetKind}: ${target.name}` } })
+        : null;
 
       const inserted = result?.insertedCount ?? 0;
       const skipped = present.size + (result?.updatedCount ?? 0);

@@ -106,6 +106,8 @@ export function presentPaperDetail(
     result.uploadedBy = presentUser(raw.uploadedBy);
     result.uploadedAt = raw.uploadedAt;
     result.rejectionReason = raw.rejectionReason;
+    result.ingestSource = raw.ingestSource ?? undefined;
+    result.ingestSourceDetail = raw.ingestSourceDetail ?? undefined;
   }
 
   return result as unknown as PaperDetailDto;

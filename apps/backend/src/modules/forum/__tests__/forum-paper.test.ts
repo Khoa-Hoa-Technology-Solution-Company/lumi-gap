@@ -39,7 +39,7 @@ describe("Forum OpenAlex paper search", () => {
   it("fetches fresh metadata and imports a selected source through existing citation ingestion", async () => {
     expect(await forumPaperService.attachOpenAlex("W123")).toMatchObject({ paperId: "00000000-0000-4000-8000-000000000123", title: work.title, authors: ["Researcher A"] });
     expect(fetchOpenAlexWorkById).toHaveBeenCalledWith("W123");
-    expect(ingestOpenAlexWorks).toHaveBeenCalledWith([work], "provider", { purpose: "citation" });
+    expect(ingestOpenAlexWorks).toHaveBeenCalledWith([work], "provider", expect.objectContaining({ purpose: "citation", origin: expect.objectContaining({ source: "forum-citation" }) }));
   });
   it("allows complete scholarly sources without DOI or abstract", async () => {
     vi.mocked(searchOpenAlexWorks).mockResolvedValue([{ ...work, doi: null, abstract_inverted_index: null }]);
@@ -65,7 +65,7 @@ describe("Forum DOI metadata preview and attachment", () => {
     expect(fetchOpenAlexWorkByDoi).toHaveBeenCalledWith(doi);
     expect(ingestOpenAlexWorks).not.toHaveBeenCalled();
     expect(await forumPaperService.attach(doi)).toHaveProperty("paperId", "00000000-0000-4000-8000-000000000123");
-    expect(ingestOpenAlexWorks).toHaveBeenCalledWith([work], "provider", { purpose: "citation" });
+    expect(ingestOpenAlexWorks).toHaveBeenCalledWith([work], "provider", expect.objectContaining({ purpose: "citation", origin: expect.objectContaining({ source: "forum-citation" }) }));
   });
   it("uses existing active metadata without fetching or importing again", async () => {
     mocks.findPaper.mockResolvedValue({ id: "00000000-0000-4000-8000-000000000124", title: "Existing metadata", dataStatus: "active", publicationYear: 2024 });
@@ -79,7 +79,7 @@ describe("Forum DOI metadata preview and attachment", () => {
     expect(await forumPaperService.preview("10.1038/171737a0")).toMatchObject({ canAttach: true, publicationYear: 1953, venue: "Nature" });
     expect(ingestOpenAlexWorks).not.toHaveBeenCalled();
     expect(await forumPaperService.attach("10.1038/171737a0")).toHaveProperty("paperId");
-    expect(ingestOpenAlexWorks).toHaveBeenCalledWith([historical], "provider", { purpose: "citation" });
+    expect(ingestOpenAlexWorks).toHaveBeenCalledWith([historical], "provider", expect.objectContaining({ purpose: "citation", origin: expect.objectContaining({ source: "forum-citation" }) }));
   });
   it("protects restricted papers and rejects incomplete citation metadata", async () => {
     mocks.findPaper.mockResolvedValueOnce({ dataStatus: "draft" });
