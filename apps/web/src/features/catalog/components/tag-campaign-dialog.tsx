@@ -60,7 +60,7 @@ export function TagCampaignDialog({ tag, onClose }: {
             <DialogHeader className="text-left">
               <DialogTitle>{t("Plan an OpenAlex campaign")}</DialogTitle>
               <DialogDescription>
-                {t("Samples works for “{{name}}” from OpenAlex. Planning only prepares the campaign: nothing is downloaded until you start it on the pipeline page.", { name: tag.name })}
+                {t("Samples works for “{{name}}” from OpenAlex. Planning only prepares the campaign: nothing is downloaded until you start it in the campaign list on the tag page.", { name: tag.name })}
               </DialogDescription>
             </DialogHeader>
             <TagCampaignForm key={tag.id} tag={tag} onClose={onClose} />
@@ -118,7 +118,7 @@ function TagCampaignBody({ tag, preflight, onClose }: {
     if (target === undefined || blocked) return;
     try {
       await plan.mutateAsync(target);
-      toast.success(t("Campaign planned for “{{name}}”. Start it on the pipeline page: nothing is downloaded until then.", { name: tag.name }));
+      toast.success(t("Campaign planned for “{{name}}”. Start it in the campaign list below: nothing is downloaded until then.", { name: tag.name }));
       onClose();
     } catch (error) {
       toast.error(t(apiErr(error)));
@@ -189,7 +189,7 @@ function TagCampaignBody({ tag, preflight, onClose }: {
       <div className="space-y-2 empty:hidden">
         {preflight.liveCampaign ? (
           <div role="alert" className={BLOCK_CLASS} data-testid="notice-live">
-            {t("A campaign for this tag is still in progress. Finish or cancel it on the pipeline page before planning another.")}{" "}
+            {t("A campaign for this tag is still in progress. Finish or cancel it in the campaign list on the tag page before planning another.")}{" "}
             <CampaignStateBadge state={preflight.liveCampaign.state} />
           </div>
         ) : null}

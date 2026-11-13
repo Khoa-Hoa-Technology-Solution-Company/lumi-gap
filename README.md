@@ -71,7 +71,7 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 ├── docs/                     project documentation
 ├── tests/                    Playwright e2e tests (playwright.config.ts)
 ├── Dockerfile.backend / Dockerfile.web / Dockerfile.e2e
-├── docker-compose.yml        PostgreSQL/pgvector + Redis + backend + web + ai-reviewer (+ default workers and seed/translation/ingest profiles)
+├── docker-compose.yml        PostgreSQL/pgvector + Redis + backend + web + ai-reviewer (+ default workers and seed/translation profiles)
 ├── .env.example              single local environment template
 ├── Jenkinsfile               production CI/CD pipeline
 ├── pnpm-workspace.yaml
@@ -169,7 +169,6 @@ Optional services:
 
 ```bash
 docker compose --profile translation up -d --build  # set TRANSLATION_PROVIDER=libretranslate
-docker compose --profile ingest up -d --build       # requires OPENALEX_API_KEY
 ```
 
 See [Docker setup and verification](docs/DEPLOY_WITH_DOCKER.md),

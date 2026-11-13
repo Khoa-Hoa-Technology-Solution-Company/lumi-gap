@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ArchiveRestore, ArrowLeft, Archive, CalendarClock, DatabaseZap, Pencil, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,19 @@ export function AdminTagDetailPage() {
   const update = useUpdateTag();
   const scheduleRefresh = useDelayedTagRefresh();
   const tag = query.data;
+
+  // "Create campaign" on a taxonomy node lands here with ?campaign=1: open the planner once, then drop the flag.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const wantsCampaign = searchParams.get("campaign") === "1";
+  useEffect(() => {
+    if (!wantsCampaign || !tag) return;
+    if (tag.status !== "archived") setCampaignOpen(true);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("campaign");
+      return next;
+    }, { replace: true });
+  }, [wantsCampaign, tag, setSearchParams]);
 
   async function retag() {
     if (!tag) return;
