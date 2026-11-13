@@ -1,8 +1,8 @@
 # Entity Dictionary - Overall Logical ERD (LumiGap)
 
-Companion to `OVERALL_LOGICAL_ERD.drawio` (Chen notation, version 1.1).
+Companion to `OVERALL_LOGICAL_ERD.drawio` (Chen notation, version 1.2).
 
-**Source of truth.** Entities, attributes and keys come from the Prisma schema in `apps/backend/prisma/*.prisma`. Foreign keys and UNIQUE constraints were replayed from the 139 SQL migrations in `apps/backend/prisma/migrations` on `main` a4b8c28. Most relations are declared only in SQL, not in Prisma. Each entity was also checked for read/write use in `apps/backend/src` services.
+**Source of truth.** Entities, attributes and keys come from the Prisma schema in `apps/backend/prisma/*.prisma`. Foreign keys and UNIQUE constraints were replayed from the 153 SQL migrations in `apps/backend/prisma/migrations` on `main` ca5280c. Most relations are declared only in SQL, not in Prisma. Each entity was also checked for read/write use in `apps/backend/src` services.
 
 **Cardinality rule.** An FK without a UNIQUE constraint gives 1:N. An FK covered by a UNIQUE constraint gives 1:1. A join table with two FKs gives N:M, drawn as one relationship diamond that carries the join table's attributes.
 
@@ -11,6 +11,8 @@ Companion to `OVERALL_LOGICAL_ERD.drawio` (Chen notation, version 1.1).
 **Participation.** A double line joins an entity to a relationship when every instance of that entity must take part, meaning the FK column it holds is NOT NULL. A single line means partial participation: the FK is nullable, or the entity is the referenced (parent) side. The schema cannot force a parent to have children, so parent sides are always partial. Both sides of an N:M relationship are partial for the same reason.
 
 **Weak entities.** An entity is drawn as weak (double rectangle) only when it has no key of its own and its primary key is the owner's key plus a partial key (dashed underline), joined to the owner by an identifying relationship (double diamond). The 39 strong entities all have their own UUID `id`. Some of them depend on another record in business terms (for example SubmissionRevision, ReviewTemplateVersion, HumanReview), but they still have their own key, so they are strong. Only `paper_authors` and `paper_topics` meet the rule: PK (paperId, position), with no own id. Version 1.0 drew them as N:M relationships. That was not correct, because authorId and topicId are nullable, so a row can exist without the second participant. Version 1.1 draws them as weak entities of Paper. They are the same two tables, so the scope is unchanged.
+
+**Version 1.2 (baseline refresh).** Re-checked against `main` ca5280c. The newer code adds 6 models (ManuscriptAiAcceptance, ManuscriptIntegrityAcknowledgement, ManuscriptIntegrityRecord, MentorshipApplication, MentorshipApplicationEvent, MentorshipApplicationNote) and 20 FKs. None of the 41 drawn entities lost a field, key or FK, so every drawn element is still valid and the drawing itself is unchanged. Two drawn entities gained nullable FKs to new models outside the overview: `MentorshipRequest.applicationId` to MentorshipApplication and `SubmissionRevision.integrityReportId` to ManuscriptIntegrityRecord. They are listed under category F below. The new models are not added, to keep the 41-entity scope.
 
 ## Summary
 
@@ -338,7 +340,7 @@ Totals: **39 strong + 2 weak entities**, **75 relationships** (5 x 1:1, 64 x 1:N
   | `assigneeId` | User | RESTRICT | no | yes |
   | `completedById` | User | RESTRICT | no | yes |
   | `createdById` | User | RESTRICT | no | no |
-  | `milestoneId, projectId` | ProjectMilestone | RESTRICT | no | no |
+  | `milestoneId, projectId` | ProjectMilestone | RESTRICT | no | yes |
   | `projectId` | Project | CASCADE | no | no |
 
 - **Relationships on the diagram:** *contains* (1:N) with Project
@@ -355,6 +357,7 @@ Totals: **39 strong + 2 weak entities**, **75 relationships** (5 x 1:1, 64 x 1:N
 
   | FK column | References | On delete | Unique | Nullable |
   |---|---|---|---|---|
+  | `applicationId, projectId, mentorUserId` | MentorshipApplication | - | no | yes |
   | `candidateId` | MentorCandidate | - | yes | yes |
   | `mentorUserId` | User | RESTRICT | no | no |
   | `projectId` | Project | CASCADE | no | no |
@@ -423,7 +426,7 @@ Totals: **39 strong + 2 weak entities**, **75 relationships** (5 x 1:1, 64 x 1:N
 - **Primary key:** `id` (UUID)
 - **Attributes on the diagram:** `id`, `projectId`, `name`, `writingMode`
 - **Other important attributes:** `documentType`
-- **Unique:** (projectId, createdById, clientKey)
+- **Unique:** (projectId, createdById, clientKey); (id, projectId)
 - **Foreign keys (all, from the migrations):**
 
   | FK column | References | On delete | Unique | Nullable |
@@ -466,6 +469,8 @@ Totals: **39 strong + 2 weak entities**, **75 relationships** (5 x 1:1, 64 x 1:N
   | FK column | References | On delete | Unique | Nullable |
   |---|---|---|---|---|
   | `attributionCheckId` | ManuscriptAttributionCheck | RESTRICT | no | yes |
+  | `integrityReportId` | ManuscriptIntegrityRecord | - | no | yes |
+  | `integrityReportId, manuscriptSnapshotId` | ManuscriptIntegrityRecord | - | no | yes |
   | `manuscriptSnapshotId` | ManuscriptSnapshot | RESTRICT | no | yes |
   | `sourceRevisionId` | SubmissionRevision | RESTRICT | no | yes |
   | `submissionId` | Submission | CASCADE | no | no |
@@ -840,9 +845,9 @@ Totals: **39 strong + 2 weak entities**, **75 relationships** (5 x 1:1, 64 x 1:N
 Total-participation lines (double): **39**; all other entity-relationship lines are single (partial).
 
 
-## Foreign keys not drawn (48 of 117 FK constraints held by the drawn entities)
+## Foreign keys not drawn (51 of 120 FK constraints held by the drawn entities)
 
-The diagram shows **69** of the **117** FK constraints that the 41 drawn entities hold. It also shows the FKs of the 6 join tables drawn as N:M diamonds. The FKs below are real and enforced in the database, but they are **not** drawn. This is a deliberate overview choice, so the diagram is **not** a 100% complete picture of the schema's FKs.
+The diagram shows **69** of the **120** FK constraints that the 41 drawn entities hold. It also shows the FKs of the 6 join tables drawn as N:M diamonds. The FKs below are real and enforced in the database, but they are **not** drawn. This is a deliberate overview choice, so the diagram is **not** a 100% complete picture of the schema's FKs.
 
 | Category | Meaning | Count |
 |---|---|---|
@@ -850,7 +855,7 @@ The diagram shows **69** of the **117** FK constraints that the 41 drawn entitie
 | B | Ownership or assignment link to User, omitted only to keep the User hub readable | 6 |
 | C | Denormalised copy: the same fact is reachable through relationships already drawn | 8 |
 | D | Secondary or technical pointer (current-version pointer, lineage, legacy alias, second scope, context link) | 5 |
-| F | Target model is outside the 41-entity overview | 7 |
+| F | Target model is outside the 41-entity overview | 10 |
 
 | Cat. | FK column | References | Nullable | Detail |
 |---|---|---|---|---|
@@ -896,14 +901,17 @@ The diagram shows **69** of the **117** FK constraints that the 41 drawn entitie
 | D | `ReviewTemplate.activeVersionId` | ReviewTemplateVersion | yes | pointer to the active version; the versions themselves are drawn through 'has version' |
 | D | `SubmissionRevision.sourceRevisionId` | SubmissionRevision | yes | revision lineage (self-reference) |
 | F | `DraftWorkspace.mainFileId` | ManuscriptFile | yes |  |
+| F | `MentorshipRequest.applicationId, projectId, mentorUserId` | MentorshipApplication | yes |  |
 | F | `MentorshipRequest.candidateId` | MentorCandidate | yes |  |
-| F | `ProjectTask.milestoneId, projectId` | ProjectMilestone | no |  |
+| F | `ProjectTask.milestoneId, projectId` | ProjectMilestone | yes |  |
 | F | `ResearchGap.corpusId` | LiteratureCorpus | yes |  |
 | F | `ResearchGap.latestClosureCheckId` | GapClosureCheck | yes |  |
 | F | `SubmissionRevision.attributionCheckId` | ManuscriptAttributionCheck | yes |  |
+| F | `SubmissionRevision.integrityReportId` | ManuscriptIntegrityRecord | yes |  |
+| F | `SubmissionRevision.integrityReportId, manuscriptSnapshotId` | ManuscriptIntegrityRecord | yes |  |
 | F | `SubmissionRevision.manuscriptSnapshotId` | ManuscriptSnapshot | yes |  |
 
-## Models not drawn on the overview (190 of 237)
+## Models not drawn on the overview (196 of 243)
 
 The overview shows the core entity of each business flow. The models below are implemented, but they are detail, history, audit or infrastructure tables. Report 4 (Physical ERD) covers them per module.
 
@@ -914,8 +922,10 @@ The overview shows the core entity of each business flow. The models below are i
 | `github.prisma` | GithubConnection |
 | `identity.prisma` | AcademicEmailVerificationChallenge, AcademicFeaturedWork, AcademicIdentityLink, AcademicProfileHandle, AcademicProgram, AcademicVerificationEvidence, Campus, EmailVerificationToken, InstitutionDomain, OAuthAccount, PasswordResetToken, RefreshToken, UserCapability, UserDisplayNameChange, UserEmail, VerificationEvidenceDeletion, VerificationEvidenceSource, VerificationEvidenceUpload |
 | `knowledge.prisma` | KnowledgeEntity, KnowledgeRelation, PaperChunk, PaperDocument |
+| `manuscript-integrity.prisma` | ManuscriptAiAcceptance, ManuscriptIntegrityAcknowledgement, ManuscriptIntegrityRecord |
 | `manuscript.prisma` | ManuscriptAttributionCheck, ManuscriptAttributionDecision, ManuscriptCompilation, ManuscriptFile, ManuscriptRemoteBinding, ManuscriptSnapshot, ManuscriptSnapshotAsset, ManuscriptSuggestion, ManuscriptUpdate, ManuscriptWritingReport |
 | `mentor-access.prisma` | MentorAccess, MentorAccessEvent, MentorAgreement, MentorFeedback, MentorResourceShare |
+| `mentorship-application.prisma` | MentorshipApplication, MentorshipApplicationEvent, MentorshipApplicationNote |
 | `mentorship-content.prisma` | MentorshipAttachment, MentorshipDraft, MentorshipRequestAttachment |
 | `migration.prisma` | DataMigrationCheckpoint, DataMigrationFailure, DataMigrationIdMap, DataMigrationRun |
 | `operations.prisma` | ApiProvider, ApiSyncConfig, ApiSyncRun, CorpusValidationRun, DeviceToken, IngestDeadLetter, McpToolRun, NotificationRead, OpenAlexIngestCampaign, OpenAlexIngestPageAttempt, OpenAlexIngestPartition, OpenAlexRefreshWatermark, PaperCohortMembership, ProjectTrendSnapshot, SearchLog, TopicBackfillRun, TrendExplanation, TrendTopicFollow |

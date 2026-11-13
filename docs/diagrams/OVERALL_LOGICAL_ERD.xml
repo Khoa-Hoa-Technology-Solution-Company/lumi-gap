@@ -1078,7 +1078,7 @@
         <mxCell id="hdr_title" value="OVERALL LOGICAL ENTITY RELATIONSHIP DIAGRAM" style="text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontColor=#1A1A1A;fontStyle=1;html=1;whiteSpace=wrap;fontFamily=Helvetica;fontSize=40;" vertex="1" parent="1">
           <mxGeometry x="100.0" y="52.0" width="2800.0" height="56.0" as="geometry"/>
         </mxCell>
-        <mxCell id="hdr_meta" value="PROJECT: LumiGap - An Intelligent Research Gap Discovery and Academic Collaboration Platform&lt;br&gt;NOTATION: CHEN ERD     VERSION: 1.1     SOURCE: Prisma schema + SQL migrations, main a4b8c28 (39 strong + 2 weak entities, 8 domains)" style="text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontColor=#1A1A1A;fontStyle=0;html=1;whiteSpace=wrap;fontFamily=Helvetica;fontSize=18;" vertex="1" parent="1">
+        <mxCell id="hdr_meta" value="PROJECT: LumiGap - An Intelligent Research Gap Discovery and Academic Collaboration Platform&lt;br&gt;NOTATION: CHEN ERD     VERSION: 1.2     SOURCE: Prisma schema + SQL migrations, main ca5280c (39 strong + 2 weak entities, 8 domains)" style="text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontColor=#1A1A1A;fontStyle=0;html=1;whiteSpace=wrap;fontFamily=Helvetica;fontSize=18;" vertex="1" parent="1">
           <mxGeometry x="100.0" y="125.0" width="2800.0" height="90.0" as="geometry"/>
         </mxCell>
         <mxCell id="lg0" value="Entity" style="rounded=0;fillColor=#DAE8FC;strokeColor=#6C8EBF;strokeWidth=2;fontStyle=1;html=1;whiteSpace=wrap;fontFamily=Helvetica;fontSize=14;" vertex="1" parent="1">
