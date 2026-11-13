@@ -101,17 +101,17 @@ export function LiteratureTopicClustersView({
   const workspaceQuery = useResearchResource(
     projectId,
     ["evidence-workspace-clusters"],
-    () => researchApi.evidenceWorkspace(projectId, { page: 1, pageSize: 100 })
+    () => researchApi.evidenceWorkspace(projectId, { page: 1, pageSize: 50 })
   );
   const libraryQuery = useResearchResource(
     projectId,
     ["library-clusters"],
-    () => researchApi.library(projectId, { page: 1, pageSize: 100 })
+    () => researchApi.library(projectId, { page: 1, pageSize: 50 })
   );
   const evidenceQuery = useResearchResource(
     projectId,
     ["evidence-clusters"],
-    () => researchApi.evidence(projectId, { page: 1, pageSize: 100 })
+    () => researchApi.evidence(projectId, { page: 1, pageSize: 50 })
   );
   const questionsQuery = useResearchResource(
     projectId,
