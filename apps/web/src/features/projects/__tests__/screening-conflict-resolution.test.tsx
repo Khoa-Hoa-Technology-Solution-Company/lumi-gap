@@ -571,4 +571,92 @@ describe("ScreeningConflictResolution Component", () => {
     expect(query.isActive()).toBe(false);
   });
 
+  describe("TEAM_SCREENING Workflow", () => {
+    const teamRound: ScreeningRoundView = {
+      ...mockRound,
+      canProposeAgreement: true,
+      settings: {
+        ...mockRound.settings,
+        workflowKind: "TEAM_SCREENING",
+        resolutionPolicy: "CONSENSUS",
+      },
+    };
+
+    it("renders Two Initial Ballots above tabs and removes duplicate individual reassessment UI", async () => {
+      await renderRound(teamRound);
+
+      // Section for original ballots is present and read-only
+      expect(container.querySelector('[aria-label="Hai phiếu đánh giá ban đầu"]')).not.toBeNull();
+      expect(container.textContent).toContain("Hai phiếu đánh giá ban đầu");
+      expect(container.textContent).toContain("Phiếu ban đầu được lưu bất biến");
+      expect(container.querySelectorAll(".screening-review-row")).toHaveLength(2);
+
+      // Duplicate individual reassessment UI must NOT exist in TEAM_SCREENING
+      expect(container.querySelector(".screening-inline-reassess-card")).toBeNull();
+      expect(container.textContent).not.toContain("Mọi phiên bản được lưu. Hệ thống chốt khi hai đánh giá hiện hành trùng nhau.");
+      expect(button("Cập nhật phiếu của tôi")).toBeUndefined();
+      expect(button("Đổi kết luận của tôi")).toBeUndefined();
+      expect(button("Nhờ người phân xử")).toBeUndefined();
+
+      // Render 2 canonical tabs
+      const tabs = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+      expect(tabs.map(t => t.textContent?.trim())).toEqual(["Trao đổi & làm rõ", "Kết luận chung"]);
+    });
+
+    it("switches to 'Kết luận chung' tab and reveals joint decision proposal form", async () => {
+      await renderRound(teamRound);
+
+      const tabs = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+      const agreementTab = tabs.find(t => t.textContent?.includes("Kết luận chung"))!;
+      expect(agreementTab).toBeDefined();
+
+      await act(async () => agreementTab.click());
+      await settle();
+
+      const agreementPanel = document.getElementById(agreementTab.getAttribute("aria-controls")!)!;
+      expect(agreementPanel.hidden).toBe(false);
+      expect(agreementPanel.textContent).toContain("Quyết định chung sau thảo luận");
+      expect(agreementPanel.textContent).toContain("Lựa chọn A — Phù hợp (Include)");
+      expect(agreementPanel.textContent).toContain("Lựa chọn B — Loại bỏ (Exclude)");
+    });
+
+    it("displays 'Chờ xác nhận' badge in tab and countdown pill when pending agreement proposal exists", async () => {
+      const proposalRound: ScreeningRoundView = {
+        ...teamRound,
+        discussionTiming: {
+          discussionStartedAt: new Date().toISOString(),
+          initialDeadlineAt: new Date(Date.now() + 86400000).toISOString(),
+          effectiveDeadlineAt: new Date(Date.now() + 86400000).toISOString(),
+          hardDeadlineAt: new Date(Date.now() + 172800000).toISOString(),
+          extensionCount: 0,
+          maxExtensions: 1,
+          isOverdue: false,
+          canExtend: true,
+        },
+        agreement: {
+          id: "proposal-1",
+          decision: "INCLUDED",
+          reason: "Cả hai reviewer cùng thống nhất rằng bài báo có thực nghiệm phù hợp với RQ1.",
+          proposedById: "user-2",
+          reviewIds: ["rev-1", "rev-2"],
+          confirmedByIds: ["user-2"],
+          requiredReviewerIds: ["user-1", "user-2"],
+          canConfirm: true,
+          canDecline: true,
+          createdAt: new Date().toISOString(),
+        },
+      };
+
+      await renderRound(proposalRound);
+
+      // Countdown pill shows 'Chờ xác nhận'
+      const countdownPill = container.querySelector(".screening-consensus-countdown-pill");
+      expect(countdownPill?.textContent).toContain("Chờ xác nhận");
+
+      // Agreement tab shows 'Chờ xác nhận'
+      const tabs = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+      const agreementTab = tabs.find(t => t.textContent?.includes("Kết luận chung"))!;
+      expect(agreementTab.textContent).toContain("Chờ xác nhận");
+    });
+  });
 });

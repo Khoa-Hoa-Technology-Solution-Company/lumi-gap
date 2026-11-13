@@ -17,7 +17,7 @@ export function ScreeningAgreementPanel({ projectId, round, readOnly }: { projec
   const [moreInfoReason, setMoreInfoReason] = useState("");
   const [showMoreInfoForm, setShowMoreInfoForm] = useState(false);
   const modern = (round.settings?.workflowVersion ?? 0) >= 5 || isTeamScreening;
-  const [showProposal, setShowProposal] = useState(false);
+  const [showProposal, setShowProposal] = useState(Boolean(isTeamScreening && !round.agreement));
   const command = useScreeningCommand(projectId), agreement = round.agreement;
   useUnsavedWorkspace(Boolean(reason || declineReason || moreInfoReason) || command.isPending);
   const stale = version !== null && version !== round.version;

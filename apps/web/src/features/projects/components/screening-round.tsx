@@ -6,7 +6,6 @@ import { RoundHistory } from "./screening-round-history";
 export { RoundHistory } from "./screening-round-history";
 import { ScreeningCaseStatus } from "./screening-case-status";
 import { ScreeningConflictResolution } from "./screening-conflict-resolution";
-import { ScreeningAgreementPanel } from "./screening-agreement";
 import { ScreeningPacketPreview } from "./screening-adjudication";
 import { LibraryAssessment } from "./library-assessment";
 import { LegacyScreeningRepair } from "./screening-legacy-repair";
@@ -760,7 +759,6 @@ function RoundContentInner({ projectId, initial, paper, people, readOnly: projec
       {round.provisionalAdvance && <p role="status" className="screening-notice">Chuyển đọc toàn văn để làm rõ thông tin. Bất đồng ở vòng tóm tắt vẫn được lưu và chưa được coi là đã giải quyết.</p>}
       {round.finalDecision && <div className="screening-notice"><h4>Kết quả của vòng: {round.finalDecision.decision === "INCLUDED" && round.extractionReady === false ? "Qua sàng lọc · Chờ đọc toàn văn" : round.finalDecision.decision === "INCLUDED" ? "Được chấp nhận" : legacyLabel(round.finalDecision.decision)}</h4><p>{round.finalDecision.source === "CONSENSUS" ? "Đồng thuận của tất cả reviewer theo quy trình đã lưu" : `Chốt bởi ${people.find(p => p.id === round.finalDecision?.resolverId)?.name ?? round.finalDecision.resolverId ?? "Không có thông tin"}`} · phiên bản {round.finalDecision.version} · {new Date(round.finalDecision.createdAt).toLocaleString("vi-VN")}</p><p>{round.finalDecision.reason}</p></div>}
       {!round.legacyNeedsAudit && (round.canManage || round.canFinalize || round.canDefer || hadManagementAccess) && <OwnerActions projectId={projectId} round={round} people={people} readOnly={readOnly} />}
-      <ScreeningAgreementPanel projectId={projectId} round={round} readOnly={readOnly} />
       <RoundHistory projectId={projectId} round={round} people={people} readOnly={readOnly} />
     </>
   );

@@ -132,7 +132,12 @@ export const screeningService = {
       }
 
       const assignments = await effectiveAssignments(c, row.id);
-      if (!roundSettings(row.settings).screeningMode && assignments.some(a => a.id !== assignment.id && a.submittedAt)) {
+      const roundConf = roundSettings(row.settings);
+      const isTeamScreening = roundConf.workflowKind === "TEAM_SCREENING" || roundConf.resolutionPolicy === "CONSENSUS";
+      if (isTeamScreening && assignments.length >= 2 && assignments.every(a => Boolean(a.submittedAt))) {
+        throw AppError.forbidden("Quy trình Đánh giá nhóm (TEAM_SCREENING) sử dụng đề xuất và xác nhận kết luận chung sau thảo luận, không chỉnh sửa phiếu cá nhân.");
+      }
+      if (!roundConf.screeningMode && assignments.some(a => a.id !== assignment.id && a.submittedAt)) {
         const current = await c.tx.screeningReview.findUniqueOrThrow({
           where: { assignmentId_revision: { assignmentId: assignment.id, revision: assignment.revision } },
         });

@@ -38,7 +38,12 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
   const currentUserId = screeningActorId(round, publicActorId);
   const queryClient = useQueryClient();
   const command = useScreeningCommand(projectId);
-  const [activeTab, setActiveTab] = useState<"ballots" | "discussion">(discussionRequested ? "discussion" : "ballots");
+  const isTeamScreening = round.settings?.workflowKind === "TEAM_SCREENING" || round.settings?.resolutionPolicy === "CONSENSUS";
+  const [activeTab, setActiveTab] = useState<"ballots" | "discussion" | "agreement">(() => {
+    if (discussionRequested) return "discussion";
+    if (isTeamScreening) return round.agreement ? "agreement" : "discussion";
+    return "ballots";
+  });
   const workspaceId = useId();
   const unreadDiscussion = useScreeningDiscussionUnread(round.id, !round.hiddenReviews);
   useEffect(() => { if (discussionRequested) setActiveTab("discussion"); }, [discussionRequested]);
@@ -52,7 +57,6 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
   const [closeReason, setCloseReason] = useState<"NO_CONSENSUS" | "NO_RESPONSE" | "INSUFFICIENT_INFORMATION" | "DEADLINE_EXPIRED">("NO_CONSENSUS");
   const [closeNote, setCloseNote] = useState("");
 
-  const isTeamScreening = round.settings?.workflowKind === "TEAM_SCREENING";
   const timing = round.discussionTiming;
 
   // Reassess form state
@@ -95,16 +99,30 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
   const isReviewerOnRound = Boolean(round.myAssignmentId && round.myReview);
   const isAdjudicating = round.adjudicationCase ? ["IN_PROGRESS", "ASSIGNED"].includes(round.adjudicationCase.status) : round.status === "ADJUDICATING";
   const isWaitingAdjudicator = round.adjudicationCase?.status === "WAITING_ASSIGNMENT";
-  const needsClarification = round.classification === "NEEDS_CLARIFICATION" || round.classification === "NEEDS_MORE_INFORMATION";
+  const needsClarification = round.classification === "NEEDS_CLARIFICATION" || round.classification === "NEEDS_MORE_INFORMATION" || round.status === "NEEDS_MORE_INFO";
   const reasonMismatch = round.classification === "EXCLUSION_REASON_MISMATCH";
-  const issueTitle = needsClarification ? "Làm rõ thông tin" : reasonMismatch ? "Thống nhất lý do loại" : "Giải quyết bất đồng";
-  const issueDescription = isTeamScreening
-    ? (needsClarification
-      ? "Thảo luận căn cứ và cùng xác nhận kết luận cuối cùng."
+  const issueTitle = isTeamScreening
+    ? (round.agreement && !round.finalDecision
+      ? "Chờ xác nhận kết luận chung"
+      : needsClarification
+      ? "Làm rõ thông tin"
       : reasonMismatch
-      ? "Hai reviewer chọn loại nhưng chưa thống nhất tiêu chí loại. Thảo luận căn cứ và cùng xác nhận kết luận cuối cùng."
-      : "Hai phiếu độc lập có kết luận khác nhau. Thảo luận căn cứ và cùng xác nhận kết luận cuối cùng.")
+      ? "Thống nhất lý do loại"
+      : "Giải quyết bất đồng")
     : (needsClarification
+      ? "Làm rõ thông tin"
+      : reasonMismatch
+      ? "Thống nhất lý do loại"
+      : "Giải quyết bất đồng");
+  const issueDescription = isTeamScreening
+    ? (round.agreement && !round.finalDecision
+      ? "Đã có đề xuất kết luận chung. Cả hai reviewer cần xác nhận để hoàn tất đánh giá."
+      : needsClarification
+      ? "Hai reviewer đối chiếu tiêu chí và thông tin còn thiếu. Khi đủ căn cứ, cùng xác nhận một kết luận cuối."
+      : "Hai reviewer đối chiếu tiêu chí và trao đổi điểm khác biệt. Khi đủ căn cứ, cùng xác nhận một kết luận cuối.")
+    : (round.adjudicationCase
+      ? "Hồ sơ đã mở. Bổ sung quan điểm riêng và theo dõi kết quả trong Hồ sơ phân xử."
+      : needsClarification
       ? "Đối chiếu nguồn và trao đổi trước khi cập nhật phiếu."
       : reasonMismatch ? "Hai reviewer chọn loại nhưng chưa thống nhất tiêu chí loại. Đối chiếu nguồn và cập nhật căn cứ hoặc nhờ phân xử."
       : "Hai phiếu đang khác kết luận. Trao đổi để đối chiếu tiêu chí và căn cứ đánh giá.");
@@ -209,9 +227,81 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
     }
   };
 
+  const renderBallotsGrid = () => {
+    if (round.hiddenReviews) {
+      return (
+        <p className="screening-review-note">
+          Phiếu được công bố khi quy trình cho phép xem đánh giá của cả hai reviewer.
+        </p>
+      );
+    }
+    return (
+      <div className="screening-review-list screening-review-cards-grid grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        {round.reviews.map((r, idx) => {
+          const assign = round.assignments.find(a => a.id === r.assignmentId);
+          const reviewerName = assign?.name || `Reviewer ${idx + 1}`;
+          const isMe = r.reviewerId === currentUserId;
+          const isInclude = r.decision === "INCLUDE";
+          const isExclude = r.decision === "EXCLUDE";
+          const contentText = (r.exclusionReason || r.comment || r.fullTextReference || "").trim();
+          const needsDetail = contentText.length > 180 || Boolean(r.exclusionReason && r.comment || r.fullTextReference);
+          return (
+            <article
+              key={r.id}
+              className={`screening-review-row screening-review-card ${isInclude ? "is-include" : isExclude ? "is-exclude" : "is-unsure"} p-3.5 rounded-xl border bg-card space-y-2.5 transition-shadow`}
+              aria-label={`Phiếu của ${reviewerName}`}
+            >
+              <div className="screening-review-row-heading flex items-center justify-between gap-2">
+                <div className="screening-review-person flex items-center gap-2.5 min-w-0">
+                  <span className="screening-review-avatar shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-muted text-muted-foreground" aria-hidden="true">
+                    {reviewerName.slice(0, 1).toUpperCase()}
+                  </span>
+                  <div className="screening-review-identity min-w-0">
+                    <strong className="text-xs font-semibold text-foreground truncate block">
+                      {reviewerName}{isMe && <span> (Bạn)</span>}
+                    </strong>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      Phiên bản {r.revision} · <time dateTime={r.submittedAt}>{new Date(r.submittedAt).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "numeric", year: "numeric" })}</time>{r.scope === "FULL_TEXT" && " · Toàn văn"}
+                    </p>
+                  </div>
+                </div>
+                <ScreeningStatusBadge tone={screeningChoiceTone(r.decision)}>
+                  {isInclude ? <CheckCircle2 size={13} aria-hidden="true" className="shrink-0" /> : isExclude ? <XCircle size={13} aria-hidden="true" className="shrink-0" /> : <HelpCircle size={13} aria-hidden="true" className="shrink-0" />}
+                  <span>{choiceLabels[r.decision]}</span>
+                </ScreeningStatusBadge>
+              </div>
+              <div className="screening-review-rationale text-xs space-y-1.5 pt-1 border-t border-border/40">
+                <p className="screening-resolution-reason text-xs text-foreground/90 leading-relaxed whitespace-pre-wrap break-words" data-truncated={needsDetail || undefined}>
+                  {contentText ? (
+                    <>
+                      {r.exclusionReason && <span>Lý do loại: </span>}
+                      {contentText}
+                    </>
+                  ) : (
+                    <span className="screening-review-note text-muted-foreground italic text-[11px]">Không kèm ghi chú</span>
+                  )}
+                </p>
+                {needsDetail && (
+                  <button
+                    type="button"
+                    className="screening-review-detail-link text-[11px] font-medium text-primary hover:underline cursor-pointer block mt-1"
+                    aria-label={`Xem lý do của ${reviewerName}`}
+                    onClick={() => setViewingReview(r)}
+                  >
+                    Xem lý do
+                  </button>
+                )}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="screening-conflict-container space-y-4" data-focus-chat={activeTab === "discussion" && !round.adjudicationCase}>
-      <ScreeningCaseStatus projectId={projectId} round={round} />
+      {!isTeamScreening && <ScreeningCaseStatus projectId={projectId} round={round} />}
 
       <section className="screening-resolution-intro screening-consensus-card rounded-xl border border-amber-200/80 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-950/20 p-4 space-y-2.5 shadow-xs" aria-label={issueTitle}>
         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -224,7 +314,7 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
             <div className="screening-consensus-countdown-pill" title={`Hạn: ${new Date(deadlineStr).toLocaleString("vi-VN")}`}>
               <span className="screening-live-dot" />
               <Clock size={12} className="shrink-0" />
-              <span>Đang thảo luận</span>
+              <span>{isTeamScreening ? (round.agreement ? "Chờ xác nhận" : needsClarification ? "Cần làm rõ" : "Đang thảo luận") : "Đang thảo luận"}</span>
               <span>·</span>
               <time dateTime={deadlineStr} aria-label="Thời gian thảo luận còn lại">
                 {isExpired ? "Đã hết hạn" : `Còn ${formattedCountdown}`}
@@ -273,9 +363,18 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
         )}
       </section>
 
-      {/* For Team Screening, consensus proposal & confirmation is displayed directly */}
+      {/* For Team Screening, show two initial read-only ballots above tabs */}
       {isTeamScreening && (
-        <ScreeningAgreementPanel projectId={projectId} round={round} readOnly={readOnly} />
+        <section className="screening-initial-ballots space-y-2.5" aria-label="Hai phiếu đánh giá ban đầu">
+          <div className="flex items-center justify-between">
+            <h5 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <CheckSquare size={13} className="text-primary shrink-0" />
+              <span>Hai phiếu đánh giá ban đầu</span>
+            </h5>
+            <span className="text-[11px] text-muted-foreground">Phiếu ban đầu được lưu bất biến</span>
+          </div>
+          {renderBallotsGrid()}
+        </section>
       )}
 
       {/* Legacy/Systematic Review actions: Both reviewers can act directly after discussion */}
@@ -322,106 +421,117 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
         </section>
       )}
 
-      <div className="screening-resolution-tabs" role="tablist" aria-label="Đánh giá và trao đổi">
-        {([{ value: "discussion", label: "Trao đổi", icon: MessageSquare }, { value: "ballots", label: "Hai phiếu đánh giá", icon: CheckSquare }] as const).map((tab, index) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.value;
-          return (
-            <button
-              key={tab.value}
-              type="button"
-              role="tab"
-              id={`${workspaceId}-${tab.value}-tab`}
-              aria-selected={isActive}
-              aria-controls={`${workspaceId}-${tab.value}-panel`}
-              tabIndex={isActive ? 0 : -1}
-              onClick={() => setActiveTab(tab.value)}
-              onKeyDown={event => {
-                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-                event.preventDefault();
-                const next = event.key === "Home" ? "discussion" : event.key === "End" ? "ballots" : index === 0 ? "ballots" : "discussion";
-                setActiveTab(next);
-                document.getElementById(`${workspaceId}-${next}-tab`)?.focus();
-              }}
-              className={`screening-tab-button ${isActive ? "active" : ""}`}
-            >
-              <Icon size={14} className="mr-1.5 shrink-0" />
-              <span>{tab.label}</span>
-              {tab.value === "discussion" && unreadDiscussion.length > 0 && (
-                <span className="screening-discussion-unread-count" aria-label={`${unreadDiscussion.length} tin nhắn chưa đọc`}>
-                  {unreadDiscussion.length}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {isTeamScreening ? (
+        <div className="screening-resolution-tabs" role="tablist" aria-label="Trao đổi và kết luận chung">
+          {([
+            { value: "discussion" as const, label: "Trao đổi & làm rõ", icon: MessageSquare },
+            { value: "agreement" as const, label: "Kết luận chung", icon: CheckSquare },
+          ]).map((tab, index) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.value;
+            return (
+              <button
+                key={tab.value}
+                type="button"
+                role="tab"
+                id={`${workspaceId}-${tab.value}-tab`}
+                aria-selected={isActive}
+                aria-controls={`${workspaceId}-${tab.value}-panel`}
+                tabIndex={isActive ? 0 : -1}
+                onClick={() => setActiveTab(tab.value)}
+                onKeyDown={event => {
+                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const next = event.key === "Home" ? "discussion" : event.key === "End" ? "agreement" : index === 0 ? "agreement" : "discussion";
+                  setActiveTab(next);
+                  document.getElementById(`${workspaceId}-${next}-tab`)?.focus();
+                }}
+                className={`screening-tab-button ${isActive ? "active" : ""}`}
+              >
+                <Icon size={14} className="mr-1.5 shrink-0" />
+                <span>{tab.label}</span>
+                {tab.value === "discussion" && unreadDiscussion.length > 0 && (
+                  <span className="screening-discussion-unread-count" aria-label={`${unreadDiscussion.length} tin nhắn chưa đọc`}>
+                    {unreadDiscussion.length}
+                  </span>
+                )}
+                {tab.value === "agreement" && round.agreement && !round.finalDecision && (
+                  <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                    Chờ xác nhận
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="screening-resolution-tabs" role="tablist" aria-label="Đánh giá và trao đổi">
+          {([
+            { value: "discussion" as const, label: "Trao đổi", icon: MessageSquare },
+            { value: "ballots" as const, label: "Hai phiếu đánh giá", icon: CheckSquare },
+          ]).map((tab, index) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.value;
+            return (
+              <button
+                key={tab.value}
+                type="button"
+                role="tab"
+                id={`${workspaceId}-${tab.value}-tab`}
+                aria-selected={isActive}
+                aria-controls={`${workspaceId}-${tab.value}-panel`}
+                tabIndex={isActive ? 0 : -1}
+                onClick={() => setActiveTab(tab.value)}
+                onKeyDown={event => {
+                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const next = event.key === "Home" ? "discussion" : event.key === "End" ? "ballots" : index === 0 ? "ballots" : "discussion";
+                  setActiveTab(next);
+                  document.getElementById(`${workspaceId}-${next}-tab`)?.focus();
+                }}
+                className={`screening-tab-button ${isActive ? "active" : ""}`}
+              >
+                <Icon size={14} className="mr-1.5 shrink-0" />
+                <span>{tab.label}</span>
+                {tab.value === "discussion" && unreadDiscussion.length > 0 && (
+                  <span className="screening-discussion-unread-count" aria-label={`${unreadDiscussion.length} tin nhắn chưa đọc`}>
+                    {unreadDiscussion.length}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      <section className="screening-review-comparison screening-resolution-panel space-y-4" role="tabpanel" id={`${workspaceId}-ballots-panel`} aria-labelledby={`${workspaceId}-ballots-tab`} hidden={activeTab !== "ballots"} tabIndex={0}>
-        {round.hiddenReviews ? (
-          <p className="screening-review-note">Phiếu được công bố khi quy trình cho phép xem đánh giá của cả hai reviewer.</p>
-        ) : (
-          <div className="screening-review-list screening-review-cards-grid grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            {round.reviews.map((r, idx) => {
-              const assign = round.assignments.find(a => a.id === r.assignmentId);
-              const reviewerName = assign?.name || `Reviewer ${idx + 1}`;
-              const isMe = r.reviewerId === currentUserId;
-              const isInclude = r.decision === "INCLUDE";
-              const isExclude = r.decision === "EXCLUDE";
-              const contentText = (r.exclusionReason || r.comment || r.fullTextReference || "").trim();
-              const needsDetail = contentText.length > 180 || Boolean(r.exclusionReason && r.comment || r.fullTextReference);
-              return (
-                <article
-                  key={r.id}
-                  className={`screening-review-row screening-review-card ${isInclude ? "is-include" : isExclude ? "is-exclude" : "is-unsure"} p-3.5 rounded-xl border bg-card space-y-2.5 transition-shadow`}
-                  aria-label={`Phiếu của ${reviewerName}`}
-                >
-                  <div className="screening-review-row-heading flex items-center justify-between gap-2">
-                    <div className="screening-review-person flex items-center gap-2.5 min-w-0">
-                      <span className="screening-review-avatar shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-muted text-muted-foreground" aria-hidden="true">
-                        {reviewerName.slice(0, 1).toUpperCase()}
-                      </span>
-                      <div className="screening-review-identity min-w-0">
-                        <strong className="text-xs font-semibold text-foreground truncate block">
-                          {reviewerName}{isMe && <span> (Bạn)</span>}
-                        </strong>
-                        <p className="text-[11px] text-muted-foreground truncate">
-                          Phiên bản {r.revision} · <time dateTime={r.submittedAt}>{new Date(r.submittedAt).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "numeric", year: "numeric" })}</time>{r.scope === "FULL_TEXT" && " · Toàn văn"}
-                        </p>
-                      </div>
-                    </div>
-                    <ScreeningStatusBadge tone={screeningChoiceTone(r.decision)}>
-                      {isInclude ? <CheckCircle2 size={13} aria-hidden="true" className="shrink-0" /> : isExclude ? <XCircle size={13} aria-hidden="true" className="shrink-0" /> : <HelpCircle size={13} aria-hidden="true" className="shrink-0" />}
-                      <span>{choiceLabels[r.decision]}</span>
-                    </ScreeningStatusBadge>
-                  </div>
-                <div className="screening-review-rationale text-xs space-y-1.5 pt-1 border-t border-border/40">
-                  <p className="screening-resolution-reason text-xs text-foreground/90 leading-relaxed whitespace-pre-wrap break-words" data-truncated={needsDetail || undefined}>
-                    {contentText ? (
-                      <>
-                        {r.exclusionReason && <span>Lý do loại: </span>}
-                        {contentText}
-                      </>
-                    ) : (
-                      <span className="screening-review-note text-muted-foreground italic text-[11px]">Không kèm ghi chú</span>
-                    )}
-                  </p>
-                  {needsDetail && (
-                    <button
-                      type="button"
-                      className="screening-review-detail-link text-[11px] font-medium text-primary hover:underline cursor-pointer block mt-1"
-                      aria-label={`Xem lý do của ${reviewerName}`}
-                      onClick={() => setViewingReview(r)}
-                    >
-                      Xem lý do
-                    </button>
-                  )}
-                </div>
-                </article>
-              );
-            })}
+      {isTeamScreening ? (
+        <>
+          <div
+            className="screening-resolution-panel screening-discussion-panel"
+            role="tabpanel"
+            id={`${workspaceId}-discussion-panel`}
+            aria-labelledby={`${workspaceId}-discussion-tab`}
+            hidden={activeTab !== "discussion"}
+            tabIndex={0}
+          >
+            <RoundHistory projectId={projectId} round={round} people={people} readOnly={readOnly} visible={activeTab === "discussion"} />
           </div>
-        )}
+
+          <div
+            className="screening-resolution-panel screening-agreement-tabpanel"
+            role="tabpanel"
+            id={`${workspaceId}-agreement-panel`}
+            aria-labelledby={`${workspaceId}-agreement-tab`}
+            hidden={activeTab !== "agreement"}
+            tabIndex={0}
+          >
+            <ScreeningAgreementPanel projectId={projectId} round={round} readOnly={readOnly} />
+          </div>
+        </>
+      ) : (
+        <>
+          <section className="screening-review-comparison screening-resolution-panel space-y-4" role="tabpanel" id={`${workspaceId}-ballots-panel`} aria-labelledby={`${workspaceId}-ballots-tab`} hidden={activeTab !== "ballots"} tabIndex={0}>
+        {renderBallotsGrid()}
 
         {/* Inline Reassessment / Consensus Update Form matching user request */}
         {!readOnly && round.active && !round.finalDecision && isReviewerOnRound && (
@@ -582,163 +692,169 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
       <div className="screening-resolution-panel screening-discussion-panel" role="tabpanel" id={`${workspaceId}-discussion-panel`} aria-labelledby={`${workspaceId}-discussion-tab`} hidden={activeTab !== "discussion"} tabIndex={0}>
         <RoundHistory projectId={projectId} round={round} people={people} readOnly={readOnly} visible={activeTab === "discussion"} />
       </div>
+        </>
+      )}
 
       <ScreeningError error={command.error} />
 
-      {/* Modal: Sửa đánh giá của tôi (Reassessment - Simplified) */}
-      <Dialog open={isReassessOpen} onOpenChange={setIsReassessOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{round.settings.screeningMode ? "Cập nhật phiếu của tôi" : "Đổi kết luận của tôi"}</DialogTitle>
-            <DialogDescription>
-              {round.settings.screeningMode ? "Đối chiếu nguồn, cập nhật kết luận hoặc lý do. Mỗi phiên bản phiếu được giữ trong lịch sử." : "Hai reviewer đã gửi phiếu. Chọn kết luận khác sau khi thảo luận; phiếu ban đầu vẫn được giữ trong lịch sử."}
-            </DialogDescription>
-          </DialogHeader>
+      {/* Modal: Sửa đánh giá của tôi (Reassessment - Simplified, Legacy only) */}
+      {!isTeamScreening && (
+        <Dialog open={isReassessOpen} onOpenChange={setIsReassessOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{round.settings.screeningMode ? "Cập nhật phiếu của tôi" : "Đổi kết luận của tôi"}</DialogTitle>
+              <DialogDescription>
+                {round.settings.screeningMode ? "Đối chiếu nguồn, cập nhật kết luận hoặc lý do. Mỗi phiên bản phiếu được giữ trong lịch sử." : "Hai reviewer đã gửi phiếu. Chọn kết luận khác sau khi thảo luận; phiếu ban đầu vẫn được giữ trong lịch sử."}
+              </DialogDescription>
+            </DialogHeader>
 
-          <form onSubmit={handleReassessSubmit} className="space-y-4 py-2">
-            <ScreeningDecisionChoices legend="Kết luận mới" value={newDecision} onChange={setNewDecision}
-              currentValue={myReview?.decision} required disabled={command.isPending}
-              options={screeningReviewOptions.map(option => ({ ...option, disabled: !round.settings.screeningMode && option.value === myReview?.decision }))} />
+            <form onSubmit={handleReassessSubmit} className="space-y-4 py-2">
+              <ScreeningDecisionChoices legend="Kết luận mới" value={newDecision} onChange={setNewDecision}
+                currentValue={myReview?.decision} required disabled={command.isPending}
+                options={screeningReviewOptions.map(option => ({ ...option, disabled: !round.settings.screeningMode && option.value === myReview?.decision }))} />
 
-            {newDecision === "EXCLUDE" && Boolean(round.settings.exclusionCriteria?.length) && <label className="block text-xs font-semibold">
-              Tiêu chí loại
-              <select aria-label="Tiêu chí loại" required value={exclusionReason} onChange={e => setExclusionReason(e.target.value)} className="mt-1 w-full rounded-lg border border-border bg-background p-2.5 text-xs">
-                <option value="">Chọn tiêu chí loại</option>
-                {round.settings.exclusionCriteria!.map(criterion => <option key={criterion} value={criterion}>{criterion}</option>)}
-              </select>
-            </label>}
+              {newDecision === "EXCLUDE" && Boolean(round.settings.exclusionCriteria?.length) && <label className="block text-xs font-semibold">
+                Tiêu chí loại
+                <select aria-label="Tiêu chí loại" required value={exclusionReason} onChange={e => setExclusionReason(e.target.value)} className="mt-1 w-full rounded-lg border border-border bg-background p-2.5 text-xs">
+                  <option value="">Chọn tiêu chí loại</option>
+                  {round.settings.exclusionCriteria!.map(criterion => <option key={criterion} value={criterion}>{criterion}</option>)}
+                </select>
+              </label>}
 
-            {round.phase === "FULL_TEXT" && <label className="block space-y-1 text-xs font-semibold">
-              <span>Nguồn toàn văn và vị trí đã đối chiếu *</span>
-              <textarea aria-label="Nguồn toàn văn và vị trí đã đối chiếu" value={fullTextReference} onChange={e => setFullTextReference(e.target.value)} required minLength={10} maxLength={1000} rows={3} className="w-full rounded-lg border border-border bg-background p-2.5 text-xs font-normal" />
-            </label>}
+              {round.phase === "FULL_TEXT" && <label className="block space-y-1 text-xs font-semibold">
+                <span>Nguồn toàn văn và vị trí đã đối chiếu *</span>
+                <textarea aria-label="Nguồn toàn văn và vị trí đã đối chiếu" value={fullTextReference} onChange={e => setFullTextReference(e.target.value)} required minLength={10} maxLength={1000} rows={3} className="w-full rounded-lg border border-border bg-background p-2.5 text-xs font-normal" />
+              </label>}
 
-            <div>
-              <label className="text-xs font-semibold text-foreground block mb-1">
-                Lý do xem xét lại đánh giá <span className="text-rose-500">*</span>
-              </label>
-              <textarea
-                value={reassessReason}
-                onChange={e => setReassessReason(e.target.value)}
-                placeholder="Ghi rõ lý do bạn thay đổi hoặc cập nhật đánh giá..."
-                rows={3}
-                required
-                minLength={5}
-                className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              <p className="text-[11px] text-muted-foreground mt-0.5">Tối thiểu 5 ký tự để ghi nhận lý do khoa học minh bạch.</p>
+              <div>
+                <label className="text-xs font-semibold text-foreground block mb-1">
+                  Lý do xem xét lại đánh giá <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  value={reassessReason}
+                  onChange={e => setReassessReason(e.target.value)}
+                  placeholder="Ghi rõ lý do bạn thay đổi hoặc cập nhật đánh giá..."
+                  rows={3}
+                  required
+                  minLength={5}
+                  className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <p className="text-[11px] text-muted-foreground mt-0.5">Tối thiểu 5 ký tự để ghi nhận lý do khoa học minh bạch.</p>
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" size="sm" onClick={() => setIsReassessOpen(false)}>
+                  Hủy
+                </Button>
+                <Button type="submit" size="sm" disabled={command.isPending || !newDecision || !round.settings.screeningMode && newDecision === myReview?.decision || reassessReason.trim().length < 5 || round.phase === "FULL_TEXT" && fullTextReference.trim().length < 10 || newDecision === "EXCLUDE" && Boolean(round.settings.exclusionCriteria?.length) && !exclusionReason.trim()}>
+                  {command.isPending ? "Đang lưu..." : "Lưu đánh giá mới"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Modal: Chuyển bất đồng sang phân xử (Legacy only) */}
+      {!isTeamScreening && (
+        <Dialog open={isAdjudicateOpen} onOpenChange={setIsAdjudicateOpen}>
+          <DialogContent className="max-w-md p-6">
+            <DialogHeader className="text-left space-y-1">
+              <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
+                Chuyển bất đồng sang phân xử
+              </DialogTitle>
+              <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
+                Hai Reviewer chưa đạt được kết luận thống nhất về bài báo này.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              {/* 2 Reviewer Decision Comparison */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-xs sm:text-sm font-semibold text-foreground block mb-1.5">
+                    Đánh giá của bạn
+                  </span>
+                  <ScreeningStatusBadge tone={screeningChoiceTone(myCurrentReview?.decision ?? myReview?.decision ?? "UNSURE")}>
+                    {choiceLabels[myCurrentReview?.decision ?? myReview?.decision ?? "INCLUDE"]}
+                  </ScreeningStatusBadge>
+                </div>
+
+                <div>
+                  <span className="text-xs sm:text-sm font-semibold text-foreground block mb-1.5">
+                    Reviewer còn lại
+                  </span>
+                  <ScreeningStatusBadge tone={otherReview ? screeningChoiceTone(otherReview.decision) : "neutral"}>
+                    {otherReview ? choiceLabels[otherReview.decision] : "Chưa đánh giá"}
+                  </ScreeningStatusBadge>
+                </div>
+              </div>
+
+              {/* Info notice */}
+              <div className="flex items-start gap-2.5 text-xs text-muted-foreground leading-relaxed pt-1">
+                <Info size={16} className="text-muted-foreground shrink-0 mt-0.5" />
+                <p>
+                  LumiGap sẽ tổng hợp hai phiếu đánh giá, lý do và thảo luận hiện có. Cả hai Reviewer sẽ có cơ hội hoàn tất ý kiến trước khi hồ sơ được chuyển cho người phân xử.
+                </p>
+              </div>
+
+              {/* Timeline notice */}
+              <div className="space-y-1 pt-1">
+                <h5 className="text-xs sm:text-sm font-bold text-foreground">
+                  Thời hạn hoàn tất ý kiến: {round.settings.statementWindowHours ?? 48} giờ
+                </h5>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Hồ sơ được chuyển sớm nếu cả hai hoàn tất. Hết hạn, hệ thống sử dụng các ý kiến hiện có.
+                </p>
+              </div>
+
+              {/* Input opinion / dispute reason (mandatory) */}
+              <div className="space-y-1.5 pt-2 border-t border-border/60">
+                <label htmlFor="adjudicate-opinion" className="text-xs sm:text-sm font-semibold text-foreground flex items-center justify-between">
+                  <span>Ý kiến / Lý do đề nghị phân xử <span className="text-rose-500">*</span></span>
+                  <span className="text-[11px] text-muted-foreground font-normal">Tối thiểu 5 ký tự</span>
+                </label>
+                <textarea
+                  id="adjudicate-opinion"
+                  value={adjudicateReason}
+                  onChange={e => setAdjudicateReason(e.target.value)}
+                  placeholder="Nêu tóm tắt lý do bạn đề nghị phân xử độc lập hoặc quan điểm của bạn về bài báo này..."
+                  className="w-full min-h-[85px] rounded-md border border-input bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-hidden focus:ring-2 focus:ring-ring"
+                  rows={3}
+                />
+              </div>
+
+              <ScreeningError error={command.error} />
             </div>
 
-            <DialogFooter>
-              <Button type="button" variant="outline" size="sm" onClick={() => setIsReassessOpen(false)}>
-                Hủy
+            <DialogFooter className="flex items-center justify-between sm:justify-between gap-3 pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsAdjudicateOpen(false)}
+                className="text-xs font-medium"
+              >
+                Tiếp tục trao đổi
               </Button>
-              <Button type="submit" size="sm" disabled={command.isPending || !newDecision || !round.settings.screeningMode && newDecision === myReview?.decision || reassessReason.trim().length < 5 || round.phase === "FULL_TEXT" && fullTextReference.trim().length < 10 || newDecision === "EXCLUDE" && Boolean(round.settings.exclusionCriteria?.length) && !exclusionReason.trim()}>
-                {command.isPending ? "Đang lưu..." : "Lưu đánh giá mới"}
+              <Button
+                type="button"
+                onClick={handleRequestAdjudicationSubmit}
+                disabled={
+                  command.isPending ||
+                  readOnly ||
+                  !round.active ||
+                  !round.canRequestAdjudication ||
+                  Boolean(round.finalDecision) ||
+                  adjudicateReason.trim().length < 5
+                }
+                className="text-xs font-medium"
+              >
+                {command.isPending ? "Đang tạo..." : "Tạo yêu cầu phân xử"}
               </Button>
             </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal: Chuyển bất đồng sang phân xử */}
-      <Dialog open={isAdjudicateOpen} onOpenChange={setIsAdjudicateOpen}>
-        <DialogContent className="max-w-md p-6">
-          <DialogHeader className="text-left space-y-1">
-            <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
-              Chuyển bất đồng sang phân xử
-            </DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
-              Hai Reviewer chưa đạt được kết luận thống nhất về bài báo này.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2">
-            {/* 2 Reviewer Decision Comparison */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <span className="text-xs sm:text-sm font-semibold text-foreground block mb-1.5">
-                  Đánh giá của bạn
-                </span>
-                <ScreeningStatusBadge tone={screeningChoiceTone(myCurrentReview?.decision ?? myReview?.decision ?? "UNSURE")}>
-                  {choiceLabels[myCurrentReview?.decision ?? myReview?.decision ?? "INCLUDE"]}
-                </ScreeningStatusBadge>
-              </div>
-
-              <div>
-                <span className="text-xs sm:text-sm font-semibold text-foreground block mb-1.5">
-                  Reviewer còn lại
-                </span>
-                <ScreeningStatusBadge tone={otherReview ? screeningChoiceTone(otherReview.decision) : "neutral"}>
-                  {otherReview ? choiceLabels[otherReview.decision] : "Chưa đánh giá"}
-                </ScreeningStatusBadge>
-              </div>
-            </div>
-
-            {/* Info notice */}
-            <div className="flex items-start gap-2.5 text-xs text-muted-foreground leading-relaxed pt-1">
-              <Info size={16} className="text-muted-foreground shrink-0 mt-0.5" />
-              <p>
-                LumiGap sẽ tổng hợp hai phiếu đánh giá, lý do và thảo luận hiện có. Cả hai Reviewer sẽ có cơ hội hoàn tất ý kiến trước khi hồ sơ được chuyển cho người phân xử.
-              </p>
-            </div>
-
-            {/* Timeline notice */}
-            <div className="space-y-1 pt-1">
-              <h5 className="text-xs sm:text-sm font-bold text-foreground">
-                Thời hạn hoàn tất ý kiến: {round.settings.statementWindowHours ?? 48} giờ
-              </h5>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Hồ sơ được chuyển sớm nếu cả hai hoàn tất. Hết hạn, hệ thống sử dụng các ý kiến hiện có.
-              </p>
-            </div>
-
-            {/* Input opinion / dispute reason (mandatory) */}
-            <div className="space-y-1.5 pt-2 border-t border-border/60">
-              <label htmlFor="adjudicate-opinion" className="text-xs sm:text-sm font-semibold text-foreground flex items-center justify-between">
-                <span>Ý kiến / Lý do đề nghị phân xử <span className="text-rose-500">*</span></span>
-                <span className="text-[11px] text-muted-foreground font-normal">Tối thiểu 5 ký tự</span>
-              </label>
-              <textarea
-                id="adjudicate-opinion"
-                value={adjudicateReason}
-                onChange={e => setAdjudicateReason(e.target.value)}
-                placeholder="Nêu tóm tắt lý do bạn đề nghị phân xử độc lập hoặc quan điểm của bạn về bài báo này..."
-                className="w-full min-h-[85px] rounded-md border border-input bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-hidden focus:ring-2 focus:ring-ring"
-                rows={3}
-              />
-            </div>
-
-            <ScreeningError error={command.error} />
-          </div>
-
-          <DialogFooter className="flex items-center justify-between sm:justify-between gap-3 pt-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsAdjudicateOpen(false)}
-              className="text-xs font-medium"
-            >
-              Tiếp tục trao đổi
-            </Button>
-            <Button
-              type="button"
-              onClick={handleRequestAdjudicationSubmit}
-              disabled={
-                command.isPending ||
-                readOnly ||
-                !round.active ||
-                !round.canRequestAdjudication ||
-                Boolean(round.finalDecision) ||
-                adjudicateReason.trim().length < 5
-              }
-              className="text-xs font-medium"
-            >
-              {command.isPending ? "Đang tạo..." : "Tạo yêu cầu phân xử"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <Dialog open={Boolean(viewingReview) && !round.hiddenReviews} onOpenChange={open => { if (!open) setViewingReview(null); }}>
         <DialogContent className="screening-ballot-dialog max-w-lg max-h-[85dvh]" closeLabel="Đóng">
