@@ -101,8 +101,8 @@ void main() {
       expect(formatClosureRiskPercent(0.1533), '15.4');
       expect(formatClosureRiskPercent(0.15), '15.0');
       expect(formatClosureRiskPercent(0.1), '10.0');
-      expect(formatClosureRiskPercent(0.0), '0.0');
-      expect(formatClosureRiskPercent(1.0), '100.0');
+      expect(formatClosureRiskPercent(0), '0.0');
+      expect(formatClosureRiskPercent(1), '100.0');
       expect(formatClosureRiskPercent(0.15001), '15.1');
       expect(formatClosureRiskPercent(1.7), '100.0');
     });

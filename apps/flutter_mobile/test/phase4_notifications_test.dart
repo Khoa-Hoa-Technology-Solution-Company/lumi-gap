@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/features/admin/data/admin_api.dart';
+import 'package:flutter_mobile/features/admin/presentation/admin_pipeline_tab.dart';
 import 'package:flutter_mobile/features/admin/presentation/admin_sync_screen.dart';
 import 'package:flutter_mobile/features/notifications/data/notifications_api.dart';
 import 'package:flutter_mobile/features/notifications/presentation/notifications_screen.dart';
@@ -101,10 +102,10 @@ Future<void> _pump(WidgetTester tester, _FakeNotificationsApi api) async {
   await tester.pumpAndSettle();
 }
 
-TextButton _readAll(WidgetTester tester) => tester.widget<TextButton>(
+IconButton _readAll(WidgetTester tester) => tester.widget<IconButton>(
       find.ancestor(
-        of: find.text('Read all'),
-        matching: find.byWidgetPredicate((w) => w is TextButton),
+        of: find.byTooltip('Read all'),
+        matching: find.byType(IconButton),
       ),
     );
 
@@ -154,7 +155,7 @@ void main() {
       final api = _FakeNotificationsApi([_n('1'), _n('2')]);
       await _pump(tester, api);
       expect(find.text('2 unread updates'), findsOneWidget);
-      await tester.tap(find.text('Read all'));
+      await tester.tap(find.byTooltip('Read all'));
       await tester.pumpAndSettle();
       expect(api.markAllCalls, 1);
       expect(find.text('0 unread updates'), findsOneWidget);
@@ -258,5 +259,26 @@ void main() {
     expect(queueHealth(q(hasFailures: true)), QueueHealth.failing);
     expect(queueHealth(q(backlogged: true)), QueueHealth.backlogged);
     expect(queueHealth(q(failed: 2, backlogged: true)), QueueHealth.failing);
+  });
+
+  test('sync form: every field must parse, nothing falls back silently', () {
+    expect(
+      syncFormErrors(searchText: 'llm', yearFrom: '2020', maxPages: '1'),
+      isEmpty,
+    );
+    final bad = syncFormErrors(
+      searchText: '  ',
+      yearFrom: 'abc',
+      maxPages: '0',
+    );
+    expect(bad.keys, containsAll(['searchText', 'yearFrom', 'maxPages']));
+    expect(
+      syncFormErrors(searchText: 'x', yearFrom: '1899', maxPages: '51').keys,
+      containsAll(['yearFrom', 'maxPages']),
+    );
+    expect(
+      syncFormErrors(searchText: 'x', yearFrom: '2100', maxPages: '50'),
+      isEmpty,
+    );
   });
 }

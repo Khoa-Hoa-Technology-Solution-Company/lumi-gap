@@ -102,35 +102,17 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: filters.map((item) {
-                              final selected = _filter == item.$2;
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: ChoiceChip(
-                                  label: Text(
-                                    item.$1,
-                                    style: context.type.bodySmall!.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                      color: selected ? context.lumi.surface : theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                  selected: selected,
-                                  onSelected: (_) => _setFilter(item.$2),
-                                  selectedColor: context.lumi.primary,
-                                  backgroundColor: theme.cardColor,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    side: BorderSide(
-                                      color: selected ? context.lumi.primary : theme.dividerColor,
-                                    ),
-                                  ),
-                                  showCheckmark: false,
-                                ),
-                              );
-                            }).toList(),
+                        // Same control as the other list filters.
+                        SizedBox(
+                          width: double.infinity,
+                          child: SegmentedButton<String>(
+                            showSelectedIcon: false,
+                            segments: [
+                              for (final (label, value) in filters)
+                                ButtonSegment(value: value, label: Text(label)),
+                            ],
+                            selected: {_filter},
+                            onSelectionChanged: (v) => _setFilter(v.single),
                           ),
                         ),
                         const SizedBox(height: 20),
@@ -203,7 +185,8 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                                   context.t('PAPER'),
                                                   style: context.type.bodySmall!.copyWith(
                                                     fontWeight: FontWeight.w600,
-                                                    color: theme.colorScheme.onSurfaceVariant,
+                                                    color: // Not `muted`: on `surfaceMuted` it is under 4.5:1.
+                                                    context.lumi.foregroundSecondary,
                                                   ),
                                                 ),
                                               ),
@@ -315,7 +298,8 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                                   context.t('REPORT'),
                                                   style: context.type.bodySmall!.copyWith(
                                                     fontWeight: FontWeight.w600,
-                                                    color: theme.colorScheme.onSurfaceVariant,
+                                                    color: // Not `muted`: on `surfaceMuted` it is under 4.5:1.
+                                                    context.lumi.foregroundSecondary,
                                                   ),
                                                 ),
                                               ),

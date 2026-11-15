@@ -1,4 +1,5 @@
 import 'package:flutter_mobile/features/home/data/home_models.dart';
+import 'package:flutter_mobile/features/trends/data/trend_classification.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'i18n_support.dart';
 

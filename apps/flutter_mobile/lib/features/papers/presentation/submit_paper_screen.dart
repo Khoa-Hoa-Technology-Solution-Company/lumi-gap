@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/papers/data/papers_api.dart';
 import 'package:flutter_mobile/features/papers/domain/submit_paper_validation.dart';
+import 'package:flutter_mobile/features/papers/presentation/submit_paper_parts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -31,6 +35,30 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
   String paperKind = 'article';
   PaperSubmitFile? pdf;
   bool submitting = false;
+
+  /// True after the first attempt to send: errors show under the fields
+  /// from then on, and update as the reader fixes them.
+  bool _showErrors = false;
+
+  Map<String, String> get _errors => submitPaperFieldErrors(
+        title: title.text,
+        doi: doi.text,
+        paperLink: paperLink.text,
+        abstractText: abstractText.text,
+        publicationYear: year.text,
+        authors: authors.text,
+        keywords: keywords.text,
+      );
+
+  String? _errorOf(String field) {
+    if (!_showErrors) return null;
+    final key = _errors[field];
+    return key == null ? null : context.t(key);
+  }
+
+  void _edited(String _) {
+    if (_showErrors) setState(() {});
+  }
 
   @override
   void dispose() {
@@ -72,17 +100,10 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
   }
 
   Future<void> _submit() async {
-    final error = validateSubmitPaper(
-      title: title.text,
-      doi: doi.text,
-      paperLink: paperLink.text,
-      abstractText: abstractText.text,
-      publicationYear: year.text,
-      authors: authors.text,
-      keywords: keywords.text,
-    );
-    if (error != null) {
-      _show(context.t(error));
+    if (submitting) return;
+    if (_errors.isNotEmpty) {
+      setState(() => _showErrors = true);
+      _show(context.t('Please fix the errors under the fields.'));
       return;
     }
     setState(() => submitting = true);
@@ -106,9 +127,11 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
         await ref.read(papersApiProvider).update(widget.editId!, input);
       }
       ref.invalidate(myPapersProvider);
-      if (mounted) context.go('/my-papers');
+      // Replace, not go: Back then returns to where the reader came from,
+      // never to the form that was just sent.
+      if (mounted) context.pushReplacement('/my-papers');
     } on Object catch (e) {
-      _show(e.toString());
+      if (mounted) _show(context.t(failureMessageKey(e)));
     } finally {
       if (mounted) setState(() => submitting = false);
     }
@@ -217,7 +240,8 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
                         context.t('Your paper will stay pending until an admin completes the review.'),
                         style: context.type.bodySmall!.copyWith(
                           height: 1.4,
-                          color: colors.onSurfaceVariant,
+                          // On `primarySoft`: `muted` is under 4.5:1 there.
+                          color: context.lumi.foregroundSecondary,
                         ),
                       ),
                     ],
@@ -227,43 +251,52 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
             ),
           ),
           const SizedBox(height: 22),
-          _SectionTitle(
+          SubmitSectionTitle(
             icon: Icons.description_outlined,
             title: context.t('Paper information'),
             subtitle: context.t('Add the publication details'),
           ),
           const SizedBox(height: 10),
-          _FormCard(
+          SubmitFormCard(
             children: [
-              _Field(
+              SubmitField(
                 label: context.t('Paper title'),
+                errorText: _errorOf('title'),
+                onChanged: _edited,
                 hint: context.t('Enter the full paper title'),
                 controller: title,
                 icon: Icons.title_rounded,
               ),
-              _Field(
+              SubmitField(
                 label: context.t('DOI'),
+                errorText: _errorOf('doi'),
+                onChanged: _edited,
                 hint: context.t('10.xxxx/xxxxx'),
                 controller: doi,
                 icon: Icons.fingerprint_rounded,
               ),
-              _Field(
+              SubmitField(
                 label: context.t('Paper link'),
+                errorText: _errorOf('paperLink'),
+                onChanged: _edited,
                 hint: context.t('https://…'),
                 controller: paperLink,
                 icon: Icons.link_rounded,
                 keyboardType: TextInputType.url,
               ),
-              _Field(
+              SubmitField(
                 label: context.t('Abstract'),
+                errorText: _errorOf('abstract'),
                 hint: context.t('Summarize the purpose, method, and findings…'),
                 helper: context.t('{{count}} / 350 words', {'count': countWords(abstractText.text)}),
                 controller: abstractText,
                 maxLines: 6,
                 onChanged: (_) => setState(() {}),
               ),
-              _Field(
+              SubmitField(
                 label: context.t('Publication year'),
+                errorText: _errorOf('year'),
+                onChanged: _edited,
                 controller: year,
                 icon: Icons.calendar_today_outlined,
                 keyboardType: TextInputType.number,
@@ -305,33 +338,37 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
             }).toList(),
           ),
           const SizedBox(height: 24),
-          _SectionTitle(
+          SubmitSectionTitle(
             icon: Icons.hub_outlined,
             title: context.t('Research metadata'),
             subtitle: context.t('Separate multiple values with commas'),
           ),
           const SizedBox(height: 10),
-          _FormCard(
+          SubmitFormCard(
             children: [
-              _Field(
+              SubmitField(
                 label: context.t('Authors'),
+                errorText: _errorOf('authors'),
+                onChanged: _edited,
                 hint: context.t('Nguyen Van A, Tran Thi B'),
                 controller: authors,
                 icon: Icons.people_outline_rounded,
               ),
-              _Field(
+              SubmitField(
                 label: context.t('Keywords'),
+                errorText: _errorOf('keywords'),
+                onChanged: _edited,
                 hint: context.t('machine learning, RAG, education'),
                 controller: keywords,
                 icon: Icons.tag_rounded,
               ),
-              _Field(
+              SubmitField(
                 label: context.t('Topics'),
                 hint: context.t('Academic search, Trend analysis'),
                 controller: topics,
                 icon: Icons.category_outlined,
               ),
-              _Field(
+              SubmitField(
                 label: context.t('Open access URL'),
                 hint: context.t('https://…'),
                 controller: openAccessUrl,
@@ -341,7 +378,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
             ],
           ),
           const SizedBox(height: 24),
-          _SectionTitle(
+          SubmitSectionTitle(
             icon: Icons.picture_as_pdf_outlined,
             title: context.t('Paper file'),
             subtitle: context.t('Optional PDF, maximum 10 MB'),
@@ -444,124 +481,5 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
   String _kindLabel(String kind) {
     if (kind == 'book-chapter') return context.t('Book chapter');
     return '${kind[0].toUpperCase()}${kind.substring(1)}';
-  }
-}
-
-class _Field extends StatelessWidget {
-  const _Field({
-    required this.label,
-    required this.controller,
-    this.hint,
-    this.helper,
-    this.icon,
-    this.maxLines = 1,
-    this.keyboardType,
-    this.onChanged,
-  });
-
-  final String label;
-  final String? hint;
-  final String? helper;
-  final IconData? icon;
-  final TextEditingController controller;
-  final int maxLines;
-  final TextInputType? keyboardType;
-  final ValueChanged<String>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: TextField(
-        controller: controller,
-        maxLines: maxLines,
-        keyboardType: keyboardType,
-        onChanged: onChanged,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          helperText: helper,
-          helperStyle: context.type.bodySmall,
-          alignLabelWithHint: maxLines > 1,
-          prefixIcon: icon == null ? null : Icon(icon, size: 19),
-          filled: true,
-          fillColor: Theme.of(context).colorScheme.surfaceContainerLowest,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 15,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(
-              color: Theme.of(context).colorScheme.primary,
-              width: 1.5,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FormCard extends StatelessWidget {
-  const _FormCard({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(14, 16, 14, 2),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-    ),
-    child: Column(children: children),
-  );
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Icon(icon, size: 19, color: colors.primary),
-        const SizedBox(width: 8),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600),
-            ),
-            Text(
-              subtitle,
-              style: context.type.bodySmall!.copyWith(color: colors.onSurfaceVariant),
-            ),
-          ],
-        ),
-      ],
-    );
   }
 }

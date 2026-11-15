@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'auth_test_support.dart';
+import 'support/readable_text.dart';
 
 class _RemoveApi extends Fake implements ProjectsApi {
   final List<String> removed = [];
@@ -204,5 +205,14 @@ void main() {
     expect(LumiMedal.forRank(3), LumiMedal.bronze);
     expect(LumiMedal.forRank(4), isNull);
     expect(LumiMedal.forRank(0), isNull);
+    // The rank number on each medal is readable (WCAG AA).
+    for (final rank in [1, 2, 3]) {
+      expect(
+        contrastRatio(LumiMedal.onRank(rank)!, LumiMedal.forRank(rank)!),
+        greaterThanOrEqualTo(4.5),
+        reason: 'rank $rank',
+      );
+    }
+    expect(LumiMedal.onRank(4), isNull);
   });
 }

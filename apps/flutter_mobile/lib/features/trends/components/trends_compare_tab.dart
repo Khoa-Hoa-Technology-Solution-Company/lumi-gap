@@ -1,10 +1,13 @@
-import 'package:fl_chart/fl_chart.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_chart.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
-import 'package:flutter_mobile/core/utils/number_format.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
+import 'package:flutter_mobile/features/trends/components/trend_compare_results.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
@@ -81,11 +84,8 @@ class TrendsCompareTab extends ConsumerStatefulWidget {
 
 class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
   final List<String> _selectedTopics = [];
-  String _metricMode = 'papers'; // 'papers', 'citations', 'avg_citations'
   String _searchTerm = '';
 
-  /// One colour per compared topic, the web chart palette.
-  static const List<Color> _lineColors = LumiChart.series;
 
   @override
   void initState() {
@@ -202,7 +202,7 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
             runSpacing: 8,
             children: _selectedTopics.map((topic) {
               final idx = _selectedTopics.indexOf(topic);
-              final color = _lineColors[idx % _lineColors.length];
+              final color = LumiChart.seriesAt(idx);
 
               return Chip(
                 avatar: CircleAvatar(backgroundColor: color, radius: 4),
@@ -308,204 +308,6 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
     return Uri(path: '/search', queryParameters: params.map((key, value) => MapEntry(key, value.toString()))).toString();
   }
 
-  Widget _buildMultiLineChart(TrendCompareResponse res) {
-    if (res.topics.isEmpty) return const SizedBox.shrink();
-
-    final yearFrom = res.yearFrom ?? 2020;
-    final yearTo = res.yearTo ?? 2026;
-
-    final lineBars = res.topics.asMap().entries.map((e) {
-      final topicIndex = e.key;
-      final t = e.value;
-      final color = _lineColors[topicIndex % _lineColors.length];
-
-      final spots = <FlSpot>[];
-      for (var y = yearFrom; y <= yearTo; y++) {
-        final papersEntry = t.yearlyBreakdown.firstWhere((p) => p.year == y, orElse: () => YearlyCount(year: y, count: 0));
-        final citationsEntry = t.citationTrend.firstWhere((c) => c.year == y, orElse: () => YearlyCitationMetric(year: y, count: 0, totalCitations: 0, avgCitations: 0));
-
-        var val = 0.0;
-        if (_metricMode == 'papers') {
-          val = papersEntry.count.toDouble();
-        } else if (_metricMode == 'citations') {
-          val = citationsEntry.totalCitations.toDouble();
-        } else if (_metricMode == 'avg_citations') {
-          val = citationsEntry.avgCitations;
-        }
-
-        spots.add(FlSpot(y.toDouble(), val));
-      }
-
-      return LineChartBarData(
-        spots: spots,
-        isCurved: true,
-        color: color,
-        barWidth: 3,
-      );
-    }).toList();
-
-    var explanation = '';
-    if (_metricMode == 'papers') {
-      explanation = context.t('What this shows: Shows how many papers were published each year. Use this to compare research activity.');
-    } else if (_metricMode == 'citations') {
-      explanation = context.t('What this shows: Shows accumulated citation volume. Older topics may look stronger because they had more time to collect citations.');
-    } else {
-      explanation = context.t('What this shows: Normalizes citation impact per paper. Useful when one topic has much larger volume.');
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Text(
-                context.t('Multi-Topic Trend Chart'),
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-            ),
-            DropdownButton<String>(
-              value: _metricMode,
-              items: [
-                DropdownMenuItem(value: 'papers', child: Text(context.t('Papers / year'))),
-                DropdownMenuItem(value: 'citations', child: Text(context.t('Total Citations'))),
-                DropdownMenuItem(value: 'avg_citations', child: Text(context.t('Avg Citations'))),
-              ],
-              onChanged: (val) {
-                if (val != null) {
-                  setState(() {
-                    _metricMode = val;
-                  });
-                }
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(explanation, style: context.type.bodySmall!.copyWith(color: context.lumi.muted, fontStyle: FontStyle.italic)),
-        const SizedBox(height: 16),
-        SizedBox(
-          height: 180,
-          child: LineChart(
-            LineChartData(
-              gridData: const FlGridData(show: false),
-              titlesData: FlTitlesData(
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 36,
-                    getTitlesWidget: (val, _) => Text(formatCompact(val), style: context.type.bodySmall),
-                  ),
-                ),
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    // One label per year: without an interval fl_chart also
-                    // labels the half-years, and each year showed twice.
-                    interval: 1,
-                    reservedSize: 28,
-                    getTitlesWidget: (val, meta) => val == val.roundToDouble()
-                        ? SideTitleWidget(
-                            meta: meta,
-                            child: Text(
-                              val.toInt().toString(),
-                              style: context.type.bodySmall,
-                            ),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                ),
-                rightTitles: const AxisTitles(),
-                topTitles: const AxisTitles(),
-              ),
-              borderData: FlBorderData(show: false),
-              lineBarsData: lineBars,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildComparisonCards(TrendCompareResponse res, bool isDark, ThemeData theme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: res.topics.map((t) {
-        final idx = res.topics.indexOf(t);
-        final color = _lineColors[idx % _lineColors.length];
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: context.lumi.surface,
-            border: Border.all(color: context.lumi.line),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(backgroundColor: color, radius: 5),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(t.topic, style: Theme.of(context).textTheme.titleMedium),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(context.t('Total Papers'), style: context.type.bodySmall!.copyWith(color: context.lumi.muted)),
-                      Text(formatNumber(t.totalPapers), style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(context.t('Momentum'), style: context.type.bodySmall!.copyWith(color: context.lumi.muted)),
-                      Text(formatSigned(t.momentum), style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(context.t('YoY Growth'), style: context.type.bodySmall!.copyWith(color: context.lumi.muted)),
-                      Text('${t.growthRatePct.toStringAsFixed(1)}%', style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                ],
-              ),
-              const Divider(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton.icon(
-                    onPressed: () => context.push(_scopedSearchPath(t.topic)),
-                    icon: Icon(Icons.search, size: 14, color: context.lumi.primary),
-                    label: Text(context.t('Search Papers'), style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600, color: context.lumi.primary)),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    onPressed: () => widget.onExplainTopic(t.topic),
-                    icon: Icon(Icons.summarize_outlined, size: 14, color: context.lumi.primary),
-                    label: Text(context.t('AI Explain'), style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600, color: context.lumi.primary)),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -534,28 +336,28 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
               ),
             )
           else if (compareQuery != null)
-            compareQuery.when(
-              data: (res) => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildMultiLineChart(res),
-                  const SizedBox(height: 24),
-                  _buildComparisonCards(res, isDark, theme),
-                ],
-              ),
-              loading: () => Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 36),
-                  child: CircularProgressIndicator(color: context.lumi.primary),
-                ),
-              ),
-              error: (err, _) => Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 36),
-                  child: Text(context.t('Compare failed: {{err}}', {'err': err}), style: TextStyle(color: context.lumi.error)),
-                ),
-              ),
-            ),
+            if (compareQuery.hasValue)
+              TrendCompareResults(
+                result: compareQuery.requireValue,
+                classificationOf: (topic) {
+                  final name = topic.toLowerCase();
+                  for (final t in widget.overview.topics) {
+                    if (t.topic.toLowerCase() == name) return t.classification;
+                  }
+                  return null;
+                },
+                onSearch: (t) => unawaited(context.push(_scopedSearchPath(t))),
+                onExplain: widget.onExplainTopic,
+              )
+            else if (compareQuery.hasError)
+              LumiErrorState(
+                message: context.t(failureMessageKey(compareQuery.error!)),
+                retrying: compareQuery.isLoading,
+                onRetry: () => ref.invalidate(compareTrendsProvider),
+                inline: true,
+              )
+            else
+              const LumiSkeleton(height: 160),
         ],
       ),
     );

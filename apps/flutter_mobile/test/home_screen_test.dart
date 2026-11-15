@@ -10,6 +10,7 @@ import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/home/data/home_api.dart';
 import 'package:flutter_mobile/features/home/data/home_models.dart';
 import 'package:flutter_mobile/features/home/presentation/home_screen.dart';
+import 'package:flutter_mobile/features/home/presentation/widgets/home_trend_list.dart';
 import 'package:flutter_mobile/features/notifications/data/notifications_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -258,7 +259,7 @@ void main() {
     expect(find.text('federated learning'), findsOneWidget);
     expect(find.text('Liên quan dự án của bạn'), findsNothing);
     await _scrollTo(tester, find.text('Retrieval-Augmented Generation'));
-    expect(find.text('Tăng'), findsOneWidget);
+    expect(find.text('Đang tăng'), findsOneWidget);
     await _scrollTo(tester, find.text('Một bài báo mới'));
     await _scrollTo(tester, find.text('Cách đánh giá bộ dữ liệu y tế?'));
     expect(find.text(_unavailableText), findsNothing);
@@ -347,10 +348,10 @@ void main() {
         );
       }
 
-      expectLabel('Tăng', Icons.arrow_upward, lumi.success);
-      expectLabel('Giảm', Icons.arrow_downward, lumi.error);
-      expectLabel('Ổn định', Icons.arrow_forward, lumi.muted);
-      expectLabel('Chưa đủ dữ liệu', Icons.remove, lumi.muted);
+      expectLabel('Đang tăng', Icons.trending_up, lumi.success);
+      expectLabel('Đang giảm', Icons.trending_down, lumi.error);
+      expectLabel('Ổn định', Icons.trending_flat, lumi.muted);
+      expectLabel('Chưa đủ dữ liệu', Icons.help_outline, lumi.muted);
     });
 
     const allInsufficientCaption =
@@ -378,11 +379,13 @@ void main() {
         expect(find.text('Chủ đề F'), findsOneWidget);
         // Not repeated on every row, and growth alone never earns an arrow.
         expect(find.text('Chưa đủ dữ liệu'), findsNothing);
-        expect(find.text('Tăng'), findsNothing);
-        expect(find.byIcon(Icons.remove), findsNothing);
-        expect(find.byIcon(Icons.arrow_upward), findsNothing);
-        expect(find.byIcon(Icons.arrow_downward), findsNothing);
-        expect(find.byIcon(Icons.arrow_forward), findsNothing);
+        expect(find.text('Đang tăng'), findsNothing);
+        expect(find.byIcon(Icons.help_outline), findsNothing);
+        expect(find.byIcon(Icons.trending_up), findsNothing);
+        expect(find.byIcon(Icons.trending_down), findsNothing);
+        expect(find.byIcon(Icons.trending_flat), findsNothing);
+        // Raw counts of an untested corpus are not drawn as a trend line.
+        expect(find.byType(HomeSparkline), findsNothing);
       },
     );
 
@@ -404,7 +407,14 @@ void main() {
 
         expect(find.text(allInsufficientCaption), findsNothing);
         expect(find.text('Chưa đủ dữ liệu'), findsOneWidget);
-        expect(find.text('Tăng'), findsOneWidget);
+        expect(find.text('Đang tăng'), findsOneWidget);
+        // Only the tested topic gets a line; the untested one keeps the
+        // same indent without a line that would look like a trend.
+        expect(find.byType(HomeSparkline), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.text('Chủ đề E')).dx,
+          tester.getTopLeft(find.text('Chủ đề G')).dx,
+        );
       },
     );
   });

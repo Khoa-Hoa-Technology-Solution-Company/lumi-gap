@@ -37,12 +37,13 @@ Paper _paper(
 /// Each call waits for the test to answer it, so answers can be given in any
 /// order.
 class _GatedSearchApi extends Fake implements SearchApi {
-  final List<({String q, Completer<PagedPapers> answer})> calls = [];
+  final List<({String q, SearchParams params, Completer<PagedPapers> answer})>
+      calls = [];
 
   @override
   Future<PagedPapers> semantic(SearchParams params) {
     final answer = Completer<PagedPapers>();
-    calls.add((q: params.q, answer: answer));
+    calls.add((q: params.q, params: params, answer: answer));
     return answer.future;
   }
 }
@@ -54,6 +55,7 @@ Future<_GatedSearchApi> _pump(
   double textScale = 1,
   Brightness brightness = Brightness.light,
   AppLocale locale = AppLocale.en,
+  List<Bookmark> bookmarks = const [],
 }) async {
   tester.view
     ..physicalSize = size
@@ -68,6 +70,7 @@ Future<_GatedSearchApi> _pump(
         bookmarkStatusProvider.overrideWith(
           (ref, target) async => const BookmarkStatus(bookmarked: false),
         ),
+        bookmarksProvider.overrideWith((ref) async => bookmarks),
       ],
       child: MaterialApp(
         locale: locale.locale,
@@ -226,4 +229,105 @@ void main() {
       );
     }
   }
+
+  group('filters', () {
+    Future<_GatedSearchApi> withResults(WidgetTester tester) async {
+      final api = await _pump(tester, initialQuery: 'llm');
+      await tester.pump();
+      api.calls.single.answer.complete(PagedPapers(papers: [_paper('a')]));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Filters'));
+      await tester.pumpAndSettle();
+      return api;
+    }
+
+    Finder yearField(String hint) => find.ancestor(
+          of: find.text(hint),
+          matching: find.byType(TextField),
+        );
+
+    FilledButton applyButton(WidgetTester tester) =>
+        tester.widget<FilledButton>(
+          find.widgetWithText(FilledButton, 'Apply Filters'),
+        );
+
+    testWidgets('closing without "Apply" changes nothing', (tester) async {
+      final api = await withResults(tester);
+      await tester.enterText(yearField('From Year'), '2020');
+      await tester.tap(find.text('Open Access Only'));
+      await tester.pump();
+      // Dismiss by tapping outside the sheet.
+      await tester.tapAt(const Offset(200, 40));
+      await tester.pumpAndSettle();
+      expect(api.calls, hasLength(1), reason: 'no new search');
+      expect(find.byType(InputChip), findsNothing);
+      // Opening again shows the old values, not the abandoned edits.
+      await tester.tap(find.byTooltip('Filters'));
+      await tester.pumpAndSettle();
+      expect(find.text('2020'), findsNothing);
+    });
+
+    testWidgets('a bad or backwards year is refused under the field',
+        (tester) async {
+      await withResults(tester);
+      await tester.enterText(yearField('From Year'), '1800');
+      await tester.pump();
+      expect(find.text('Enter a year between 1900 and 2100.'), findsOneWidget);
+      expect(applyButton(tester).onPressed, isNull);
+
+      await tester.enterText(yearField('From Year'), '2024');
+      await tester.enterText(yearField('To Year'), '2020');
+      await tester.pump();
+      expect(find.text('"From" must not be after "To".'), findsOneWidget);
+      expect(applyButton(tester).onPressed, isNull);
+    });
+
+    testWidgets('"Apply" sends the filters and shows readable chips',
+        (tester) async {
+      final api = await withResults(tester);
+      await tester.enterText(yearField('From Year'), '2020');
+      await tester.enterText(yearField('To Year'), '2024');
+      await tester.tap(find.text('Open Access Only'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Apply Filters'));
+      await tester.pumpAndSettle();
+
+      final sent = api.calls.last.params;
+      expect(sent.yearFrom, 2020);
+      expect(sent.yearTo, 2024);
+      expect(sent.openAccess, isTrue);
+      expect(find.widgetWithText(InputChip, '2020–2024'), findsOneWidget);
+      expect(find.widgetWithText(InputChip, 'Open Access'), findsOneWidget);
+
+      // Removing a chip searches again without it.
+      api.calls.last.answer.complete(PagedPapers(papers: [_paper('b')]));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.widgetWithText(InputChip, '2020–2024'),
+          matching: find.byTooltip('Delete'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(api.calls.last.params.yearFrom, isNull);
+      expect(api.calls.last.params.openAccess, isTrue);
+    });
+  });
+
+  testWidgets('a saved paper says so; the others offer to save',
+      (tester) async {
+    final api = await _pump(
+      tester,
+      initialQuery: 'llm',
+      bookmarks: const [
+        Bookmark(id: 'bm1', targetKind: 'paper', targetId: 'a'),
+      ],
+    );
+    await tester.pump();
+    api.calls.single.answer
+        .complete(PagedPapers(papers: [_paper('a'), _paper('b')]));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Remove bookmark'), findsOneWidget);
+    expect(find.byTooltip('Save Paper'), findsOneWidget);
+  });
 }

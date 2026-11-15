@@ -29,20 +29,6 @@ import 'package:flutter_mobile/features/trends/presentation/trends_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-// Dummy screens for features not yet built
-class PlaceholderScreen extends StatelessWidget {
-  const PlaceholderScreen({required this.title, super.key});
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(child: Text(context.t('Screen: {{title}}', {'title': title}))),
-    );
-  }
-}
-
 // Global navigator keys
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 final _shellNavigatorHomeKey = GlobalKey<NavigatorState>(debugLabel: 'homeTab');

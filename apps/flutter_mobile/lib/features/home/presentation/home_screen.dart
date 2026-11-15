@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/utils/web_href.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_avatar.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_brand_logo.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
 import 'package:flutter_mobile/core/widgets/notification_bell.dart';
 import 'package:flutter_mobile/core/widgets/paper_card.dart';
@@ -168,7 +169,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: Text(context.t('Home')),
+        // The brand on the first screen, as on the web header. The tab label
+        // below still says "Home", and screen readers hear "LumiGap".
+        title: const LumiBrandLogo(height: 32),
         actions: const [NotificationBell(), SizedBox(width: 4)],
       ),
       body: RefreshIndicator(

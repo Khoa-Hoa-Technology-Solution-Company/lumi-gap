@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/core/theme/lumi_chart.dart';
-import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_text_field.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_mobile/features/reports/presentation/reports_screen.dart';
+import 'package:flutter_mobile/features/trends/components/trend_compare_results.dart';
 import 'package:flutter_mobile/features/trends/components/trends_ai_tab.dart';
 import 'package:flutter_mobile/features/trends/components/trends_signals_tab.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
@@ -15,19 +15,26 @@ import 'package:flutter_test/flutter_test.dart';
 
 TrendingTopic _topic(
   String name, {
+  TrendVerdict verdict = TrendVerdict.insufficient,
+  double? change,
+  TrendConfidence? confidence,
   double growth = 10,
-  double momentum = 5,
   int papers = 1234,
 }) =>
     TrendingTopic(
       topic: name,
-      momentum: momentum,
+      momentum: 5,
       growthRatePct: growth,
       totalPapers: papers,
       yearlyBreakdown: const [
         YearlyCount(year: 2024, count: 1),
         YearlyCount(year: 2025, count: 2),
       ],
+      classification: TrendClassification(
+        verdict: verdict,
+        confidence: confidence,
+        relativeChangePct: change,
+      ),
     );
 
 Future<void> _pump(
@@ -69,45 +76,101 @@ Future<void> _pump(
 
 void main() {
   group('trend signals', () {
-    test('the banner topic is the first one that really grows', () {
-      expect(strongestRisingTopic(const []), isNull);
+    test('classification is read from the API, never guessed', () {
+      final rising = TrendClassification.fromJson({
+        'verdict': 'rising',
+        'confidence': 'high',
+        'relativeChangePct': 4.25,
+      });
+      expect(rising.verdict, TrendVerdict.rising);
+      expect(rising.confidence, TrendConfidence.high);
+      expect(rising.shownChangePct, 4.25);
+      // Unknown verdict, missing object: insufficient, no direction.
       expect(
-        strongestRisingTopic([_topic('a', growth: 0), _topic('b', growth: -3)]),
+        TrendClassification.fromJson({'verdict': 'skyrocketing'}).verdict,
+        TrendVerdict.insufficient,
+      );
+      expect(
+        TrendClassification.fromJson(null).verdict,
+        TrendVerdict.insufficient,
+      );
+      // No confidence and no change figure without a direction.
+      final none = TrendClassification.fromJson({
+        'verdict': 'insufficient',
+        'confidence': 'high',
+        'relativeChangePct': 9,
+      });
+      expect(none.confidence, isNull);
+      expect(none.shownChangePct, isNull);
+    });
+
+    test('order follows the web: rising by change, stable, declining, '
+        'insufficient; ties by papers then name', () {
+      final sorted = sortTopicsByTrend([
+        _topic('insuff', papers: 9999),
+        _topic('dec-small', verdict: TrendVerdict.declining, change: -1),
+        _topic('stable', verdict: TrendVerdict.stable),
+        _topic('rise-small', verdict: TrendVerdict.rising, change: 2),
+        _topic('dec-big', verdict: TrendVerdict.declining, change: -8),
+        _topic('rise-big', verdict: TrendVerdict.rising, change: 9),
+        _topic('rise-tie-b',
+            verdict: TrendVerdict.rising, change: 2, papers: 10),
+        _topic('rise-tie-a',
+            verdict: TrendVerdict.rising, change: 2, papers: 10),
+      ]).map((t) => t.topic);
+      expect(sorted, [
+        'rise-big',
+        'rise-small',
+        'rise-tie-a',
+        'rise-tie-b',
+        'stable',
+        'dec-big',
+        'dec-small',
+        'insuff',
+      ]);
+    });
+
+    test('the featured topic must be rising: raw growth never counts', () {
+      expect(topRisingTopic(const <TrendingTopic>[]), isNull);
+      // +300% raw-count growth, but the API could not test it.
+      expect(
+        topRisingTopic([
+          _topic('hot raw', growth: 300),
+          _topic('stable', verdict: TrendVerdict.stable, growth: 50),
+        ]),
         isNull,
       );
       expect(
-        strongestRisingTopic([
-          _topic('down', growth: -20),
-          _topic('flat', growth: 0),
-          _topic('up', growth: 4),
-          _topic('more', growth: 90),
+        topRisingTopic([
+          _topic('small', verdict: TrendVerdict.rising, change: 1),
+          _topic('big', verdict: TrendVerdict.rising, change: 6),
         ])?.topic,
-        'up',
+        'big',
       );
     });
 
-    test('reliability tone follows the label', () {
-      expect(reliabilityTone('High'), LumiChipTone.success);
-      expect(reliabilityTone('Exploratory'), LumiChipTone.primary);
-      expect(reliabilityTone('Small base'), LumiChipTone.warning);
-    });
-
-    testWidgets(
-        'no "rising" claim when nothing grows; signs and thousands shown',
+    testWidgets('nothing tested: said once, no verdicts, no % per year',
         (tester) async {
       await _pump(
         tester,
         TrendsSignalsTab(
           overview: TrendsOverview(
-            topics: [_topic('Falling topic', growth: -12.5, papers: 109071)],
+            topics: [_topic('Local topic', growth: 110.8, papers: 109071)],
           ),
           params: const TrendsOverviewParams(),
           onExplainTopic: (_) {},
         ),
       );
-      expect(find.textContaining('strongest rising'), findsNothing);
-      expect(find.text('Growth: -12.5%'), findsOneWidget);
-      expect(find.textContaining('+-'), findsNothing);
+      expect(find.textContaining('clearest rising'), findsNothing);
+      expect(
+        find.text(
+          'Not enough yearly data yet to tell whether these topics are rising or falling.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Insufficient data'), findsNothing);
+      expect(find.textContaining('per year'), findsNothing);
+      expect(find.textContaining('110.8'), findsNothing);
       expect(find.text('109,071 publications'), findsOneWidget);
       // Labelled actions, each at least 48dp tall.
       for (final label in ['Papers', 'Explain', 'Trend graph']) {
@@ -117,13 +180,21 @@ void main() {
       }
     });
 
-    testWidgets('a growing topic gets the banner with a signed rate',
+    testWidgets('a rising topic is featured with its verdict and change',
         (tester) async {
       await _pump(
         tester,
         TrendsSignalsTab(
           overview: TrendsOverview(
-            topics: [_topic('Down', growth: -5), _topic('Up', growth: 110.8)],
+            topics: [
+              _topic('Down', verdict: TrendVerdict.declining, change: -3.2),
+              _topic(
+                'Up',
+                verdict: TrendVerdict.rising,
+                change: 4.25,
+                confidence: TrendConfidence.high,
+              ),
+            ],
           ),
           params: const TrendsOverviewParams(),
           onExplainTopic: (_) {},
@@ -131,9 +202,17 @@ void main() {
       );
       expect(
         find.text(
-          '"Up" is the strongest rising topic in this dataset scope with growth rate of +110.8%.',
+          '"Up" is the clearest rising topic in this scope: +4.3% per year.',
         ),
         findsOneWidget,
+      );
+      expect(find.text('Rising · High confidence'), findsOneWidget);
+      expect(find.text('Declining'), findsOneWidget);
+      expect(find.text('-3.2% per year'), findsOneWidget);
+      // Rising first, even though the API listed it second.
+      expect(
+        tester.getTopLeft(find.text('Up')).dy,
+        lessThan(tester.getTopLeft(find.text('Down')).dy),
       );
     });
 
@@ -147,8 +226,9 @@ void main() {
               topics: [
                 _topic(
                   'A Very Long Topic Name About Artificial Intelligence in Education',
-                  growth: 110.8,
-                  momentum: 6329.74,
+                  verdict: TrendVerdict.rising,
+                  change: 110.8,
+                  confidence: TrendConfidence.medium,
                   papers: 109071,
                 ),
               ],
@@ -163,6 +243,46 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+  });
+
+  testWidgets('compare: verdicts come from the overview, none is assumed',
+      (tester) async {
+    TopicComparisonItem item(String name) => TopicComparisonItem(
+          topic: name,
+          momentum: 0,
+          growthRatePct: 0,
+          totalPapers: 10,
+          yearlyBreakdown: const [
+            YearlyCount(year: 2024, count: 1),
+            YearlyCount(year: 2025, count: 2),
+          ],
+        );
+    await _pump(
+      tester,
+      SingleChildScrollView(
+        child: TrendCompareResults(
+          result: TrendCompareResponse(
+            topics: [item('Listed'), item('Not listed')],
+          ),
+          classificationOf: (t) => t == 'Listed'
+              ? const TrendClassification(
+                  verdict: TrendVerdict.rising,
+                  relativeChangePct: 3,
+                )
+              : null,
+          onSearch: (_) {},
+          onExplain: (_) {},
+        ),
+      ),
+      size: const Size(412, 2000),
+    );
+    expect(find.text('Rising'), findsOneWidget);
+    expect(find.text('+3.0% per year'), findsOneWidget);
+    expect(
+      find.text('No verdict: this topic is not in the overview list'),
+      findsOneWidget,
+    );
+    expect(find.text('Insufficient data'), findsNothing);
   });
 
   group('explain tab', () {
@@ -215,12 +335,43 @@ void main() {
         );
         // Reading context.t in initState threw here before.
         expect(tester.takeException(), isNull);
+        // No sample topic is typed in for the reader, only suggested.
         expect(
-          find.text(translate('LLM in education', locale)),
+          find.text(translate('e.g. LLM in education...', locale)),
           findsOneWidget,
         );
+        expect(find.text(translate('LLM in education', locale)), findsNothing);
       });
     }
+
+    testWidgets('an empty question is refused under the field, nothing sent',
+        (tester) async {
+      await _pump(
+        tester,
+        const ReportsScreen(),
+        scaffold: false,
+        overrides: [
+          reportsProvider.overrideWith(
+            (ref, params) async => const ReportsList(reports: [], total: 0),
+          ),
+        ],
+      );
+      await tester.tap(find.text('Preview Evidence Pack'));
+      await tester.pumpAndSettle();
+      // A real API call would fail without a server; none is made.
+      expect(tester.takeException(), isNull);
+      expect(find.text('Enter a research question.'), findsOneWidget);
+
+      await tester.enterText(
+        find.ancestor(
+          of: find.text('What specific trends should Gemini write about?'),
+          matching: find.byType(TextField),
+        ),
+        'ab',
+      );
+      await tester.pump();
+      expect(find.text('Use at least 3 characters.'), findsOneWidget);
+    });
   });
 
   group('bare input decoration', () {

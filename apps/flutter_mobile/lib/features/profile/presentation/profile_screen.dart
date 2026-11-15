@@ -119,7 +119,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         (fullName != null && fullName.isNotEmpty) ? fullName : (email ?? '');
 
     Widget groupLabel(String text) => Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          padding: const EdgeInsets.only(bottom: 8),
           child: Semantics(
             header: true,
             child: Text(

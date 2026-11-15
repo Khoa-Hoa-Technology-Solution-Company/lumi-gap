@@ -44,7 +44,16 @@ class LumiSectionHeader extends StatelessWidget {
                   ),
                 ),
                 if (onAction != null && actionLabel != null)
-                  TextButton(onPressed: onAction, child: Text(actionLabel!)),
+                  TextButton(
+                    onPressed: onAction,
+                    // No right padding: the label ends on the same edge as
+                    // the cards below. The tap target stays 48dp.
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.only(left: 12),
+                      minimumSize: const Size(48, 48),
+                    ),
+                    child: Text(actionLabel!),
+                  ),
               ],
             ),
           ),

@@ -91,13 +91,12 @@ class ProjectMessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final timestamp = DateTime.tryParse(createdAt)?.toLocal();
-    final bubbleColor = mine
-        ? context.lumi.primary
-        : colors.surfaceContainerHighest.withValues(alpha: .78);
+    final bubbleColor = mine ? context.lumi.primary : context.lumi.surfaceMuted;
     final textColor = mine ? colors.onPrimary : colors.onSurface;
+    // Not `muted` on `surfaceMuted`: under 4.5:1.
     final metaColor = mine
         ? colors.onPrimary.withValues(alpha: .72)
-        : colors.onSurfaceVariant;
+        : context.lumi.foregroundSecondary;
     final maxWidth = MediaQuery.sizeOf(context).width * .68;
 
     final bubble = Container(

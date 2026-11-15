@@ -59,69 +59,79 @@ class HomeContinueResearch extends StatelessWidget {
     // A row sized by its content (no fixed height): the cards are as tall as
     // the tallest one, so a short title leaves no empty band, and a large
     // text scale never clips.
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      clipBehavior: Clip.none,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var index = 0; index < items.length; index++) ...[
-              if (index > 0) const SizedBox(width: 12),
-              SizedBox(
-                width: 280,
-                child: Material(
-                  color: lumi.surface,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    side: BorderSide(color: lumi.line),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: () => onOpen(items[index].href),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            items[index].title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleMedium,
-                          ),
-                          if (items[index].researchField != null)
+    // One project fills the width; several scroll sideways, each 280dp so
+    // the next card peeks in and says there is more.
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var index = 0; index < items.length; index++) ...[
+                if (index > 0) const SizedBox(width: 12),
+                SizedBox(
+                  width: items.length == 1 ? constraints.maxWidth : 280,
+                  child: Material(
+                    color: lumi.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(color: lumi.line),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => onOpen(items[index].href),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                             Text(
-                              items[index].researchField!,
-                              maxLines: 1,
+                              items[index].title,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: lumi.muted,
-                              ),
+                              style: theme.textTheme.titleMedium,
                             ),
-                          const SizedBox(height: 8),
-                          HomeStageChip(stage: items[index].stage),
-                          const SizedBox(height: 12),
-                          const Spacer(),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              stat(items[index].paperCount, context.t('papers')),
-                              stat(items[index].screenedCount, context.t('screened')),
-                              stat(
-                                items[index].candidateGapCount,
-                                context.t('candidate gaps'),
+                            if (items[index].researchField != null)
+                              Text(
+                                items[index].researchField!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: lumi.muted,
+                                ),
                               ),
-                            ],
-                          ),
-                        ],
+                            const SizedBox(height: 8),
+                            HomeStageChip(stage: items[index].stage),
+                            const SizedBox(height: 12),
+                            const Spacer(),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                stat(
+                                  items[index].paperCount,
+                                  context.t('papers'),
+                                ),
+                                stat(
+                                  items[index].screenedCount,
+                                  context.t('screened'),
+                                ),
+                                stat(
+                                  items[index].candidateGapCount,
+                                  context.t('candidate gaps'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

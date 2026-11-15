@@ -4,8 +4,10 @@ import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/admin/data/admin_api.dart';
+import 'package:flutter_mobile/features/admin/presentation/admin_pipeline_tab.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,11 +20,12 @@ class AdminSyncScreen extends ConsumerStatefulWidget {
 }
 
 class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
-  // i18n-ignore: default search query sent to OpenAlex, not UI text
-  final searchText = TextEditingController(text: 'large language models');
+  // Empty on purpose: a sync is costly, so its query is always typed.
+  final searchText = TextEditingController();
   final yearFrom = TextEditingController(text: '2020');
   final maxPages = TextEditingController(text: '1');
   bool _syncing = false;
+  bool _showSyncErrors = false;
   bool _embedding = false;
 
   @override
@@ -34,12 +37,22 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
   }
 
   Future<void> _sync() async {
+    if (_syncing) return;
+    final errors = syncFormErrors(
+      searchText: searchText.text,
+      yearFrom: yearFrom.text,
+      maxPages: maxPages.text,
+    );
+    if (errors.isNotEmpty) {
+      setState(() => _showSyncErrors = true);
+      return;
+    }
     setState(() => _syncing = true);
     try {
       await ref.read(adminApiProvider).triggerSync(
             searchText: searchText.text.trim(),
-            yearFrom: int.tryParse(yearFrom.text),
-            maxPages: int.tryParse(maxPages.text),
+            yearFrom: int.parse(yearFrom.text.trim()),
+            maxPages: int.parse(maxPages.text.trim()),
           );
       ref.invalidate(syncRunsProvider);
       if (mounted) {
@@ -81,6 +94,15 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
 
   Widget _buildSyncTab(WidgetRef ref, ThemeData theme, bool isDark) {
     final runs = ref.watch(syncRunsProvider);
+    final errors = _showSyncErrors
+        ? syncFormErrors(
+            searchText: searchText.text,
+            yearFrom: yearFrom.text,
+            maxPages: maxPages.text,
+          )
+        : const <String, String>{};
+    String? err(String field) =>
+        errors[field] == null ? null : context.t(errors[field]!);
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -100,9 +122,12 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: searchText,
+                  onChanged: (_) {
+                    if (_showSyncErrors) setState(() {});
+                  },
                   decoration: InputDecoration(
                     labelText: context.t('Search text (e.g. quantum computing)'),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    errorText: err('searchText'),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -111,9 +136,12 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                     Expanded(
                       child: TextField(
                         controller: yearFrom,
+                        onChanged: (_) {
+                          if (_showSyncErrors) setState(() {});
+                        },
                         decoration: InputDecoration(
                           labelText: context.t('Year from'),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          errorText: err('yearFrom'),
                         ),
                         keyboardType: TextInputType.number,
                       ),
@@ -122,9 +150,12 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                     Expanded(
                       child: TextField(
                         controller: maxPages,
+                        onChanged: (_) {
+                          if (_showSyncErrors) setState(() {});
+                        },
                         decoration: InputDecoration(
                           labelText: context.t('Max pages'),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          errorText: err('maxPages'),
                         ),
                         keyboardType: TextInputType.number,
                       ),
@@ -158,11 +189,12 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
           data: (items) => Column(
             children: items.map((run) {
               final (statusKey, statusTone) = syncRunStatus(run.status);
-              final statusColor = switch (statusTone) {
-                SyncRunTone.success => context.lumi.success,
-                SyncRunTone.error => context.lumi.error,
-                SyncRunTone.active => context.lumi.primary,
-                SyncRunTone.neutral => context.lumi.muted,
+              // The shared chip: its tone pairs are contrast-tested.
+              final chipTone = switch (statusTone) {
+                SyncRunTone.success => LumiChipTone.success,
+                SyncRunTone.error => LumiChipTone.error,
+                SyncRunTone.active => LumiChipTone.primary,
+                SyncRunTone.neutral => LumiChipTone.neutral,
               };
 
               return Card(
@@ -185,17 +217,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                       ],
                     ],
                   ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      context.t(statusKey),
-                      style: context.type.bodySmall!.copyWith(color: statusColor, fontWeight: FontWeight.w600),
-                    ),
-                  ),
+                  trailing: LumiChip(label: context.t(statusKey), tone: chipTone),
                 ),
               );
             }).toList(),
@@ -303,164 +325,6 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
     );
   }
 
-  Widget _buildPipelineTab(WidgetRef ref, ThemeData theme, bool isDark) {
-    final pipelineQuery = ref.watch(pipelineStatusProvider);
-
-    return pipelineQuery.when(
-      data: (status) {
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // General health cards
-            Row(
-              children: [
-                Expanded(
-                  child: Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      side: BorderSide(color: theme.dividerColor),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          Icon(
-                            status.redisOk ? Icons.check_circle : Icons.error,
-                            color: status.redisOk ? context.lumi.success : context.lumi.error,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(context.t('Redis Database'), style: context.type.bodySmall!.copyWith( color: context.lumi.muted)),
-                                Text(status.redisOk ? context.t('Connected') : context.t('Offline'), style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600,)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      side: BorderSide(color: theme.dividerColor),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          Icon(Icons.engineering, color: context.lumi.primary, size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(context.t('Active Workers'), style: context.type.bodySmall!.copyWith( color: context.lumi.muted)),
-                                Text('${status.workers.alive} / ${status.workers.expected}', style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600,)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            Text(context.t('Queue Worker Backlogs'), style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,)),
-            const SizedBox(height: 10),
-            ...status.queues.map((q) {
-              return Card(
-                elevation: 0,
-                margin: const EdgeInsets.only(bottom: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  side: BorderSide(color: theme.dividerColor),
-                ),
-                child: ListTile(
-                  title: Text(q.label, style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,)),
-                  subtitle: Text(context.t('Waiting: {{waiting}} · Active: {{active}} · Failed: {{failed}}', {'waiting': q.waiting, 'active': q.active, 'failed': q.failed})),
-                  trailing: switch (queueHealth(q)) {
-                    QueueHealth.failing => Icon(
-                        Icons.error_outline,
-                        color: context.lumi.error,
-                        size: 20,
-                        semanticLabel: context.t('Has failed jobs'),
-                      ),
-                    QueueHealth.backlogged => Icon(
-                        Icons.warning_amber_rounded,
-                        color: context.lumi.warning,
-                        size: 20,
-                        semanticLabel: context.t('Backlogged'),
-                      ),
-                    QueueHealth.healthy => Icon(
-                        Icons.check,
-                        color: context.lumi.success,
-                        size: 20,
-                        semanticLabel: context.t('Healthy'),
-                      ),
-                  },
-                ),
-              );
-            }),
-            const SizedBox(height: 20),
-
-            if (status.recommendations.isNotEmpty) ...[
-              Text(context.t('Pipeline Diagnostics'), style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,)),
-              const SizedBox(height: 10),
-              ...status.recommendations.map((rec) {
-                final color = rec.severity == 'critical'
-                    ? context.lumi.error
-                    : rec.severity == 'warning'
-                        ? context.lumi.warning
-                        : context.lumi.primary;
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.08),
-                    border: Border.all(color: color.withValues(alpha: 0.2)),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.info_outline, color: color, size: 18),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(rec.title, style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600, color: color)),
-                            const SizedBox(height: 2),
-                            Text(rec.description, style: context.type.bodySmall),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            ],
-          ],
-        );
-      },
-      loading: () => const LumiPageSkeleton(rows: 5, height: 72),
-      error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
@@ -499,7 +363,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
           children: [
             _buildSyncTab(ref, theme, isDark),
             _buildEmbeddingsTab(ref, theme, isDark),
-            _buildPipelineTab(ref, theme, isDark),
+            const AdminPipelineTab(),
           ],
         ),
       ),
@@ -521,13 +385,25 @@ enum SyncRunTone { success, error, active, neutral }
       _ => (tk('Unknown'), SyncRunTone.neutral),
     };
 
-enum QueueHealth { healthy, backlogged, failing }
-
-/// A queue with failed jobs is never shown as healthy: failures come first,
-/// then a backlog. The count is checked too, in case a payload has the
-/// number but not the flag.
-QueueHealth queueHealth(PipelineQueueStatus q) {
-  if (q.hasFailures || q.failed > 0) return QueueHealth.failing;
-  if (q.isBacklogged) return QueueHealth.backlogged;
-  return QueueHealth.healthy;
+/// Errors of the sync form, by field, as `context.t` keys. Same bounds as
+/// the API (`trigger-sync.schema.ts`); a field that does not parse is an
+/// error, never silently replaced by the server's default.
+Map<String, String> syncFormErrors({
+  required String searchText,
+  required String yearFrom,
+  required String maxPages,
+}) {
+  final errors = <String, String>{};
+  if (searchText.trim().isEmpty) {
+    errors['searchText'] = tk('Enter what to search for.');
+  }
+  final year = int.tryParse(yearFrom.trim());
+  if (year == null || year < 1900 || year > 2100) {
+    errors['yearFrom'] = tk('Enter a year between 1900 and 2100.');
+  }
+  final pages = int.tryParse(maxPages.trim());
+  if (pages == null || pages < 1 || pages > 50) {
+    errors['maxPages'] = tk('Enter a number from 1 to 50.');
+  }
+  return errors;
 }

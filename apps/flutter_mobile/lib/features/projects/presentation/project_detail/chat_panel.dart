@@ -28,10 +28,6 @@ class ProjectChatPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final title = switch (mode) {
-      ProjectChatMode.privateAi => context.t('My AI - Private'),
-      ProjectChatMode.teamAi => context.t('Team AI Room - Shared'),
-    };
     final subtitle = switch (mode) {
       ProjectChatMode.privateAi => context.t('Only you can see this AI conversation'),
       ProjectChatMode.teamAi =>
@@ -75,7 +71,8 @@ class ProjectChatPanel extends ConsumerWidget {
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(18, 10, 16, 10),
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
             decoration: BoxDecoration(
               color: colors.surface,
               border: Border(
@@ -86,89 +83,31 @@ class ProjectChatPanel extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: colors.primary.withValues(alpha: .1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    mode == ProjectChatMode.privateAi
-                        ? Icons.lock_outline
-                        : Icons.groups_outlined,
-                    size: 18,
-                    color: colors.primary,
-                  ),
+                Icon(
+                  mode == ProjectChatMode.privateAi
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                  size: 18,
+                  color: context.lumi.foregroundSecondary,
                 ),
-                const SizedBox(width: 11),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: context.type.bodyLarge!.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.type.bodySmall!.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    subtitle,
+                    style: context.type.bodySmall!.copyWith(
+                      color: context.lumi.foregroundSecondary,
+                    ),
                   ),
                 ),
-                ProjectStatusPill(private: mode == ProjectChatMode.privateAi),
               ],
             ),
           ),
           Expanded(
             child: ColoredBox(
-              color: colors.surfaceContainerHighest.withValues(alpha: .18),
+              // The page colour: an ad-hoc tint here dropped the message
+              // times under 4.5:1.
+              color: context.lumi.background,
               child: body,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class ProjectStatusPill extends StatelessWidget {
-  const ProjectStatusPill({required this.private, super.key});
-
-  final bool private;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final color = private ? colors.primary : context.lumi.success;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .09),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            private ? Icons.lock_outline_rounded : Icons.circle,
-            size: private ? 13 : 8,
-            color: color,
-          ),
-          const SizedBox(width: 5),
-          Text(
-            private ? context.t('Private') : context.t('Live'),
-            style: context.type.bodySmall!.copyWith(
-              fontWeight: FontWeight.w600,
-              color: color,
             ),
           ),
         ],

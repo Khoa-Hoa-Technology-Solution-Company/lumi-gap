@@ -174,7 +174,6 @@ class _LeaderboardTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final rankColor = _rankColor(context, user.rank);
 
     return Material(
       color: context.lumi.surface,
@@ -194,13 +193,14 @@ class _LeaderboardTile extends StatelessWidget {
               height: 46,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: rankColor.withValues(alpha: user.rank <= 3 ? 1 : 0.12),
+                // A medal for the top three; the accent pair for the rest.
+                color: LumiMedal.forRank(user.rank) ?? context.lumi.primarySoft,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 '#${user.rank}',
                 style: theme.textTheme.titleSmall?.copyWith(
-                  color: user.rank <= 3 ? context.lumi.surface : rankColor,
+                  color: LumiMedal.onRank(user.rank) ?? context.lumi.primary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -312,5 +312,3 @@ class _InlineError extends StatelessWidget {
 }
 
 /// Medal colour for the top three, the accent for everyone else.
-Color _rankColor(BuildContext context, int rank) =>
-    LumiMedal.forRank(rank) ?? context.lumi.primary;

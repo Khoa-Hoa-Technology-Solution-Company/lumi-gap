@@ -3,19 +3,24 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('SearchScreen uses backend-compatible search filter values', () {
-    final source = File(
-      'lib/features/search/presentation/search_screen.dart',
+  test('Search filters use backend-compatible values', () {
+    // Sort keys: SEARCH_SORT_KEYS in paper-filters.schema.ts.
+    final sheet = File(
+      'lib/features/search/presentation/search_filter_sheet.dart',
     ).readAsStringSync();
+    expect(sheet, contains("('citations'"));
+    expect(sheet, contains("('year'"));
+    expect(sheet, contains("('relevance'"));
+    expect(sheet, isNot(contains("'citationCount'")));
+    expect(sheet, isNot(contains("'publicationYear'")));
 
-    expect(source, contains("value: 'citations'"));
-    expect(source, contains("value: 'year'"));
-    expect(source, contains("value: 'article'"));
-    expect(source, contains("value: 'proceedings'"));
-    expect(source, isNot(contains("value: 'citationCount'")));
-    expect(source, isNot(contains("value: 'publicationYear'")));
-    expect(source, isNot(contains("value: 'journal'")));
-    expect(source, isNot(contains("value: 'conference'")));
+    final kinds = File(
+      'lib/features/search/domain/search_filters.dart',
+    ).readAsStringSync();
+    expect(kinds, contains("('article'"));
+    expect(kinds, contains("('proceedings'"));
+    expect(kinds, isNot(contains("('journal'")));
+    expect(kinds, isNot(contains("('conference'")));
   });
 
   test('Trends scoped search opens Search with a non-empty query', () {

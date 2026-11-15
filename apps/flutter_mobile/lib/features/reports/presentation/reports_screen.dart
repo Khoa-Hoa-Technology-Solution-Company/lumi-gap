@@ -3,19 +3,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
-import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
-import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
-import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
-import 'package:flutter_mobile/core/widgets/lumi/lumi_text_field.dart';
-import 'package:flutter_mobile/core/widgets/swipe_delete_tile.dart';
-import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
+import 'package:flutter_mobile/features/reports/presentation/report_builder/report_evidence_steps.dart';
+import 'package:flutter_mobile/features/reports/presentation/report_builder/report_setup_step.dart';
+import 'package:flutter_mobile/features/reports/presentation/report_builder/report_status.dart';
+import 'package:flutter_mobile/features/reports/presentation/report_builder/report_status_step.dart';
+import 'package:flutter_mobile/features/reports/presentation/report_builder/report_step_indicator.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+/// Build a grounded report in four steps (setup, preview, edit the evidence
+/// pack, follow the generation) and list the reader's reports. The steps
+/// live in `report_builder/`; this screen holds the state and the requests.
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({
     this.initialProjectId,
@@ -39,54 +41,45 @@ class ReportsScreen extends ConsumerStatefulWidget {
 }
 
 class _ReportsScreenState extends ConsumerState<ReportsScreen> {
-  late final TextEditingController topic;
-  late final TextEditingController query;
-  bool deepAnalysis = false;
-  bool creating = false;
+  // Only what the reader brought from another screen: no sample values, or
+  // a report could be generated on a topic nobody chose.
+  late final TextEditingController _topic =
+      TextEditingController(text: widget.initialTopic ?? '');
+  late final TextEditingController _query =
+      TextEditingController(text: widget.initialQuery ?? '');
+
+  int _step = 1;
+  ReportLanguage _language = ReportLanguage.auto;
+  bool _deepAnalysis = false;
+  bool _showErrors = false;
+  bool _loadingPreview = false;
+  bool _creating = false;
+  PreviewReportEvidenceResponse? _preview;
+  Set<String> _selectedPaperIds = {};
   String? _selectedId;
   Timer? _pollTimer;
+  bool _disposed = false;
 
-  // Stepper RAG Flow states
-  int _currentStep = 1; // 1: Setup, 2: Preview, 3: Edit, 4: Status
-  ReportLanguage _selectedLanguage = ReportLanguage.auto;
-  PreviewReportEvidenceResponse? _evidencePreview;
-  List<String> _selectedPaperIds = [];
-  bool _loadingPreview = false;
-
-  String? get _projectId => widget.initialProjectId;
-
-  @override
-  void initState() {
-    super.initState();
-    topic = TextEditingController(
-      // initState cannot read inherited widgets (context.t): trNow uses the
-      // language the app is showing right now.
-      text: widget.initialTopic ?? trNow('LLM in education'),
-    );
-    query = TextEditingController(
-      text:
-          widget.initialQuery ??
-          trNow(
-            'Analyze research trends in large language models for education',
-          ),
-    );
-  }
+  ReportsParams get _listParams =>
+      ReportsParams(projectId: widget.initialProjectId);
 
   @override
   void dispose() {
-    topic.dispose();
-    query.dispose();
+    _disposed = true;
+    _topic.dispose();
+    _query.dispose();
     _pollTimer?.cancel();
     super.dispose();
   }
 
   void _startPolling() {
+    // Never after dispose: a timer started then would poll forever.
+    if (_disposed) return;
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (_selectedId != null) {
-        ref.invalidate(reportProvider(_selectedId!));
-      }
-      ref.invalidate(reportsProvider(ReportsParams(projectId: _projectId)));
+      final id = _selectedId;
+      if (id != null) ref.invalidate(reportProvider(id));
+      ref.invalidate(reportsProvider(_listParams));
     });
   }
 
@@ -95,1189 +88,220 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     _pollTimer = null;
   }
 
-  Future<void> _fetchPreview() async {
-    if (query.text.trim().length < 3) return;
-    setState(() => _loadingPreview = true);
+  void _showError(Object e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.t(failureMessageKey(e))),
+        backgroundColor: context.lumi.error,
+      ),
+    );
+  }
 
+  Future<void> _fetchPreview() async {
+    if (_loadingPreview) return;
+    if (reportQueryError(_query.text) != null) {
+      setState(() => _showErrors = true);
+      return;
+    }
+    setState(() => _loadingPreview = true);
     try {
-      final preview = await ref
-          .read(reportsApiProvider)
-          .previewEvidence(
-            query: query.text.trim(),
-            topic: topic.text.trim(),
-            projectId: _projectId,
+      final preview = await ref.read(reportsApiProvider).previewEvidence(
+            query: _query.text.trim(),
+            topic: _topic.text.trim(),
+            projectId: widget.initialProjectId,
             yearFrom: widget.initialYearFrom,
             yearTo: widget.initialYearTo,
             fast: true,
             scopeFilters: widget.initialScopeFilters,
           );
+      if (!mounted) return;
       setState(() {
-        _evidencePreview = preview;
-        _selectedPaperIds = preview.papers.map((p) => p.id).toList();
-        _currentStep = 2;
+        _preview = preview;
+        _selectedPaperIds = {for (final p in preview.papers) p.id};
+        _step = 2;
       });
     } on Object catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              context.t('Failed to load evidence preview: {{e}}', {'e': context.t(failureMessageKey(e))}),
-            ),
-            backgroundColor: context.lumi.error,
-          ),
-        );
-      }
+      _showError(e);
     } finally {
       if (mounted) setState(() => _loadingPreview = false);
     }
   }
 
   Future<void> _createReport() async {
-    setState(() => creating = true);
+    if (_creating || _selectedPaperIds.isEmpty) return;
+    setState(() => _creating = true);
     try {
-      final id = await ref
-          .read(reportsApiProvider)
-          .create(
-            query: query.text.trim(),
-            topic: topic.text.trim(),
-            projectId: _projectId,
+      final id = await ref.read(reportsApiProvider).create(
+            query: _query.text.trim(),
+            topic: _topic.text.trim(),
+            projectId: widget.initialProjectId,
             yearFrom: widget.initialYearFrom,
             yearTo: widget.initialYearTo,
-            deepAnalysis: deepAnalysis,
-            language: _selectedLanguage,
-            selectedPaperIds: _selectedPaperIds,
+            deepAnalysis: _deepAnalysis,
+            language: _language,
+            // In the order retrieval returned them, not the tap order.
+            selectedPaperIds: [
+              for (final p in _preview?.papers ?? const <ReportEvidencePaper>[])
+                if (_selectedPaperIds.contains(p.id)) p.id,
+            ],
             scopeFilters: widget.initialScopeFilters,
           );
+      ref.invalidate(reportsProvider(_listParams));
+      if (!mounted) return;
       setState(() {
         _selectedId = id;
-        _currentStep = 4;
+        _step = 4;
       });
       _startPolling();
-      try {
-        await ref
-            .read(bookmarksApiProvider)
-            .create(targetKind: 'report', targetId: id);
-      } on Object catch (_) {
-        // A duplicate bookmark should not block report creation.
-      }
-      ref.invalidate(reportsProvider(ReportsParams(projectId: _projectId)));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              context.t(
-                'Report queued. Worker will generate it in the background.',
-              ),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.t(
+              'Report queued. Worker will generate it in the background.',
             ),
-            backgroundColor: context.lumi.primary,
           ),
-        );
-      }
+        ),
+      );
     } on Object catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.t('Failed to queue report: {{e}}', {'e': context.t(failureMessageKey(e))})),
-            backgroundColor: context.lumi.error,
-          ),
-        );
-      }
+      _showError(e);
     } finally {
-      if (mounted) setState(() => creating = false);
+      if (mounted) setState(() => _creating = false);
     }
   }
 
   Future<void> _deleteReport(String id) async {
     try {
       await ref.read(reportsApiProvider).delete(id);
-      if (_selectedId == id) {
+      if (mounted && _selectedId == id) {
+        _stopPolling();
         setState(() {
           _selectedId = null;
-          if (_currentStep == 4) _currentStep = 1;
+          if (_step == 4) _step = 1;
         });
       }
-      ref.invalidate(reportsProvider(ReportsParams(projectId: _projectId)));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(context.t('Report deleted successfully'))),
         );
       }
     } on Object catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              context.t('Failed to delete report: {{e}}', {'e': context.t(failureMessageKey(e))}),
-            ),
-            backgroundColor: context.lumi.error,
-          ),
-        );
-      }
+      _showError(e);
+    } finally {
+      // Reload either way: a failed delete puts the row back.
+      if (mounted) ref.invalidate(reportsProvider(_listParams));
     }
   }
 
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'ready':
-        return context.lumi.success;
-      case 'failed':
-        return context.lumi.error;
-      case 'generating':
-        return context.lumi.warning;
-      default:
-        return context.lumi.primary;
-    }
+  void _follow(String id) {
+    setState(() {
+      _selectedId = id;
+      _step = 4;
+    });
+    _startPolling();
   }
 
-  Widget _buildStepIndicator(bool isDark) {
-    final activeColor = context.lumi.primary;
-    final inactiveColor = context.lumi.line;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-      decoration: BoxDecoration(
-        color: context.lumi.surfaceMuted,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _buildStepNode(
-            1,
-            context.t('Setup'),
-            _currentStep >= 1,
-            activeColor,
-            inactiveColor,
-          ),
-          _buildStepLine(_currentStep >= 2, activeColor, inactiveColor),
-          _buildStepNode(
-            2,
-            context.t('Preview'),
-            _currentStep >= 2,
-            activeColor,
-            inactiveColor,
-          ),
-          _buildStepLine(_currentStep >= 3, activeColor, inactiveColor),
-          _buildStepNode(
-            3,
-            context.t('Edit Pack'),
-            _currentStep >= 3,
-            activeColor,
-            inactiveColor,
-          ),
-          _buildStepLine(_currentStep >= 4, activeColor, inactiveColor),
-          _buildStepNode(
-            4,
-            context.t('Status'),
-            _currentStep >= 4,
-            activeColor,
-            inactiveColor,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStepNode(
-    int stepNum,
-    String label,
-    bool isActive,
-    Color activeColor,
-    Color inactiveColor,
-  ) {
-    // Flexible, with labels that may wrap: "Edit Pack" is much longer in
-    // Vietnamese and four fixed-width steps overflowed a narrow phone.
-    return Flexible(
-      flex: 2,
-      child: Column(
-        children: [
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isActive ? activeColor : inactiveColor,
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              stepNum.toString(),
-              style: context.type.bodySmall!.copyWith(
-                // On the accent when the step is reached, readable on the
-                // neutral circle when it is not.
-                color: isActive
-                    ? context.lumi.onPrimary
-                    : context.lumi.foregroundSecondary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: context.type.bodySmall!.copyWith(
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-              color: isActive ? activeColor : context.lumi.muted,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStepLine(bool isActive, Color activeColor, Color inactiveColor) {
-    return Expanded(
-      child: Container(
-        height: 2,
-        margin: const EdgeInsets.only(left: 4, right: 4, bottom: 14),
-        color: isActive ? activeColor : inactiveColor,
-      ),
-    );
+  void _newReport() {
+    _stopPolling();
+    setState(() {
+      _step = 1;
+      _showErrors = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final reports = ref.watch(
-      reportsProvider(ReportsParams(projectId: _projectId)),
-    );
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final reports = ref.watch(reportsProvider(_listParams));
+    final selectedId = _selectedId;
+    final selected =
+        selectedId == null ? null : ref.watch(reportProvider(selectedId));
 
-    final bgColor = context.lumi.background;
-    final cardBg = context.lumi.surface;
-    final borderColor = context.lumi.line;
-    final inputBg = context.lumi.surface;
-
-    // Load selected report details
-    if (_selectedId != null) {
-      ref.listen(reportProvider(_selectedId!), (previous, next) {
-        next.whenData((report) {
-          if (report.status == 'ready' || report.status == 'failed') {
-            _stopPolling();
-          } else {
-            if (_pollTimer == null) {
-              _startPolling();
-            }
-          }
-        });
+    if (selectedId != null) {
+      // Poll only while the report is still being produced.
+      ref.listen(reportProvider(selectedId), (_, next) {
+        final status = next.value?.status;
+        if (status == null) return;
+        if (ReportState.parse(status).inProgress) {
+          if (_pollTimer == null) _startPolling();
+        } else {
+          _stopPolling();
+        }
       });
     }
-    final selectedReportQuery = _selectedId != null
-        ? ref.watch(reportProvider(_selectedId!))
-        : null;
+
+    final Widget stepView = switch (_step) {
+      1 => ReportSetupStep(
+          topic: _topic,
+          query: _query,
+          language: _language,
+          deepAnalysis: _deepAnalysis,
+          loading: _loadingPreview,
+          showErrors: _showErrors,
+          onLanguage: (v) => setState(() => _language = v),
+          onDeepAnalysis: (v) => setState(() => _deepAnalysis = v),
+          onPreview: () => unawaited(_fetchPreview()),
+          onEdited: () => setState(() {}),
+        ),
+      2 => ReportPreviewStep(
+          papers: _preview?.papers ?? const [],
+          onBack: () => setState(() => _step = 1),
+          onNext: () => setState(() => _step = 3),
+        ),
+      3 => ReportEditStep(
+          papers: _preview?.papers ?? const [],
+          selectedIds: _selectedPaperIds,
+          creating: _creating,
+          onToggle: (id, {required selected}) => setState(() {
+            selected ? _selectedPaperIds.add(id) : _selectedPaperIds.remove(id);
+          }),
+          onBack: () => setState(() => _step = 2),
+          onGenerate: () => unawaited(_createReport()),
+        ),
+      _ => ReportStatusStep(
+          report: selected,
+          onNewReport: _newReport,
+          onRetry: () {
+            if (selectedId != null) ref.invalidate(reportProvider(selectedId));
+          },
+        ),
+    };
 
     return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        title: Text(context.t('RAG Reports Workbench')),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
-        ),
-      ),
+      appBar: AppBar(title: Text(context.t('RAG Reports Workbench'))),
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(reportsProvider(const ReportsParams()));
-          if (_selectedId != null) {
-            ref.invalidate(reportProvider(_selectedId!));
-          }
+          ref.invalidate(reportsProvider(_listParams));
+          if (selectedId != null) ref.invalidate(reportProvider(selectedId));
         },
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _buildStepIndicator(isDark),
-            const SizedBox(height: 20),
-
-            // Stepper views switcher
+            ReportStepIndicator(step: _step),
+            const SizedBox(height: 16),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
-              child: _buildStepperContent(
-                cardBg,
-                borderColor,
-                inputBg,
-                isDark,
-                selectedReportQuery,
-              ),
+              child: KeyedSubtree(key: ValueKey(_step), child: stepView),
             ),
             const SizedBox(height: 24),
-
-            Text(
-              context.t('My reports'),
-              style: context.type.titleLarge!.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            reports.when(
-              data: (data) {
-                if (data.reports.isEmpty) {
-                  return AppEmptyState(
-                    title: context.t('No reports yet'),
-                    message: context.t('Create one above.'),
-                  );
-                }
-                return Column(
-                  children: data.reports.map((report) {
-                    final isSelected = _selectedId == report.id;
-                    return SwipeDeleteTile(
-                      tileKey: ValueKey(report.id),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      borderRadius: BorderRadius.circular(8),
-                      onDelete: () => _deleteReport(report.id),
-                      child: GestureDetector(
-                        onTap: () {
-                          if (report.status == 'ready') {
-                            unawaited(context.push('/report/${report.id}'));
-                          } else {
-                            setState(() {
-                              _selectedId = report.id;
-                              _currentStep = 4;
-                            });
-                            _startPolling();
-                          }
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? (context.lumi.primarySoft)
-                                : cardBg,
-                            border: Border.all(
-                              color: isSelected
-                                  ? context.lumi.primary
-                                  : borderColor,
-                              width: isSelected ? 2 : 1,
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: context.lumi.primarySoft,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                alignment: Alignment.center,
-                                child: Icon(
-                                  Icons.summarize_outlined,
-                                  size: 18,
-                                  color: context.lumi.primary,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      report.topic ?? report.query,
-                                      style: context.type.bodyMedium!.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      report.query,
-                                      style: context.type.bodySmall!.copyWith(
-                                        color: context.lumi.muted,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      report.status.toUpperCase(),
-                                      style: context.type.bodySmall!.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                        color: _statusColor(report.status),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                );
-              },
-              loading: () =>
-                  const LumiSkeleton(rows: 3, height: 96),
-              error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
-            ),
+            LumiSectionHeader(title: context.t('My reports')),
+            if (reports.hasValue)
+              MyReportsList(
+                reports: reports.requireValue.reports,
+                selectedId: selectedId,
+                onOpen: (id) => unawaited(context.push('/report/$id')),
+                onFollow: _follow,
+                onDelete: _deleteReport,
+              )
+            else if (reports.hasError)
+              LumiErrorState(
+                message: context.t(failureMessageKey(reports.error!)),
+                retrying: reports.isLoading,
+                onRetry: () => ref.invalidate(reportsProvider(_listParams)),
+                inline: true,
+              )
+            else
+              const LumiSkeleton(rows: 3, height: 96),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStepperContent(
-    Color cardBg,
-    Color borderColor,
-    Color inputBg,
-    bool isDark,
-    AsyncValue<AnalyticalReport>? selectedReportQuery,
-  ) {
-    switch (_currentStep) {
-      case 1:
-        return _buildStep1Setup(cardBg, borderColor, inputBg, isDark);
-      case 2:
-        return _buildStep2Preview(cardBg, borderColor);
-      case 3:
-        return _buildStep3Edit(cardBg, borderColor);
-      case 4:
-        return _buildStep4Status(
-          cardBg,
-          borderColor,
-          isDark,
-          selectedReportQuery,
-        );
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
-  Widget _buildStep1Setup(
-    Color cardBg,
-    Color borderColor,
-    Color inputBg,
-    bool isDark,
-  ) {
-    return Container(
-      key: const ValueKey('step1'),
-      decoration: BoxDecoration(
-        color: cardBg,
-        border: Border.all(color: borderColor),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            context.t('Step 1: Configure RAG Scope'),
-            style: context.type.bodyLarge!.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            context.t('TOPIC'),
-            style: context.type.bodySmall!.copyWith(
-              fontWeight: FontWeight.w600,
-              color: context.lumi.muted,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            height: 48,
-            decoration: BoxDecoration(
-              color: inputBg,
-              border: Border.all(color: borderColor),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            alignment: Alignment.centerLeft,
-            child: TextField(
-              controller: topic,
-              style: context.type.bodyMedium,
-              enabled: !_loadingPreview,
-              decoration: bareInputDecoration(
-                hintText: context.t('Topic label (e.g. LLM in education)'),
-                hintStyle: TextStyle(color: context.lumi.foregroundSecondary),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          Text(
-            context.t('RESEARCH QUESTION'),
-            style: context.type.bodySmall!.copyWith(
-              fontWeight: FontWeight.w600,
-              color: context.lumi.muted,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              color: inputBg,
-              border: Border.all(color: borderColor),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: TextField(
-              controller: query,
-              style: context.type.bodyMedium,
-              minLines: 3,
-              maxLines: 5,
-              enabled: !_loadingPreview,
-              decoration: bareInputDecoration(
-                hintText: context.t(
-                  'What specific trends should Gemini write about?',
-                ),
-                hintStyle: TextStyle(color: context.lumi.foregroundSecondary),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Language Selector
-          Text(
-            context.t('REPORT LANGUAGE'),
-            style: context.type.bodySmall!.copyWith(
-              fontWeight: FontWeight.w600,
-              color: context.lumi.muted,
-            ),
-          ),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<ReportLanguage>(
-            isExpanded: true,
-            initialValue: _selectedLanguage,
-            decoration: InputDecoration(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 4,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            items: [
-              DropdownMenuItem(
-                value: ReportLanguage.auto,
-                child: Text(context.t('Auto-detect Language')),
-              ),
-              DropdownMenuItem(
-                value: ReportLanguage.en,
-                child: Text(context.t('English (en)')),
-              ),
-              DropdownMenuItem(
-                value: ReportLanguage.vi,
-                child: Text(context.t('Vietnamese (vi)')),
-              ),
-            ],
-            onChanged: _loadingPreview
-                ? null
-                : (val) {
-                    if (val != null) {
-                      setState(() {
-                        _selectedLanguage = val;
-                      });
-                    }
-                  },
-          ),
-          const SizedBox(height: 16),
-
-          // Deep Analysis toggle Switch
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: context.lumi.surfaceMuted.withValues(alpha: 0.4),
-              border: Border.all(color: borderColor.withValues(alpha: 0.5)),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        context.t('Deep Analysis'),
-                        style: context.type.bodyMedium!.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        context.t(
-                          'Gemini runs detailed semantic search loops to backfill grounding bibliography.',
-                        ),
-                        style: context.type.bodySmall!.copyWith(
-                          color: context.lumi.foregroundSecondary,
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Switch(
-                  value: deepAnalysis,
-                  onChanged: _loadingPreview
-                      ? null
-                      : (value) => setState(() => deepAnalysis = value),
-                  activeThumbColor: context.lumi.primary,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: _loadingPreview || query.text.trim().isEmpty
-                  ? null
-                  : _fetchPreview,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: context.lumi.primary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: _loadingPreview
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: context.lumi.onPrimary,
-                      ),
-                    )
-                  : Text(
-                      context.t('Preview Evidence Pack'),
-                      style: TextStyle(
-                        color: context.lumi.onPrimary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStep2Preview(Color cardBg, Color borderColor) {
-    final papers = _evidencePreview?.papers ?? [];
-    return Container(
-      key: const ValueKey('step2'),
-      decoration: BoxDecoration(
-        color: cardBg,
-        border: Border.all(color: borderColor),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            context.t('Step 2: Preview Retrieved Evidence'),
-            style: context.type.bodyLarge!.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            context.t(
-              'Gemini retrieved {{length}} source candidates matching your query.',
-              {'length': papers.length},
-            ),
-            style: context.type.bodySmall!.copyWith(color: context.lumi.muted),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: context.lumi.foreground.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: borderColor.withValues(alpha: 0.5)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, size: 16, color: context.lumi.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    context.t(
-                      'Adding a paper makes it available as grounded evidence for Gemini. It will not force a pre-determined conclusion.',
-                    ),
-                    style: context.type.bodySmall!.copyWith(height: 1.3),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (papers.isEmpty)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Text(
-                  context.t(
-                    'No papers retrieved. Try broadening your research question.',
-                  ),
-                  style: const TextStyle(fontStyle: FontStyle.italic),
-                ),
-              ),
-            )
-          else
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 280),
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: papers.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, idx) {
-                  final paper = papers[idx];
-                  return Card(
-                    elevation: 0,
-                    margin: EdgeInsets.zero,
-                    color: Theme.of(context).cardColor.withValues(alpha: 0.6),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      side: BorderSide(
-                        color: borderColor.withValues(alpha: 0.8),
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  paper.title,
-                                  style: context.type.bodyMedium!.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  context.t(
-                                    '{{year}} · {{citations}} cites · Relevance: {{score}}',
-                                    {
-                                      'year': paper.year ?? context.t('N/A'),
-                                      'citations': paper.citations,
-                                      'score': paper.score.toStringAsFixed(2),
-                                    },
-                                  ),
-                                  style: context.type.bodySmall!.copyWith(
-                                    color: context.lumi.muted,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: Icon(
-                              Icons.open_in_new,
-                              size: 16,
-                              color: context.lumi.primary,
-                            ),
-                            tooltip: context.t('Open paper detail'),
-                            onPressed: () => context.push('/paper/${paper.id}'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => setState(() => _currentStep = 1),
-                  child: Text(context.t('Back to Setup')),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: context.lumi.primary,
-                  ),
-                  onPressed: papers.isEmpty
-                      ? null
-                      : () => setState(() => _currentStep = 3),
-                  child: Text(
-                    context.t('Edit Evidence'),
-                    style: TextStyle(
-                      color: context.lumi.onPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStep3Edit(Color cardBg, Color borderColor) {
-    final papers = _evidencePreview?.papers ?? [];
-    return Container(
-      key: const ValueKey('step3'),
-      decoration: BoxDecoration(
-        color: cardBg,
-        border: Border.all(color: borderColor),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                context.t('Step 3: Edit Evidence Pack'),
-                style: context.type.bodyLarge!.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                context.t('Selected: {{selected}}/{{total}}', {
-                  'selected': _selectedPaperIds.length,
-                  'total': papers.length,
-                }),
-                style: context.type.bodySmall!.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: context.lumi.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            context.t(
-              'Exclude papers that may not be fully relevant to filter the grounding RAG context.',
-            ),
-            style: context.type.bodySmall!.copyWith(color: context.lumi.muted),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: context.lumi.foreground.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: borderColor.withValues(alpha: 0.5)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, size: 16, color: context.lumi.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    context.t(
-                      'Deselected publications will not be used in the RAG generation pipeline.',
-                    ),
-                    style: context.type.bodySmall!.copyWith(height: 1.3),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 280),
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: papers.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, idx) {
-                final paper = papers[idx];
-                final isSelected = _selectedPaperIds.contains(paper.id);
-
-                return Card(
-                  elevation: 0,
-                  margin: EdgeInsets.zero,
-                  color: Theme.of(context).cardColor.withValues(alpha: 0.6),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    side: BorderSide(color: borderColor.withValues(alpha: 0.8)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    child: Row(
-                      children: [
-                        Checkbox(
-                          activeColor: context.lumi.primary,
-                          value: isSelected,
-                          onChanged: (val) {
-                            setState(() {
-                              if (val == true) {
-                                _selectedPaperIds.add(paper.id);
-                              } else {
-                                _selectedPaperIds.remove(paper.id);
-                              }
-                            });
-                          },
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                paper.title,
-                                style: context.type.bodyMedium!.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                context.t('{{year}} · {{citations}} cites', {
-                                  'year': paper.year ?? context.t('N/A'),
-                                  'citations': paper.citations,
-                                }),
-                                style: context.type.bodySmall!.copyWith(
-                                  color: context.lumi.muted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: Icon(
-                            Icons.open_in_new,
-                            size: 16,
-                            color: context.lumi.primary,
-                          ),
-                          tooltip: context.t('Open paper detail'),
-                          onPressed: () => context.push('/paper/${paper.id}'),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => setState(() => _currentStep = 2),
-                  child: Text(context.t('Back')),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: context.lumi.primary,
-                  ),
-                  onPressed: creating ? null : _createReport,
-                  child: creating
-                      ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: context.lumi.onPrimary,
-                          ),
-                        )
-                      : Text(
-                          context.t('Generate Report'),
-                          style: TextStyle(
-                            color: context.lumi.onPrimary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStep4Status(
-    Color cardBg,
-    Color borderColor,
-    bool isDark,
-    AsyncValue<AnalyticalReport>? selectedReportQuery,
-  ) {
-    if (selectedReportQuery == null) {
-      return Container(
-        key: const ValueKey('step4_empty'),
-        decoration: BoxDecoration(
-          color: cardBg,
-          border: Border.all(color: borderColor),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        padding: const EdgeInsets.all(20),
-        alignment: Alignment.center,
-        child: Text(context.t('No active report selected to monitor.')),
-      );
-    }
-
-    return selectedReportQuery.when(
-      data: (report) => Container(
-        key: const ValueKey('step4_loaded'),
-        decoration: BoxDecoration(
-          color: context.lumi.primarySoft,
-          border: Border.all(color: context.lumi.primary),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  context.t('Step 4: Report Generation Status'),
-                  style: context.type.bodyLarge!.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (report.status == 'queued' || report.status == 'generating')
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: context.lumi.primary,
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              report.topic ?? report.query,
-              style: context.type.bodyLarge!.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text(
-                  context.t('STATUS: '),
-                  style: context.type.bodySmall!.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: context.lumi.muted,
-                  ),
-                ),
-                Text(
-                  report.status.toUpperCase(),
-                  style: context.type.bodySmall!.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: _statusColor(report.status),
-                  ),
-                ),
-              ],
-            ),
-            if (report.errorMessage != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                report.errorMessage!,
-                style: context.type.bodyMedium!.copyWith(
-                  color: context.lumi.error,
-                ),
-              ),
-            ],
-            if (report.markdown != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                report.markdown!,
-                style: context.type.bodyMedium!.copyWith(
-                  color: context.lumi.foregroundSecondary,
-                  height: 1.5,
-                ),
-                maxLines: 4,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => context.push('/report/${report.id}'),
-                      icon: Icon(
-                        Icons.visibility,
-                        size: 16,
-                        color: context.lumi.onPrimary,
-                      ),
-                      label: Text(
-                        context.t('View Full Report'),
-                        style: context.type.bodyMedium!.copyWith(
-                          color: context.lumi.onPrimary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: context.lumi.primary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  OutlinedButton(
-                    onPressed: () => setState(() => _currentStep = 1),
-                    child: Text(context.t('New Report')),
-                  ),
-                ],
-              ),
-            ] else ...[
-              const SizedBox(height: 12),
-              Text(
-                context.t(
-                  'Background worker is compiling bibliography and writing analysis...',
-                ),
-                style: context.type.bodySmall!.copyWith(
-                  color: context.lumi.muted,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-              const SizedBox(height: 16),
-              OutlinedButton(
-                onPressed: () => setState(() => _currentStep = 1),
-                child: Text(context.t('New Report Configuration')),
-              ),
-            ],
-          ],
-        ),
-      ),
-      loading: () => Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24),
-          child: CircularProgressIndicator(color: context.lumi.primary),
-        ),
-      ),
-      error: (err, _) => Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: context.lumi.surfaceMuted,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          err.toString(),
-          style: TextStyle(color: context.lumi.error),
         ),
       ),
     );

@@ -30,6 +30,7 @@ class LumiTextField extends StatefulWidget {
     this.autovalidateMode,
     this.minLines,
     this.maxLines = 1,
+    this.maxLength,
     this.onChanged,
     this.onFieldSubmitted,
     super.key,
@@ -63,6 +64,10 @@ class LumiTextField extends StatefulWidget {
   /// More than one line makes a text area (description, notes).
   final int? minLines;
   final int? maxLines;
+
+  /// Hard limit, the same as the API's: typing stops there. No counter is
+  /// drawn; the limit is said in the helper or error text when it matters.
+  final int? maxLength;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onFieldSubmitted;
 
@@ -106,6 +111,7 @@ class _LumiTextFieldState extends State<LumiTextField> {
             obscureText: obscure,
             minLines: widget.isPassword ? null : widget.minLines,
             maxLines: widget.isPassword ? 1 : widget.maxLines,
+            maxLength: widget.maxLength,
             keyboardType: widget.keyboardType,
             textInputAction: widget.textInputAction,
             textCapitalization: widget.textCapitalization,
@@ -121,6 +127,7 @@ class _LumiTextFieldState extends State<LumiTextField> {
             onFieldSubmitted: widget.onFieldSubmitted,
             style: theme.textTheme.bodyLarge,
             decoration: InputDecoration(
+              counterText: '',
               hintText: widget.hintText,
               helperText: widget.helperText,
               helperMaxLines: 3,

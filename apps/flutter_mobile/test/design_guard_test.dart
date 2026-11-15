@@ -76,6 +76,22 @@ void main() {
     expect(_find(RegExp(r'Color\(0x')), isEmpty);
   });
 
+  test('no hex colour split over lines either: "Color(" then "0x…"', () {
+    // The line scan above misses a formatter-wrapped `Color(\n  0xFF…)`.
+    final hits = <String>[];
+    final pattern = RegExp(r'\bColor\(\s*0x', multiLine: true);
+    for (final file in _libFiles()) {
+      final path = _norm(file.path);
+      if (path.startsWith(_themeDir)) continue;
+      final text = file.readAsStringSync();
+      for (final m in pattern.allMatches(text)) {
+        final line = '\n'.allMatches(text.substring(0, m.start)).length + 1;
+        hits.add('$path:$line');
+      }
+    }
+    expect(hits, isEmpty);
+  });
+
   test('no Color.fromARGB / fromRGBO outside the theme', () {
     expect(_find(RegExp(r'Color\.from(ARGB|RGBO)\(')), isEmpty);
   });
@@ -109,13 +125,29 @@ void main() {
     const allowed = {
       'lib/core/widgets/app_loading.dart', // the widget itself
       'lib/core/router/app_router.dart', // splash while the session restores
-      'lib/features/gaps/presentation/gaps_screen.dart', // queueing a job
+      'lib/features/gaps/presentation/gap_analysis_overlay.dart', // queueing a job
       'lib/features/trends/components/trends_ai_tab.dart', // LLM running
     };
     final hits = _find(RegExp(r'\bAppLoading\('))
         .where((h) => !allowed.contains(h.path))
         .toList();
     expect(hits, isEmpty);
+  });
+
+  test('screen files stay at 500 lines or fewer', () {
+    // A screen that grows past this is split into widgets in their own
+    // files (see paper_detail/, report_builder/), not into `part` files.
+    const limit = 500;
+    final long = <String>[];
+    for (final file in _libFiles()) {
+      final path = _norm(file.path);
+      final isScreen = path.contains('/presentation/') ||
+          path.contains('/components/');
+      if (!isScreen) continue;
+      final lines = file.readAsLinesSync().length;
+      if (lines > limit) long.add('$path ($lines lines)');
+    }
+    expect(long, isEmpty);
   });
 
   test('every TabBar scrolls instead of clipping its labels', () {

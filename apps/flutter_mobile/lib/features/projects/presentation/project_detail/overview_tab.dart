@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
@@ -31,47 +33,46 @@ class ProjectOverviewTab extends StatelessWidget {
       gapsProvider(GapsListParams(projectId: projectId)),
     );
 
-    final reportsCount = reportsAsync.maybeWhen(
-      data: (d) => d.reports.length,
-      orElse: () => 0,
-    );
-    final gapsCount = gapsAsync.maybeWhen(
-      data: (d) => d.data.length,
-      orElse: () => 0,
-    );
+    // A count is only shown once it is known: "0" while loading or after a
+    // failed request would state something false. A dash means "not known".
+    final reportsCount = reportsAsync.hasValue
+        ? reportsAsync.requireValue.reports.length.toString()
+        : '—';
+    final gapsCount = gapsAsync.hasValue
+        ? gapsAsync.requireValue.data.length.toString()
+        : '—';
+    final description = project.description?.trim() ?? '';
+    final isOwner = project.viewerIsOwner;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Card(
-          elevation: 0,
-          margin: EdgeInsets.zero,
-          color: theme.cardColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: BorderSide(color: theme.dividerColor),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  project.title,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+        // The app bar cuts a long title to one line; here it is in full,
+        // with the viewer's role and what the project is about.
+        LumiCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(project.title, style: theme.textTheme.titleLarge),
+              if (isOwner != null) ...[
+                const SizedBox(height: 8),
+                LumiChip(
+                  label: isOwner ? context.t('Owner') : context.t('Member'),
+                  tone: isOwner ? LumiChipTone.primary : LumiChipTone.neutral,
                 ),
-                if (project.description != null &&
-                    project.description!.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    project.description!,
-                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-                  ),
-                ],
               ],
-            ),
+              const SizedBox(height: 12),
+              Text(
+                description.isEmpty
+                    ? context.t('No description yet.')
+                    : description,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: context.lumi.foregroundSecondary,
+                  fontStyle:
+                      description.isEmpty ? FontStyle.italic : FontStyle.normal,
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 20),
@@ -106,14 +107,14 @@ class ProjectOverviewTab extends StatelessWidget {
             _buildCounterCard(
               context,
               context.t('Reports'),
-              reportsCount.toString(),
+              reportsCount,
               Icons.description_outlined,
               context.lumi.primary,
             ),
             _buildCounterCard(
               context,
               context.t('Gaps Detected'),
-              gapsCount.toString(),
+              gapsCount,
               Icons.travel_explore,
               context.lumi.primary,
             ),
@@ -152,7 +153,8 @@ class ProjectOverviewTab extends StatelessWidget {
                       Text(
                         context.t('Add publications to power grounding reports, chat, and gap detection.'),
                         style: context.type.bodySmall!.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                          // On `primarySoft`: `muted` is under 4.5:1 there.
+                          color: context.lumi.foregroundSecondary,
                         ),
                       ),
                     ],

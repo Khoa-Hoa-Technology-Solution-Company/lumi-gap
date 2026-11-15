@@ -73,14 +73,17 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         title: Text(context.t('Notifications')),
         surfaceTintColor: Colors.transparent,
         actions: [
-          TextButton.icon(
+          // An icon with a tooltip: a labelled button did not fit next to
+          // the title on a narrow phone with large text.
+          IconButton(
+            tooltip: context.t('Read all'),
             // Nothing to do when everything is read already.
             onPressed: _markingAll || unreadCount == 0
                 ? null
                 : () => unawaited(_markAllRead()),
-            icon: const Icon(Icons.done_all_rounded, size: 18),
-            label: Text(context.t('Read all')),
+            icon: const Icon(Icons.done_all_rounded),
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: RefreshIndicator(

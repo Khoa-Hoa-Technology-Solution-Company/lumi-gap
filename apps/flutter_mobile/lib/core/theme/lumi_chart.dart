@@ -32,4 +32,12 @@ abstract final class LumiMedal {
         3 => bronze,
         _ => null,
       };
+
+  /// Text on a medal, the same in light and dark: dark on gold (8.3:1),
+  /// white on silver (4.8:1) and bronze (5.0:1). Null for other ranks.
+  static Color? onRank(int rank) => switch (rank) {
+        1 => const Color(0xFF0F172A),
+        2 || 3 => const Color(0xFFFFFFFF),
+        _ => null,
+      };
 }
