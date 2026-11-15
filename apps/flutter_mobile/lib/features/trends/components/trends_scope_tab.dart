@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/utils/number_format.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:go_router/go_router.dart';
 
@@ -161,10 +164,9 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
       children: [
         Text(
           title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
-            color: Color(0xFF94A3B8),
+          style: context.type.bodyMedium!.copyWith(
+            fontWeight: FontWeight.w600,
+            color: context.lumi.muted,
           ),
         ),
         const SizedBox(height: 8),
@@ -175,11 +177,11 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
             final isSelected = selectedList.contains(bucket.id);
             return ChoiceChip(
               label: Text(
-                '${bucket.name} (${bucket.count})',
-                style: const TextStyle(fontSize: 11),
+                '${bucket.name} (${formatNumber(bucket.count)})',
+                style: context.type.bodySmall,
               ),
               selected: isSelected,
-              selectedColor: const Color(0xFF06B6D4),
+              selectedColor: context.lumi.primary,
               onSelected: (_) => _toggleFilter(selectedList, bucket.id),
             );
           }).toList(),
@@ -193,10 +195,8 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final cardBg = isDark ? const Color(0xFF1A2332) : theme.cardColor;
-    final borderColor = isDark
-        ? const Color(0xFF26334A)
-        : const Color(0xFFE2E8F0);
+    final cardBg = context.lumi.surface;
+    final borderColor = context.lumi.line;
 
     final facets = widget.overview.facets;
 
@@ -210,9 +210,9 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
         Card(
           elevation: 0,
           margin: EdgeInsets.zero,
-          color: const Color(0xFF0F172A).withValues(alpha: 0.04),
+          color: context.lumi.foreground.withValues(alpha: 0.04),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(8),
             side: BorderSide(color: borderColor),
           ),
           child: Padding(
@@ -225,13 +225,12 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.shield, color: Color(0xFF06B6D4), size: 18),
+                        Icon(Icons.shield, color: context.lumi.primary, size: 18),
                         const SizedBox(width: 8),
                         Text(
                           context.t('Current Scope Summary'),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                          style: context.type.bodyMedium!.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -240,18 +239,17 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                       onPressed: _clearAll,
                       child: Text(
                         context.t('Reset'),
-                        style: const TextStyle(fontSize: 12, color: Colors.red),
+                        style: context.type.bodySmall!.copyWith(color: context.lumi.primary),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  context.t('Publications in scope: {{totalPublications}} papers', {'totalPublications': totalPublications}),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: Color(0xFF06B6D4),
+                  context.t('Publications in scope: {{totalPublications}} papers', {'totalPublications': formatNumber(totalPublications)}),
+                  style: context.type.bodyMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: context.lumi.primary,
                   ),
                 ),
                 if (_selectedDomains.isNotEmpty ||
@@ -260,9 +258,8 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                   const SizedBox(height: 6),
                   Text(
                     context.t('Taxonomy path: {{path}}', {'path': [_selectedDomains.join(', '), if (_selectedFields.isNotEmpty) _selectedFields.join(', '), if (_selectedSubfields.isNotEmpty) _selectedSubfields.join(', ')].join(' ➔ ')}),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF94A3B8),
+                    style: context.type.bodySmall!.copyWith(
+                      color: context.lumi.muted,
                     ),
                   ),
                 ],
@@ -271,11 +268,10 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                 const SizedBox(height: 4),
                 Text(
                   context.t('These filters change every Signals, Compare, Search, Report, and Explain result dynamically.'),
-                  style: const TextStyle(
-                    fontSize: 11,
+                  style: context.type.bodySmall!.copyWith(
                     height: 1.4,
                     fontStyle: FontStyle.italic,
-                    color: Color(0xFF94A3B8),
+                    color: context.lumi.muted,
                   ),
                 ),
               ],
@@ -287,13 +283,14 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
         // Year range selector
         Text(
           context.t('Publication Year Range'),
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,),
         ),
         const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
               child: DropdownButtonFormField<int>(
+                isExpanded: true,
                 initialValue: _yearFrom,
                 decoration: InputDecoration(
                   labelText: context.t('From Year'),
@@ -302,7 +299,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                     vertical: 8,
                   ),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
                 items: List.generate(10, (index) => 2018 + index)
@@ -320,6 +317,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
             const SizedBox(width: 16),
             Expanded(
               child: DropdownButtonFormField<int>(
+                isExpanded: true,
                 initialValue: _yearTo,
                 decoration: InputDecoration(
                   labelText: context.t('To Year'),
@@ -328,7 +326,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                     vertical: 8,
                   ),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
                 items: List.generate(10, (index) => 2018 + index)
@@ -388,36 +386,36 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
         // Recommended Actions
         Text(
           context.t('Recommended Actions in this Scope'),
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,),
         ),
         const SizedBox(height: 12),
         Card(
           elevation: 0,
           color: cardBg,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
             side: BorderSide(color: borderColor),
           ),
           child: Column(
             children: [
               ListTile(
-                leading: const Icon(
+                leading: Icon(
                   Icons.trending_up,
-                  color: Color(0xFF22C55E),
+                  color: context.lumi.success,
                 ),
                 title: Text(
                   context.t('Find signals in this scope'),
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600),
                 ),
                 trailing: const Icon(Icons.chevron_right, size: 16),
                 onTap: widget.onGoToSignals,
               ),
               const Divider(height: 1),
               ListTile(
-                leading: const Icon(Icons.search, color: Color(0xFF06B6D4)),
+                leading: Icon(Icons.search, color: context.lumi.primary),
                 title: Text(
                   context.t('Search scoped papers'),
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600),
                 ),
                 trailing: const Icon(Icons.chevron_right, size: 16),
                 onTap: () {
@@ -433,13 +431,13 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
               ),
               const Divider(height: 1),
               ListTile(
-                leading: const Icon(
+                leading: Icon(
                   Icons.description,
-                  color: Color(0xFFA78BFA),
+                  color: context.lumi.primary,
                 ),
                 title: Text(
                   context.t('Generate scoped report'),
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600),
                 ),
                 trailing: const Icon(Icons.chevron_right, size: 16),
                 onTap: () {

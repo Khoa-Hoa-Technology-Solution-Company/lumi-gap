@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -40,7 +43,7 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
           TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.t('Cancel'))),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: context.lumi.error),
             child: Text(context.t('Delete')),
           ),
         ],
@@ -51,10 +54,10 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
   void _setFilter(String value) => setState(() => _filter = value);
 
   Color _statusColor(String status) {
-    if (status == 'ready') return const Color(0xFF10B981);
-    if (status == 'failed') return const Color(0xFFEF4444);
-    if (status == 'generating') return const Color(0xFFF59E0B);
-    return const Color(0xFF06B6D4);
+    if (status == 'ready') return context.lumi.success;
+    if (status == 'failed') return context.lumi.error;
+    if (status == 'generating') return context.lumi.warning;
+    return context.lumi.primary;
   }
 
   @override
@@ -99,36 +102,17 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: filters.map((item) {
-                              final selected = _filter == item.$2;
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: ChoiceChip(
-                                  label: Text(
-                                    item.$1,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                      color: selected ? Colors.white : theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                  selected: selected,
-                                  onSelected: (_) => _setFilter(item.$2),
-                                  selectedColor: const Color(0xFF1D4ED8),
-                                  backgroundColor: theme.cardColor,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    side: BorderSide(
-                                      color: selected ? const Color(0xFF1D4ED8) : theme.dividerColor,
-                                    ),
-                                  ),
-                                  showCheckmark: false,
-                                ),
-                              );
-                            }).toList(),
+                        // Same control as the other list filters.
+                        SizedBox(
+                          width: double.infinity,
+                          child: SegmentedButton<String>(
+                            showSelectedIcon: false,
+                            segments: [
+                              for (final (label, value) in filters)
+                                ButtonSegment(value: value, label: Text(label)),
+                            ],
+                            selected: {_filter},
+                            onSelectionChanged: (v) => _setFilter(v.single),
                           ),
                         ),
                         const SizedBox(height: 20),
@@ -152,12 +136,12 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                               background: Container(
                                 margin: const EdgeInsets.only(bottom: 12),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFDC2626),
-                                  borderRadius: BorderRadius.circular(16),
+                                  color: context.lumi.error,
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 alignment: Alignment.centerRight,
                                 padding: const EdgeInsets.only(right: 24),
-                                child: const Icon(Icons.delete_outline, color: Colors.white, size: 24),
+                                child: Icon(Icons.delete_outline, color: context.lumi.onPrimary, size: 24),
                               ),
                               confirmDismiss: (direction) => _showConfirmDialog(context.t('Remove bookmark'), context.t('Delete this saved item?')),
                               onDismissed: (direction) => _deleteBookmarkDirectly(bookmark.id),
@@ -166,12 +150,12 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                 margin: const EdgeInsets.only(bottom: 12),
                                 color: theme.cardColor,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(8),
                                   side: BorderSide(color: theme.dividerColor),
                                 ),
                                 child: InkWell(
                                   onTap: () => context.push('/paper/${bookmark.targetId}'),
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(8),
                                   child: Padding(
                                     padding: const EdgeInsets.all(16),
                                     child: Row(
@@ -181,10 +165,10 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                           width: 32,
                                           height: 32,
                                           decoration: BoxDecoration(
-                                            color: Colors.cyan.withValues(alpha: 0.1),
+                                            color: context.lumi.primarySoft,
                                             borderRadius: BorderRadius.circular(8),
                                           ),
-                                          child: const Icon(Icons.file_copy, color: Color(0xFF06B6D4), size: 15),
+                                          child: Icon(Icons.file_copy, color: context.lumi.primary, size: 15),
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(
@@ -194,26 +178,22 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                               Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                 decoration: BoxDecoration(
-                                                  color: isDark ? const Color(0xFF26334A) : theme.colorScheme.surfaceContainerHighest,
+                                                  color: isDark ? context.lumi.line : theme.colorScheme.surfaceContainerHighest,
                                                   borderRadius: BorderRadius.circular(4),
                                                 ),
                                                 child: Text(
                                                   context.t('PAPER'),
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: theme.colorScheme.onSurfaceVariant,
+                                                  style: context.type.bodySmall!.copyWith(
+                                                    fontWeight: FontWeight.w600,
+                                                    color: // Not `muted`: on `surfaceMuted` it is under 4.5:1.
+                                                    context.lumi.foregroundSecondary,
                                                   ),
                                                 ),
                                               ),
                                               const SizedBox(height: 8),
                                               Text(
                                                 title,
-                                                style: theme.textTheme.titleMedium?.copyWith(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
-                                                  height: 1.3,
-                                                ),
+                                                style: theme.textTheme.titleSmall,
                                                 maxLines: 2,
                                                 overflow: TextOverflow.ellipsis,
                                               ),
@@ -239,9 +219,8 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                                 const SizedBox(height: 8),
                                                 Text(
                                                   bookmark.note!,
-                                                  style: const TextStyle(
-                                                    color: Color(0xFF0891B2),
-                                                    fontSize: 12,
+                                                  style: context.type.bodySmall!.copyWith(
+                                                    color: context.lumi.primary,
                                                   ),
                                                   maxLines: 1,
                                                   overflow: TextOverflow.ellipsis,
@@ -264,12 +243,12 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                               background: Container(
                                 margin: const EdgeInsets.only(bottom: 12),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFDC2626),
-                                  borderRadius: BorderRadius.circular(16),
+                                  color: context.lumi.error,
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 alignment: Alignment.centerRight,
                                 padding: const EdgeInsets.only(right: 24),
-                                child: const Icon(Icons.delete_outline, color: Colors.white, size: 24),
+                                child: Icon(Icons.delete_outline, color: context.lumi.onPrimary, size: 24),
                               ),
                               confirmDismiss: (direction) => _showConfirmDialog(context.t('Delete report'), context.t('Delete this report?')),
                               onDismissed: (direction) => _deleteReportDirectly(report.id),
@@ -278,7 +257,7 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                 margin: const EdgeInsets.only(bottom: 12),
                                 color: theme.cardColor,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(8),
                                   side: BorderSide(color: theme.dividerColor),
                                 ),
                                 child: InkWell(
@@ -289,7 +268,7 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                       unawaited(context.push('/reports'));
                                     }
                                   },
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(8),
                                   child: Padding(
                                     padding: const EdgeInsets.all(16),
                                     child: Row(
@@ -299,10 +278,10 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                           width: 32,
                                           height: 32,
                                           decoration: BoxDecoration(
-                                            color: Colors.purple.withValues(alpha: 0.1),
+                                            color: context.lumi.primarySoft,
                                             borderRadius: BorderRadius.circular(8),
                                           ),
-                                          child: const Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 16),
+                                          child: Icon(Icons.summarize_outlined, color: context.lumi.primary, size: 16),
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(
@@ -312,26 +291,22 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                               Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                 decoration: BoxDecoration(
-                                                  color: isDark ? const Color(0xFF26334A) : theme.colorScheme.surfaceContainerHighest,
+                                                  color: isDark ? context.lumi.line : theme.colorScheme.surfaceContainerHighest,
                                                   borderRadius: BorderRadius.circular(4),
                                                 ),
                                                 child: Text(
                                                   context.t('REPORT'),
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: theme.colorScheme.onSurfaceVariant,
+                                                  style: context.type.bodySmall!.copyWith(
+                                                    fontWeight: FontWeight.w600,
+                                                    color: // Not `muted`: on `surfaceMuted` it is under 4.5:1.
+                                                    context.lumi.foregroundSecondary,
                                                   ),
                                                 ),
                                               ),
                                               const SizedBox(height: 8),
                                               Text(
                                                 report.topic ?? report.query,
-                                                style: theme.textTheme.titleMedium?.copyWith(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
-                                                  height: 1.3,
-                                                ),
+                                                style: theme.textTheme.titleSmall,
                                                 maxLines: 2,
                                                 overflow: TextOverflow.ellipsis,
                                               ),
@@ -347,10 +322,9 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                               const SizedBox(height: 8),
                                               Text(
                                                 report.status.toUpperCase(),
-                                                style: TextStyle(
+                                                style: context.type.bodySmall!.copyWith(
                                                   color: _statusColor(report.status),
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
                                                 ),
                                               ),
                                             ],
@@ -367,12 +341,12 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                       ],
                     );
                   },
-                  loading: () => AppLoading(message: context.t('Loading reports...')),
-                  error: (error, _) => AppErrorState(message: error.toString()),
+                  loading: () => const LumiSkeleton(rows: 3, height: 88),
+                  error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
                 );
               },
-              loading: () => AppLoading(message: context.t('Loading bookmarks...')),
-              error: (error, _) => AppErrorState(message: error.toString()),
+              loading: () => const LumiSkeleton(rows: 3, height: 88),
+              error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
             ),
           ],
         ),

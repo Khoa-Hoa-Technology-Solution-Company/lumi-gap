@@ -329,8 +329,13 @@ Quy tắc đi kèm:
 
 - **Cặp màu bị cấm:** không đặt chữ `muted` lên nền `surfaceMuted`. Ở chế độ sáng cặp này chỉ khoảng 4,3:1 (dưới 4,5:1). Trên `surfaceMuted` dùng `foregroundSecondary` hoặc `foreground`. Tương tự, chữ và spinner của nút bị khóa (nền `surfaceMuted`) dùng `foregroundSecondary`.
 - Các cặp sau đều ≥ 4,5:1 ở cả hai chế độ và được test: `foreground`/`background`, `foreground`/`surface`, `muted`/`surface`, `muted`/`background`, `foregroundSecondary`/`surface`, `foregroundSecondary`/`surfaceMuted`, `onPrimary`/`primary`, `primary`/`primarySoft`, `error`/`surface`, `success`/`surface`, `warning`/`surface`, `onError`/`error`.
-- Bo góc: 8 (card, nút, ô nhập), 6 (chip nhỏ), 12 (bottom sheet, dialog), 999 (avatar, pill). Khoảng cách theo lưới 4/8, lề trang 16.
+- **Thang bo góc (khoá):** 4 (khối nhỏ), 6 (chip, badge), 8 (card, nút, ô nhập, ô số liệu), 12 (bottom sheet, dialog, bong bóng chat), 999 (avatar, pill, nhãn ngày). 2 và 3 chỉ dùng cho thanh tiến độ hay tay kéo cao 4–6dp (bằng nửa chiều cao để bo tròn). Không đặt `shape` riêng cho dialog/sheet: theme đã có sẵn. Khoảng cách theo lưới 4/8, lề trang 16.
+- **Màu biểu đồ:** `LumiChart.series` (`lib/core/theme/lumi_chart.dart`) là đúng bảng màu biểu đồ xu hướng của web (`apps/web/src/features/trends`): `#2563EB`, `#10B981`, `#F59E0B`, `#8B5CF6`, `#EC4899`, `#3B82F6`; lấy theo chỉ số bằng `LumiChart.seriesAt(i)`. Biểu đồ luôn có chú thích hoặc nhãn, không phân biệt chuỗi chỉ bằng màu. Đây là chỗ duy nhất được dùng nhiều màu ngoài màu chính.
+- **Huy chương xếp hạng:** `LumiMedal.forRank(rank)` cho hạng 1–3 (vàng `#F59E0B`, bạc `#64748B`, đồng `#B45309`), chữ trên huy chương lấy từ `LumiMedal.onRank(rank)` và giữ nguyên ở cả sáng lẫn tối: chữ tối trên vàng (8,3:1), chữ trắng trên bạc (4,8:1) và đồng (5,0:1). Hạng khác dùng cặp `primary`/`primarySoft`. Số hạng luôn được viết ra cạnh màu.
+- **Chữ trên nền nhạt:** trên `surfaceMuted` hay `primarySoft` dùng `foregroundSecondary`, không dùng `muted` (chỉ khoảng 4,3:1). Nhãn trạng thái dùng `LumiChip` (cặp màu đã test), không tự pha nền `màu.withValues(alpha: 0.1)` + chữ cùng màu (dưới 4,5:1).
+- **Màu trạng thái chỉ dùng khi đúng nghĩa trạng thái:** `success`/`error`/`warning` không dùng làm màu trang trí cho icon section, nhãn chủ đề hay số đếm (những chỗ đó dùng `primary` hoặc `muted`). Ví dụ: hàng đợi có job lỗi hiện `error` dù không tồn đọng; lượt sync `succeeded` là `success`, `running` là `primary`.
 - Chế độ sáng: card dùng elevation 0 và viền `line`. Chế độ tối không dùng bóng.
+- **Thanh trạng thái:** `AppBarTheme.systemOverlayStyle` đặt theo theme (icon tối ở chế độ sáng, sáng ở chế độ tối). Màn hình không đặt `backgroundColor: Colors.transparent` cho `AppBar`: nền trong suốt từng làm Android vẽ icon trắng trên trang sáng.
 - Thông báo trạng thái luôn có icon và chữ: thành công dùng `success`, lỗi dùng `error`, cảnh báo dùng `warning`, thông tin trung tính dùng `foregroundSecondary`.
 
 ### 11.2. Chữ mobile
@@ -350,17 +355,45 @@ Font **Source Sans 3**, đóng gói bản TTF tĩnh (400, 500, 600, 700, italic 
 
 Đoạn đọc dài (abstract, báo cáo) dùng `bodyLarge` với `height: 1.6`. Không chặn cỡ chữ hệ thống.
 
-### 11.3. Điều hướng mobile
+### 11.3. Component dùng chung (`lib/core/widgets/lumi/`)
+
+Màn mới dựng từ các component này thay vì tự vẽ `Container` + `BoxDecoration`:
+
+| Component | Dùng cho |
+|---|---|
+| `LumiCard` | Card viền `line`, bo 8, có `onTap` tuỳ chọn (ripple theo bo góc) |
+| `LumiTextField`, `bareInputDecoration()` | Ô nhập có nhãn, lỗi dưới ô, hiện/ẩn mật khẩu; `bareInputDecoration` cho ô nằm sẵn trong một khung (tránh viền lồng viền) |
+| `LumiChip` | Nhãn trạng thái/vai trò với `LumiChipTone` (primary, neutral, success, warning, error) |
+| `LumiAvatar` | Avatar chữ cái đầu khi không có ảnh |
+| `LumiListRow`, `LumiRowGroup` | Danh sách cài đặt/menu kiểu nhóm (Hồ sơ) |
+| `LumiSectionHeader` | Tiêu đề mục + hành động "Xem tất cả" |
+| `LumiSkeleton`, `LumiPageSkeleton` | Chỗ chờ tải tĩnh theo hình nội dung (không shimmer); bản `Page` làm cả thân màn/tab |
+| `LumiEmptyState`, `LumiErrorState` | Trạng thái rỗng (lý do + hành động) và lỗi (thông điệp dịch + Thử lại) |
+| `LumiBrandLogo` | Logo LumiGap thật (bản sáng/tối từ `assets/branding/`) |
+
+**Đủ 4 trạng thái** cho mọi màn đọc dữ liệu: đang tải (skeleton; vòng xoay `AppLoading` chỉ dành cho việc đang chạy chưa có hình dạng kết quả, như xếp job hay LLM đang chạy), có dữ liệu, rỗng (nói vì sao và làm gì tiếp), lỗi (thông điệp từ `failureMessageKey(e)` trong `lib/core/errors/failure_message.dart`, không bao giờ hiện exception thô).
+
+**Thao tác ghi:** khoá nút khi đang gửi (chống bấm hai lần), hỏi xác nhận trước thao tác mất dữ liệu hay quyền (`ConfirmDialog`, `isDestructive: true`), kiểm tra `mounted` sau mỗi `await`, gửi `newIdempotencyKey()` khi tạo mới, và luôn báo lỗi bằng SnackBar màu `error`.
+
+**Bộ lọc danh sách:** dùng `SegmentedButton` (Dự án, Gaps, Bookmarks, AI của dự án), không tự vẽ tab hay chip. Sheet bộ lọc sửa trên bản nháp và chỉ áp dụng khi bấm "Apply"; đóng cách khác thì không đổi gì. Ô tìm kiếm gửi sau khi ngừng gõ 350ms.
+
+**Xu hướng:** nhãn, thứ tự và câu "tăng mạnh nhất" chỉ dựa vào `classification` của API (Rising/Stable/Declining/Insufficient data, kèm độ tin cậy và %/năm); growth và momentum là số mô tả, không bao giờ dùng để gắn nhãn hay xếp hạng. Không vẽ đường xu hướng cạnh chủ đề chưa có kết luận. Tab So sánh tra verdict theo tên trong danh sách tổng quan, không có thì ghi "chưa có kết luận", không mặc định "chưa đủ dữ liệu".
+
+**Chuyển động:** chỉ dùng khi giúp hiểu thay đổi trạng thái (đổi kênh chat, đổi bước báo cáo), 150–250ms, không trang trí, không lặp vô hạn. Skeleton đứng yên.
+
+### 11.4. Điều hướng mobile
 
 Bốn tab trong `NavigationBar`, mỗi tab có icon và nhãn: Trang chủ, Khám phá, Dự án, Hồ sơ. Thông báo là nút chuông trên AppBar của ba tab đầu (badge số chưa đọc, `9+` khi hơn 9), mở màn riêng ngoài thanh tab. Nút Back của Android ở tab khác Trang chủ thì về Trang chủ; ở Trang chủ thì thoát app.
 
-### 11.4. Phạm vi hiện tại
+### 11.5. Phạm vi hiện tại
 
-- **Đã theo token** (`context.lumi`, `Theme.textTheme`): đăng nhập, quên mật khẩu, Trang chủ, Khám phá, Hồ sơ, thông báo, banner xác minh email, tab Chat của dự án (chat nhóm realtime) và các màn dùng chung (`paper_card`, `app_error_state`, `confirm_dialog`, chuông thông báo).
-- **Chưa chuyển:** các màn còn lại (xu hướng, báo cáo, khoảng trống, tìm kiếm, chi tiết bài báo, bài báo của tôi, đã đánh dấu, danh sách dự án, tab Tổng quan và Thành viên của dự án, admin, bảng xếp hạng) vẫn còn màu `Color(0x…)` (542 chỗ) và `fontSize:` (317 chỗ) viết thẳng; chuyển sang token khi màn đó được sửa. Màn mới không được thêm hex hay `fontSize` viết thẳng.
-- Mọi màn đã dịch được (xem 11.5); chạy được ở 320dp + cỡ chữ 1,3 với cả hai ngôn ngữ đối với các màn có test layout (Trang chủ, Chat nhóm, sheet ngôn ngữ, các tab dự án).
+- **Mọi màn đã theo token** (TORI-68): không còn `Color(0x…)` hay `fontSize:` nào ngoài `lib/core/theme/` (trước đó 542 và 317 chỗ). Màn hình đọc màu qua `context.lumi`, chữ qua `Theme.of(context).textTheme`; chỗ không có `Theme` (hàm tiện ích) dùng `context.type` (thang chữ không màu, `AppTypography.metrics`).
+- **Test chặn:** `test/design_guard_test.dart` quét `lib/` (trừ `lib/core/theme/`) và báo `file:dòng` khi có: hex `Color(0x…)`, `Color.fromARGB/fromRGBO`, màu `Colors.<tên>` (trừ `transparent`), `fontSize:`, icon gợi AI (`auto_awesome`, `smart_toy`, `bolt`, `flash_on`, `magic_button`, `psychology`), bán kính ngoài thang ở 11.1 (kể cả hex xuống dòng `Color(
+ 0x…)`), file màn hình (`presentation/`, `components/`) quá 500 dòng, `TabBar` không cuộn (chữ tab bị cắt ở 320dp không phải lỗi overflow nên test layout không bắt), `AppLoading` ngoài danh sách cho phép. Ngoại lệ phải sửa luật trong test kèm lý do, không lách. Bảng token và thang chữ được khoá bằng `test/theme_tokens_test.dart`.
+- **Test ma trận** `test/screen_matrix_test.dart`: mọi màn (có test bắt màn mới quên thêm) chạy với dữ liệu giả sáng/tối × en/vi × (412dp, 320dp cỡ chữ 1,3); không tràn, không exception, và **độ tương phản thực tế** của từng đoạn chữ với nền phía sau nó (`test/support/readable_text.dart`: dò nền trên cây render, trộn lớp bán trong suốt) đạt 4,5:1, chữ lớn và icon 3:1, chữ của control bị vô hiệu được miễn. Các tab Chi tiết dự án chạy cùng bộ đo trong `project_detail_screen_test.dart`.
+- Mọi màn đã dịch được (xem 11.6).
 
-### 11.5. Ngôn ngữ mobile (vi/en)
+### 11.6. Ngôn ngữ mobile (vi/en)
 
 - Hai ngôn ngữ: Tiếng Việt và English. Mặc định theo ngôn ngữ ưu tiên đầu của điện thoại (vi thì vi, còn lại en) và đổi theo khi người dùng đổi ngôn ngữ điện thoại lúc app đang chạy; người dùng có thể chọn cố định ở Hồ sơ → Ngôn ngữ (lưu trong secure storage).
 - **Thêm chuỗi:** viết chuỗi **tiếng Anh** làm khóa, `context.t('Save changes')`; có tham số thì `context.t('Hello, {{name}}', {'name': n})` (placeholder `{{name}}` giống web); số nhiều thì `context.plural(n, one: '{{count}} paper', other: '{{count}} papers')`. Rồi thêm bản dịch vào `lib/core/i18n/translations_vi.dart` (ưu tiên đúng câu web đã dùng cho cùng khóa để thuật ngữ hai bên thống nhất). Thiếu bản dịch thì app hiện tiếng Anh.
@@ -407,6 +440,7 @@ CSS variables nằm trong:
 apps/web/src/theme/globals.css                       (web — đã wire next-themes)
 apps/flutter_mobile/lib/core/theme/app_colors.dart   (mobile Flutter: hằng số màu)
 apps/flutter_mobile/lib/core/theme/app_theme.dart    (mobile Flutter: ColorScheme và theme component)
+apps/flutter_mobile/lib/core/theme/lumi_chart.dart   (mobile Flutter: màu biểu đồ = web, màu huy chương)
 ```
 
 Đổi màu web → sửa `globals.css`; component dùng token sẽ tự cập nhật. Mobile sửa riêng trong file Dart và không tự theo web (xem §11).

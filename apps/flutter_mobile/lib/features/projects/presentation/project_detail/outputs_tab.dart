@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,20 +37,20 @@ class ProjectOutputsTab extends StatelessWidget {
           height: 48,
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF06B6D4),
+              backgroundColor: context.lumi.primary,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
               ),
             ),
             onPressed: () => unawaited(
               context.push('/reports?create=true&projectId=$projectId'),
             ),
-            icon: const Icon(Icons.add, color: Colors.white),
+            icon: Icon(Icons.add, color: context.lumi.onPrimary),
             label: Text(
               context.t('Generate RAG Report'),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+              style: TextStyle(
+                color: context.lumi.onPrimary,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -58,13 +60,13 @@ class ProjectOutputsTab extends StatelessWidget {
         // Reports Expansion Section
         ExpansionTile(
           initiallyExpanded: true,
-          leading: const Icon(
+          leading: Icon(
             Icons.description_outlined,
-            color: Color(0xFFA78BFA),
+            color: context.lumi.primary,
           ),
           title: Text(
             context.t('RAG Analytical Reports'),
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,),
           ),
           children: [
             reportsQuery.when(
@@ -74,9 +76,8 @@ class ProjectOutputsTab extends StatelessWidget {
                     padding: const EdgeInsets.all(16),
                     child: Text(
                       context.t('No analytical reports generated yet.'),
-                      style: const TextStyle(
+                      style: context.type.bodySmall!.copyWith(
                         fontStyle: FontStyle.italic,
-                        fontSize: 12,
                       ),
                     ),
                   );
@@ -91,22 +92,21 @@ class ProjectOutputsTab extends StatelessWidget {
                       elevation: 0,
                       margin: const EdgeInsets.only(bottom: 10),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(8),
                         side: BorderSide(color: theme.dividerColor),
                       ),
                       child: ListTile(
                         title: Text(
                           report.topic ?? context.t('Dataset report'),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                          style: context.type.bodyMedium!.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         subtitle: Text(
                           context.t('Status: {{status}} · {{query}}', {'status': report.status.toUpperCase(), 'query': report.query}),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11),
+                          style: context.type.bodySmall,
                         ),
                         trailing: const Icon(Icons.chevron_right, size: 16),
                         onTap: () =>
@@ -126,7 +126,7 @@ class ProjectOutputsTab extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   context.t('Error loading reports: {{err}}', {'err': err}),
-                  style: const TextStyle(color: Colors.red),
+                  style: TextStyle(color: context.lumi.error),
                 ),
               ),
             ),
@@ -137,10 +137,10 @@ class ProjectOutputsTab extends StatelessWidget {
         // Gaps Expansion Section
         ExpansionTile(
           initiallyExpanded: true,
-          leading: const Icon(Icons.bolt_outlined, color: Color(0xFFF59E0B)),
+          leading: Icon(Icons.travel_explore, color: context.lumi.primary),
           title: Text(
             context.t('Discovered Research Gaps'),
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,),
           ),
           children: [
             gapsQuery.when(
@@ -150,9 +150,8 @@ class ProjectOutputsTab extends StatelessWidget {
                     padding: const EdgeInsets.all(16),
                     child: Text(
                       context.t('No research gaps found for this workspace.'),
-                      style: const TextStyle(
+                      style: context.type.bodySmall!.copyWith(
                         fontStyle: FontStyle.italic,
-                        fontSize: 12,
                       ),
                     ),
                   );
@@ -167,22 +166,21 @@ class ProjectOutputsTab extends StatelessWidget {
                       elevation: 0,
                       margin: const EdgeInsets.only(bottom: 10),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(8),
                         side: BorderSide(color: theme.dividerColor),
                       ),
                       child: ListTile(
                         title: Text(
                           gap.title,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                          style: context.type.bodyMedium!.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         subtitle: Text(
                           context.t('{{percent}}% confidence · {{description}}', {'percent': (gap.confidence * 100).round(), 'description': gap.description}),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11),
+                          style: context.type.bodySmall,
                         ),
                         trailing: const Icon(Icons.chevron_right, size: 16),
                         onTap: () => unawaited(context.push('/gaps')),
@@ -201,7 +199,7 @@ class ProjectOutputsTab extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   context.t('Error loading gaps: {{err}}', {'err': err}),
-                  style: const TextStyle(color: Colors.red),
+                  style: TextStyle(color: context.lumi.error),
                 ),
               ),
             ),

@@ -26,6 +26,8 @@ class GapsListParams {
     this.status = 'active',
     this.source,
     this.minConfidence,
+    this.search,
+    this.sortBy,
     this.page = 1,
     this.pageSize = 30,
   });
@@ -35,6 +37,14 @@ class GapsListParams {
   final String status;
   final String? source;
   final double? minConfidence;
+
+  /// Free text over title and description (the API's `search`), unlike
+  /// [topic], which filters by topic.
+  final String? search;
+
+  /// The API sorts across every page: recommended, evidence, confidence,
+  /// papers, newest, ai_only_last.
+  final String? sortBy;
   final int page;
   final int pageSize;
 
@@ -44,6 +54,8 @@ class GapsListParams {
         'status': status,
         if (source != null && source!.trim().isNotEmpty) 'source': source!.trim(),
         if (minConfidence != null) 'minConfidence': minConfidence,
+        if (search != null && search!.trim().isNotEmpty) 'search': search!.trim(),
+        if (sortBy != null) 'sortBy': sortBy,
         'page': page,
         'pageSize': pageSize,
       };
@@ -56,12 +68,14 @@ class GapsListParams {
         other.status == status &&
         other.source == source &&
         other.minConfidence == minConfidence &&
+        other.search == search &&
+        other.sortBy == sortBy &&
         other.page == page &&
         other.pageSize == pageSize;
   }
 
   @override
-  int get hashCode => Object.hash(topic, projectId, status, source, minConfidence, page, pageSize);
+  int get hashCode => Object.hash(topic, projectId, status, source, minConfidence, search, sortBy, page, pageSize);
 }
 
 class ListGapsResponse {

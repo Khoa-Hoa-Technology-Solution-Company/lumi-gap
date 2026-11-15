@@ -31,7 +31,7 @@ class ChipButton extends StatelessWidget {
         color: isSelected ? colorScheme.primary : colorScheme.outline.withValues(alpha: 0.5),
       ),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
       ),
     );
   }

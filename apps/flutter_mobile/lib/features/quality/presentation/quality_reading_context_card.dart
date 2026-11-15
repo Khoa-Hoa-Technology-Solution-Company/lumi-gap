@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/features/quality/data/quality_api.dart';
 import 'package:flutter_mobile/features/quality/presentation/quality_strings.dart';
 import 'package:flutter_mobile/features/quality/presentation/quality_widgets.dart';
@@ -34,15 +35,15 @@ class QualityReadingContextCard extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (trend != null) ...[
-                  Text(s.trendContext, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text(s.trendContext, style: const TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 2),
                   Text(trend.topic, style: TextStyle(color: scheme.onSurfaceVariant)),
                   const SizedBox(height: 8),
                   QualityTrendSparkline(trend: trend),
                   if (trend.paperYear != null)
-                    Text('${s.thisPaper}: ${trend.paperYear}', style: TextStyle(fontSize: 12, color: scheme.tertiary)),
+                    Text('${s.thisPaper}: ${trend.paperYear}', style: context.type.bodySmall!.copyWith(color: scheme.tertiary)),
                   if (trend.partialYear != null)
-                    Text('${trend.partialYear} ${s.partialYearNote}', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                    Text('${trend.partialYear} ${s.partialYearNote}', style: context.type.bodySmall!.copyWith(color: scheme.onSurfaceVariant)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
@@ -77,7 +78,7 @@ class QualityReadingContextCard extends ConsumerWidget {
                                         if (r.year != null) '${r.year}',
                                         if (r.sharedTopics.isNotEmpty) r.sharedTopics.take(2).join(', '),
                                       ].join(' · '),
-                                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                                      style: context.type.bodySmall!.copyWith(color: scheme.onSurfaceVariant),
                                     ),
                                   ],
                                 ),
@@ -111,12 +112,12 @@ class _Stat extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(label, style: context.type.bodySmall!.copyWith(color: scheme.onSurfaceVariant)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
         ],
       ),
     );

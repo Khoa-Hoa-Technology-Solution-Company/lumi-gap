@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/ai_assistant_tab.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/chat_mode.dart';
@@ -112,9 +114,9 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
           bottom: TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,
-            indicatorColor: const Color(0xFF06B6D4),
-            labelColor: const Color(0xFF06B6D4),
-            unselectedLabelColor: const Color(0xFF94A3B8),
+            indicatorColor: context.lumi.primary,
+            labelColor: context.lumi.primary,
+            unselectedLabelColor: context.lumi.muted,
             tabs: [
               Tab(text: context.t('Overview')),
               Tab(text: context.t('Papers')),
@@ -152,11 +154,8 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
               ProjectMembersSettingsTab(project: data, ref: ref),
             ],
           ),
-          loading: () => AppLoading(
-            fullScreen: true,
-            message: context.t('Loading project workspace...'),
-          ),
-          error: (error, _) => AppErrorState(message: error.toString()),
+          loading: () => const LumiPageSkeleton(),
+          error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
         ),
       ),
     );

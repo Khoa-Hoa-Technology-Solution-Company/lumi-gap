@@ -56,68 +56,83 @@ class HomeContinueResearch extends StatelessWidget {
       ),
     );
 
-    return SizedBox(
-      // Tall enough for the text-scale 1.3 case without clipping.
-      height: 232 * MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.4),
-      child: ListView.separated(
+    // A row sized by its content (no fixed height): the cards are as tall as
+    // the tallest one, so a short title leaves no empty band, and a large
+    // text scale never clips.
+    // One project fills the width; several scroll sideways, each 280dp so
+    // the next card peeks in and says there is more.
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         clipBehavior: Clip.none,
-        itemCount: items.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
-        itemBuilder: (context, index) {
-          final p = items[index];
-          return SizedBox(
-            width: 280,
-            child: Material(
-              color: lumi.surface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-                side: BorderSide(color: lumi.line),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () => onOpen(p.href),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        p.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium,
-                      ),
-                      if (p.researchField != null)
-                        Text(
-                          p.researchField!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: lumi.muted,
-                          ),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var index = 0; index < items.length; index++) ...[
+                if (index > 0) const SizedBox(width: 12),
+                SizedBox(
+                  width: items.length == 1 ? constraints.maxWidth : 280,
+                  child: Material(
+                    color: lumi.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(color: lumi.line),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => onOpen(items[index].href),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              items[index].title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium,
+                            ),
+                            if (items[index].researchField != null)
+                              Text(
+                                items[index].researchField!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: lumi.muted,
+                                ),
+                              ),
+                            const SizedBox(height: 8),
+                            HomeStageChip(stage: items[index].stage),
+                            const SizedBox(height: 12),
+                            const Spacer(),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                stat(
+                                  items[index].paperCount,
+                                  context.t('papers'),
+                                ),
+                                stat(
+                                  items[index].screenedCount,
+                                  context.t('screened'),
+                                ),
+                                stat(
+                                  items[index].candidateGapCount,
+                                  context.t('candidate gaps'),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: HomeStageChip(stage: p.stage),
                       ),
-                      const Spacer(),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          stat(p.paperCount, context.t('papers')),
-                          stat(p.screenedCount, context.t('screened')),
-                          stat(p.candidateGapCount, context.t('candidate gaps')),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ),
-          );
-        },
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/core/widgets/paper_card.dart';
 import 'package:flutter_mobile/features/search/data/search_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,8 +39,8 @@ class KeywordPapersScreen extends ConsumerWidget {
                 .toList(),
           );
         },
-        loading: () => AppLoading(fullScreen: true, message: context.t('Loading papers...')),
-        error: (error, _) => AppErrorState(message: error.toString()),
+        loading: () => const LumiPageSkeleton(height: 120),
+        error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
       ),
     );
   }
