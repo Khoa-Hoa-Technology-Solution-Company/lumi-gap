@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -30,20 +32,20 @@ class ProjectReportsTab extends StatelessWidget {
             width: double.infinity,
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF06B6D4),
+                backgroundColor: context.lumi.primary,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
               onPressed: () => unawaited(
                 context.push('/reports?create=true&projectId=$projectId'),
               ),
-              icon: const Icon(Icons.add, color: Colors.white),
+              icon: Icon(Icons.add, color: context.lumi.onPrimary),
               label: Text(
                 context.t('Generate RAG Report'),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+                style: TextStyle(
+                  color: context.lumi.onPrimary,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -69,29 +71,27 @@ class ProjectReportsTab extends StatelessWidget {
                     elevation: 0,
                     margin: const EdgeInsets.only(bottom: 10),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(8),
                       side: BorderSide(color: Theme.of(context).dividerColor),
                     ),
                     child: ListTile(
                       title: Text(
                         report.topic ?? context.t('Dataset report'),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                        style: context.type.bodyMedium!.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       subtitle: Text(
                         report.query,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11),
+                        style: context.type.bodySmall,
                       ),
                       trailing: Text(
                         report.status.toUpperCase(),
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF06B6D4),
+                        style: context.type.bodySmall!.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: context.lumi.primary,
                         ),
                       ),
                       onTap: () =>
@@ -105,7 +105,7 @@ class ProjectReportsTab extends StatelessWidget {
             error: (err, _) => Center(
               child: Text(
                 context.t('Error loading reports: {{err}}', {'err': err}),
-                style: const TextStyle(color: Colors.red),
+                style: TextStyle(color: context.lumi.error),
               ),
             ),
           ),

@@ -1,32 +1,83 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/relative_time.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/notifications/data/notifications_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-class NotificationsScreen extends ConsumerWidget {
+class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NotificationsScreen> createState() =>
+      _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
+  /// True while "Read all" runs, so a second tap cannot send it twice.
+  bool _markingAll = false;
+
+  void _showError(Object error) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.t(failureMessageKey(error))),
+        backgroundColor: context.lumi.error,
+      ),
+    );
+  }
+
+  Future<void> _markAllRead() async {
+    if (_markingAll) return;
+    setState(() => _markingAll = true);
+    try {
+      await ref.read(notificationsApiProvider).markAllRead();
+    } on Object catch (e) {
+      _showError(e);
+    } finally {
+      // Reload either way: after a failure the list shows what the server
+      // really has.
+      ref.invalidate(notificationsProvider);
+      if (mounted) setState(() => _markingAll = false);
+    }
+  }
+
+  Future<void> _open(AppNotification item) async {
+    // Open first: a failed "mark as read" must not keep the user from the
+    // thing the notification is about.
+    final route = notificationRoute(item);
+    if (route != null) unawaited(context.push(route));
+    if (item.isRead) return;
+    try {
+      await ref.read(notificationsApiProvider).markRead(item.id);
+      ref.invalidate(notificationsProvider);
+    } on Object catch (e) {
+      _showError(e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final query = ref.watch(notificationsProvider);
+    final unreadCount =
+        query.value?.where((item) => !item.isRead).length ?? 0;
     return Scaffold(
       appBar: AppBar(
         title: Text(context.t('Notifications')),
         surfaceTintColor: Colors.transparent,
         actions: [
           TextButton.icon(
-            onPressed: () async {
-              await ref.read(notificationsApiProvider).markAllRead();
-              ref.invalidate(notificationsProvider);
-            },
+            // Nothing to do when everything is read already.
+            onPressed: _markingAll || unreadCount == 0
+                ? null
+                : () => unawaited(_markAllRead()),
             icon: const Icon(Icons.done_all_rounded, size: 18),
             label: Text(context.t('Read all')),
           ),
@@ -48,7 +99,6 @@ class NotificationsScreen extends ConsumerWidget {
                 ],
               );
             }
-            final unreadCount = items.where((item) => !item.isRead).length;
             return ListView.separated(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 112),
               itemCount: items.length + 1,
@@ -64,39 +114,57 @@ class NotificationsScreen extends ConsumerWidget {
                 final item = items[index - 1];
                 return _NotificationCard(
                   item: item,
-                  onTap: () async {
-                    await ref.read(notificationsApiProvider).markRead(item.id);
-                    ref.invalidate(notificationsProvider);
-                    if (!context.mounted) return;
-                    _openTarget(context, item);
-                  },
+                  onTap: () => unawaited(_open(item)),
                 );
               },
             );
           },
-          loading: () => AppLoading(
-            fullScreen: true,
-            message: context.t('Loading notifications...'),
-          ),
-          error: (error, _) => AppErrorState(message: error.toString()),
+          loading: () => const LumiPageSkeleton(rows: 5, height: 104),
+          error: (error, _) =>
+              AppErrorState(message: context.t(failureMessageKey(error))),
         ),
       ),
     );
   }
-
-  void _openTarget(BuildContext context, AppNotification item) {
-    if (item.targetKind == 'paper' && item.targetId != null) {
-      unawaited(context.push('/paper/${item.targetId}'));
-    }
-    if (item.targetKind == 'report' && item.targetId != null) {
-      unawaited(context.push('/report/${item.targetId}'));
-    }
-    if (item.targetKind == 'project' && item.targetId != null) {
-      unawaited(context.push('/project/${item.targetId}'));
-    }
-    if (item.targetKind == 'gap') unawaited(context.push('/gaps'));
-  }
 }
+
+/// Screen a notification opens, or null when the app has no screen for it
+/// (communities and forum posts live on the web only).
+String? notificationRoute(AppNotification item) {
+  final id = item.targetId;
+  final hasId = id != null && id.isNotEmpty;
+  return switch (item.targetKind) {
+    'paper' when hasId => '/paper/$id',
+    'report' when hasId => '/report/$id',
+    'project' when hasId => '/project/$id',
+    'gap' || 'gap_analysis' || 'gap_direction' || 'gap_closure_check' =>
+      '/gaps',
+    _ => null,
+  };
+}
+
+/// Readable name of what a notification is about, as an English key for
+/// `context.t`. Null for a kind this app does not know: an internal code
+/// such as "forum_post" is never shown to the user.
+String? notificationKindLabel(String? targetKind) => switch (targetKind) {
+      'paper' => tk('Paper'),
+      'report' => tk('Report'),
+      'project' || 'project_chat' || 'project_synthesis' => tk('Project'),
+      'community' => tk('Community'),
+      'forum_post' => tk('Discussion'),
+      'gap' ||
+      'gap_analysis' ||
+      'gap_direction' ||
+      'gap_closure_check' =>
+        tk('Research gap'),
+      'submission' => tk('Submission'),
+      'review_request' || 'paper_review' => tk('Review'),
+      'academic_profile' => tk('Profile'),
+      'keyword' || 'tag' || 'topic' => tk('Topic'),
+      'author' => tk('Author'),
+      'payment_order' => tk('Payment'),
+      _ => null,
+    };
 
 class _NotificationsHeader extends StatelessWidget {
   const _NotificationsHeader({
@@ -143,7 +211,7 @@ class _NotificationsHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  context.t('{{totalCount}} total alerts from papers, projects, and reports.', {'totalCount': totalCount}),
+                  context.plural(totalCount, one: '{{count}} notification in total', other: '{{count}} notifications in total'),
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: lumi.foregroundSecondary),
                 ),
@@ -229,7 +297,7 @@ class _NotificationCard extends StatelessWidget {
                                   style: theme.textTheme.titleSmall?.copyWith(
                                     fontWeight: item.isRead
                                         ? FontWeight.w500
-                                        : FontWeight.w700,
+                                        : FontWeight.w600,
                                   ),
                                 ),
                               ),
@@ -261,10 +329,12 @@ class _NotificationCard extends StatelessWidget {
                             spacing: 8,
                             runSpacing: 8,
                             children: [
-                              _NotificationPill(
-                                label: context.t(_notificationTypeLabel(item)),
-                                color: accent,
-                              ),
+                              if (notificationKindLabel(item.targetKind)
+                                  case final kind?)
+                                _NotificationPill(
+                                  label: context.t(kind),
+                                  color: accent,
+                                ),
                               _NotificationPill(
                                 label: _relativeTime(context, item.createdAt),
                                 color: lumi.muted,
@@ -337,12 +407,6 @@ IconData _notificationIcon(AppNotification item) {
   if (value.contains('level')) return Icons.workspace_premium_outlined;
   if (value.contains('report')) return Icons.summarize_outlined;
   return Icons.notifications_outlined;
-}
-
-String _notificationTypeLabel(AppNotification item) {
-  if (item.targetKind?.isNotEmpty == true) return item.targetKind!;
-  if (item.type?.isNotEmpty == true) return item.type!;
-  return item.isRead ? tk('Read') : tk('New');
 }
 
 String _relativeTime(BuildContext context, String value) {

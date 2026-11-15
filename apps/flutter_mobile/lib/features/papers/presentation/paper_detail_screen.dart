@@ -2,9 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/utils/number_format.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/papers/data/papers_api.dart';
@@ -18,7 +23,12 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class PaperDetailScreen extends ConsumerStatefulWidget {
-  const PaperDetailScreen({required this.id, this.topic, this.query, super.key});
+  const PaperDetailScreen({
+    required this.id,
+    this.topic,
+    this.query,
+    super.key,
+  });
 
   final String id;
 
@@ -54,7 +64,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
     if (rating < 1) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.t('Please select 1-5 stars before submitting.')),
+          content: Text(
+            context.t('Please select 1-5 stars before submitting.'),
+          ),
         ),
       );
       return;
@@ -79,7 +91,11 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
     } on Exception catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t('Failed to submit review: {{e}}', {'e': e}))),
+          SnackBar(
+            content: Text(
+              context.t('Failed to submit review: {{e}}', {'e': context.t(failureMessageKey(e))}),
+            ),
+          ),
         );
       }
     }
@@ -100,7 +116,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: context.lumi.error),
             child: Text(context.t('Delete')),
           ),
         ],
@@ -122,7 +138,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
       showModalBottomSheet<void>(
         context: context,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
         ),
         builder: (context) {
           return Consumer(
@@ -142,7 +158,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                           Text(
                             context.t('Add to project'),
                             style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                           IconButton(
@@ -183,12 +199,12 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                                     width: 36,
                                     height: 36,
                                     decoration: BoxDecoration(
-                                      color: Colors.cyan.withValues(alpha: 0.1),
+                                      color: context.lumi.primarySoft,
                                       borderRadius: BorderRadius.circular(8),
                                     ),
-                                    child: const Icon(
+                                    child: Icon(
                                       Icons.folder,
-                                      color: Color(0xFF06B6D4),
+                                      color: context.lumi.primary,
                                       size: 17,
                                     ),
                                   ),
@@ -198,11 +214,15 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   subtitle: Text(
-                                    context.plural(project.papers.length, one: '{{count}} paper', other: '{{count}} papers'),
+                                    context.plural(
+                                      project.papers.length,
+                                      one: '{{count}} paper',
+                                      other: '{{count}} papers',
+                                    ),
                                   ),
-                                  trailing: const Icon(
+                                  trailing: Icon(
                                     Icons.add,
-                                    color: Color(0xFF06B6D4),
+                                    color: context.lumi.primary,
                                   ),
                                   onTap: () async {
                                     Navigator.pop(context);
@@ -217,7 +237,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                                         ).showSnackBar(
                                           SnackBar(
                                             content: Text(
-                                              context.t('Added paper to project'),
+                                              context.t(
+                                                'Added paper to project',
+                                              ),
                                             ),
                                           ),
                                         );
@@ -228,7 +250,12 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                                           context,
                                         ).showSnackBar(
                                           SnackBar(
-                                            content: Text(context.t('Failed to add: {{e}}', {'e': e})),
+                                            content: Text(
+                                              context.t(
+                                                'Failed to add: {{e}}',
+                                                {'e': context.t(failureMessageKey(e))},
+                                              ),
+                                            ),
                                           ),
                                         );
                                       }
@@ -241,7 +268,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                         },
                         loading: () =>
                             const Center(child: CircularProgressIndicator()),
-                        error: (e, _) => Text(context.t('Error loading projects: {{e}}', {'e': e})),
+                        error: (e, _) => Text(
+                          context.t('Error loading projects: {{e}}', {'e': context.t(failureMessageKey(e))}),
+                        ),
                       ),
                     ],
                   ),
@@ -292,7 +321,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
         ),
         title: Text(
           context.t('Paper Detail'),
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: const TextStyle(fontWeight: FontWeight.w600),
         ),
         actions: [
           IconButton(
@@ -305,7 +334,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
               await Clipboard.setData(ClipboardData(text: link));
               if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(context.t('Paper link copied to clipboard'))),
+                SnackBar(
+                  content: Text(context.t('Paper link copied to clipboard')),
+                ),
               );
             },
           ),
@@ -384,23 +415,23 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                     child: ElevatedButton.icon(
                       onPressed: () =>
                           launchUrl(Uri.parse(paper.openAccessUrl!)),
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.open_in_new,
                         size: 16,
-                        color: Color(0xFF0F1B2D),
+                        color: context.lumi.background,
                       ),
                       label: Text(
                         context.t('Open full text'),
-                        style: const TextStyle(
-                          color: Color(0xFF0F1B2D),
-                          fontWeight: FontWeight.bold,
+                        style: TextStyle(
+                          color: context.lumi.background,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF06B6D4),
+                        backgroundColor: context.lumi.primary,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         elevation: 0,
                       ),
@@ -410,9 +441,8 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
             ],
           );
         },
-        loading: () =>
-            AppLoading(fullScreen: true, message: context.t('Loading paper...')),
-        error: (error, _) => AppErrorState(message: error.toString()),
+        loading: () => const LumiPageSkeleton(height: 140),
+        error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
       ),
     );
   }
@@ -428,7 +458,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
       margin: EdgeInsets.zero,
       color: theme.cardColor,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
         side: BorderSide(color: theme.dividerColor),
       ),
       child: Padding(
@@ -438,19 +468,15 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
           children: [
             Text(
               paper.title,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-                height: 1.3,
-              ),
+              style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
             Text(
-              paper.journalName != null ? '${paper.journalName} · ${paper.publicationYear}' : '${paper.publicationYear}',
-              style: const TextStyle(
-                color: Color(0xFF06B6D4),
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
+              paper.journalName != null
+                  ? '${paper.journalName} · ${paper.publicationYear}'
+                  : '${paper.publicationYear}',
+              style: context.type.bodyMedium!.copyWith(
+                color: context.lumi.foregroundSecondary,
               ),
             ),
             const SizedBox(height: 12),
@@ -458,93 +484,34 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                LumiChip(
+                  label: context.plural(
+                    paper.citationCount,
+                    one: '{{count}} Citation',
+                    other: '{{count}} Citations',
+                    args: {'count': formatNumber(paper.citationCount)},
                   ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E1B4B),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    context.plural(paper.citationCount, one: '{{count}} Citation', other: '{{count}} Citations'),
-                    style: const TextStyle(
-                      color: Color(0xFFA5B4FC),
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  tone: LumiChipTone.primary,
                 ),
                 if (paper.isAiAnalyzable)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF064E3B),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.auto_awesome,
-                          color: Color(0xFF34D399),
-                          size: 10,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          context.t('AI Analyzable'),
-                          style: const TextStyle(
-                            color: Color(0xFF34D399),
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
+                  LumiChip(
+                    label: context.t('AI Analyzable'),
+                    icon: Icons.check_circle_outline,
                   ),
                 if (paper.openAccessUrl != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF451A03),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.lock_open,
-                          color: Color(0xFFFBBF24),
-                          size: 10,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          context.t('Open Access'),
-                          style: const TextStyle(
-                            color: Color(0xFFFBBF24),
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
+                  LumiChip(
+                    label: context.t('Open Access'),
+                    tone: LumiChipTone.success,
+                    icon: Icons.lock_open,
                   ),
               ],
             ),
             const SizedBox(height: 16),
             Text(
               context.t('AUTHORS'),
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF94A3B8),
+              style: context.type.bodySmall!.copyWith(
+                fontWeight: FontWeight.w600,
+                color: context.lumi.muted,
               ),
             ),
             const SizedBox(height: 8),
@@ -560,16 +527,13 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? const Color(0xFF1E293B)
-                          : const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(16),
+                      color: context.lumi.surfaceMuted,
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: theme.dividerColor),
                     ),
                     child: Text(
                       author.displayName,
-                      style: const TextStyle(
-                        fontSize: 11,
+                      style: context.type.bodySmall!.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -588,7 +552,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                           context: context,
                           shape: const RoundedRectangleBorder(
                             borderRadius: BorderRadius.vertical(
-                              top: Radius.circular(24),
+                              top: Radius.circular(12),
                             ),
                           ),
                           builder: (context) => Container(
@@ -599,9 +563,8 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                               children: [
                                 Text(
                                   context.t('All Authors'),
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
+                                  style: context.type.titleLarge!.copyWith(
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                                 const SizedBox(height: 12),
@@ -616,7 +579,13 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                                         paper.authors[idx].displayName,
                                       ),
                                       subtitle: Text(
-                                        context.t('Author Position: {{position}}', {'position': paper.authors[idx].position}),
+                                        context.t(
+                                          'Author Position: {{position}}',
+                                          {
+                                            'position':
+                                                paper.authors[idx].position,
+                                          },
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -628,11 +597,12 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                       );
                     },
                     child: Text(
-                      context.t('View all ({{length}})', {'length': paper.authors.length}),
-                      style: const TextStyle(
-                        color: Color(0xFF06B6D4),
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
+                      context.t('View all ({{length}})', {
+                        'length': paper.authors.length,
+                      }),
+                      style: context.type.bodySmall!.copyWith(
+                        color: context.lumi.primary,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -655,7 +625,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
     return Container(
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: theme.dividerColor),
       ),
       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -690,30 +660,28 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                       children: [
                         Text(
                           context.t('APA Style:'),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                          style: context.type.bodySmall!.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 4),
                         SelectableText(
                           // i18n-ignore: APA/MLA citation format
                           '${paper.authors.isNotEmpty ? paper.authors.first.displayName : context.t("Unknown")} et al. (${paper.publicationYear}). ${paper.title}. ${paper.journalName ?? ""}.',
-                          style: const TextStyle(fontSize: 12),
+                          style: context.type.bodySmall,
                         ),
                         const Divider(height: 24),
                         Text(
                           context.t('MLA Style:'),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                          style: context.type.bodySmall!.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 4),
                         SelectableText(
                           // i18n-ignore: APA/MLA citation format
                           '${paper.authors.isNotEmpty ? paper.authors.first.displayName : context.t("Unknown")}, et al. "${paper.title}." ${paper.journalName ?? "N/A"}, ${paper.publicationYear}.',
-                          style: const TextStyle(fontSize: 12),
+                          style: context.type.bodySmall,
                         ),
                       ],
                     ),
@@ -750,20 +718,23 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
   ) {
     return ExpansionTile(
       initiallyExpanded: true,
-      leading: const Icon(Icons.subject, color: Color(0xFF06B6D4)),
+      leading: Icon(Icons.subject, color: context.lumi.primary),
       title: Text(
         context.t('Abstract & Description'),
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        style: context.type.bodyMedium!.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
       ),
       children: [
         Padding(
           padding: const EdgeInsets.all(12),
           child: Text(
             paper.abstractText ??
-                context.t('No abstract description available for this publication.'),
-            style: TextStyle(
+                context.t(
+                  'No abstract description available for this publication.',
+                ),
+            style: context.type.bodyMedium!.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
-              fontSize: 13,
               height: 1.5,
             ),
           ),
@@ -779,10 +750,12 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
     bool isDark,
   ) {
     return ExpansionTile(
-      leading: const Icon(Icons.image_outlined, color: Color(0xFF22C55E)),
+      leading: Icon(Icons.image_outlined, color: context.lumi.primary),
       title: Text(
         context.t('Figures & Scientific Media'),
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        style: context.type.bodyMedium!.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
       ),
       children: [
         Padding(
@@ -799,13 +772,13 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                 context,
                 context.t('Methodology Flowchart'),
                 Icons.account_tree_outlined,
-                const Color(0xFF06B6D4),
+                context.lumi.primary,
               ),
               _buildMockMediaItem(
                 context,
                 context.t('Statistical Performance'),
                 Icons.bar_chart_outlined,
-                const Color(0xFF22C55E),
+                context.lumi.success,
               ),
             ],
           ),
@@ -821,11 +794,10 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
     Color color,
   ) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
+        color: context.lumi.surfaceMuted,
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: theme.dividerColor),
       ),
       child: Column(
@@ -838,7 +810,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
             child: Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+              style: context.type.bodySmall!.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -864,10 +838,12 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
 
     return ExpansionTile(
       initiallyExpanded: true,
-      leading: const Icon(Icons.category_outlined, color: Color(0xFFA78BFA)),
+      leading: Icon(Icons.category_outlined, color: context.lumi.primary),
       title: Text(
         context.t('OpenAlex Taxonomy Scope'),
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        style: context.type.bodyMedium!.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
       ),
       children: [
         Padding(
@@ -878,31 +854,29 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
               if (!hasTaxonomy)
                 Text(
                   context.t('No taxonomy scope metadata found.'),
-                  style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
+                  style: context.type.bodySmall!.copyWith(
+                    fontStyle: FontStyle.italic,
+                  ),
                 )
               else ...[
                 _buildTaxonomyRow(
                   context.t('Domain'),
                   primaryTopic.domainName ?? 'N/A',
-                  const Color(0xFF3B82F6),
                 ),
                 const SizedBox(height: 8),
                 _buildTaxonomyRow(
                   context.t('Field'),
                   primaryTopic.fieldName ?? 'N/A',
-                  const Color(0xFF10B981),
                 ),
                 const SizedBox(height: 8),
                 _buildTaxonomyRow(
                   context.t('Subfield'),
                   primaryTopic.subfieldName ?? 'N/A',
-                  const Color(0xFFF59E0B),
                 ),
                 const SizedBox(height: 8),
                 _buildTaxonomyRow(
                   context.t('Topic'),
                   primaryTopic.topicName,
-                  const Color(0xFF8B5CF6),
                 ),
               ],
             ],
@@ -912,23 +886,21 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
     );
   }
 
-  Widget _buildTaxonomyRow(String label, String value, Color color) {
+  Widget _buildTaxonomyRow(String label, String value) {
     return Row(
       children: [
         Container(
-          width: 70,
+          width: 80,
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(4),
+            color: context.lumi.surfaceMuted,
+            borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
-            label.toUpperCase(),
+            label,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.bold,
-              color: color,
+            style: context.type.bodySmall!.copyWith(
+              color: context.lumi.foregroundSecondary,
             ),
           ),
         ),
@@ -936,7 +908,9 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            style: context.type.bodySmall!.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
@@ -953,10 +927,12 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
   ) {
     return ExpansionTile(
       initiallyExpanded: true,
-      leading: const Icon(Icons.analytics_outlined, color: Color(0xFFF59E0B)),
+      leading: Icon(Icons.analytics_outlined, color: context.lumi.primary),
       title: Text(
         context.t('Analytical Insights & Critique'),
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        style: context.type.bodyMedium!.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
       ),
       children: [
         Padding(
@@ -964,36 +940,37 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // RAG Quality Score Card
-              Container(
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF0F172A)
-                      : const Color(0xFFF1F5F9),
-                  border: Border.all(color: const Color(0xFF06B6D4)),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.auto_awesome,
-                      color: Color(0xFF06B6D4),
-                      size: 20,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        context.t('RAG Grounding Suitability: {{percent}}%', {'percent': (paper.dataQualityScore * 100).round()}),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
+              // Data quality score. Imported papers keep the column's
+              // default 0, which means "not measured", not "0%".
+              if (paper.dataQualityScore > 0)
+                Container(
+                  decoration: BoxDecoration(
+                    color: context.lumi.surfaceMuted,
+                    border: Border.all(color: context.lumi.primary),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.summarize_outlined,
+                        color: context.lumi.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          context.t('RAG Grounding Suitability: {{percent}}%', {
+                            'percent': (paper.dataQualityScore * 100).round(),
+                          }),
+                          style: context.type.bodySmall!.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
               const SizedBox(height: 16),
 
               // AI Critique (overall, relevance, groundedness)
@@ -1021,16 +998,24 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                         children: [
                           Text(
                             context.t('Workspace Reviews'),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
+                            style: context.type.bodyMedium!.copyWith(
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                           Text(
-                            context.t('{{ratingCount}} ratings · {{average}} avg', {'ratingCount': view.ratingCount, 'average': view.ratingAvg.toStringAsFixed(1)}),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF94A3B8),
+                            view.ratingCount == 0
+                                ? context.t('No ratings yet')
+                                : context.t(
+                                    '{{ratingCount}} ratings · {{average}} avg',
+                                    {
+                                      'ratingCount': view.ratingCount,
+                                      'average': view.ratingAvg.toStringAsFixed(
+                                        1,
+                                      ),
+                                    },
+                                  ),
+                            style: context.type.bodySmall!.copyWith(
+                              color: context.lumi.muted,
                             ),
                           ),
                         ],
@@ -1045,7 +1030,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                               starVal <= rating
                                   ? Icons.star
                                   : Icons.star_border,
-                              color: const Color(0xFFF59E0B),
+                              color: context.lumi.warning,
                               size: 26,
                             ),
                           );
@@ -1058,7 +1043,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                         decoration: InputDecoration(
                           hintText: context.t('Add review notes...'),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           contentPadding: const EdgeInsets.all(10),
                         ),
@@ -1070,9 +1055,8 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                           onPressed: rating == 0 ? null : _submitRating,
                           child: Text(
                             context.t('Submit Review'),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                            style: context.type.bodySmall!.copyWith(
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
@@ -1082,8 +1066,8 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Text(
-                  context.t('Error loading quality: {{e}}', {'e': e}),
-                  style: const TextStyle(color: Colors.red),
+                  context.t('Error loading quality: {{e}}', {'e': context.t(failureMessageKey(e))}),
+                  style: TextStyle(color: context.lumi.error),
                 ),
               ),
             ],
@@ -1101,10 +1085,12 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
   ) {
     return ExpansionTile(
       initiallyExpanded: true,
-      leading: const Icon(Icons.chat_bubble_outline, color: Color(0xFF8B5CF6)),
+      leading: Icon(Icons.chat_bubble_outline, color: context.lumi.primary),
       title: Text(
         context.t('Workspace Interactive Chat'),
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        style: context.type.bodyMedium!.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
       ),
       children: [
         Padding(
@@ -1112,28 +1098,31 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
+              color: context.lumi.surfaceMuted,
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(color: theme.dividerColor),
             ),
             child: Column(
               children: [
-                const Icon(
+                Icon(
                   Icons.info_outline,
-                  color: Color(0xFF8B5CF6),
+                  color: context.lumi.primary,
                   size: 24,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  context.t('Ground Grounding Assistant'),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  context.t('Grounded assistant'),
+                  style: context.type.bodyMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  context.t('Add this paper to a project workspace workspace to start asking questions, writing papers, and detecting research gaps.'),
+                  context.t(
+                    'Add this paper to a project to ask questions about it, write with it and look for research gaps.',
+                  ),
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 11,
+                  style: context.type.bodySmall!.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     height: 1.4,
                   ),
@@ -1141,19 +1130,22 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF8B5CF6),
+                    backgroundColor: context.lumi.primary,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
                   onPressed: () => _openProjectPicker(context),
-                  icon: const Icon(Icons.add, color: Colors.white, size: 16),
+                  icon: Icon(
+                    Icons.add,
+                    color: context.lumi.onPrimary,
+                    size: 16,
+                  ),
                   label: Text(
                     context.t('Add to Project Workspace'),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                    style: context.type.bodySmall!.copyWith(
+                      color: context.lumi.onPrimary,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -1186,12 +1178,10 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = disabled
-        ? const Color(0xFF475569)
+        ? context.lumi.foregroundSecondary
         : active
-        ? const Color(0xFF06B6D4)
-        : isDark
-        ? const Color(0xFF94A3B8)
-        : const Color(0xFF64748B);
+        ? context.lumi.primary
+        : context.lumi.foregroundSecondary;
 
     return GestureDetector(
       onTap: disabled ? null : onTap,
@@ -1202,10 +1192,9 @@ class _ActionButton extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             label,
-            style: TextStyle(
+            style: context.type.bodySmall!.copyWith(
               color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -1234,10 +1223,15 @@ class _ReferencesTabContent extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              context.t('Showing {{inCorpus}} of {{totalReferenced}} cited works found in this library.', {'inCorpus': data.inCorpus, 'totalReferenced': data.totalReferenced}),
-              style: TextStyle(
+              context.t(
+                'Showing {{inCorpus}} of {{totalReferenced}} cited works found in this library.',
+                {
+                  'inCorpus': data.inCorpus,
+                  'totalReferenced': data.totalReferenced,
+                },
+              ),
+              style: context.type.bodySmall!.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
-                fontSize: 12,
               ),
             ),
             const SizedBox(height: 12),
@@ -1251,13 +1245,13 @@ class _ReferencesTabContent extends ConsumerWidget {
                 margin: const EdgeInsets.only(bottom: 12),
                 color: theme.cardColor,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(8),
                   side: BorderSide(color: theme.dividerColor),
                 ),
                 child: InkWell(
                   onTap: () =>
                       unawaited(context.push('/paper/${reference.id}')),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(8),
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
@@ -1266,7 +1260,7 @@ class _ReferencesTabContent extends ConsumerWidget {
                         Text(
                           reference.title,
                           style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w600,
                             height: 1.3,
                           ),
                           maxLines: 2,
@@ -1276,9 +1270,8 @@ class _ReferencesTabContent extends ConsumerWidget {
                           const SizedBox(height: 4),
                           Text(
                             authors,
-                            style: TextStyle(
+                            style: context.type.bodySmall!.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
-                              fontSize: 12,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1289,10 +1282,9 @@ class _ReferencesTabContent extends ConsumerWidget {
                           children: [
                             Text(
                               '${reference.publicationYear}',
-                              style: const TextStyle(
-                                color: Color(0xFF06B6D4),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
+                              style: context.type.bodySmall!.copyWith(
+                                color: context.lumi.primary,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                             if (reference.doi != null &&
@@ -1300,10 +1292,11 @@ class _ReferencesTabContent extends ConsumerWidget {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  context.t('DOI: {{doi}}', {'doi': reference.doi}),
-                                  style: TextStyle(
+                                  context.t('DOI: {{doi}}', {
+                                    'doi': reference.doi,
+                                  }),
+                                  style: context.type.bodySmall!.copyWith(
                                     color: theme.colorScheme.onSurfaceVariant,
-                                    fontSize: 11,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -1321,8 +1314,8 @@ class _ReferencesTabContent extends ConsumerWidget {
           ],
         );
       },
-      loading: () => AppLoading(message: context.t('Loading references...')),
-      error: (error, _) => AppErrorState(message: error.toString()),
+      loading: () => const LumiSkeleton(rows: 3, height: 64),
+      error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
     );
   }
 }
@@ -1331,7 +1324,7 @@ class OpenAlexMetadataCard extends StatelessWidget {
   const OpenAlexMetadataCard({required this.paper, super.key});
   final Paper paper;
 
-  Widget _buildMetaRow(String label, String value, bool isDark) {
+  Widget _buildMetaRow(BuildContext context, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -1341,23 +1334,17 @@ class OpenAlexMetadataCard extends StatelessWidget {
             width: 110,
             child: Text(
               label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: isDark
-                    ? const Color(0xFF94A3B8)
-                    : const Color(0xFF64748B),
+              style: AppTypography.metrics.bodySmall!.copyWith(
+                fontWeight: FontWeight.w600,
+                color: context.lumi.foregroundSecondary,
               ),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark
-                    ? const Color(0xFFF8FAFC)
-                    : const Color(0xFF1E293B),
+              style: AppTypography.metrics.bodySmall!.copyWith(
+                color: context.lumi.foreground,
               ),
             ),
           ),
@@ -1369,7 +1356,6 @@ class OpenAlexMetadataCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     final primaryTopic = paper.topics.firstWhere(
       (t) => t.isPrimary == true,
@@ -1382,7 +1368,7 @@ class OpenAlexMetadataCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: theme.dividerColor),
       ),
       padding: const EdgeInsets.all(16),
@@ -1391,68 +1377,106 @@ class OpenAlexMetadataCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.shield, color: Color(0xFF06B6D4), size: 16),
+              Icon(Icons.shield, color: context.lumi.primary, size: 16),
               const SizedBox(width: 8),
               Text(
                 context.t('OpenAlex Metadata'),
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                style: context.type.bodyMedium!.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
           const Divider(height: 20),
-          _buildMetaRow(context.t('Year'), paper.publicationYear.toString(), isDark),
-          _buildMetaRow(context.t('Type'), paper.paperKind ?? context.t('Not available'), isDark),
-          _buildMetaRow(context.t('Source'), paper.journalName ?? context.t('Not available'), isDark),
-          _buildMetaRow(context.t('Language'), paper.language ?? context.t('Not available'), isDark),
-          _buildMetaRow(context.t('Cited by'), paper.citationCount.toString(), isDark),
+          _buildMetaRow(
+            context,
+            context.t('Year'),
+            paper.publicationYear.toString(),
+          ),
+          _buildMetaRow(
+            context,
+            context.t('Type'),
+            paper.paperKind ?? context.t('Not available'),
+          ),
+          _buildMetaRow(
+            context,
+            context.t('Source'),
+            paper.journalName ?? context.t('Not available'),
+          ),
+          _buildMetaRow(
+            context,
+            context.t('Language'),
+            paper.language ?? context.t('Not available'),
+          ),
+          _buildMetaRow(
+            context,
+            context.t('Cited by'),
+            paper.citationCount.toString(),
+          ),
           if (paper.fwci != null)
-            _buildMetaRow('FWCI', paper.fwci!.toStringAsFixed(2), isDark),
+            _buildMetaRow(context, 'FWCI', paper.fwci!.toStringAsFixed(2)),
           if (paper.relatedWorksCount != null)
             _buildMetaRow(
+              context,
               context.t('Related works'),
               paper.relatedWorksCount.toString(),
-              isDark,
             ),
           if (paper.primaryProvider != null)
-            _buildMetaRow(context.t('Provider'), paper.primaryProvider!, isDark),
+            _buildMetaRow(
+              context,
+              context.t('Provider'),
+              paper.primaryProvider!,
+            ),
           if (paper.openAccessStatus != null)
             _buildMetaRow(
+              context,
               context.t('Open Access'),
               paper.openAccessStatus!.toUpperCase(),
-              isDark,
             ),
           if (paper.externalIds.doi != null)
-            _buildMetaRow('DOI', paper.externalIds.doi!, isDark),
+            _buildMetaRow(context, 'DOI', paper.externalIds.doi!),
           if (paper.paperLink != null)
-            _buildMetaRow(context.t('Link'), paper.paperLink!, isDark),
+            _buildMetaRow(context, context.t('Link'), paper.paperLink!),
 
           const Divider(height: 20),
           Text(
             context.t('TAXONOMY SCOPE'),
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF94A3B8),
+            style: context.type.bodySmall!.copyWith(
+              fontWeight: FontWeight.w600,
+              color: context.lumi.muted,
             ),
           ),
           const SizedBox(height: 8),
           if (!hasTaxonomy)
             Text(
-              context.t('OpenAlex taxonomy metadata is not backfilled yet for this publication.'),
-              style: const TextStyle(
-                fontSize: 12,
+              context.t(
+                'OpenAlex taxonomy metadata is not backfilled yet for this publication.',
+              ),
+              style: context.type.bodySmall!.copyWith(
                 fontStyle: FontStyle.italic,
-                color: Color(0xFFEF4444),
+                color: context.lumi.error,
               ),
             )
           else ...[
-            _buildMetaRow(context.t('Topic'), primaryTopic.topicName, isDark),
+            _buildMetaRow(context, context.t('Topic'), primaryTopic.topicName),
             if (primaryTopic.subfieldName != null)
-              _buildMetaRow(context.t('Subfield'), primaryTopic.subfieldName!, isDark),
+              _buildMetaRow(
+                context,
+                context.t('Subfield'),
+                primaryTopic.subfieldName!,
+              ),
             if (primaryTopic.fieldName != null)
-              _buildMetaRow(context.t('Field'), primaryTopic.fieldName!, isDark),
+              _buildMetaRow(
+                context,
+                context.t('Field'),
+                primaryTopic.fieldName!,
+              ),
             if (primaryTopic.domainName != null)
-              _buildMetaRow(context.t('Domain'), primaryTopic.domainName!, isDark),
+              _buildMetaRow(
+                context,
+                context.t('Domain'),
+                primaryTopic.domainName!,
+              ),
           ],
         ],
       ),

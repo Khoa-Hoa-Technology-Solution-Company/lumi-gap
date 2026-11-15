@@ -353,22 +353,58 @@ void main() {
       expectLabel('Chưa đủ dữ liệu', Icons.remove, lumi.muted);
     });
 
+    const allInsufficientCaption =
+        'Chưa đủ dữ liệu theo năm để biết các chủ đề này đang tăng hay giảm.';
+
     testWidgets(
-      'a topic without classification reads "Chưa đủ dữ liệu", no arrow',
+      'when no topic has a verdict the section says so once, no row label',
       (tester) async {
         final h = _Harness(
           overview: () async => HomeOverview.fromJson(
-            _overview(topics: [topic('Chủ đề E', null, growth: 500)]),
+            _overview(
+              topics: [
+                // No classification at all, and an explicit "insufficient".
+                topic('Chủ đề E', null, growth: 500),
+                topic('Chủ đề F', {'verdict': 'insufficient'}, growth: 500),
+              ],
+            ),
           ),
         );
         await _pump(tester, h);
         await tester.pumpAndSettle();
 
-        expect(find.text('Chưa đủ dữ liệu'), findsOneWidget);
+        expect(find.text(allInsufficientCaption), findsOneWidget);
+        expect(find.text('Chủ đề E'), findsOneWidget);
+        expect(find.text('Chủ đề F'), findsOneWidget);
+        // Not repeated on every row, and growth alone never earns an arrow.
+        expect(find.text('Chưa đủ dữ liệu'), findsNothing);
         expect(find.text('Tăng'), findsNothing);
+        expect(find.byIcon(Icons.remove), findsNothing);
         expect(find.byIcon(Icons.arrow_upward), findsNothing);
         expect(find.byIcon(Icons.arrow_downward), findsNothing);
         expect(find.byIcon(Icons.arrow_forward), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'one topic with a verdict brings the row labels back, caption gone',
+      (tester) async {
+        final h = _Harness(
+          overview: () async => HomeOverview.fromJson(
+            _overview(
+              topics: [
+                topic('Chủ đề E', null),
+                topic('Chủ đề G', {'verdict': 'rising'}),
+              ],
+            ),
+          ),
+        );
+        await _pump(tester, h);
+        await tester.pumpAndSettle();
+
+        expect(find.text(allInsufficientCaption), findsNothing);
+        expect(find.text('Chưa đủ dữ liệu'), findsOneWidget);
+        expect(find.text('Tăng'), findsOneWidget);
       },
     );
   });

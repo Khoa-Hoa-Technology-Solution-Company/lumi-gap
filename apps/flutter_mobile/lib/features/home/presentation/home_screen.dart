@@ -2,8 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
-import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/web_href.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_avatar.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
 import 'package:flutter_mobile/core/widgets/notification_bell.dart';
 import 'package:flutter_mobile/core/widgets/paper_card.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
@@ -35,17 +36,43 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  /// Papers whose bookmark request is still in flight. A second tap on the
+  /// same paper is ignored until the first one has finished; otherwise two
+  /// "check then create" sequences could both create a bookmark.
+  final Set<String> _bookmarkBusy = {};
+
   Future<void> _toggleBookmark(String paperId) async {
-    final api = ref.read(bookmarksApiProvider);
-    final status = await api.checkStatus('paper', paperId);
-    if (status.bookmarked && status.bookmarkId != null) {
-      await api.delete(status.bookmarkId!);
-    } else {
-      await api.create(targetKind: 'paper', targetId: paperId);
+    if (!_bookmarkBusy.add(paperId)) return;
+    try {
+      final api = ref.read(bookmarksApiProvider);
+      final status = await api.checkStatus('paper', paperId);
+      if (status.bookmarked && status.bookmarkId != null) {
+        await api.delete(status.bookmarkId!);
+      } else {
+        await api.create(targetKind: 'paper', targetId: paperId);
+      }
+    } on Object catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.t('Could not update the bookmark. Please try again.'),
+            ),
+          ),
+        );
+      }
+    } finally {
+      _bookmarkBusy.remove(paperId);
+      // Re-read the real state whether the request worked or not, so the
+      // icon never shows a guess.
+      if (mounted) {
+        ref
+          ..invalidate(bookmarksProvider)
+          ..invalidate(
+            bookmarkStatusProvider(BookmarkTarget('paper', paperId)),
+          );
+      }
     }
-    ref
-      ..invalidate(bookmarksProvider)
-      ..invalidate(bookmarkStatusProvider(BookmarkTarget('paper', paperId)));
   }
 
   /// Pull to refresh: reload both requests independently and keep the
@@ -77,19 +104,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     required VoidCallback retry,
     required bool Function(T data) isEmpty,
     required String emptyText,
+    required IconData emptyIcon,
     required Widget Function(T data) builder,
+    String? emptyActionLabel,
+    VoidCallback? onEmptyAction,
+    String? Function(T data)? caption,
     VoidCallback? onAll,
     int skeletonRows = 2,
     double skeletonHeight = 72,
   }) {
     final Widget body;
+    String? captionText;
     if (async.hasValue) {
       final section = pick(async.requireValue);
       if (!section.isReady) {
         body = HomeSectionError(onRetry: retry, retrying: async.isLoading);
       } else if (isEmpty(section.data as T)) {
-        body = HomeEmptyCard(text: emptyText);
+        body = HomeEmptyCard(
+          text: emptyText,
+          icon: emptyIcon,
+          actionLabel: emptyActionLabel,
+          onAction: onEmptyAction,
+        );
       } else {
+        captionText = caption?.call(section.data as T);
         body = builder(section.data as T);
       }
     } else if (async.hasError) {
@@ -102,7 +140,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          HomeSectionHeader(title: title, onAll: onAll),
+          HomeSectionHeader(
+            title: title,
+            onAll: onAll,
+            caption: captionText,
+          ),
           body,
         ],
       ),
@@ -112,7 +154,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final lumi = context.lumi;
     final user = ref.watch(currentUserProvider);
     final overview = ref.watch(homeOverviewProvider);
     final research = ref.watch(homeResearchProvider);
@@ -137,33 +178,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             Padding(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Row(
                 children: [
-                  Text(
-                    name == null ? context.t('Hello') : context.t('Hello, {{name}}', {'name': name}),
-                    style: theme.textTheme.headlineSmall,
-                  ),
-                  if (role != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: lumi.surfaceMuted,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        role,
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: lumi.foregroundSecondary,
+                  LumiAvatar(name: name),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name == null
+                              ? context.t('Hello')
+                              : context.t('Hello, {{name}}', {'name': name}),
+                          style: theme.textTheme.titleLarge,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
+                        if (role != null) ...[
+                          const SizedBox(height: 4),
+                          LumiChip(label: role),
+                        ],
+                      ],
                     ),
+                  ),
                 ],
               ),
             ),
@@ -174,6 +212,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               retry: retryResearch,
               isEmpty: (d) => d.isEmpty,
               emptyText: context.t('You have nothing to handle.'),
+              emptyIcon: Icons.task_alt,
               skeletonRows: 3,
               builder: (items) => HomeAttentionList(
                 items: items.take(5).toList(),
@@ -188,6 +227,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               isEmpty: (d) => d.isEmpty,
               emptyText:
                   context.t('No projects yet. Create or join a project to get started.'),
+              emptyIcon: Icons.folder_open,
+              emptyActionLabel: context.t('Go to projects'),
+              onEmptyAction: () => context.go('/projects'),
               skeletonHeight: 160,
               onAll: () => context.go('/projects'),
               builder: (items) =>
@@ -201,10 +243,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               isEmpty: (d) => d.isEmpty,
               emptyText:
                   context.t('No suggestions yet. Add topics you are interested in to get suggestions.'),
+              emptyIcon: Icons.topic_outlined,
               skeletonHeight: 112,
               builder: (items) => HomeRecommendedList(
                 items: items,
                 onOpen: (p) => unawaited(context.push('/paper/${p.id}')),
+                onBookmark: (p) => unawaited(_toggleBookmark(p.id)),
               ),
             ),
             _section<HomeOverview, List<HomeTrendTopic>>(
@@ -214,6 +258,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               retry: retryOverview,
               isEmpty: (d) => d.isEmpty,
               emptyText: context.t('No trend data yet.'),
+              emptyIcon: Icons.show_chart,
+              caption: (topics) => homeTrendsAllInsufficient(topics)
+                  ? context.t('Not enough yearly data yet to tell whether these topics are rising or falling.')
+                  : null,
               onAll: () => unawaited(context.push('/trends')),
               builder: (topics) => HomeTrendList(
                 topics: topics,
@@ -227,6 +275,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               retry: retryOverview,
               isEmpty: (d) => d.isEmpty,
               emptyText: context.t('No new papers yet.'),
+              emptyIcon: Icons.article_outlined,
               skeletonHeight: 112,
               builder: (papers) => Column(
                 children: [
@@ -234,11 +283,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     PaperCard(
                       id: p.id,
                       title: p.title,
-                      authors: p.authors.isEmpty
-                          ? context.t('Unknown authors')
-                          : formatAuthors(p.authors),
+                      authors:
+                          p.authors.isEmpty ? null : formatAuthors(p.authors),
                       venueAndYear: [
-                        p.venue ?? context.t('Unknown venue'),
+                        if (p.venue != null && p.venue!.trim().isNotEmpty)
+                          p.venue!,
                         if (p.year != null) '${p.year}',
                         context.t('{{citationCount}} citations', {'citationCount': p.citationCount}),
                       ].join(' · '),
@@ -255,6 +304,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               retry: retryResearch,
               isEmpty: (d) => d.isEmpty,
               emptyText: context.t('No community activity yet.'),
+              emptyIcon: Icons.forum_outlined,
               builder: (items) =>
                   HomeCommunityList(items: items, onOpen: _open),
             ),

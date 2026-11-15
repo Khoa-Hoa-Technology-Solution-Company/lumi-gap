@@ -1,6 +1,9 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_chart.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/number_format.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -81,13 +84,8 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
   String _metricMode = 'papers'; // 'papers', 'citations', 'avg_citations'
   String _searchTerm = '';
 
-  final List<Color> _lineColors = [
-    const Color(0xFF1D4ED8),
-    const Color(0xFF10B981),
-    const Color(0xFF8B5CF6),
-    const Color(0xFFF59E0B),
-    const Color(0xFFEC4899),
-  ];
+  /// One colour per compared topic, the web chart palette.
+  static const List<Color> _lineColors = LumiChart.series;
 
   @override
   void initState() {
@@ -118,7 +116,7 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
       children: [
         Text(
           context.t('Recommended Comparisons'),
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8)),
+          style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600, color: context.lumi.muted),
         ),
         const SizedBox(height: 10),
         SizedBox(
@@ -129,8 +127,8 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
             separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, idx) {
               final rec = recs[idx];
-              final cardBg = isDark ? const Color(0xFF1E293B) : theme.cardColor;
-              final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+              final cardBg = context.lumi.surface;
+              final borderColor = context.lumi.line;
 
               return Container(
                 width: 250,
@@ -138,7 +136,7 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                 decoration: BoxDecoration(
                   color: cardBg,
                   border: Border.all(color: borderColor),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -150,14 +148,14 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                         children: [
                           Text(
                             rec.topics.join(' vs '),
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
                           Text(
                             rec.reason,
-                            style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
+                            style: context.type.bodySmall!.copyWith(color: context.lumi.muted),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -168,12 +166,12 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                       height: 28,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF06B6D4),
+                          backgroundColor: context.lumi.primary,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                         ),
                         onPressed: () => _useComparison(rec.topics),
-                        child: Text(context.t('Compare'), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                        child: Text(context.t('Compare'), style: context.type.bodySmall!.copyWith(color: context.lumi.onPrimary, fontWeight: FontWeight.w600)),
                       ),
                     ),
                   ],
@@ -191,13 +189,13 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B).withValues(alpha: 0.4) : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
+        color: context.lumi.surfaceMuted,
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(context.t('SELECTED TOPICS'), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8))),
+          Text(context.t('SELECTED TOPICS'), style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600, color: context.lumi.muted)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -208,8 +206,8 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
 
               return Chip(
                 avatar: CircleAvatar(backgroundColor: color, radius: 4),
-                label: Text(topic, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                label: Text(topic, style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600)),
+                backgroundColor: context.lumi.surface,
                 onDeleted: () {
                   setState(() {
                     _selectedTopics.remove(topic);
@@ -244,7 +242,7 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
             hintText: context.t('Search topics in current scope...'),
             prefixIcon: const Icon(Icons.search, size: 16),
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           ),
           onChanged: (val) {
             setState(() {
@@ -265,10 +263,20 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                     final t = filtered[idx];
                     final isSelected = _selectedTopics.contains(t.topic);
 
+                    // Soft accent when selected: a filled accent chip would
+                    // draw its accent-coloured label on itself.
                     return ChoiceChip(
-                      label: Text(t.topic, style: const TextStyle(fontSize: 11)),
+                      label: Text(
+                        t.topic,
+                        style: context.type.bodySmall!.copyWith(
+                          color: isSelected
+                              ? context.lumi.primary
+                              : context.lumi.foregroundSecondary,
+                        ),
+                      ),
                       selected: isSelected,
-                      selectedColor: const Color(0xFF06B6D4),
+                      selectedColor: context.lumi.primarySoft,
+                      checkmarkColor: context.lumi.primary,
                       onSelected: (selected) {
                         setState(() {
                           if (selected) {
@@ -351,7 +359,12 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(context.t('Multi-Topic Trend Chart'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            Expanded(
+              child: Text(
+                context.t('Multi-Topic Trend Chart'),
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
             DropdownButton<String>(
               value: _metricMode,
               items: [
@@ -370,7 +383,7 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
           ],
         ),
         const SizedBox(height: 2),
-        Text(explanation, style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontStyle: FontStyle.italic)),
+        Text(explanation, style: context.type.bodySmall!.copyWith(color: context.lumi.muted, fontStyle: FontStyle.italic)),
         const SizedBox(height: 16),
         SizedBox(
           height: 180,
@@ -382,13 +395,25 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                   sideTitles: SideTitles(
                     showTitles: true,
                     reservedSize: 36,
-                    getTitlesWidget: (val, _) => Text(formatCompact(val), style: const TextStyle(fontSize: 9)),
+                    getTitlesWidget: (val, _) => Text(formatCompact(val), style: context.type.bodySmall),
                   ),
                 ),
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
-                    getTitlesWidget: (val, _) => Text(val.toInt().toString(), style: const TextStyle(fontSize: 9)),
+                    // One label per year: without an interval fl_chart also
+                    // labels the half-years, and each year showed twice.
+                    interval: 1,
+                    reservedSize: 28,
+                    getTitlesWidget: (val, meta) => val == val.roundToDouble()
+                        ? SideTitleWidget(
+                            meta: meta,
+                            child: Text(
+                              val.toInt().toString(),
+                              style: context.type.bodySmall,
+                            ),
+                          )
+                        : const SizedBox.shrink(),
                   ),
                 ),
                 rightTitles: const AxisTitles(),
@@ -414,9 +439,9 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E293B) : theme.cardColor,
-            border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
-            borderRadius: BorderRadius.circular(16),
+            color: context.lumi.surface,
+            border: Border.all(color: context.lumi.line),
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -426,7 +451,7 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                   CircleAvatar(backgroundColor: color, radius: 5),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(t.topic.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    child: Text(t.topic, style: Theme.of(context).textTheme.titleMedium),
                   ),
                 ],
               ),
@@ -437,22 +462,22 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(context.t('Total Papers'), style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                      Text(formatNumber(t.totalPapers), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      Text(context.t('Total Papers'), style: context.type.bodySmall!.copyWith(color: context.lumi.muted)),
+                      Text(formatNumber(t.totalPapers), style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600)),
                     ],
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(context.t('Momentum'), style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                      Text(formatSigned(t.momentum), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      Text(context.t('Momentum'), style: context.type.bodySmall!.copyWith(color: context.lumi.muted)),
+                      Text(formatSigned(t.momentum), style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600)),
                     ],
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(context.t('YoY Growth'), style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                      Text('${t.growthRatePct.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      Text(context.t('YoY Growth'), style: context.type.bodySmall!.copyWith(color: context.lumi.muted)),
+                      Text('${t.growthRatePct.toStringAsFixed(1)}%', style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ],
@@ -463,14 +488,14 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                 children: [
                   TextButton.icon(
                     onPressed: () => context.push(_scopedSearchPath(t.topic)),
-                    icon: const Icon(Icons.search, size: 14, color: Color(0xFF06B6D4)),
-                    label: Text(context.t('Search Papers'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF06B6D4))),
+                    icon: Icon(Icons.search, size: 14, color: context.lumi.primary),
+                    label: Text(context.t('Search Papers'), style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600, color: context.lumi.primary)),
                   ),
                   const SizedBox(width: 8),
                   TextButton.icon(
                     onPressed: () => widget.onExplainTopic(t.topic),
-                    icon: const Icon(Icons.auto_awesome, size: 14, color: Color(0xFF8B5CF6)),
-                    label: Text(context.t('AI Explain'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF8B5CF6))),
+                    icon: Icon(Icons.summarize_outlined, size: 14, color: context.lumi.primary),
+                    label: Text(context.t('AI Explain'), style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600, color: context.lumi.primary)),
                   ),
                 ],
               ),
@@ -505,7 +530,7 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
             Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 36),
-                child: Text(context.t('Select at least 2 topics above to load trend comparisons.'), style: const TextStyle(fontStyle: FontStyle.italic, color: Color(0xFF94A3B8))),
+                child: Text(context.t('Select at least 2 topics above to load trend comparisons.'), style: TextStyle(fontStyle: FontStyle.italic, color: context.lumi.muted)),
               ),
             )
           else if (compareQuery != null)
@@ -518,16 +543,16 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                   _buildComparisonCards(res, isDark, theme),
                 ],
               ),
-              loading: () => const Center(
+              loading: () => Center(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 36),
-                  child: CircularProgressIndicator(color: Color(0xFF06B6D4)),
+                  padding: const EdgeInsets.symmetric(vertical: 36),
+                  child: CircularProgressIndicator(color: context.lumi.primary),
                 ),
               ),
               error: (err, _) => Center(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 36),
-                  child: Text(context.t('Compare failed: {{err}}', {'err': err}), style: const TextStyle(color: Colors.red)),
+                  child: Text(context.t('Compare failed: {{err}}', {'err': err}), style: TextStyle(color: context.lumi.error)),
                 ),
               ),
             ),

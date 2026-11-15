@@ -119,7 +119,6 @@ class HomeTrendLabel extends StatelessWidget {
         Flexible(
           child: Text(
             context.t(style.text),
-            textAlign: TextAlign.end,
             style: Theme.of(
               context,
             ).textTheme.labelMedium?.copyWith(color: style.color),
@@ -129,6 +128,12 @@ class HomeTrendLabel extends StatelessWidget {
     );
   }
 }
+
+/// True when no topic has a verdict to show. The section then says so once,
+/// under its title, instead of repeating "Insufficient data" on every row.
+bool homeTrendsAllInsufficient(List<HomeTrendTopic> topics) =>
+    topics.isNotEmpty &&
+    topics.every((t) => t.verdict == TrendVerdict.insufficient);
 
 class HomeTrendList extends StatelessWidget {
   const HomeTrendList({required this.topics, required this.onOpen, super.key});
@@ -140,6 +145,7 @@ class HomeTrendList extends StatelessWidget {
   Widget build(BuildContext context) {
     final lumi = context.lumi;
     final theme = Theme.of(context);
+    final showVerdicts = !homeTrendsAllInsufficient(topics);
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: homeCardDecoration(lumi),
@@ -161,18 +167,27 @@ class HomeTrendList extends StatelessWidget {
                       HomeSparkline(points: topics[i].yearlyBreakdown),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Text(
-                          topics[i].topic,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyLarge,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              topics[i].topic,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyLarge,
+                            ),
+                            // Under the name, so a long topic keeps the
+                            // full row width.
+                            if (showVerdicts) ...[
+                              const SizedBox(height: 4),
+                              HomeTrendLabel(verdict: topics[i].verdict),
+                            ],
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 120),
-                        child: HomeTrendLabel(verdict: topics[i].verdict),
-                      ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.chevron_right, size: 20, color: lumi.muted),
                     ],
                   ),
                 ),

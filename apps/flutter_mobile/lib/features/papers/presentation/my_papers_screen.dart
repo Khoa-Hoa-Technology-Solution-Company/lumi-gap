@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/papers/data/papers_api.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -61,11 +63,8 @@ class MyPapersScreen extends ConsumerWidget {
             ),
           );
         },
-        loading: () => AppLoading(
-          fullScreen: true,
-          message: context.t('Loading your papers...'),
-        ),
-        error: (error, _) => AppErrorState(message: error.toString()),
+        loading: () => const LumiPageSkeleton(height: 104),
+        error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
       ),
     );
   }
@@ -79,14 +78,13 @@ class _PapersHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF111C2E) : const Color(0xFFEEF7FF),
+        color: context.lumi.primarySoft,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isDark ? const Color(0xFF26334A) : const Color(0xFFD7E9FF),
+          color: context.lumi.primarySoft,
         ),
       ),
       child: Row(
@@ -95,12 +93,12 @@ class _PapersHeader extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: const Color(0xFF06B6D4).withValues(alpha: 0.14),
+              color: context.lumi.primarySoft,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.library_books_outlined,
-              color: Color(0xFF0891B2),
+              color: context.lumi.primary,
             ),
           ),
           const SizedBox(width: 13),
@@ -111,7 +109,7 @@ class _PapersHeader extends StatelessWidget {
                 Text(
                   context.plural(count, one: '{{count}} submitted paper', other: '{{count}} submitted papers'),
                   style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -139,12 +137,11 @@ class _PaperRequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final status = paper.paperStatus ?? paper.dataStatus;
-    final statusColor = _statusColor(status);
+    final statusColor = _statusColor(context, status);
 
     return Material(
-      color: isDark ? const Color(0xFF111C2E) : Colors.white,
+      color: context.lumi.surface,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
@@ -154,7 +151,7 @@ class _PaperRequestCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isDark ? const Color(0xFF26334A) : const Color(0xFFE2E8F0),
+              color: context.lumi.line,
             ),
           ),
           child: Row(
@@ -179,7 +176,7 @@ class _PaperRequestCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                         height: 1.28,
                       ),
                     ),
@@ -232,13 +229,13 @@ class _StatusPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         label,
         style: theme.textTheme.labelSmall?.copyWith(
           color: color,
-          fontWeight: FontWeight.w900,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -254,25 +251,24 @@ class _MiniMeta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF172338) : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(999),
+        color: context.lumi.surfaceMuted,
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: isDark ? const Color(0xFF26334A) : const Color(0xFFE2E8F0),
+          color: context.lumi.line,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: const Color(0xFF64748B)),
+          Icon(icon, size: 13, color: context.lumi.foregroundSecondary),
           const SizedBox(width: 5),
           Text(
             label,
             style: theme.textTheme.labelSmall?.copyWith(
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
               color: theme.colorScheme.onSurface.withValues(alpha: 0.68),
             ),
           ),
@@ -293,15 +289,15 @@ String _statusLabel(String status) {
   return normalized.isEmpty ? tk('Unknown') : normalized;
 }
 
-Color _statusColor(String status) {
+Color _statusColor(BuildContext context, String status) {
   final normalized = status.toLowerCase();
-  if (normalized.contains('pending')) return const Color(0xFFF59E0B);
+  if (normalized.contains('pending')) return context.lumi.warning;
   if (normalized.contains('approve') || normalized.contains('active')) {
-    return const Color(0xFF16A34A);
+    return context.lumi.success;
   }
-  if (normalized.contains('reject')) return const Color(0xFFDC2626);
-  if (normalized.contains('download')) return const Color(0xFF1D4ED8);
-  return const Color(0xFF64748B);
+  if (normalized.contains('reject')) return context.lumi.error;
+  if (normalized.contains('download')) return context.lumi.primary;
+  return context.lumi.foregroundSecondary;
 }
 
 IconData _statusIcon(String status) {

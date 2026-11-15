@@ -3,6 +3,10 @@ import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/utils/number_format.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:go_router/go_router.dart';
 
@@ -24,20 +28,7 @@ class TrendsSignalsTab extends StatelessWidget {
     return tk('Small base');
   }
 
-  Color _getReliabilityColor(String label) {
-    switch (label) {
-      case 'High':
-        return const Color(0xFF10B981);
-      case 'Exploratory':
-        return const Color(0xFF06B6D4);
-      default:
-        return const Color(0xFFF59E0B);
-    }
-  }
-
   void _showTopicDetailSheet(BuildContext context, TrendingTopic topic) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     final spots = topic.yearlyBreakdown.asMap().entries.map((e) {
       return FlSpot(e.value.year.toDouble(), e.value.count.toDouble());
@@ -58,9 +49,9 @@ class TrendsSignalsTab extends StatelessWidget {
         builder: (context) {
           return Container(
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              color: context.lumi.surface,
               borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(24),
+                top: Radius.circular(12),
               ),
             ),
             padding: const EdgeInsets.all(20),
@@ -73,9 +64,7 @@ class TrendsSignalsTab extends StatelessWidget {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? const Color(0xFF475569)
-                          : const Color(0xFFCBD5E1),
+                      color: context.lumi.line,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -83,17 +72,15 @@ class TrendsSignalsTab extends StatelessWidget {
                 const SizedBox(height: 20),
                 Text(
                   topic.topic,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                  style: context.type.titleLarge!.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   context.t('Scope: {{field}}', {'field': topic.taxonomy?.fieldName ?? context.t('Unknown field')}),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF94A3B8),
+                  style: context.type.bodySmall!.copyWith(
+                    color: context.lumi.muted,
                   ),
                 ),
                 const Divider(height: 24),
@@ -101,7 +88,7 @@ class TrendsSignalsTab extends StatelessWidget {
                 // Mini Line Chart
                 Text(
                   context.t('Publication Timeline Trend'),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,),
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
@@ -111,9 +98,7 @@ class TrendsSignalsTab extends StatelessWidget {
                       gridData: FlGridData(
                         drawVerticalLine: false,
                         getDrawingHorizontalLine: (value) => FlLine(
-                          color: isDark
-                              ? const Color(0xFF334155)
-                              : const Color(0xFFE2E8F0),
+                          color: context.lumi.line,
                           strokeWidth: 1,
                         ),
                       ),
@@ -127,9 +112,8 @@ class TrendsSignalsTab extends StatelessWidget {
                             getTitlesWidget: (value, meta) {
                               return Text(
                                 value.toInt().toString(),
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  color: Color(0xFF64748B),
+                                style: context.type.bodySmall!.copyWith(
+                                  color: context.lumi.foregroundSecondary,
                                 ),
                               );
                             },
@@ -141,7 +125,7 @@ class TrendsSignalsTab extends StatelessWidget {
                         LineChartBarData(
                           spots: spots,
                           isCurved: true,
-                          color: const Color(0xFF06B6D4),
+                          color: context.lumi.primary,
                           barWidth: 3,
                           isStrokeCapRound: true,
                           belowBarData: BarAreaData(
@@ -163,19 +147,22 @@ class TrendsSignalsTab extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     _buildMetricCell(
+                      context,
                       context.t('Growth Rate'),
                       context.t('{{percent}}% YoY', {'percent': topic.growthRatePct.toStringAsFixed(1)}),
-                      Colors.green,
+                      context.lumi.success,
                     ),
                     _buildMetricCell(
+                      context,
                       context.t('Momentum Score'),
                       topic.momentum.toStringAsFixed(2),
-                      const Color(0xFF06B6D4),
+                      context.lumi.primary,
                     ),
                     _buildMetricCell(
+                      context,
                       context.t('Publications'),
                       topic.totalPapers.toString(),
-                      const Color(0xFFA78BFA),
+                      context.lumi.primary,
                     ),
                   ],
                 ),
@@ -187,9 +174,9 @@ class TrendsSignalsTab extends StatelessWidget {
                     Expanded(
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF06B6D4),
+                          backgroundColor: context.lumi.primary,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
@@ -201,17 +188,16 @@ class TrendsSignalsTab extends StatelessWidget {
                             ),
                           );
                         },
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.search,
-                          color: Colors.white,
+                          color: context.lumi.onPrimary,
                           size: 16,
                         ),
                         label: Text(
                           context.t('Search Papers'),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                          style: context.type.bodyMedium!.copyWith(
+                            color: context.lumi.onPrimary,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -220,9 +206,9 @@ class TrendsSignalsTab extends StatelessWidget {
                     Expanded(
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF8B5CF6),
+                          backgroundColor: context.lumi.primary,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
@@ -234,17 +220,16 @@ class TrendsSignalsTab extends StatelessWidget {
                             ),
                           );
                         },
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.description,
-                          color: Colors.white,
+                          color: context.lumi.onPrimary,
                           size: 16,
                         ),
                         label: Text(
                           context.t('Generate Report'),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                          style: context.type.bodyMedium!.copyWith(
+                            color: context.lumi.onPrimary,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -257,7 +242,7 @@ class TrendsSignalsTab extends StatelessWidget {
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
@@ -265,12 +250,11 @@ class TrendsSignalsTab extends StatelessWidget {
                       Navigator.pop(context);
                       onExplainTopic(topic.topic);
                     },
-                    icon: const Icon(Icons.auto_awesome, size: 16),
+                    icon: const Icon(Icons.summarize_outlined, size: 16),
                     label: Text(
                       context.t('Explain Trend with AI'),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
+                      style: context.type.bodyMedium!.copyWith(
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -283,23 +267,26 @@ class TrendsSignalsTab extends StatelessWidget {
     );
   }
 
-  Widget _buildMetricCell(String label, String value, Color color) {
+  Widget _buildMetricCell(
+    BuildContext context,
+    String label,
+    String value,
+    Color color,
+  ) {
     return Column(
       children: [
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 10,
-            color: Color(0xFF94A3B8),
+          style: AppTypography.metrics.bodySmall!.copyWith(
+            color: context.lumi.muted,
             fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           value,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
+          style: AppTypography.metrics.bodyMedium!.copyWith(
+            fontWeight: FontWeight.w600,
             color: color,
           ),
         ),
@@ -309,17 +296,12 @@ class TrendsSignalsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final cardBg = isDark ? const Color(0xFF1A2332) : theme.cardColor;
-    final borderColor = isDark
-        ? const Color(0xFF26334A)
-        : const Color(0xFFE2E8F0);
+    final cardBg = context.lumi.surface;
+    final borderColor = context.lumi.line;
 
-    // Find the strongest topic for the banner
-    final strongestTopic = overview.topics.isNotEmpty
-        ? overview.topics.first
-        : null;
+    // The banner names the first topic, in the API's ranking, that really
+    // grows. With no growing topic there is no "rising" claim to make.
+    final strongestTopic = strongestRisingTopic(overview.topics);
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -329,25 +311,24 @@ class TrendsSignalsTab extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF06B6D4).withValues(alpha: 0.1),
+              color: context.lumi.primarySoft,
               border: Border.all(
-                color: const Color(0xFF06B6D4).withValues(alpha: 0.3),
+                color: context.lumi.primary.withValues(alpha: 0.3),
               ),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               children: [
-                const Icon(
-                  Icons.auto_awesome,
-                  color: Color(0xFF06B6D4),
+                Icon(
+                  Icons.trending_up,
+                  color: context.lumi.primary,
                   size: 20,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    context.t('"{{topic}}" is the strongest rising topic in this dataset scope with growth rate of {{percent}}%.', {'topic': strongestTopic.topic, 'percent': strongestTopic.growthRatePct.toStringAsFixed(1)}),
-                    style: const TextStyle(
-                      fontSize: 13,
+                    context.t('"{{topic}}" is the strongest rising topic in this dataset scope with growth rate of {{percent}}%.', {'topic': strongestTopic.topic, 'percent': formatSigned(strongestTopic.growthRatePct)}),
+                    style: context.type.bodyMedium!.copyWith(
                       height: 1.4,
                       fontWeight: FontWeight.w600,
                     ),
@@ -363,11 +344,13 @@ class TrendsSignalsTab extends StatelessWidget {
         if (overview.risingKeywords.isNotEmpty) ...[
           Row(
             children: [
-              const Icon(Icons.tag, color: Color(0xFF8B5CF6), size: 18),
+              Icon(Icons.tag, color: context.lumi.primary, size: 18),
               const SizedBox(width: 8),
-              Text(
-                context.t('Emerging Keywords'),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              Expanded(
+                child: Text(
+                  context.t('Emerging Keywords'),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
             ],
           ),
@@ -381,7 +364,7 @@ class TrendsSignalsTab extends StatelessWidget {
               itemBuilder: (context, idx) {
                 final kw = overview.risingKeywords[idx];
                 return ActionChip(
-                  label: Text('${kw.keyword} (+${kw.growthRatePct.round()}%)'),
+                  label: Text('${kw.keyword} (${formatSigned(kw.growthRatePct, 0)}%)'),
                   onPressed: () => unawaited(
                     context.push(
                       '/search?q=${Uri.encodeComponent(kw.keyword)}',
@@ -389,7 +372,7 @@ class TrendsSignalsTab extends StatelessWidget {
                   ),
                   backgroundColor: cardBg,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(8),
                     side: BorderSide(color: borderColor),
                   ),
                 );
@@ -402,11 +385,13 @@ class TrendsSignalsTab extends StatelessWidget {
         // Ranked Topics Title
         Row(
           children: [
-            const Icon(Icons.trending_up, color: Color(0xFF06B6D4), size: 18),
+            Icon(Icons.trending_up, color: context.lumi.primary, size: 18),
             const SizedBox(width: 8),
-            Text(
-              context.t('Rising Topics Signals'),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            Expanded(
+              child: Text(
+                context.t('Rising Topics Signals'),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
             ),
           ],
         ),
@@ -418,9 +403,9 @@ class TrendsSignalsTab extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: Text(
                 context.t('No signals found. Change scope to load topics.'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontStyle: FontStyle.italic,
-                  color: Color(0xFF94A3B8),
+                  color: context.lumi.muted,
                 ),
               ),
             ),
@@ -434,18 +419,17 @@ class TrendsSignalsTab extends StatelessWidget {
             itemBuilder: (context, idx) {
               final topic = overview.topics[idx];
               final reliability = _getReliabilityLabel(topic.totalPapers);
-              final reliabilityColor = _getReliabilityColor(reliability);
 
               return Card(
                 elevation: 0,
                 margin: EdgeInsets.zero,
                 color: cardBg,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(8),
                   side: BorderSide(color: borderColor),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -459,120 +443,96 @@ class TrendsSignalsTab extends StatelessWidget {
                               children: [
                                 Text(
                                   topic.topic,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
+                                  style: Theme.of(context).textTheme.titleMedium,
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   topic.taxonomy?.fieldName ?? context.t('Unknown field'),
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF94A3B8),
+                                  style: context.type.bodySmall!.copyWith(
+                                    color: context.lumi.muted,
                                   ),
                                 ),
                               ],
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
+                          Tooltip(
+                            message: context.t(
+                              'How much to trust this signal, from the number of papers behind it',
                             ),
-                            decoration: BoxDecoration(
-                              color: reliabilityColor.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              context.t(reliability),
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: reliabilityColor,
-                              ),
+                            child: LumiChip(
+                              label: context.t(reliability),
+                              tone: reliabilityTone(reliability),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      Row(
+                      const SizedBox(height: 8),
+                      // Wraps instead of overflowing on a narrow phone.
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
                         children: [
                           Text(
-                            context.plural(topic.totalPapers, one: '{{count}} publication', other: '{{count}} publications'),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF94A3B8),
+                            context.plural(
+                              topic.totalPapers,
+                              one: '{{count}} publication',
+                              other: '{{count}} publications',
+                              args: {'count': formatNumber(topic.totalPapers)},
+                            ),
+                            style: context.type.bodySmall!.copyWith(
+                              color: context.lumi.foregroundSecondary,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            '·',
-                            style: TextStyle(color: Color(0xFF94A3B8)),
-                          ),
-                          const SizedBox(width: 8),
                           Text(
-                            context.t('Growth: +{{percent}}%', {'percent': topic.growthRatePct.toStringAsFixed(1)}),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
+                            context.t('Growth: {{percent}}%', {
+                              'percent': formatSigned(topic.growthRatePct),
+                            }),
+                            style: context.type.bodySmall!.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: topic.growthRatePct > 0
+                                  ? context.lumi.success
+                                  : topic.growthRatePct < 0
+                                      ? context.lumi.error
+                                      : context.lumi.foregroundSecondary,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            '·',
-                            style: TextStyle(color: Color(0xFF94A3B8)),
-                          ),
-                          const SizedBox(width: 8),
                           Text(
-                            context.t('Momentum: {{momentum}}', {'momentum': topic.momentum.toStringAsFixed(2)}),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF94A3B8),
+                            context.t('Momentum: {{momentum}}', {
+                              'momentum': topic.momentum.toStringAsFixed(1),
+                            }),
+                            style: context.type.bodySmall!.copyWith(
+                              color: context.lumi.foregroundSecondary,
                             ),
                           ),
                         ],
                       ),
-                      const Divider(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      const SizedBox(height: 8),
+                      Divider(height: 1, color: context.lumi.line),
+                      // Labelled actions: an icon alone does not say what
+                      // "explain" or "search" will do.
+                      Wrap(
+                        spacing: 4,
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.search, size: 18),
-                            tooltip: context.t('Search papers'),
+                          TextButton.icon(
                             onPressed: () => unawaited(
                               context.push(
                                 '/search?q=${Uri.encodeComponent(topic.topic)}',
                               ),
                             ),
+                            icon: const Icon(Icons.search, size: 18),
+                            label: Text(context.t('Papers')),
                           ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.auto_awesome_outlined,
-                              size: 18,
-                            ),
-                            tooltip: context.t('Explain trend'),
+                          TextButton.icon(
                             onPressed: () => onExplainTopic(topic.topic),
+                            icon: const Icon(Icons.summarize_outlined, size: 18),
+                            label: Text(context.t('Explain')),
                           ),
-                          const Spacer(),
                           TextButton.icon(
                             onPressed: () =>
                                 _showTopicDetailSheet(context, topic),
-                            icon: const Icon(
-                              Icons.expand_more,
-                              size: 16,
-                              color: Color(0xFF06B6D4),
-                            ),
-                            label: Text(
-                              context.t('View Trend Graph'),
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF06B6D4),
-                              ),
-                            ),
+                            icon: const Icon(Icons.show_chart, size: 18),
+                            label: Text(context.t('Trend graph')),
                           ),
                         ],
                       ),
@@ -586,3 +546,18 @@ class TrendsSignalsTab extends StatelessWidget {
     );
   }
 }
+
+/// First topic, in the order the API ranked them, whose growth is above
+/// zero. Null when none grows.
+TrendingTopic? strongestRisingTopic(List<TrendingTopic> topics) {
+  for (final topic in topics) {
+    if (topic.growthRatePct > 0) return topic;
+  }
+  return null;
+}
+
+LumiChipTone reliabilityTone(String label) => switch (label) {
+      'High' => LumiChipTone.success,
+      'Exploratory' => LumiChipTone.primary,
+      _ => LumiChipTone.warning,
+    };

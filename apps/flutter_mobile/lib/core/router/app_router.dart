@@ -102,7 +102,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/login',
-        builder: (context, state) => const LoginScreen(),
+        builder: (context, state) => LoginScreen(
+          initialEmail: state.uri.queryParameters['email'] ?? '',
+        ),
       ),
       GoRoute(
         path: '/forgot-password',
@@ -112,7 +114,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/register',
-        builder: (context, state) => const RegisterScreen(),
+        builder: (context, state) => RegisterScreen(
+          initialEmail: state.uri.queryParameters['email'] ?? '',
+        ),
       ),
 
       // StatefulShellRoute for Bottom Navigation Tabs

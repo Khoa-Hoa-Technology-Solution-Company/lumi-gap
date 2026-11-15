@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
 
 class ProjectChannelTab extends StatelessWidget {
   const ProjectChannelTab({
@@ -49,10 +50,9 @@ class ProjectChannelTab extends StatelessWidget {
                     child: Text(
                       label,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
+                      style: context.type.bodySmall!.copyWith(
                         fontWeight: selected
-                            ? FontWeight.w700
+                            ? FontWeight.w600
                             : FontWeight.w600,
                         color: selected
                             ? colors.primary

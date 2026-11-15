@@ -3,12 +3,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/core/widgets/notification_bell.dart';
+import 'package:flutter_mobile/features/home/data/home_api.dart';
+import 'package:flutter_mobile/features/home/presentation/widgets/home_trend_list.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-/// Explore tab: search entry on top, then the analysis tools.
-class ExploreScreen extends StatelessWidget {
+/// Explore tab: search entry on top, the analysis tools in one card, then the
+/// topics that are moving right now.
+class ExploreScreen extends ConsumerWidget {
   const ExploreScreen({super.key});
+
+  /// How many trending topics the tab shows; "View all" opens the rest.
+  static const int trendingLimit = 5;
 
   static final entries = <ExploreEntry>[
     ExploreEntry(
@@ -24,7 +33,7 @@ class ExploreScreen extends StatelessWidget {
       route: '/reports',
     ),
     ExploreEntry(
-      icon: Icons.insights_outlined,
+      icon: Icons.query_stats,
       title: tk('Research gaps'),
       description: tk('Open research directions by topic'),
       route: '/gaps',
@@ -38,14 +47,51 @@ class ExploreScreen extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final lumi = context.lumi;
+    final overview = ref.watch(homeOverviewProvider);
+
+    final Widget trending;
+    String? trendingCaption;
+    if (overview.hasValue) {
+      final topics =
+          overview.requireValue.topics.take(trendingLimit).toList();
+      if (topics.isEmpty) {
+        trending = LumiEmptyState(
+          icon: Icons.show_chart,
+          message: context.t('No trend data yet.'),
+          compact: true,
+        );
+      } else {
+        if (homeTrendsAllInsufficient(topics)) {
+          trendingCaption = context.t(
+            'Not enough yearly data yet to tell whether these topics are rising or falling.',
+          );
+        }
+        trending = HomeTrendList(
+          topics: topics,
+          onOpen: () => unawaited(context.push('/trends')),
+        );
+      }
+    } else if (overview.hasError) {
+      trending = LumiErrorState(
+        inline: true,
+        retrying: overview.isLoading,
+        onRetry: () => ref.invalidate(homeOverviewProvider),
+      );
+    } else {
+      trending = const LumiSkeleton(rows: 3, height: 56);
+    }
 
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: Text(context.t('Explore'), maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          context.t('Explore'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: const [NotificationBell(), SizedBox(width: 4)],
       ),
       body: ListView(
@@ -85,13 +131,29 @@ class ExploreScreen extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 24),
-          Text(context.t('Analysis tools'), style: theme.textTheme.titleLarge),
-          const SizedBox(height: 12),
-          for (final entry in entries) ...[
-            _ExploreTile(entry: entry),
-            const SizedBox(height: 12),
-          ],
+          const SizedBox(height: 16),
+          LumiSectionHeader(title: context.t('Analysis tools')),
+          LumiRowGroup(
+            children: [
+              for (final entry in entries)
+                LumiListRow(
+                  key: ValueKey(entry.route),
+                  icon: entry.icon,
+                  iconInTile: true,
+                  title: context.t(entry.title),
+                  subtitle: context.t(entry.description),
+                  onTap: () => unawaited(context.push(entry.route)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          LumiSectionHeader(
+            title: context.t('Trending topics'),
+            caption: trendingCaption,
+            actionLabel: context.t('View all'),
+            onAction: () => unawaited(context.push('/trends')),
+          ),
+          trending,
         ],
       ),
     );
@@ -109,33 +171,4 @@ class ExploreEntry {
   final String title;
   final String description;
   final String route;
-}
-
-class _ExploreTile extends StatelessWidget {
-  const _ExploreTile({required this.entry});
-  final ExploreEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final lumi = context.lumi;
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        minTileHeight: 64,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Icon(entry.icon, size: 24, color: lumi.foregroundSecondary),
-        title: Text(context.t(entry.title), style: theme.textTheme.titleMedium),
-        subtitle: Text(
-          context.t(entry.description),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: lumi.foregroundSecondary),
-        ),
-        trailing: Icon(Icons.chevron_right, color: lumi.muted),
-        onTap: () => unawaited(context.push(entry.route)),
-      ),
-    );
-  }
 }

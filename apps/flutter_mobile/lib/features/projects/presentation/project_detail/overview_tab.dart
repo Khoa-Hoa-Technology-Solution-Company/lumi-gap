@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
@@ -20,8 +22,7 @@ class ProjectOverviewTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final cardBg = context.lumi.surface;
 
     final reportsAsync = ref.watch(
       reportsProvider(ReportsParams(projectId: projectId)),
@@ -47,7 +48,7 @@ class ProjectOverviewTab extends StatelessWidget {
           margin: EdgeInsets.zero,
           color: theme.cardColor,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(8),
             side: BorderSide(color: theme.dividerColor),
           ),
           child: Padding(
@@ -58,7 +59,7 @@ class ProjectOverviewTab extends StatelessWidget {
                 Text(
                   project.title,
                   style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 if (project.description != null &&
@@ -76,41 +77,45 @@ class ProjectOverviewTab extends StatelessWidget {
         const SizedBox(height: 20),
 
         // Workspace counters Grid
-        GridView.count(
-          crossAxisCount: 2,
+        GridView(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 1.8,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            // A fixed height, not a ratio: a ratio makes the tiles too short
+            // on a 320dp screen. It grows with the text size setting.
+            mainAxisExtent: 28 + MediaQuery.textScalerOf(context).scale(48),
+          ),
           children: [
             _buildCounterCard(
               context,
               context.t('Papers'),
-              project.papers.length.toString(),
+              project.paperCount.toString(),
               Icons.article_outlined,
-              const Color(0xFF06B6D4),
+              context.lumi.primary,
             ),
             _buildCounterCard(
               context,
               context.t('Team Members'),
-              project.members.length.toString(),
+              project.memberCount.toString(),
               Icons.people_outline,
-              const Color(0xFF22C55E),
+              context.lumi.primary,
             ),
             _buildCounterCard(
               context,
               context.t('Reports'),
               reportsCount.toString(),
               Icons.description_outlined,
-              const Color(0xFFA78BFA),
+              context.lumi.primary,
             ),
             _buildCounterCard(
               context,
               context.t('Gaps Detected'),
               gapsCount.toString(),
-              Icons.bolt_outlined,
-              const Color(0xFFF59E0B),
+              Icons.travel_explore,
+              context.lumi.primary,
             ),
           ],
         ),
@@ -119,18 +124,18 @@ class ProjectOverviewTab extends StatelessWidget {
         // Add Papers CTA Card
         Card(
           elevation: 0,
-          color: const Color(0xFF06B6D4).withValues(alpha: 0.08),
+          color: context.lumi.primarySoft,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0xFF06B6D4), width: 1.5),
+            borderRadius: BorderRadius.circular(8),
+            side: BorderSide(color: context.lumi.primary, width: 1.5),
           ),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.add_circle_outline,
-                  color: Color(0xFF06B6D4),
+                  color: context.lumi.primary,
                   size: 24,
                 ),
                 const SizedBox(width: 12),
@@ -140,15 +145,13 @@ class ProjectOverviewTab extends StatelessWidget {
                     children: [
                       Text(
                         context.t('Ground Your Research'),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                        style: context.type.bodyMedium!.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       Text(
                         context.t('Add publications to power grounding reports, chat, and gap detection.'),
-                        style: TextStyle(
-                          fontSize: 11,
+                        style: context.type.bodySmall!.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
@@ -157,7 +160,7 @@ class ProjectOverviewTab extends StatelessWidget {
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF06B6D4),
+                    backgroundColor: context.lumi.primary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -171,10 +174,9 @@ class ProjectOverviewTab extends StatelessWidget {
                   ).animateTo(1), // Go to Papers Tab
                   child: Text(
                     context.t('Add'),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+                    style: context.type.bodySmall!.copyWith(
+                      color: context.lumi.onPrimary,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -187,30 +189,30 @@ class ProjectOverviewTab extends StatelessWidget {
         // Activity log snapshot
         Text(
           context.t('Workspace Activity Log'),
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,),
         ),
         const SizedBox(height: 10),
         Card(
           elevation: 0,
           color: cardBg,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
             side: BorderSide(color: theme.dividerColor),
           ),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.history_toggle_off,
-                  color: Color(0xFF94A3B8),
+                  color: context.lumi.muted,
                   size: 18,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     context.t('Workspace initialized and ready for research.'),
-                    style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                    style: context.type.bodySmall!.copyWith( fontStyle: FontStyle.italic),
                   ),
                 ),
               ],
@@ -234,7 +236,7 @@ class ProjectOverviewTab extends StatelessWidget {
       margin: EdgeInsets.zero,
       color: theme.cardColor,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         side: BorderSide(color: theme.dividerColor),
       ),
       child: Padding(
@@ -257,9 +259,8 @@ class ProjectOverviewTab extends StatelessWidget {
                 children: [
                   Text(
                     count,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
+                    style: context.type.bodyLarge!.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -267,9 +268,8 @@ class ProjectOverviewTab extends StatelessWidget {
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: Color(0xFF94A3B8),
+                    style: context.type.bodySmall!.copyWith(
+                      color: context.lumi.muted,
                     ),
                   ),
                 ],

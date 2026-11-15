@@ -1,10 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_text_field.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/gaps/presentation/gap_closure_widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -73,7 +78,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
             content: Text(
               context.t('Analysis failed to submit: {{error}}', {'error': e.toString().replaceAll('ApiException: ', '')}),
             ),
-            backgroundColor: Colors.red,
+            backgroundColor: context.lumi.error,
           ),
         );
       }
@@ -97,8 +102,8 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(context.t('Failed to update status: {{e}}', {'e': e})),
-            backgroundColor: Colors.red,
+            content: Text(context.t('Failed to update status: {{e}}', {'e': context.t(failureMessageKey(e))})),
+            backgroundColor: context.lumi.error,
           ),
         );
       }
@@ -116,27 +121,17 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final bgColor = isDark
-        ? const Color(0xFF0F1B2D)
-        : theme.scaffoldBackgroundColor;
-    final cardBg = isDark ? const Color(0xFF1A2332) : theme.cardColor;
-    final borderColor = isDark
-        ? const Color(0xFF26334A)
-        : const Color(0xFFE2E8F0);
-    final inputBg = isDark ? const Color(0xFF0F1B2D) : Colors.white;
-    final filterPanelBg = isDark
-        ? const Color(0xFF122137)
-        : const Color(0xFFF1F5F9);
-    final textColor = isDark
-        ? const Color(0xFFF8FAFC)
-        : theme.textTheme.bodyMedium?.color ?? Colors.black;
+    final bgColor = context.lumi.background;
+    final cardBg = context.lumi.surface;
+    final borderColor = context.lumi.line;
+    final inputBg = context.lumi.surface;
+    final filterPanelBg = context.lumi.surfaceMuted;
+    final textColor = context.lumi.foreground;
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
         title: Text(context.t('Research Gaps')),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
       ),
       body: Stack(
         children: [
@@ -145,16 +140,15 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
             children: [
               Text(
                 context.t('AI Research Gaps'),
-                style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
+                style: context.type.headlineSmall!.copyWith(
+                  fontWeight: FontWeight.w600,
                   letterSpacing: -0.5,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 context.t('Find opportunities and research gaps recommended by Gemini.'),
-                style: const TextStyle(fontSize: 14, color: Color(0xFF94A3B8)),
+                style: context.type.bodyMedium!.copyWith(color: context.lumi.muted),
               ),
               const SizedBox(height: 20),
 
@@ -163,7 +157,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                 decoration: BoxDecoration(
                   color: cardBg,
                   border: Border.all(color: borderColor),
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -171,10 +165,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                   children: [
                     Text(
                       context.t('ANALYZE NEW RESEARCH TOPIC'),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF94A3B8),
+                      style: context.type.bodySmall!.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: context.lumi.muted,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -186,16 +179,16 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                             decoration: BoxDecoration(
                               color: inputBg,
                               border: Border.all(color: borderColor),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(8),
                             ),
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             alignment: Alignment.centerLeft,
                             child: TextField(
                               controller: topic,
-                              style: const TextStyle(fontSize: 14),
-                              decoration: InputDecoration.collapsed(
+                              style: context.type.bodyMedium,
+                              decoration: bareInputDecoration(
                                 hintText: context.t('Analyze new research topic'),
-                                hintStyle: const TextStyle(color: Color(0xFF64748B)),
+                                hintStyle: TextStyle(color: context.lumi.foregroundSecondary),
                               ),
                             ),
                           ),
@@ -206,26 +199,26 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                           child: ElevatedButton(
                             onPressed: analyzing ? null : _analyze,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1D4ED8),
+                              backgroundColor: context.lumi.primary,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(8),
                               ),
                               elevation: 0,
                             ),
                             child: analyzing
-                                ? const SizedBox(
+                                ? SizedBox(
                                     width: 20,
                                     height: 20,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: Colors.white,
+                                      color: context.lumi.onPrimary,
                                     ),
                                   )
                                 : Text(
                                     context.t('Analyze'),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
+                                    style: TextStyle(
+                                      color: context.lumi.onPrimary,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                           ),
@@ -269,7 +262,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                 decoration: BoxDecoration(
                   color: filterPanelBg,
                   border: Border.all(color: borderColor.withValues(alpha: 0.5)),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 padding: const EdgeInsets.all(12),
                 child: Column(
@@ -286,20 +279,20 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.search,
                             size: 16,
-                            color: Color(0xFF64748B),
+                            color: context.lumi.foregroundSecondary,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
                               controller: search,
                               onChanged: (_) => setState(() {}),
-                              style: const TextStyle(fontSize: 12),
-                              decoration: InputDecoration.collapsed(
+                              style: context.type.bodySmall,
+                              decoration: bareInputDecoration(
                                 hintText: context.t('Filter gaps by topic name...'),
-                                hintStyle: const TextStyle(color: Color(0xFF64748B)),
+                                hintStyle: TextStyle(color: context.lumi.foregroundSecondary),
                               ),
                             ),
                           ),
@@ -312,20 +305,18 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                       children: [
                         Text(
                           context.t('SORT BY'),
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF94A3B8),
+                          style: context.type.bodySmall!.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: context.lumi.muted,
                           ),
                         ),
                         DropdownButton<String>(
                           value: _sortBy,
                           underline: const SizedBox(),
                           dropdownColor: theme.cardColor,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF06B6D4),
+                          style: context.type.bodySmall!.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: context.lumi.primary,
                           ),
                           items: [
                             DropdownMenuItem(
@@ -354,10 +345,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                     const SizedBox(height: 12),
                     Text(
                       context.t('MIN CONFIDENCE'),
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF94A3B8),
+                      style: context.type.bodySmall!.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: context.lumi.muted,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -439,17 +429,16 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                       const SizedBox(height: 8),
                       Text(
                         context.plural(data.total, one: '{{count}} research gap found', other: '{{count}} research gaps found'),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF94A3B8),
+                        style: context.type.bodySmall!.copyWith(
+                          color: context.lumi.muted,
                         ),
                         textAlign: TextAlign.right,
                       ),
                     ],
                   );
                 },
-                loading: () => AppLoading(message: context.t('Loading gaps...')),
-                error: (error, _) => AppErrorState(message: error.toString()),
+                loading: () => const LumiSkeleton(rows: 3, height: 120),
+                error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
               ),
             ],
           ),
@@ -470,14 +459,12 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (context) {
-          final theme = Theme.of(context);
-          final isDark = theme.brightness == Brightness.dark;
 
           final badgeColor = gap.status == 'resolved'
-              ? const Color(0xFF10B981)
+              ? context.lumi.success
               : gap.status == 'dismissed'
-              ? const Color(0xFFEF4444)
-              : const Color(0xFF3B82F6);
+              ? context.lumi.error
+              : context.lumi.primary;
 
           final badgeText = gap.status == 'resolved'
               ? 'VALIDATED'
@@ -487,9 +474,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
 
           return Container(
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              color: context.lumi.surface,
               borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(24),
+                top: Radius.circular(12),
               ),
             ),
             padding: EdgeInsets.only(
@@ -508,9 +495,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? const Color(0xFF475569)
-                            : const Color(0xFFCBD5E1),
+                        color: context.lumi.line,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -522,9 +507,8 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                       Expanded(
                         child: Text(
                           gap.title,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                          style: context.type.bodyLarge!.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -540,9 +524,8 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                         ),
                         child: Text(
                           badgeText,
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
+                          style: context.type.bodySmall!.copyWith(
+                            fontWeight: FontWeight.w600,
                             color: badgeColor,
                           ),
                         ),
@@ -553,25 +536,23 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
 
                   Text(
                     context.t('Summary Description'),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Color(0xFF94A3B8),
+                    style: context.type.bodyMedium!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: context.lumi.muted,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     gap.description,
-                    style: const TextStyle(fontSize: 13, height: 1.4),
+                    style: context.type.bodyMedium!.copyWith(height: 1.4),
                   ),
                   const SizedBox(height: 16),
 
                   Text(
                     context.t('AI Reasoning & Grounding'),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Color(0xFF94A3B8),
+                    style: context.type.bodyMedium!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: context.lumi.muted,
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -579,8 +560,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                     gap.rationale.isEmpty
                         ? context.t('Gemini identified this gap based on semantic distances in this publication corpus.')
                         : gap.rationale,
-                    style: const TextStyle(
-                      fontSize: 13,
+                    style: context.type.bodyMedium!.copyWith(
                       fontStyle: FontStyle.italic,
                       height: 1.4,
                     ),
@@ -589,10 +569,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
 
                   Text(
                     context.t('Validation Metrics'),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Color(0xFF94A3B8),
+                    style: context.type.bodyMedium!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: context.lumi.muted,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -602,9 +581,8 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                       const SizedBox(width: 16),
                       Text(
                         context.t('Evidence Papers: {{evidenceCount}}', {'evidenceCount': gap.evidenceCount}),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
+                        style: context.type.bodySmall!.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
@@ -618,10 +596,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                       gap.supportingPaperIds.isNotEmpty) ...[
                     Text(
                       context.t('Grounding Evidence Papers'),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: Color(0xFF94A3B8),
+                      style: context.type.bodyMedium!.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: context.lumi.muted,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -642,9 +619,8 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                             contentPadding: EdgeInsets.zero,
                             title: Text(
                               paper?.title ?? context.t('Supporting evidence paper'),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
+                              style: context.type.bodySmall!.copyWith(
+                                fontWeight: FontWeight.w600,
                                 decoration: TextDecoration.underline,
                               ),
                               maxLines: 2,
@@ -653,9 +629,8 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                             subtitle: paper == null
                                 ? Text(
                                     context.t('Paper ID: {{paperId}}', {'paperId': paperId}),
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: Color(0xFF94A3B8),
+                                    style: context.type.bodySmall!.copyWith(
+                                      color: context.lumi.muted,
                                     ),
                                   )
                                 : Text(
@@ -668,15 +643,14 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                                       if (paper.citationCount != null)
                                         '${paper.citationCount} cites',
                                     ].join(' - '),
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: Color(0xFF94A3B8),
+                                    style: context.type.bodySmall!.copyWith(
+                                      color: context.lumi.muted,
                                     ),
                                   ),
-                            leading: const Icon(
+                            leading: Icon(
                               Icons.article_outlined,
                               size: 18,
-                              color: Color(0xFF06B6D4),
+                              color: context.lumi.primary,
                             ),
                             onTap: () {
                               Navigator.pop(context);
@@ -694,10 +668,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                   // Grounding CTA Actions
                   Text(
                     context.t('Actions'),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Color(0xFF94A3B8),
+                    style: context.type.bodyMedium!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: context.lumi.muted,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -706,9 +679,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                       Expanded(
                         child: ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF06B6D4),
+                            backgroundColor: context.lumi.primary,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(8),
                             ),
                           ),
                           onPressed: () {
@@ -719,17 +692,16 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                               ),
                             );
                           },
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.search,
                             size: 14,
-                            color: Colors.white,
+                            color: context.lumi.onPrimary,
                           ),
                           label: Text(
                             context.t('Search Solutions'),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
+                            style: context.type.bodySmall!.copyWith(
+                              color: context.lumi.onPrimary,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
@@ -738,9 +710,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                       Expanded(
                         child: ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF8B5CF6),
+                            backgroundColor: context.lumi.primary,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(8),
                             ),
                           ),
                           onPressed: () {
@@ -774,17 +746,16 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                               ),
                             );
                           },
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.edit_note,
                             size: 14,
-                            color: Colors.white,
+                            color: context.lumi.onPrimary,
                           ),
                           label: Text(
                             context.t('Draft Proposal'),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
+                            style: context.type.bodySmall!.copyWith(
+                              color: context.lumi.onPrimary,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
@@ -798,10 +769,10 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                         Expanded(
                           child: OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF10B981),
-                              side: const BorderSide(color: Color(0xFF10B981)),
+                              foregroundColor: context.lumi.success,
+                              side: BorderSide(color: context.lumi.success),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(8),
                               ),
                             ),
                             onPressed: () {
@@ -813,9 +784,8 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                             icon: const Icon(Icons.check, size: 14),
                             label: Text(
                               context.t('Validate Gap'),
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
+                              style: context.type.bodySmall!.copyWith(
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -824,10 +794,10 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                         Expanded(
                           child: OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFFEF4444),
-                              side: const BorderSide(color: Color(0xFFEF4444)),
+                              foregroundColor: context.lumi.error,
+                              side: BorderSide(color: context.lumi.error),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(8),
                               ),
                             ),
                             onPressed: () {
@@ -839,9 +809,8 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                             icon: const Icon(Icons.close, size: 14),
                             label: Text(
                               context.t('Reject Gap'),
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
+                              style: context.type.bodySmall!.copyWith(
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -879,18 +848,17 @@ class _TabButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
             border: active
-                ? const Border(
-                    bottom: BorderSide(color: Color(0xFF06B6D4), width: 2),
+                ? Border(
+                    bottom: BorderSide(color: context.lumi.primary, width: 2),
                   )
                 : null,
           ),
           alignment: Alignment.center,
           child: Text(
             label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: active ? const Color(0xFF06B6D4) : const Color(0xFF94A3B8),
+            style: context.type.bodyMedium!.copyWith(
+              fontWeight: FontWeight.w600,
+              color: active ? context.lumi.primary : context.lumi.muted,
             ),
           ),
         ),
@@ -918,9 +886,9 @@ class _ConfidenceChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = active ? const Color(0xFF1D4ED8) : inputBg;
-    final borderCol = active ? const Color(0xFF1D4ED8) : borderColor;
-    final textCol = active ? Colors.white : textColor.withValues(alpha: 0.7);
+    final bg = active ? context.lumi.primary : inputBg;
+    final borderCol = active ? context.lumi.primary : borderColor;
+    final textCol = active ? context.lumi.surface : textColor.withValues(alpha: 0.7);
 
     return Expanded(
       child: GestureDetector(
@@ -935,9 +903,8 @@ class _ConfidenceChip extends StatelessWidget {
           alignment: Alignment.center,
           child: Text(
             label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
+            style: context.type.bodySmall!.copyWith(
+              fontWeight: FontWeight.w600,
               color: textCol,
             ),
           ),
@@ -954,14 +921,12 @@ class _ConfidenceBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pct = (value * 100).round();
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     final color = value >= 0.7
-        ? const Color(0xFF10B981)
+        ? context.lumi.success
         : value >= 0.4
-        ? const Color(0xFFF59E0B)
-        : const Color(0xFFEF4444);
+        ? context.lumi.warning
+        : context.lumi.error;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -970,7 +935,7 @@ class _ConfidenceBar extends StatelessWidget {
           width: 80,
           height: 6,
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF26334A) : const Color(0xFFE2E8F0),
+            color: context.lumi.line,
             borderRadius: BorderRadius.circular(3),
           ),
           alignment: Alignment.centerLeft,
@@ -987,10 +952,9 @@ class _ConfidenceBar extends StatelessWidget {
         const SizedBox(width: 8),
         Text(
           context.t('{{pct}}% confidence', {'pct': pct}),
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF94A3B8),
+          style: context.type.bodySmall!.copyWith(
+            fontWeight: FontWeight.w600,
+            color: context.lumi.muted,
           ),
         ),
       ],
@@ -1016,10 +980,10 @@ class _GapCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = gap.status == 'resolved'
-        ? const Color(0xFF10B981)
+        ? context.lumi.success
         : gap.status == 'dismissed'
-        ? const Color(0xFFEF4444)
-        : const Color(0xFF3B82F6);
+        ? context.lumi.error
+        : context.lumi.primary;
 
     final statusText = gap.status == 'resolved'
         ? context.t('Validated')
@@ -1035,16 +999,16 @@ class _GapCard extends StatelessWidget {
         : context.t('Low Severity');
 
     final severityColor = gap.confidence >= 0.7
-        ? const Color(0xFFEF4444)
+        ? context.lumi.error
         : gap.confidence >= 0.4
-        ? const Color(0xFFF59E0B)
-        : const Color(0xFF10B981);
+        ? context.lumi.warning
+        : context.lumi.success;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A2332) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: context.lumi.surface,
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: borderColor),
       ),
       padding: const EdgeInsets.all(16),
@@ -1057,9 +1021,8 @@ class _GapCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   gap.title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
+                  style: context.type.bodyMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
                     height: 1.3,
                   ),
                 ),
@@ -1073,9 +1036,8 @@ class _GapCard extends StatelessWidget {
                 ),
                 child: Text(
                   statusText,
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.bold,
+                  style: context.type.bodySmall!.copyWith(
+                    fontWeight: FontWeight.w600,
                     color: statusColor,
                   ),
                 ),
@@ -1085,9 +1047,8 @@ class _GapCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             gap.description,
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF64748B),
+            style: context.type.bodySmall!.copyWith(
+              color: context.lumi.foregroundSecondary,
               height: 1.4,
             ),
           ),
@@ -1105,16 +1066,15 @@ class _GapCard extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 severityText,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
+                style: context.type.bodySmall!.copyWith(
+                  fontWeight: FontWeight.w600,
                   color: severityColor,
                 ),
               ),
               const Spacer(),
               Text(
                 context.t('Evidence: {{evidenceCount}} papers', {'evidenceCount': gap.evidenceCount}),
-                style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
+                style: context.type.bodySmall!.copyWith(color: context.lumi.muted),
               ),
             ],
           ),
@@ -1125,9 +1085,7 @@ class _GapCard extends StatelessWidget {
             decoration: BoxDecoration(
               border: Border(
                 top: BorderSide(
-                  color: isDark
-                      ? const Color(0xFF1E293B)
-                      : const Color(0xFFF1F5F9),
+                  color: context.lumi.surfaceMuted,
                 ),
               ),
             ),
@@ -1146,22 +1104,17 @@ class _GapCard extends StatelessWidget {
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: isDark
-                                ? const Color(0xFF022C22)
-                                : const Color(0xFFECFDF5),
+                            color: context.lumi.surfaceMuted,
                             border: Border.all(
-                              color: isDark
-                                  ? const Color(0xFF064E3B)
-                                  : const Color(0xFFA7F3D0),
+                              color: context.lumi.surfaceMuted,
                             ),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             context.t('Validate'),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF059669),
+                            style: context.type.bodySmall!.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: context.lumi.success,
                             ),
                           ),
                         ),
@@ -1175,22 +1128,17 @@ class _GapCard extends StatelessWidget {
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: isDark
-                                ? const Color(0xFF26334A)
-                                : Colors.white,
+                            color: context.lumi.surface,
                             border: Border.all(
-                              color: isDark
-                                  ? const Color(0xFF384A65)
-                                  : const Color(0xFFE2E8F0),
+                              color: context.lumi.line,
                             ),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             context.t('Reject'),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF94A3B8),
+                            style: context.type.bodySmall!.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: context.lumi.muted,
                             ),
                           ),
                         ),
@@ -1204,18 +1152,15 @@ class _GapCard extends StatelessWidget {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? const Color(0xFF111C2E)
-                          : const Color(0xFFF8FAFC),
+                      color: context.lumi.surfaceMuted,
                       border: Border.all(color: borderColor),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       gap.status.toUpperCase(),
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF94A3B8),
+                      style: context.type.bodySmall!.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: context.lumi.muted,
                       ),
                     ),
                   ),
@@ -1238,7 +1183,7 @@ class _PollingOverlay extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final query = ref.watch(gapStatusProvider(id));
     return ColoredBox(
-      color: Colors.black54,
+      color: context.lumi.foregroundSecondary,
       child: Center(
         child: Card(
           margin: const EdgeInsets.all(24),
@@ -1251,7 +1196,7 @@ class _PollingOverlay extends ConsumerWidget {
                   Icon(
                     data.status == 'failed'
                         ? Icons.error_outline
-                        : Icons.auto_awesome,
+                        : Icons.summarize_outlined,
                     size: 48,
                   ),
                   const SizedBox(height: 12),
@@ -1275,7 +1220,7 @@ class _PollingOverlay extends ConsumerWidget {
               error: (error, _) => Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(error.toString()),
+                  Text(context.t(failureMessageKey(error))),
                   TextButton(onPressed: onClose, child: Text(context.t('Dismiss'))),
                 ],
               ),

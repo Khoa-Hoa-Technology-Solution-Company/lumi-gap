@@ -35,6 +35,9 @@ class HomeAttentionList extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: homeCardDecoration(lumi),
       child: Column(
+        // Every row spans the card; otherwise a short row is centred and
+        // looks indented next to a long one.
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (var i = 0; i < items.length; i++) ...[
             if (i > 0) Divider(height: 1, color: lumi.line),

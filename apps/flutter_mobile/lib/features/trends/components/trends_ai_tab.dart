@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
@@ -85,8 +88,8 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(context.t('AI Explanation failed: {{e}}', {'e': e})),
-            backgroundColor: Colors.red,
+            content: Text(context.t('AI Explanation failed: {{e}}', {'e': context.t(failureMessageKey(e))})),
+            backgroundColor: context.lumi.error,
           ),
         );
       }
@@ -112,7 +115,7 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
             const SizedBox(width: 8),
             Text(
               title,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,),
             ),
           ],
         ),
@@ -123,11 +126,11 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('• ', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('• ', style: TextStyle(fontWeight: FontWeight.w600)),
                 Expanded(
                   child: Text(
                     item,
-                    style: const TextStyle(fontSize: 12, height: 1.4),
+                    style: context.type.bodySmall!.copyWith(height: 1.4),
                   ),
                 ),
               ],
@@ -151,28 +154,26 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
       children: [
         Row(
           children: [
-            const Icon(Icons.query_stats, color: Color(0xFF06B6D4), size: 16),
+            Icon(Icons.query_stats, color: context.lumi.primary, size: 16),
             const SizedBox(width: 8),
             Text(
               context.t('Metric Trace Evidence'),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,),
             ),
           ],
         ),
         const SizedBox(height: 8),
         ...traces.map((trace) {
-          final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+          final cardBg = context.lumi.surface;
           return Container(
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: cardBg,
               border: Border.all(
-                color: isDark
-                    ? const Color(0xFF334155)
-                    : const Color(0xFFE2E8F0),
+                color: context.lumi.line,
               ),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -182,18 +183,16 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                   children: [
                     Text(
                       trace.label.toUpperCase(),
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF94A3B8),
+                      style: context.type.bodySmall!.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: context.lumi.muted,
                       ),
                     ),
                     Text(
                       trace.value,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF06B6D4),
+                      style: context.type.bodySmall!.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: context.lumi.primary,
                       ),
                     ),
                   ],
@@ -201,14 +200,13 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                 const SizedBox(height: 4),
                 Text(
                   trace.explanation,
-                  style: const TextStyle(fontSize: 11, height: 1.3),
+                  style: context.type.bodySmall!.copyWith(height: 1.3),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   context.t('Source: {{source}}', {'source': trace.source}),
-                  style: const TextStyle(
-                    fontSize: 9,
-                    color: Color(0xFF64748B),
+                  style: context.type.bodySmall!.copyWith(
+                    color: context.lumi.foregroundSecondary,
                     fontStyle: FontStyle.italic,
                   ),
                 ),
@@ -230,7 +228,7 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
         const Divider(height: 32),
         Text(
           context.t('Saved Explanation History'),
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 10),
         historyQuery.when(
@@ -238,10 +236,9 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
             if (items.isEmpty) {
               return Text(
                 context.t('No history saved yet.'),
-                style: const TextStyle(
-                  fontSize: 12,
+                style: context.type.bodySmall!.copyWith(
                   fontStyle: FontStyle.italic,
-                  color: Color(0xFF94A3B8),
+                  color: context.lumi.muted,
                 ),
               );
             }
@@ -252,35 +249,30 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
               separatorBuilder: (_, _) => const SizedBox(height: 8),
               itemBuilder: (context, idx) {
                 final item = items[idx];
-                final cardBg = isDark
-                    ? const Color(0xFF1E293B)
-                    : theme.cardColor;
+                final cardBg = context.lumi.surface;
 
                 return ListTile(
                   tileColor: cardBg,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                     side: BorderSide(
-                      color: isDark
-                          ? const Color(0xFF334155)
-                          : const Color(0xFFE2E8F0),
+                      color: context.lumi.line,
                     ),
                   ),
                   title: Text(
                     item.topic ?? context.t('Dataset Overview'),
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
+                    style: context.type.bodyMedium!.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   subtitle: Text(
                     context.t('Language: {{language}} · {{createdAt}}', {'language': item.language.toUpperCase(), 'createdAt': item.createdAt}),
-                    style: const TextStyle(fontSize: 11),
+                    style: context.type.bodySmall,
                   ),
-                  trailing: const Icon(
+                  trailing: Icon(
                     Icons.chevron_right,
                     size: 16,
-                    color: Color(0xFF06B6D4),
+                    color: context.lumi.primary,
                   ),
                   onTap: () {
                     setState(() {
@@ -300,7 +292,7 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
           ),
           error: (err, _) => Text(
             context.t('Error loading history: {{err}}', {'err': err}),
-            style: const TextStyle(color: Colors.red),
+            style: TextStyle(color: context.lumi.error),
           ),
         ),
       ],
@@ -323,27 +315,25 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              color: context.lumi.surface,
               border: Border.all(
-                color: isDark
-                    ? const Color(0xFF334155)
-                    : const Color(0xFFE2E8F0),
+                color: context.lumi.line,
               ),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   context.t('Step 1: Select Topic'),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: Color(0xFF94A3B8),
+                  style: context.type.bodyMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: context.lumi.muted,
                   ),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: _selectedTopic,
                   decoration: InputDecoration(
                     contentPadding: const EdgeInsets.symmetric(
@@ -351,7 +341,7 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                       vertical: 4,
                     ),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
                   items: topics.map((t) {
@@ -371,14 +361,14 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                 const SizedBox(height: 12),
                 Text(
                   context.t('Step 2: Language'),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: Color(0xFF94A3B8),
+                  style: context.type.bodyMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: context.lumi.muted,
                   ),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<ReportLanguage>(
+                  isExpanded: true,
                   initialValue: _language,
                   decoration: InputDecoration(
                     contentPadding: const EdgeInsets.symmetric(
@@ -386,7 +376,7 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                       vertical: 4,
                     ),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
                   items: [
@@ -419,24 +409,24 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                   height: 48,
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B5CF6),
+                      backgroundColor: context.lumi.primary,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                     ),
                     onPressed: _loading || _selectedTopic == null
                         ? null
                         : _explain,
-                    icon: const Icon(
-                      Icons.auto_awesome,
-                      color: Colors.white,
+                    icon: Icon(
+                      Icons.summarize_outlined,
+                      color: context.lumi.onPrimary,
                       size: 18,
                     ),
                     label: Text(
                       context.t('Explain Trend with AI'),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                      style: TextStyle(
+                        color: context.lumi.onPrimary,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -452,11 +442,11 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
             // Summary Markdown display
             Row(
               children: [
-                const Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 18),
+                Icon(Icons.summarize_outlined, color: context.lumi.primary, size: 18),
                 const SizedBox(width: 8),
                 Text(
                   context.t('AI Summary Rationale'),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  style: context.type.bodyLarge!.copyWith(fontWeight: FontWeight.w600,),
                 ),
               ],
             ),
@@ -464,20 +454,16 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: isDark
-                    ? const Color(0xFF1E293B).withValues(alpha: 0.5)
-                    : const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(16),
+                color: context.lumi.surfaceMuted,
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: isDark
-                      ? const Color(0xFF334155)
-                      : const Color(0xFFE2E8F0),
+                  color: context.lumi.line,
                 ),
               ),
               child: MarkdownBody(
                 data: _explanation!.summary,
                 styleSheet: MarkdownStyleSheet(
-                  p: const TextStyle(fontSize: 13, height: 1.5),
+                  p: context.type.bodyMedium!.copyWith(height: 1.5),
                 ),
               ),
             ),
@@ -487,19 +473,19 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
               context.t('Why it matters'),
               _explanation!.whyItMatters,
               Icons.lightbulb_outline,
-              const Color(0xFFF59E0B),
+              context.lumi.warning,
             ),
             _buildListSection(
               context.t('Cautions & Limitations'),
               _explanation!.cautions,
               Icons.warning_amber_outlined,
-              const Color(0xFFEF4444),
+              context.lumi.error,
             ),
             _buildListSection(
               context.t('Suggested Actions'),
               _explanation!.suggestedActions,
               Icons.task_alt_outlined,
-              const Color(0xFF10B981),
+              context.lumi.success,
             ),
             _buildMetricTrace(_explanation!.metricTrace, isDark, theme),
 
@@ -509,9 +495,9 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF06B6D4),
+                      backgroundColor: context.lumi.primary,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
@@ -522,17 +508,16 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                         ),
                       );
                     },
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.search,
                       size: 16,
-                      color: Colors.white,
+                      color: context.lumi.onPrimary,
                     ),
                     label: Text(
                       context.t('Search Papers'),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
+                      style: context.type.bodySmall!.copyWith(
+                        color: context.lumi.onPrimary,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -541,9 +526,9 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B5CF6),
+                      backgroundColor: context.lumi.primary,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
@@ -554,17 +539,16 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                         ),
                       );
                     },
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.description,
                       size: 16,
-                      color: Colors.white,
+                      color: context.lumi.onPrimary,
                     ),
                     label: Text(
                       context.t('Generate Report'),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
+                      style: context.type.bodySmall!.copyWith(
+                        color: context.lumi.onPrimary,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -577,7 +561,7 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
@@ -598,7 +582,7 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                 icon: const Icon(Icons.copy, size: 16),
                 label: Text(
                   context.t('Copy Explanation Text'),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600,),
                 ),
               ),
             ),

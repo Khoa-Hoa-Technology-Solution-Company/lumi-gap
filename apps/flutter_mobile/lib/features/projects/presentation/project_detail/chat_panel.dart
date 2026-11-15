@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/chat_messages.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/chat_mode.dart';
@@ -51,9 +54,9 @@ class ProjectChatPanel extends ConsumerWidget {
             controller: controller,
             onRefresh: onRefresh,
           ),
-          loading: () => AppLoading(message: context.t('Loading AI history...')),
+          loading: () => const LumiPageSkeleton(rows: 3, height: 72),
           error: (error, _) =>
-              AppErrorState(message: error.toString(), onRetry: onRefresh),
+              AppErrorState(message: context.t(failureMessageKey(error)), onRetry: onRefresh),
         );
 
     final colors = Theme.of(context).colorScheme;
@@ -92,8 +95,8 @@ class ProjectChatPanel extends ConsumerWidget {
                   ),
                   child: Icon(
                     mode == ProjectChatMode.privateAi
-                        ? Icons.auto_awesome_rounded
-                        : Icons.smart_toy_rounded,
+                        ? Icons.lock_outline
+                        : Icons.groups_outlined,
                     size: 18,
                     color: colors.primary,
                   ),
@@ -105,9 +108,8 @@ class ProjectChatPanel extends ConsumerWidget {
                     children: [
                       Text(
                         title,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
+                        style: context.type.bodyLarge!.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 1),
@@ -115,8 +117,7 @@ class ProjectChatPanel extends ConsumerWidget {
                         subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
+                        style: context.type.bodySmall!.copyWith(
                           color: colors.onSurfaceVariant,
                         ),
                       ),
@@ -147,12 +148,12 @@ class ProjectStatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final color = private ? colors.primary : const Color(0xFF16845B);
+    final color = private ? colors.primary : context.lumi.success;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: .09),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -165,9 +166,8 @@ class ProjectStatusPill extends StatelessWidget {
           const SizedBox(width: 5),
           Text(
             private ? context.t('Private') : context.t('Live'),
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
+            style: context.type.bodySmall!.copyWith(
+              fontWeight: FontWeight.w600,
               color: color,
             ),
           ),

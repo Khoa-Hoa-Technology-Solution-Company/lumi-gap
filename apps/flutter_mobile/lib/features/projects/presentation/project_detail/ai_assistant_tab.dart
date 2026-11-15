@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/channel_switcher.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/chat_mode.dart';
@@ -72,7 +73,7 @@ class ProjectAiAssistantTab extends StatelessWidget {
                       color: colors.surfaceContainerHighest.withValues(
                         alpha: .5,
                       ),
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: colors.outlineVariant.withValues(alpha: .18),
                       ),
@@ -88,8 +89,11 @@ class ProjectAiAssistantTab extends StatelessWidget {
                             context.t('Ask AI Assistant about project publications...'),
                         counterText: '',
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        filled: false,
                         prefixIcon: const Icon(
-                          Icons.auto_awesome_rounded,
+                          Icons.chat_bubble_outline,
                           size: 20,
                         ),
                         contentPadding: const EdgeInsets.symmetric(
@@ -106,18 +110,18 @@ class ProjectAiAssistantTab extends StatelessWidget {
                   child: IconButton.filled(
                     style: IconButton.styleFrom(
                       shape: const CircleBorder(),
-                      backgroundColor: const Color(0xFF1D4ED8),
-                      foregroundColor: Colors.white,
+                      backgroundColor: context.lumi.primary,
+                      foregroundColor: context.lumi.onPrimary,
                     ),
                     onPressed: sending
                         ? null
                         : () => sendFn(project.papers.length),
                     icon: sending
-                        ? const SizedBox.square(
+                        ? SizedBox.square(
                             dimension: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: context.lumi.onPrimary,
                             ),
                           )
                         : const Icon(Icons.send_rounded),
@@ -160,13 +164,13 @@ class ProjectAiChannelSwitcher extends StatelessWidget {
         children: [
           ProjectChannelTab(
             label: context.t('My AI (Private)'),
-            icon: Icons.auto_awesome_rounded,
+            icon: Icons.lock_outline,
             selected: mode == ProjectChatMode.privateAi,
             onTap: () => onChanged(ProjectChatMode.privateAi),
           ),
           ProjectChannelTab(
             label: context.t('Team AI (Shared)'),
-            icon: Icons.smart_toy_rounded,
+            icon: Icons.groups_outlined,
             selected: mode == ProjectChatMode.teamAi,
             onTap: () => onChanged(ProjectChatMode.teamAi),
           ),

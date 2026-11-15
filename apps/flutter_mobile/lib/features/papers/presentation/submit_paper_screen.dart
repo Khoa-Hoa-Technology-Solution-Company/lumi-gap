@@ -1,6 +1,9 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/papers/data/papers_api.dart';
 import 'package:flutter_mobile/features/papers/domain/submit_paper_validation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -151,17 +154,19 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
         centerTitle: false,
         scrolledUnderElevation: 0,
         actions: [
-          if (widget.editId == null)
+          // Sample data for demos and manual testing; never in a release
+          // build, where it would put someone else's paper in the form.
+          if (kDebugMode && widget.editId == null)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: TextButton.icon(
                 onPressed: _autoFillTestData,
-                icon: const Icon(Icons.auto_awesome, size: 16, color: Color(0xFF06B6D4)),
+                icon: Icon(Icons.summarize_outlined, size: 16, color: context.lumi.primary),
                 label: Text(
                   context.t('Fill Test'),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF06B6D4),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: context.lumi.primary,
                   ),
                 ),
               ),
@@ -174,14 +179,9 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  colors.primary.withValues(alpha: .10),
-                  colors.secondary.withValues(alpha: .06),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: colors.primary.withValues(alpha: .16)),
+              color: context.lumi.primarySoft,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: context.lumi.line),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -191,11 +191,11 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
                   height: 40,
                   decoration: BoxDecoration(
                     color: colors.primary,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.upload_file_rounded,
-                    color: Colors.white,
+                    color: context.lumi.onPrimary,
                     size: 21,
                   ),
                 ),
@@ -208,16 +208,14 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
                         widget.editId == null
                             ? context.t('Direct submission')
                             : context.t('Fix and resubmit'),
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
+                        style: context.type.bodyLarge!.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         context.t('Your paper will stay pending until an admin completes the review.'),
-                        style: TextStyle(
-                          fontSize: 12,
+                        style: context.type.bodySmall!.copyWith(
                           height: 1.4,
                           color: colors.onSurfaceVariant,
                         ),
@@ -275,9 +273,8 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
           const SizedBox(height: 16),
           Text(
             context.t('Publication type'),
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
+            style: context.type.bodyMedium!.copyWith(
+              fontWeight: FontWeight.w600,
               color: colors.onSurface,
             ),
           ),
@@ -296,13 +293,12 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
                 ),
                 selectedColor: colors.primaryContainer,
                 backgroundColor: colors.surface,
-                labelStyle: TextStyle(
-                  fontSize: 12,
+                labelStyle: context.type.bodySmall!.copyWith(
                   fontWeight: FontWeight.w600,
                   color: selected ? colors.onPrimaryContainer : colors.onSurfaceVariant,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(11),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 onSelected: (_) => setState(() => paperKind = kind),
               );
@@ -352,13 +348,13 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
           ),
           const SizedBox(height: 10),
           InkWell(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(8),
             onTap: _pickPdf,
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: colors.surface,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: pdf == null
                       ? colors.outlineVariant
@@ -372,7 +368,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
                     height: 42,
                     decoration: BoxDecoration(
                       color: colors.error.withValues(alpha: .08),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
                       Icons.picture_as_pdf_rounded,
@@ -387,9 +383,8 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
                         Text(
                           pdf?.name ?? context.t('Choose a PDF file'),
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
+                          style: context.type.bodyMedium!.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 3),
@@ -397,8 +392,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
                           pdf == null
                               ? context.t('Tap to browse files')
                               : context.t('Ready to upload'),
-                          style: TextStyle(
-                            fontSize: 11,
+                          style: context.type.bodySmall!.copyWith(
                             color: colors.onSurfaceVariant,
                           ),
                         ),
@@ -411,7 +405,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
                         : Icons.check_circle_rounded,
                     color: pdf == null
                         ? colors.primary
-                        : const Color(0xFF16845B),
+                        : context.lumi.success,
                   ),
                 ],
               ),
@@ -423,15 +417,15 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(54),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(8),
               ),
             ),
             icon: submitting
-                ? const SizedBox.square(
+                ? SizedBox.square(
                     dimension: 19,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.white,
+                      color: context.lumi.onPrimary,
                     ),
                   )
                 : const Icon(Icons.send_rounded, size: 20),
@@ -439,7 +433,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
               widget.editId == null
                   ? context.t('Submit for review')
                   : context.t('Resubmit for review'),
-              style: const TextStyle(fontWeight: FontWeight.w700),
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -487,7 +481,7 @@ class _Field extends StatelessWidget {
           labelText: label,
           hintText: hint,
           helperText: helper,
-          helperStyle: const TextStyle(fontSize: 10),
+          helperStyle: context.type.bodySmall,
           alignLabelWithHint: maxLines > 1,
           prefixIcon: icon == null ? null : Icon(icon, size: 19),
           filled: true,
@@ -497,17 +491,17 @@ class _Field extends StatelessWidget {
             vertical: 15,
           ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(13),
+            borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(13),
+            borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(
               color: Theme.of(context).colorScheme.outlineVariant,
             ),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(13),
+            borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(
               color: Theme.of(context).colorScheme.primary,
               width: 1.5,
@@ -529,7 +523,7 @@ class _FormCard extends StatelessWidget {
     padding: const EdgeInsets.fromLTRB(14, 16, 14, 2),
     decoration: BoxDecoration(
       color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(8),
       border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
     ),
     child: Column(children: children),
@@ -559,11 +553,11 @@ class _SectionTitle extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+              style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600),
             ),
             Text(
               subtitle,
-              style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+              style: context.type.bodySmall!.copyWith(color: colors.onSurfaceVariant),
             ),
           ],
         ),

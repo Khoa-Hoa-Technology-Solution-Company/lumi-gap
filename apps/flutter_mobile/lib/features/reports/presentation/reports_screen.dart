@@ -1,10 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_text_field.dart';
 import 'package:flutter_mobile/core/widgets/swipe_delete_tile.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
@@ -55,12 +59,16 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   void initState() {
     super.initState();
     topic = TextEditingController(
-      text: widget.initialTopic ?? context.t('LLM in education'),
+      // initState cannot read inherited widgets (context.t): trNow uses the
+      // language the app is showing right now.
+      text: widget.initialTopic ?? trNow('LLM in education'),
     );
     query = TextEditingController(
       text:
           widget.initialQuery ??
-          context.t('Analyze research trends in large language models for education'),
+          trNow(
+            'Analyze research trends in large language models for education',
+          ),
     );
   }
 
@@ -112,8 +120,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(context.t('Failed to load evidence preview: {{e}}', {'e': e})),
-            backgroundColor: Colors.red,
+            content: Text(
+              context.t('Failed to load evidence preview: {{e}}', {'e': context.t(failureMessageKey(e))}),
+            ),
+            backgroundColor: context.lumi.error,
           ),
         );
       }
@@ -155,9 +165,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              context.t('Report queued. Worker will generate it in the background.'),
+              context.t(
+                'Report queued. Worker will generate it in the background.',
+              ),
             ),
-            backgroundColor: const Color(0xFF06B6D4),
+            backgroundColor: context.lumi.primary,
           ),
         );
       }
@@ -165,8 +177,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(context.t('Failed to queue report: {{e}}', {'e': e})),
-            backgroundColor: Colors.red,
+            content: Text(context.t('Failed to queue report: {{e}}', {'e': context.t(failureMessageKey(e))})),
+            backgroundColor: context.lumi.error,
           ),
         );
       }
@@ -194,8 +206,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(context.t('Failed to delete report: {{e}}', {'e': e})),
-            backgroundColor: Colors.red,
+            content: Text(
+              context.t('Failed to delete report: {{e}}', {'e': context.t(failureMessageKey(e))}),
+            ),
+            backgroundColor: context.lumi.error,
           ),
         );
       }
@@ -205,29 +219,25 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   Color _statusColor(String status) {
     switch (status) {
       case 'ready':
-        return const Color(0xFF10B981);
+        return context.lumi.success;
       case 'failed':
-        return const Color(0xFFEF4444);
+        return context.lumi.error;
       case 'generating':
-        return const Color(0xFFF59E0B);
+        return context.lumi.warning;
       default:
-        return const Color(0xFF06B6D4);
+        return context.lumi.primary;
     }
   }
 
   Widget _buildStepIndicator(bool isDark) {
-    const activeColor = Color(0xFF06B6D4);
-    final inactiveColor = isDark
-        ? const Color(0xFF334155)
-        : const Color(0xFFE2E8F0);
+    final activeColor = context.lumi.primary;
+    final inactiveColor = context.lumi.line;
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF1E293B).withValues(alpha: 0.4)
-            : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
+        color: context.lumi.surfaceMuted,
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -275,35 +285,45 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     Color activeColor,
     Color inactiveColor,
   ) {
-    return Column(
-      children: [
-        Container(
-          width: 24,
-          height: 24,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isActive ? activeColor : inactiveColor,
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            stepNum.toString(),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
+    // Flexible, with labels that may wrap: "Edit Pack" is much longer in
+    // Vietnamese and four fixed-width steps overflowed a narrow phone.
+    return Flexible(
+      flex: 2,
+      child: Column(
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isActive ? activeColor : inactiveColor,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              stepNum.toString(),
+              style: context.type.bodySmall!.copyWith(
+                // On the accent when the step is reached, readable on the
+                // neutral circle when it is not.
+                color: isActive
+                    ? context.lumi.onPrimary
+                    : context.lumi.foregroundSecondary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-            color: isActive ? activeColor : const Color(0xFF94A3B8),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: context.type.bodySmall!.copyWith(
+              fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+              color: isActive ? activeColor : context.lumi.muted,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -311,7 +331,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return Expanded(
       child: Container(
         height: 2,
-        margin: const EdgeInsets.only(left: 8, right: 8, bottom: 14),
+        margin: const EdgeInsets.only(left: 4, right: 4, bottom: 14),
         color: isActive ? activeColor : inactiveColor,
       ),
     );
@@ -325,14 +345,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final bgColor = isDark
-        ? const Color(0xFF0F1B2D)
-        : theme.scaffoldBackgroundColor;
-    final cardBg = isDark ? const Color(0xFF1A2332) : theme.cardColor;
-    final borderColor = isDark
-        ? const Color(0xFF26334A)
-        : const Color(0xFFE2E8F0);
-    final inputBg = isDark ? const Color(0xFF0F1B2D) : Colors.white;
+    final bgColor = context.lumi.background;
+    final cardBg = context.lumi.surface;
+    final borderColor = context.lumi.line;
+    final inputBg = context.lumi.surface;
 
     // Load selected report details
     if (_selectedId != null) {
@@ -356,8 +372,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       backgroundColor: bgColor,
       appBar: AppBar(
         title: Text(context.t('RAG Reports Workbench')),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
@@ -391,9 +405,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
             Text(
               context.t('My reports'),
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+              style: context.type.titleLarge!.copyWith(
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 12),
@@ -412,7 +425,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     return SwipeDeleteTile(
                       tileKey: ValueKey(report.id),
                       margin: const EdgeInsets.only(bottom: 12),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(8),
                       onDelete: () => _deleteReport(report.id),
                       child: GestureDetector(
                         onTap: () {
@@ -429,17 +442,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                         child: Container(
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? (isDark
-                                      ? const Color(0xFF082F49)
-                                      : const Color(0xFFECFEFF))
+                                ? (context.lumi.primarySoft)
                                 : cardBg,
                             border: Border.all(
                               color: isSelected
-                                  ? const Color(0xFF06B6D4)
+                                  ? context.lumi.primary
                                   : borderColor,
                               width: isSelected ? 2 : 1,
                             ),
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           padding: const EdgeInsets.all(16),
                           child: Row(
@@ -449,16 +460,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                                 width: 40,
                                 height: 40,
                                 decoration: BoxDecoration(
-                                  color: isDark
-                                      ? const Color(0xFF1E1B4B)
-                                      : const Color(0xFFF3E8FF),
-                                  borderRadius: BorderRadius.circular(12),
+                                  color: context.lumi.primarySoft,
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 alignment: Alignment.center,
-                                child: const Icon(
-                                  Icons.auto_awesome,
+                                child: Icon(
+                                  Icons.summarize_outlined,
                                   size: 18,
-                                  color: Color(0xFF8B5CF6),
+                                  color: context.lumi.primary,
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -468,9 +477,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                                   children: [
                                     Text(
                                       report.topic ?? report.query,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
+                                      style: context.type.bodyMedium!.copyWith(
+                                        fontWeight: FontWeight.w600,
                                       ),
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
@@ -478,9 +486,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                                     const SizedBox(height: 4),
                                     Text(
                                       report.query,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Color(0xFF94A3B8),
+                                      style: context.type.bodySmall!.copyWith(
+                                        color: context.lumi.muted,
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
@@ -488,9 +495,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                                     const SizedBox(height: 8),
                                     Text(
                                       report.status.toUpperCase(),
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
+                                      style: context.type.bodySmall!.copyWith(
+                                        fontWeight: FontWeight.w600,
                                         color: _statusColor(report.status),
                                       ),
                                     ),
@@ -505,8 +511,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   }).toList(),
                 );
               },
-              loading: () => AppLoading(message: context.t('Loading reports...')),
-              error: (error, _) => AppErrorState(message: error.toString()),
+              loading: () =>
+                  const LumiSkeleton(rows: 3, height: 96),
+              error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
             ),
           ],
         ),
@@ -551,7 +558,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       decoration: BoxDecoration(
         color: cardBg,
         border: Border.all(color: borderColor),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -559,15 +566,16 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         children: [
           Text(
             context.t('Step 1: Configure RAG Scope'),
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: context.type.bodyLarge!.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 16),
           Text(
             context.t('TOPIC'),
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF94A3B8),
+            style: context.type.bodySmall!.copyWith(
+              fontWeight: FontWeight.w600,
+              color: context.lumi.muted,
             ),
           ),
           const SizedBox(height: 8),
@@ -576,17 +584,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             decoration: BoxDecoration(
               color: inputBg,
               border: Border.all(color: borderColor),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 16),
             alignment: Alignment.centerLeft,
             child: TextField(
               controller: topic,
-              style: const TextStyle(fontSize: 14),
+              style: context.type.bodyMedium,
               enabled: !_loadingPreview,
-              decoration: InputDecoration.collapsed(
+              decoration: bareInputDecoration(
                 hintText: context.t('Topic label (e.g. LLM in education)'),
-                hintStyle: const TextStyle(color: Color(0xFF64748B)),
+                hintStyle: TextStyle(color: context.lumi.foregroundSecondary),
               ),
             ),
           ),
@@ -594,10 +602,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
           Text(
             context.t('RESEARCH QUESTION'),
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF94A3B8),
+            style: context.type.bodySmall!.copyWith(
+              fontWeight: FontWeight.w600,
+              color: context.lumi.muted,
             ),
           ),
           const SizedBox(height: 8),
@@ -605,18 +612,20 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             decoration: BoxDecoration(
               color: inputBg,
               border: Border.all(color: borderColor),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: TextField(
               controller: query,
-              style: const TextStyle(fontSize: 14),
+              style: context.type.bodyMedium,
               minLines: 3,
               maxLines: 5,
               enabled: !_loadingPreview,
-              decoration: InputDecoration.collapsed(
-                hintText: context.t('What specific trends should Gemini write about?'),
-                hintStyle: const TextStyle(color: Color(0xFF64748B)),
+              decoration: bareInputDecoration(
+                hintText: context.t(
+                  'What specific trends should Gemini write about?',
+                ),
+                hintStyle: TextStyle(color: context.lumi.foregroundSecondary),
               ),
             ),
           ),
@@ -625,14 +634,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           // Language Selector
           Text(
             context.t('REPORT LANGUAGE'),
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF94A3B8),
+            style: context.type.bodySmall!.copyWith(
+              fontWeight: FontWeight.w600,
+              color: context.lumi.muted,
             ),
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<ReportLanguage>(
+            isExpanded: true,
             initialValue: _selectedLanguage,
             decoration: InputDecoration(
               contentPadding: const EdgeInsets.symmetric(
@@ -640,7 +649,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 vertical: 4,
               ),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(8),
               ),
             ),
             items: [
@@ -673,11 +682,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1E293B).withValues(alpha: 0.4)
-                  : const Color(0xFFF8FAFC).withValues(alpha: 0.4),
+              color: context.lumi.surfaceMuted.withValues(alpha: 0.4),
               border: Border.all(color: borderColor.withValues(alpha: 0.5)),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               children: [
@@ -687,19 +694,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     children: [
                       Text(
                         context.t('Deep Analysis'),
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
+                        style: context.type.bodyMedium!.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        context.t('Gemini runs detailed semantic search loops to backfill grounding bibliography.'),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: isDark
-                              ? const Color(0xFF94A3B8)
-                              : const Color(0xFF64748B),
+                        context.t(
+                          'Gemini runs detailed semantic search loops to backfill grounding bibliography.',
+                        ),
+                        style: context.type.bodySmall!.copyWith(
+                          color: context.lumi.foregroundSecondary,
                           height: 1.3,
                         ),
                       ),
@@ -711,7 +716,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   onChanged: _loadingPreview
                       ? null
                       : (value) => setState(() => deepAnalysis = value),
-                  activeThumbColor: const Color(0xFF06B6D4),
+                  activeThumbColor: context.lumi.primary,
                 ),
               ],
             ),
@@ -726,25 +731,25 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   ? null
                   : _fetchPreview,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1D4ED8),
+                backgroundColor: context.lumi.primary,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
               child: _loadingPreview
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        color: context.lumi.onPrimary,
                       ),
                     )
                   : Text(
                       context.t('Preview Evidence Pack'),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                      style: TextStyle(
+                        color: context.lumi.onPrimary,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
             ),
@@ -761,7 +766,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       decoration: BoxDecoration(
         color: cardBg,
         border: Border.all(color: borderColor),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -769,29 +774,36 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         children: [
           Text(
             context.t('Step 2: Preview Retrieved Evidence'),
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: context.type.bodyLarge!.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
-            context.t('Gemini retrieved {{length}} source candidates matching your query.', {'length': papers.length}),
-            style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+            context.t(
+              'Gemini retrieved {{length}} source candidates matching your query.',
+              {'length': papers.length},
+            ),
+            style: context.type.bodySmall!.copyWith(color: context.lumi.muted),
           ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F172A).withValues(alpha: 0.05),
+              color: context.lumi.foreground.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: borderColor.withValues(alpha: 0.5)),
             ),
             child: Row(
               children: [
-                const Icon(Icons.info_outline, size: 16, color: Color(0xFF06B6D4)),
+                Icon(Icons.info_outline, size: 16, color: context.lumi.primary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    context.t('Adding a paper makes it available as grounded evidence for Gemini. It will not force a pre-determined conclusion.'),
-                    style: const TextStyle(fontSize: 11, height: 1.3),
+                    context.t(
+                      'Adding a paper makes it available as grounded evidence for Gemini. It will not force a pre-determined conclusion.',
+                    ),
+                    style: context.type.bodySmall!.copyWith(height: 1.3),
                   ),
                 ),
               ],
@@ -803,7 +815,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Text(
-                  context.t('No papers retrieved. Try broadening your research question.'),
+                  context.t(
+                    'No papers retrieved. Try broadening your research question.',
+                  ),
                   style: const TextStyle(fontStyle: FontStyle.italic),
                 ),
               ),
@@ -822,7 +836,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     margin: EdgeInsets.zero,
                     color: Theme.of(context).cardColor.withValues(alpha: 0.6),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(8),
                       side: BorderSide(
                         color: borderColor.withValues(alpha: 0.8),
                       ),
@@ -840,19 +854,24 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                               children: [
                                 Text(
                                   paper.title,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
+                                  style: context.type.bodyMedium!.copyWith(
+                                    fontWeight: FontWeight.w600,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  context.t('{{year}} · {{citations}} cites · Relevance: {{score}}', {'year': paper.year ?? context.t('N/A'), 'citations': paper.citations, 'score': paper.score.toStringAsFixed(2)}),
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF94A3B8),
+                                  context.t(
+                                    '{{year}} · {{citations}} cites · Relevance: {{score}}',
+                                    {
+                                      'year': paper.year ?? context.t('N/A'),
+                                      'citations': paper.citations,
+                                      'score': paper.score.toStringAsFixed(2),
+                                    },
+                                  ),
+                                  style: context.type.bodySmall!.copyWith(
+                                    color: context.lumi.muted,
                                   ),
                                 ),
                               ],
@@ -860,10 +879,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                           ),
                           const SizedBox(width: 8),
                           IconButton(
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.open_in_new,
                               size: 16,
-                              color: Color(0xFF06B6D4),
+                              color: context.lumi.primary,
                             ),
                             tooltip: context.t('Open paper detail'),
                             onPressed: () => context.push('/paper/${paper.id}'),
@@ -888,16 +907,16 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               Expanded(
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF06B6D4),
+                    backgroundColor: context.lumi.primary,
                   ),
                   onPressed: papers.isEmpty
                       ? null
                       : () => setState(() => _currentStep = 3),
                   child: Text(
                     context.t('Edit Evidence'),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                    style: TextStyle(
+                      color: context.lumi.onPrimary,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -916,7 +935,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       decoration: BoxDecoration(
         color: cardBg,
         border: Border.all(color: borderColor),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -927,39 +946,47 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             children: [
               Text(
                 context.t('Step 3: Edit Evidence Pack'),
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: context.type.bodyLarge!.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               Text(
-                context.t('Selected: {{selected}}/{{total}}', {'selected': _selectedPaperIds.length, 'total': papers.length}),
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF06B6D4),
+                context.t('Selected: {{selected}}/{{total}}', {
+                  'selected': _selectedPaperIds.length,
+                  'total': papers.length,
+                }),
+                style: context.type.bodySmall!.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: context.lumi.primary,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
           Text(
-            context.t('Exclude papers that may not be fully relevant to filter the grounding RAG context.'),
-            style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+            context.t(
+              'Exclude papers that may not be fully relevant to filter the grounding RAG context.',
+            ),
+            style: context.type.bodySmall!.copyWith(color: context.lumi.muted),
           ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F172A).withValues(alpha: 0.05),
+              color: context.lumi.foreground.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: borderColor.withValues(alpha: 0.5)),
             ),
             child: Row(
               children: [
-                const Icon(Icons.info_outline, size: 16, color: Color(0xFF06B6D4)),
+                Icon(Icons.info_outline, size: 16, color: context.lumi.primary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    context.t('Deselected publications will not be used in the RAG generation pipeline.'),
-                    style: const TextStyle(fontSize: 11, height: 1.3),
+                    context.t(
+                      'Deselected publications will not be used in the RAG generation pipeline.',
+                    ),
+                    style: context.type.bodySmall!.copyWith(height: 1.3),
                   ),
                 ),
               ],
@@ -981,7 +1008,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   margin: EdgeInsets.zero,
                   color: Theme.of(context).cardColor.withValues(alpha: 0.6),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                     side: BorderSide(color: borderColor.withValues(alpha: 0.8)),
                   ),
                   child: Padding(
@@ -992,7 +1019,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     child: Row(
                       children: [
                         Checkbox(
-                          activeColor: const Color(0xFF06B6D4),
+                          activeColor: context.lumi.primary,
                           value: isSelected,
                           onChanged: (val) {
                             setState(() {
@@ -1010,29 +1037,30 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                             children: [
                               Text(
                                 paper.title,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
+                                style: context.type.bodyMedium!.copyWith(
+                                  fontWeight: FontWeight.w600,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                context.t('{{year}} · {{citations}} cites', {'year': paper.year ?? context.t('N/A'), 'citations': paper.citations}),
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF94A3B8),
+                                context.t('{{year}} · {{citations}} cites', {
+                                  'year': paper.year ?? context.t('N/A'),
+                                  'citations': paper.citations,
+                                }),
+                                style: context.type.bodySmall!.copyWith(
+                                  color: context.lumi.muted,
                                 ),
                               ),
                             ],
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.open_in_new,
                             size: 16,
-                            color: Color(0xFF06B6D4),
+                            color: context.lumi.primary,
                           ),
                           tooltip: context.t('Open paper detail'),
                           onPressed: () => context.push('/paper/${paper.id}'),
@@ -1057,23 +1085,23 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               Expanded(
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1D4ED8),
+                    backgroundColor: context.lumi.primary,
                   ),
                   onPressed: creating ? null : _createReport,
                   child: creating
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.white,
+                            color: context.lumi.onPrimary,
                           ),
                         )
                       : Text(
                           context.t('Generate Report'),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
+                          style: TextStyle(
+                            color: context.lumi.onPrimary,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                 ),
@@ -1097,7 +1125,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         decoration: BoxDecoration(
           color: cardBg,
           border: Border.all(color: borderColor),
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(12),
         ),
         padding: const EdgeInsets.all(20),
         alignment: Alignment.center,
@@ -1109,9 +1137,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       data: (report) => Container(
         key: const ValueKey('step4_loaded'),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF082F49) : const Color(0xFFECFEFF),
-          border: Border.all(color: const Color(0xFF06B6D4)),
-          borderRadius: BorderRadius.circular(24),
+          color: context.lumi.primarySoft,
+          border: Border.all(color: context.lumi.primary),
+          borderRadius: BorderRadius.circular(12),
         ),
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -1122,15 +1150,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               children: [
                 Text(
                   context.t('Step 4: Report Generation Status'),
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  style: context.type.bodyLarge!.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 if (report.status == 'queued' || report.status == 'generating')
-                  const SizedBox(
+                  SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Color(0xFF06B6D4),
+                      color: context.lumi.primary,
                     ),
                   ),
               ],
@@ -1138,7 +1168,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             const SizedBox(height: 12),
             Text(
               report.topic ?? report.query,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: context.type.bodyLarge!.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -1147,17 +1179,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               children: [
                 Text(
                   context.t('STATUS: '),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF94A3B8),
+                  style: context.type.bodySmall!.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: context.lumi.muted,
                   ),
                 ),
                 Text(
                   report.status.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
+                  style: context.type.bodySmall!.copyWith(
+                    fontWeight: FontWeight.w600,
                     color: _statusColor(report.status),
                   ),
                 ),
@@ -1167,18 +1197,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               const SizedBox(height: 12),
               Text(
                 report.errorMessage!,
-                style: const TextStyle(fontSize: 13, color: Colors.red),
+                style: context.type.bodyMedium!.copyWith(
+                  color: context.lumi.error,
+                ),
               ),
             ],
             if (report.markdown != null) ...[
               const SizedBox(height: 12),
               Text(
                 report.markdown!,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isDark
-                      ? const Color(0xFFCFFAFE)
-                      : const Color(0xFF155E75),
+                style: context.type.bodyMedium!.copyWith(
+                  color: context.lumi.foregroundSecondary,
                   height: 1.5,
                 ),
                 maxLines: 4,
@@ -1190,21 +1219,20 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () => context.push('/report/${report.id}'),
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.visibility,
                         size: 16,
-                        color: Colors.white,
+                        color: context.lumi.onPrimary,
                       ),
                       label: Text(
                         context.t('View Full Report'),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                        style: context.type.bodyMedium!.copyWith(
+                          color: context.lumi.onPrimary,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF06B6D4),
+                        backgroundColor: context.lumi.primary,
                       ),
                     ),
                   ),
@@ -1218,10 +1246,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             ] else ...[
               const SizedBox(height: 12),
               Text(
-                context.t('Background worker is compiling bibliography and writing analysis...'),
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF94A3B8),
+                context.t(
+                  'Background worker is compiling bibliography and writing analysis...',
+                ),
+                style: context.type.bodySmall!.copyWith(
+                  color: context.lumi.muted,
                   fontStyle: FontStyle.italic,
                 ),
               ),
@@ -1234,19 +1263,22 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           ],
         ),
       ),
-      loading: () => const Center(
+      loading: () => Center(
         child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 24),
-          child: CircularProgressIndicator(color: Color(0xFF06B6D4)),
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: CircularProgressIndicator(color: context.lumi.primary),
         ),
       ),
       error: (err, _) => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFFEF2F2),
-          borderRadius: BorderRadius.circular(16),
+          color: context.lumi.surfaceMuted,
+          borderRadius: BorderRadius.circular(8),
         ),
-        child: Text(err.toString(), style: const TextStyle(color: Colors.red)),
+        child: Text(
+          err.toString(),
+          style: TextStyle(color: context.lumi.error),
+        ),
       ),
     );
   }

@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
-import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
@@ -140,7 +142,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     }
   }
 
+  /// Number of the latest search request. An answer is used only if it is
+  /// still the latest when it arrives; otherwise a slow earlier request
+  /// would add its papers to the results of a newer query or filter.
+  int _searchSeq = 0;
+
   Future<void> _performSearch({bool reset = false}) async {
+    final seq = ++_searchSeq;
     if (_searchController.text.trim().isEmpty) {
       setState(() {
         _page = 1;
@@ -198,6 +206,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       );
 
       final result = await ref.read(searchApiProvider).semantic(params);
+      if (!mounted || seq != _searchSeq) return;
 
       setState(() {
         _loadedPapers.addAll(result.papers);
@@ -209,15 +218,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         }
       });
     } on Object catch (e) {
+      if (!mounted || seq != _searchSeq) return;
       setState(() {
         _isLoadingMore = false;
         _hasMore = false;
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t('Search failed: {{e}}', {'e': e}))),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.t(failureMessageKey(e)))),
+      );
     }
   }
 
@@ -226,53 +234,30 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
-        backgroundColor: Colors.transparent,
+        useSafeArea: true,
         builder: (context) {
           return StatefulBuilder(
             builder: (context, setBottomSheetState) {
               final theme = Theme.of(context);
-              final isDark = theme.brightness == Brightness.dark;
+              final lumi = context.lumi;
 
-              return Container(
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(24),
-                  ),
-                ),
+              return Padding(
                 padding: EdgeInsets.only(
-                  top: 16,
-                  left: 20,
-                  right: 20,
-                  bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                  left: 16,
+                  right: 16,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
                 ),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Center(
-                        child: Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? const Color(0xFF475569)
-                                : const Color(0xFFCBD5E1),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
                             context.t('Search Filters'),
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: theme.textTheme.titleLarge,
                           ),
                           TextButton(
                             onPressed: () {
@@ -293,10 +278,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                 _topicIds = [];
                               });
                             },
-                            child: Text(
-                              context.t('Clear All'),
-                              style: const TextStyle(color: Color(0xFF06B6D4)),
-                            ),
+                            child: Text(context.t('Clear All')),
                           ),
                         ],
                       ),
@@ -306,20 +288,17 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       SwitchListTile(
                         title: Text(
                           context.t('Semantic Reranking'),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
+                          style: theme.textTheme.titleSmall,
                         ),
                         subtitle: Text(
-                          context.t('Uses AI models to re-evaluate relevance. May increase search latency.'),
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF94A3B8),
+                          context.t(
+                            'Uses AI models to re-evaluate relevance. May increase search latency.',
+                          ),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: lumi.foregroundSecondary,
                           ),
                         ),
                         value: _rerank,
-                        activeThumbColor: const Color(0xFF06B6D4),
                         contentPadding: EdgeInsets.zero,
                         onChanged: (val) {
                           setBottomSheetState(() {
@@ -332,10 +311,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       // Years Range Inputs
                       Text(
                         context.t('Publication Years'),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                        style: theme.textTheme.titleSmall,
                       ),
                       const SizedBox(height: 8),
                       Row(
@@ -349,7 +325,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                   vertical: 10,
                                 ),
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
                               keyboardType: TextInputType.number,
@@ -371,7 +347,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                   vertical: 10,
                                 ),
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
                               keyboardType: TextInputType.number,
@@ -390,13 +366,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       // Sort By
                       Text(
                         context.t('Sort Results By'),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                        style: theme.textTheme.titleSmall,
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
+                        isExpanded: true,
                         initialValue: _sort,
                         decoration: InputDecoration(
                           contentPadding: const EdgeInsets.symmetric(
@@ -404,7 +378,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                             vertical: 4,
                           ),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                         ),
                         items: [
@@ -432,13 +406,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       // Paper Kind
                       Text(
                         context.t('Paper Kind'),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                        style: theme.textTheme.titleSmall,
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
+                        isExpanded: true,
                         initialValue: _paperKind,
                         decoration: InputDecoration(
                           contentPadding: const EdgeInsets.symmetric(
@@ -446,7 +418,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                             vertical: 4,
                           ),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                         ),
                         hint: Text(context.t('All Kinds')),
@@ -488,13 +460,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       CheckboxListTile(
                         title: Text(
                           context.t('Open Access Only'),
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: theme.textTheme.titleSmall,
                         ),
                         value: _openAccess ?? false,
-                        activeColor: const Color(0xFF06B6D4),
                         contentPadding: EdgeInsets.zero,
                         onChanged: (val) {
                           setBottomSheetState(() {
@@ -507,10 +475,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       // Source
                       Text(
                         context.t('Journal / Venue Source'),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                        style: theme.textTheme.titleSmall,
                       ),
                       const SizedBox(height: 8),
                       TextField(
@@ -521,7 +486,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                             vertical: 10,
                           ),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                         ),
                         controller: TextEditingController(text: _source ?? ''),
@@ -534,26 +499,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       // Apply Button
                       SizedBox(
                         width: double.infinity,
-                        height: 48,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF06B6D4),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
+                        child: FilledButton(
                           onPressed: () {
                             Navigator.pop(context);
                             unawaited(_performSearch(reset: true));
                           },
-                          child: Text(
-                            context.t('Apply Filters'),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                            ),
-                          ),
+                          child: Text(context.t('Apply Filters')),
                         ),
                       ),
                     ],
@@ -571,9 +522,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     unawaited(
       showModalBottomSheet<void>(
         context: context,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
         builder: (context) {
           return Consumer(
             builder: (context, ref, child) {
@@ -633,12 +581,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                     width: 36,
                                     height: 36,
                                     decoration: BoxDecoration(
-                                      color: Colors.cyan.withValues(alpha: 0.1),
+                                      color: context.lumi.primarySoft,
                                       borderRadius: BorderRadius.circular(8),
                                     ),
-                                    child: const Icon(
+                                    child: Icon(
                                       Icons.folder,
-                                      color: Color(0xFF06B6D4),
+                                      color: context.lumi.primary,
                                       size: 17,
                                     ),
                                   ),
@@ -648,11 +596,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   subtitle: Text(
-                                    context.plural(project.papers.length, one: '{{count}} paper', other: '{{count}} papers'),
+                                    context.plural(
+                                      project.papers.length,
+                                      one: '{{count}} paper',
+                                      other: '{{count}} papers',
+                                    ),
                                   ),
-                                  trailing: const Icon(
+                                  trailing: Icon(
                                     Icons.add,
-                                    color: Color(0xFF06B6D4),
+                                    color: context.lumi.primary,
                                   ),
                                   onTap: () async {
                                     Navigator.pop(context);
@@ -667,7 +619,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                         ).showSnackBar(
                                           SnackBar(
                                             content: Text(
-                                              context.t('Added paper to project'),
+                                              context.t(
+                                                'Added paper to project',
+                                              ),
                                             ),
                                           ),
                                         );
@@ -678,7 +632,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                           context,
                                         ).showSnackBar(
                                           SnackBar(
-                                            content: Text(context.t('Failed to add: {{e}}', {'e': e})),
+                                            content: Text(
+                                              context.t(
+                                                'Failed to add: {{e}}',
+                                                {'e': context.t(failureMessageKey(e))},
+                                              ),
+                                            ),
                                           ),
                                         );
                                       }
@@ -691,7 +650,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         },
                         loading: () =>
                             const Center(child: CircularProgressIndicator()),
-                        error: (e, _) => Text(context.t('Error loading projects: {{e}}', {'e': e})),
+                        error: (e, _) => Text(
+                          context.t('Error loading projects: {{e}}', {'e': context.t(failureMessageKey(e))}),
+                        ),
                       ),
                     ],
                   ),
@@ -742,17 +703,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final bgColor = isDark
-        ? const Color(0xFF0F1B2D)
-        : theme.scaffoldBackgroundColor;
-    final cardBg = isDark ? const Color(0xFF1A2332) : theme.cardColor;
-    final borderColor = isDark
-        ? const Color(0xFF26334A)
-        : const Color(0xFFE2E8F0);
-
     final showScopeBadge =
         _domainIds.isNotEmpty ||
         _fieldIds.isNotEmpty ||
@@ -760,11 +710,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         _topicIds.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: bgColor,
       appBar: AppBar(
         title: Text(context.t('Search Papers')),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list),
@@ -777,57 +724,24 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         children: [
           // Search Input Bar
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
             child: Row(
               children: [
                 Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: cardBg,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: borderColor),
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: context.t('Search term or query...'),
+                      prefixIcon: const Icon(Icons.search, size: 20),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.search, color: Color(0xFF94A3B8)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            decoration: InputDecoration(
-                              hintText: context.t('Search term or query...'),
-                              border: InputBorder.none,
-                            ),
-                            textInputAction: TextInputAction.search,
-                            onSubmitted: (_) =>
-                                unawaited(_performSearch(reset: true)),
-                          ),
-                        ),
-                      ],
-                    ),
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => unawaited(_performSearch(reset: true)),
                   ),
                 ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  height: 52,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF06B6D4),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                    ),
-                    onPressed: () => unawaited(_performSearch(reset: true)),
-                    child: Text(
-                      context.t('Search'),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () => unawaited(_performSearch(reset: true)),
+                  child: Text(context.t('Search')),
                 ),
               ],
             ),
@@ -851,7 +765,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         padding: const EdgeInsets.only(right: 8),
                         child: InputChip(
                           label: Text(
-                            context.t('Year: {{from}}-{{to}}', {'from': _yearFrom ?? '', 'to': _yearTo ?? ''}),
+                            context.t('Year: {{from}}-{{to}}', {
+                              'from': _yearFrom ?? '',
+                              'to': _yearTo ?? '',
+                            }),
                           ),
                           onDeleted: () {
                             setState(() {
@@ -866,7 +783,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: InputChip(
-                          label: Text(context.t('Kind: {{paperKind}}', {'paperKind': _paperKind})),
+                          label: Text(
+                            context.t('Kind: {{paperKind}}', {
+                              'paperKind': _paperKind,
+                            }),
+                          ),
                           onDeleted: () {
                             setState(() {
                               _paperKind = null;
@@ -920,7 +841,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       (id) => Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: InputChip(
-                          label: Text(context.t('Subfield: {{id}}', {'id': id})),
+                          label: Text(
+                            context.t('Subfield: {{id}}', {'id': id}),
+                          ),
                           onDeleted: () {
                             setState(() {
                               _subfieldIds.remove(id);
@@ -953,12 +876,21 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           Expanded(
             child: _loadedPapers.isEmpty
                 ? (_isLoadingMore
-                      ? AppLoading(message: context.t('Searching papers...'))
-                      : AppEmptyState(
-                          icon: Icons.search_off_outlined,
-                          title: context.t('No search results'),
-                          message:
-                              context.t('Enter a keyword above or relax/clear filters in the top-right button to find broader publications.'),
+                      // Clipped, not scrollable: on a short screen the
+                      // last placeholder is simply cut off.
+                      ? const SingleChildScrollView(
+                          physics: NeverScrollableScrollPhysics(),
+                          padding: EdgeInsets.all(16),
+                          child: LumiSkeleton(rows: 4, height: 132),
+                        )
+                      : SingleChildScrollView(
+                          child: LumiEmptyState(
+                            icon: Icons.search_off_outlined,
+                            title: context.t('No search results'),
+                            message: context.t(
+                              'Enter a keyword above or relax/clear filters in the top-right button to find broader publications.',
+                            ),
+                          ),
                         ))
                 : ListView.builder(
                     controller: _scrollController,
@@ -974,7 +906,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                               height: 24,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
-                                color: Color(0xFF06B6D4),
                               ),
                             ),
                           ),
@@ -984,8 +915,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       final paper = _loadedPapers[index];
                       return _SearchResultCard(
                         paper: paper,
-                        cardBg: cardBg,
-                        borderColor: borderColor,
                         onBookmarkTap: () => _toggleBookmark(paper.id),
                         onAddProjectTap: () =>
                             _openProjectPicker(context, paper.id),
@@ -1009,8 +938,6 @@ class _SearchResultCard extends StatelessWidget {
     required this.onAddProjectTap,
     required this.onCiteTap,
     required this.onTap,
-    required this.cardBg,
-    required this.borderColor,
   });
 
   final Paper paper;
@@ -1018,149 +945,127 @@ class _SearchResultCard extends StatelessWidget {
   final VoidCallback onAddProjectTap;
   final VoidCallback onCiteTap;
   final VoidCallback onTap;
-  final Color cardBg;
-  final Color borderColor;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final lumi = context.lumi;
     final authors = paper.authors.map((a) => a.displayName).join(', ');
-
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
-      color: cardBg,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: borderColor),
+    final venue = paper.journalName?.trim() ?? '';
+    // Only what the paper really has: a missing venue is left out.
+    final meta = [
+      '${paper.publicationYear}',
+      if (venue.isNotEmpty) venue,
+      context.plural(
+        paper.citationCount,
+        one: '{{count}} citation',
+        other: '{{count}} citations',
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
+    ].join(' · ');
+
+    const radius = BorderRadius.all(Radius.circular(8));
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: lumi.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: BorderSide(color: lumi.line),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          borderRadius: radius,
+          onTap: onTap,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      paper.title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        height: 1.3,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            paper.title,
+                            style: theme.textTheme.titleMedium,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        // Imported papers keep the stored default 0, which
+                        // means "not measured": no chip rather than "0.00".
+                        if (paper.dataQualityScore > 0) ...[
+                          const SizedBox(width: 8),
+                          Tooltip(
+                            message: context.t('Data quality score'),
+                            child: LumiChip(
+                              label: paper.dataQualityScore.toStringAsFixed(2),
+                              tone: LumiChipTone.primary,
+                              icon: Icons.bar_chart,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF06B6D4).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      paper.dataQualityScore.toStringAsFixed(2),
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF0891B2),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                authors.isEmpty ? context.t('No authors listed') : authors,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.8,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Text(
-                    context.t('{{year}} · {{venue}} · {{count}} cites', {'year': paper.publicationYear, 'venue': paper.journalName ?? context.t('Unknown venue'), 'count': paper.citationCount}),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF94A3B8),
-                    ),
-                  ),
-                  if (paper.openAccessUrl != null) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF451A03),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        context.t('OA'),
-                        style: const TextStyle(
-                          color: Color(0xFFFBBF24),
-                          fontSize: 8,
-                          fontWeight: FontWeight.bold,
+                    if (authors.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        authors,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: lumi.foregroundSecondary,
                         ),
                       ),
+                    ],
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          meta,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: lumi.muted,
+                          ),
+                        ),
+                        if (paper.openAccessUrl != null)
+                          LumiChip(
+                            label: context.t('Open Access'),
+                            tone: LumiChipTone.success,
+                            icon: Icons.lock_open,
+                          ),
+                      ],
                     ),
                   ],
-                ],
+                ),
               ),
-              const Divider(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.bookmark_outline, size: 18),
-                    tooltip: context.t('Save Paper'),
-                    onPressed: onBookmarkTap,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.folder_open_outlined, size: 18),
-                    tooltip: context.t('Add to project'),
-                    onPressed: onAddProjectTap,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.format_quote_outlined, size: 18),
-                    tooltip: context.t('Cite Paper'),
-                    onPressed: onCiteTap,
-                  ),
-                  const Spacer(),
-                  TextButton.icon(
-                    onPressed: onTap,
-                    icon: const Icon(
-                      Icons.arrow_forward_outlined,
-                      size: 14,
-                      color: Color(0xFF06B6D4),
+              Divider(height: 1, color: lumi.line),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.bookmark_outline, size: 20),
+                      tooltip: context.t('Save Paper'),
+                      onPressed: onBookmarkTap,
                     ),
-                    label: Text(
-                      context.t('View Detail'),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF06B6D4),
-                      ),
+                    IconButton(
+                      icon: const Icon(Icons.folder_open_outlined, size: 20),
+                      tooltip: context.t('Add to project'),
+                      onPressed: onAddProjectTap,
                     ),
-                  ),
-                ],
+                    IconButton(
+                      icon: const Icon(Icons.format_quote_outlined, size: 20),
+                      tooltip: context.t('Cite Paper'),
+                      onPressed: onCiteTap,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
