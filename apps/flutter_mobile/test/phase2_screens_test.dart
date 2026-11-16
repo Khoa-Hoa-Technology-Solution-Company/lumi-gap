@@ -635,7 +635,16 @@ void main() {
         (tester) async {
       _setSize(tester, const Size(412, 1600));
       await _pumpProfile(tester, testUser());
-      for (final label in ['Projects', 'Notifications', 'Font size']) {
+      // Projects / Notifications have their own tab and bell; Rankings and
+      // Submit paper have one entry each (Home shortcut, My papers).
+      for (final label in [
+        'Projects',
+        'Notifications',
+        'Font size',
+        'Leaderboard',
+        'Rankings',
+        'Submit paper',
+      ]) {
         expect(find.widgetWithText(LumiListRow, label), findsNothing);
       }
       expect(find.widgetWithText(LumiListRow, 'Admin sync'), findsNothing);
@@ -643,9 +652,9 @@ void main() {
       for (final row in tester.widgetList<LumiListRow>(find.byType(LumiListRow))) {
         expect(row.onTap, isNotNull, reason: row.title);
       }
-      await tester.tap(find.widgetWithText(LumiListRow, 'Leaderboard'));
+      await tester.tap(find.widgetWithText(LumiListRow, 'My papers'));
       await tester.pumpAndSettle();
-      expect(find.text('route:/rankings'), findsOneWidget);
+      expect(find.text('route:/my-papers'), findsOneWidget);
     });
 
     testWidgets('sign out asks first; cancel keeps the session', (tester) async {
@@ -675,6 +684,7 @@ void main() {
     Future<_FakeBookmarksApi> pumpHome(
       WidgetTester tester, {
       required Map<String, dynamic> overview,
+      List<Object> recommendations = const [],
     }) async {
       _setSize(tester, const Size(412, 3000));
       final bookmarks = _FakeBookmarksApi();
@@ -700,6 +710,7 @@ void main() {
                   'status': 'ready',
                   'data': {'continueResearch': <Object>[], 'attention': <Object>[]},
                 },
+                'recommendations': {'status': 'ready', 'data': recommendations},
               }),
             ),
           ],
@@ -709,14 +720,14 @@ void main() {
       return bookmarks;
     }
 
-    testWidgets('greeting has the avatar; empty projects lead to the tab',
+    testWidgets('greeting; empty projects lead to the tab',
         (tester) async {
       await pumpHome(tester, overview: const {});
-      expect(find.byType(LumiAvatar), findsOneWidget);
       expect(find.text('Hello, Minh Nguyen'), findsOneWidget);
-      // Each empty section explains itself with an icon.
+      // A section with a way to fill it explains itself; "To do" with
+      // nothing to do takes no room.
       expect(find.byType(LumiEmptyState), findsWidgets);
-      expect(find.byIcon(Icons.task_alt), findsOneWidget);
+      expect(find.byIcon(Icons.task_alt), findsNothing);
       await tester.tap(find.text('Go to projects'));
       await tester.pumpAndSettle();
       expect(find.text('route:/projects'), findsOneWidget);
@@ -727,11 +738,10 @@ void main() {
         'and a failure is reported', (tester) async {
       final api = await pumpHome(
         tester,
-        overview: {
-          'recentPapers': [
-            {'id': 'p1', 'title': 'Paper one', 'citationCount': 2},
-          ],
-        },
+        overview: const {},
+        recommendations: [
+          {'id': 'p1', 'title': 'Paper one', 'reason': 'interest'},
+        ],
       );
       expect(find.text('Paper one'), findsOneWidget);
       // Venue and authors are missing: nothing stands in for them.

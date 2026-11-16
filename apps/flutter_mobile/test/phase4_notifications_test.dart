@@ -140,9 +140,9 @@ void main() {
         _n('2', kind: 'mystery_kind'),
       ]);
       await _pump(tester, api);
-      expect(find.text('Discussion'), findsOneWidget);
-      expect(find.text('forum_post'), findsNothing);
-      expect(find.text('mystery_kind'), findsNothing);
+      expect(find.textContaining('Discussion'), findsOneWidget);
+      expect(find.textContaining('forum_post'), findsNothing);
+      expect(find.textContaining('mystery_kind'), findsNothing);
     });
 
     testWidgets('"Read all" is off when nothing is unread', (tester) async {
@@ -152,14 +152,17 @@ void main() {
     });
 
     testWidgets('"Read all" runs once and then turns off', (tester) async {
+      final semantics = tester.ensureSemantics();
       final api = _FakeNotificationsApi([_n('1'), _n('2')]);
       await _pump(tester, api);
-      expect(find.text('2 unread updates'), findsOneWidget);
+      // Unread is said to screen readers, not only drawn as a dot.
+      expect(find.bySemanticsLabel(RegExp('^Unread')), findsNWidgets(2));
       await tester.tap(find.byTooltip('Read all'));
       await tester.pumpAndSettle();
       expect(api.markAllCalls, 1);
-      expect(find.text('0 unread updates'), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('^Unread')), findsNothing);
       expect(_readAll(tester).onPressed, isNull);
+      semantics.dispose();
     });
 
     testWidgets('a failed "mark as read" still opens the paper and says so',
@@ -281,4 +284,58 @@ void main() {
       isEmpty,
     );
   });
+
+  test('notifications are grouped by day, newest groups first', () {
+    final now = DateTime(2026, 11, 16, 9);
+    AppNotification at(String id, DateTime t) =>
+        _n(id).copyWithCreatedAt(t.toUtc().toIso8601String());
+    final groups = groupNotificationsByDay([
+      at('a', DateTime(2026, 11, 16, 8)),
+      at('b', DateTime(2026, 11, 15, 23)),
+      at('c', DateTime(2026, 11, 2)),
+      _n('d').copyWithCreatedAt('not a date'),
+    ], now);
+    expect(groups.map((g) => g.$1), ['Today', 'Yesterday', 'Earlier']);
+    expect(groups.last.$2.map((n) => n.id), ['c', 'd']);
+  });
+
+  test('the icon comes from the kind, never from the words of the title', () {
+    expect(notificationIcon('report'), Icons.description_outlined);
+    expect(notificationIcon('forum_post'), Icons.forum_outlined);
+    expect(notificationIcon('mystery'), Icons.notifications_outlined);
+  });
+
+  group('rank points', () {
+    const list = [
+      RankingUser(rank: 1, name: 'A', role: 'lecturer', points: 5000, credits: 0),
+      RankingUser(rank: 2, name: 'Tran Thi B', role: 'student', points: 1000, credits: 0),
+    ];
+    test("the user's own row gives the points the rank is based on", () {
+      expect(
+        rankPoints(rank: 2, name: 'Tran Thi B', list: list, profilePoints: 7),
+        1000,
+      );
+    });
+    test('outside the top list, the profile points are used', () {
+      expect(
+        rankPoints(rank: 40, name: 'Tran Thi B', list: list, profilePoints: 7),
+        7,
+      );
+      // Same rank, other name: not the user's row.
+      expect(rankPoints(rank: 2, name: 'Someone', list: list, profilePoints: 7), 7);
+    });
+  });
+}
+
+extension on AppNotification {
+  AppNotification copyWithCreatedAt(String createdAt) => AppNotification(
+        id: id,
+        title: title,
+        message: message,
+        type: type,
+        targetKind: targetKind,
+        targetId: targetId,
+        isRead: isRead,
+        createdAt: createdAt,
+      );
 }

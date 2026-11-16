@@ -56,6 +56,7 @@ Future<_GatedSearchApi> _pump(
   Brightness brightness = Brightness.light,
   AppLocale locale = AppLocale.en,
   List<Bookmark> bookmarks = const [],
+  Map<String, String> initialFilters = const {},
 }) async {
   tester.view
     ..physicalSize = size
@@ -84,7 +85,10 @@ Future<_GatedSearchApi> _pump(
               .copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         ),
-        home: SearchScreen(initialQuery: initialQuery),
+        home: SearchScreen(
+          initialQuery: initialQuery,
+          initialFilters: initialFilters,
+        ),
       ),
     ),
   );
@@ -329,5 +333,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byTooltip('Remove bookmark'), findsOneWidget);
     expect(find.byTooltip('Save Paper'), findsOneWidget);
+  });
+
+  testWidgets(
+      'a kind and source from a Trends link are sent once and can be removed',
+      (tester) async {
+    final api = await _pump(
+      tester,
+      initialQuery: 'llm',
+      initialFilters: const {'paperKinds': 'preprint', 'sources': 'arXiv'},
+    );
+    await tester.pump();
+    final first = api.calls.last.params;
+    expect(first.paperKind, 'preprint');
+    expect(first.source, 'arXiv');
+    // Not a second time through the scope, where the chip cannot reach it.
+    expect(first.scopeFilters.paperKinds, isEmpty);
+    expect(first.scopeFilters.sources, isEmpty);
+
+    final chip = find.widgetWithText(InputChip, 'Preprint');
+    expect(chip, findsOneWidget);
+    tester.widget<InputChip>(chip).onDeleted!();
+    await tester.pump();
+    final after = api.calls.last.params;
+    expect(after.paperKind, isNull);
+    expect(after.scopeFilters.paperKinds, isEmpty);
+    expect(after.source, 'arXiv');
   });
 }

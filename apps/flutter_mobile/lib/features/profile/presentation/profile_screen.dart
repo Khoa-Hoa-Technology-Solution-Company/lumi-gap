@@ -23,21 +23,21 @@ import 'package:go_router/go_router.dart';
 /// What the person does academically, as chosen in their academic profile.
 /// Null when they have not chosen yet: nothing is shown rather than a guess.
 String? academicProfileLabel(AcademicProfileType? type) => switch (type) {
-      AcademicProfileType.student => tk('Student'),
-      AcademicProfileType.researcher => tk('Researcher'),
-      AcademicProfileType.lecturer => tk('Lecturer'),
-      null => null,
-    };
+  AcademicProfileType.student => tk('Student'),
+  AcademicProfileType.researcher => tk('Researcher'),
+  AcademicProfileType.lecturer => tk('Lecturer'),
+  null => null,
+};
 
 /// Platform roles worth telling the person about. An ordinary account
 /// (`user`, or the legacy student / lecturer / researcher values) gets no
 /// chip: the academic profile already says what they are.
 String? staffRoleLabel(UserRole? role) => switch (role) {
-      UserRole.admin => tk('Admin'),
-      UserRole.moderator => tk('Moderator'),
-      UserRole.reviewer => tk('Reviewer'),
-      _ => null,
-    };
+  UserRole.admin => tk('Admin'),
+  UserRole.moderator => tk('Moderator'),
+  UserRole.reviewer => tk('Reviewer'),
+  _ => null,
+};
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -91,8 +91,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final reports =
         ref.watch(reportsProvider(const ReportsParams())).value?.total ?? 0;
 
-    final paperBookmarks =
-        bookmarks.where((b) => b.targetKind == 'paper').toList();
+    final paperBookmarks = bookmarks
+        .where((b) => b.targetKind == 'paper')
+        .toList();
     final topicCount = paperBookmarks
         .expand(
           (bookmark) => bookmark.paperDetail?.topics ?? const <PaperTopic>[],
@@ -104,8 +105,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final theme = Theme.of(context);
     final lumi = context.lumi;
 
-    final levelAsset =
-        LevelHelper.getLevelAsset(LevelHelper.getLevel(user?.points ?? 0));
+    final levelAsset = LevelHelper.getLevelAsset(
+      LevelHelper.getLevel(user?.points ?? 0),
+    );
     final currentThemeMode = ref.watch(themeModeProvider);
     final languageChoice = ref.watch(localeChoiceProvider);
 
@@ -115,20 +117,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final fullName = user?.fullName.trim();
     final email = user?.email;
     // Never invent a name: fall back to the email, which is always real.
-    final displayName =
-        (fullName != null && fullName.isNotEmpty) ? fullName : (email ?? '');
+    final displayName = (fullName != null && fullName.isNotEmpty)
+        ? fullName
+        : (email ?? '');
 
     Widget groupLabel(String text) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Semantics(
-            header: true,
-            child: Text(
-              text,
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(color: lumi.foregroundSecondary),
-            ),
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Semantics(
+        header: true,
+        child: Text(
+          text,
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: lumi.foregroundSecondary,
           ),
-        );
+        ),
+      ),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -137,18 +141,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           children: [
+            // Centred, top to bottom: badge, name, email, then one line with
+            // the role and the institution. Nothing hangs to one side.
             LumiCard(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+              child: Column(
                 children: [
                   // Rank badge earned from contribution points.
                   ExcludeSemantics(
                     child: Container(
-                      width: 72,
-                      height: 72,
-                      padding: const EdgeInsets.all(8),
+                      width: 80,
+                      height: 80,
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: lumi.primarySoft,
                         shape: BoxShape.circle,
@@ -156,44 +162,46 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       child: Image.asset(levelAsset, fit: BoxFit.contain),
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 12),
+                  Text(
+                    displayName,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleLarge,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (email != null && email != displayName) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      email,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: lumi.foregroundSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  if (academicKey != null ||
+                      staffKey != null ||
+                      (institution != null && institution.isNotEmpty)) ...[
+                    const SizedBox(height: 12),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Text(
-                          displayName,
-                          style: theme.textTheme.titleLarge,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        if (email != null && email != displayName)
-                          Text(
-                            email,
-                            style: theme.textTheme.bodyMedium
-                                ?.copyWith(color: lumi.foregroundSecondary),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                        if (academicKey != null)
+                          LumiChip(
+                            label: context.t(academicKey),
+                            tone: LumiChipTone.primary,
                           ),
-                        if (academicKey != null || staffKey != null) ...[
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              if (academicKey != null)
-                                LumiChip(
-                                  label: context.t(academicKey),
-                                  tone: LumiChipTone.primary,
-                                ),
-                              if (staffKey != null)
-                                LumiChip(label: context.t(staffKey)),
-                            ],
-                          ),
-                        ],
-                        if (institution != null && institution.isNotEmpty) ...[
-                          const SizedBox(height: 8),
+                        if (staffKey != null)
+                          LumiChip(label: context.t(staffKey)),
+                        if (institution != null && institution.isNotEmpty)
                           Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
                                 Icons.school_outlined,
@@ -201,7 +209,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 color: lumi.foregroundSecondary,
                               ),
                               const SizedBox(width: 4),
-                              Expanded(
+                              Flexible(
                                 child: Text(
                                   institution,
                                   maxLines: 2,
@@ -213,10 +221,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               ),
                             ],
                           ),
-                        ],
                       ],
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -229,19 +236,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Figures only: each place has one entry, the rows below
+                  // (Bookmarks) and the Home shortcuts (Reports).
                   _StatCard(
                     label: context.t('Bookmarks'),
                     value: paperBookmarks.length,
-                    onTap: () => unawaited(context.push('/bookmarks')),
                   ),
                   const SizedBox(width: 12),
                   _StatCard(label: context.t('Topics'), value: topicCount),
                   const SizedBox(width: 12),
-                  _StatCard(
-                    label: context.t('Reports'),
-                    value: reports,
-                    onTap: () => unawaited(context.push('/reports')),
-                  ),
+                  _StatCard(label: context.t('Reports'), value: reports),
                 ],
               ),
             ),
@@ -250,11 +254,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             groupLabel(context.t('Activity')),
             LumiRowGroup(
               children: [
-                LumiListRow(
-                  icon: Icons.cloud_upload_outlined,
-                  title: context.t('Submit paper'),
-                  onTap: () => unawaited(context.push('/submit-paper')),
-                ),
+                // Submitting a paper starts from My papers, where its
+                // status is followed.
                 LumiListRow(
                   icon: Icons.description_outlined,
                   title: context.t('My papers'),
@@ -264,11 +265,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   icon: Icons.bookmark_border,
                   title: context.t('Bookmarks'),
                   onTap: () => unawaited(context.push('/bookmarks')),
-                ),
-                LumiListRow(
-                  icon: Icons.emoji_events_outlined,
-                  title: context.t('Leaderboard'),
-                  onTap: () => unawaited(context.push('/rankings')),
                 ),
                 if (user?.role == UserRole.admin)
                   LumiListRow(
@@ -283,6 +279,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             groupLabel(context.t('Settings')),
             LumiRowGroup(
               children: [
+                LumiListRow(
+                  icon: Icons.manage_accounts_outlined,
+                  title: context.t('Account'),
+                  subtitle: context.t('Institution, interests, password'),
+                  onTap: () => unawaited(context.push('/account')),
+                ),
                 LumiListRow(
                   icon: themeModeIcon(currentThemeMode),
                   title: context.t('Appearance'),
@@ -321,28 +323,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value, this.onTap});
+  const _StatCard({required this.label, required this.value});
 
   final String label;
   final int value;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final lumi = context.lumi;
     return Expanded(
-      child: Semantics(
-        button: onTap != null,
+      child: MergeSemantics(
         child: LumiCard(
-          onTap: onTap,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 48),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('$value', style: theme.textTheme.titleLarge),
+                Text(
+                  '$value',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
                 const SizedBox(height: 4),
                 // One word per label: on a narrow screen with large text it
                 // shrinks to fit instead of breaking mid-word ("Bookmark/s").

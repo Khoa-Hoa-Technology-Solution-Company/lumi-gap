@@ -82,8 +82,8 @@ class TrendExplainHistory extends ConsumerWidget {
 
   static String _languageName(BuildContext context, String code) =>
       switch (code.toLowerCase()) {
-        'vi' => context.t('Vietnamese (vi)'),
-        'en' => context.t('English (en)'),
+        'vi' => context.t('Vietnamese'),
+        'en' => context.t('English'),
         _ => code.toUpperCase(),
       };
 

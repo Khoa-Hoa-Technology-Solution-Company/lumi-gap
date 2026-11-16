@@ -15,9 +15,11 @@ import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-/// Build a grounded report in four steps (setup, preview, edit the evidence
-/// pack, follow the generation) and list the reader's reports. The steps
-/// live in `report_builder/`; this screen holds the state and the requests.
+/// The reader's reports first; "New report" opens the four steps (setup,
+/// preview, edit the evidence pack, follow the generation). A link from
+/// another screen (a topic, a gap, a scope) opens the steps directly, with
+/// what it carries filled in. The steps live in `report_builder/`; this
+/// screen holds the state and the requests.
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({
     this.initialProjectId,
@@ -26,6 +28,7 @@ class ReportsScreen extends ConsumerStatefulWidget {
     this.initialYearFrom,
     this.initialYearTo,
     this.initialScopeFilters = const TrendScopeFilters(),
+    this.startBuilding = false,
     super.key,
   });
 
@@ -35,6 +38,9 @@ class ReportsScreen extends ConsumerStatefulWidget {
   final int? initialYearFrom;
   final int? initialYearTo;
   final TrendScopeFilters initialScopeFilters;
+
+  /// Open on the steps rather than the list (a link asked for a report).
+  final bool startBuilding;
 
   @override
   ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
@@ -47,6 +53,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       TextEditingController(text: widget.initialTopic ?? '');
   late final TextEditingController _query =
       TextEditingController(text: widget.initialQuery ?? '');
+
+  /// Showing the steps; otherwise the list.
+  late bool _building = widget.startBuilding;
+
+  /// Reports being deleted: a second tap waits for the first.
+  final Set<String> _deleting = {};
 
   int _step = 1;
   ReportLanguage _language = ReportLanguage.auto;
@@ -171,6 +183,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 
   Future<void> _deleteReport(String id) async {
+    if (!_deleting.add(id)) return;
+    setState(() {});
     try {
       await ref.read(reportsApiProvider).delete(id);
       if (mounted && _selectedId == id) {
@@ -188,8 +202,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     } on Object catch (e) {
       _showError(e);
     } finally {
+      _deleting.remove(id);
       // Reload either way: a failed delete puts the row back.
-      if (mounted) ref.invalidate(reportsProvider(_listParams));
+      if (mounted) {
+        setState(() {});
+        ref.invalidate(reportsProvider(_listParams));
+      }
     }
   }
 
@@ -197,6 +215,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     setState(() {
       _selectedId = id;
       _step = 4;
+      _building = true;
     });
     _startPolling();
   }
@@ -206,6 +225,16 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     setState(() {
       _step = 1;
       _showErrors = false;
+      _building = true;
+    });
+  }
+
+  /// Back to the list. What was typed stays, so "New report" picks it up.
+  void _closeSteps() {
+    _stopPolling();
+    setState(() {
+      _building = false;
+      if (_step == 4) _step = 1;
     });
   }
 
@@ -266,44 +295,97 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         ),
     };
 
-    return Scaffold(
-      appBar: AppBar(title: Text(context.t('RAG Reports Workbench'))),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(reportsProvider(_listParams));
-          if (selectedId != null) ref.invalidate(reportProvider(selectedId));
+    Future<void> refresh() async {
+      ref.invalidate(reportsProvider(_listParams));
+      if (selectedId != null) ref.invalidate(reportProvider(selectedId));
+    }
+
+    if (_building) {
+      // Opened from the list, Back returns to it; opened by a link, Back
+      // goes back to where the link was.
+      final backToList = !widget.startBuilding;
+      return PopScope(
+        canPop: !backToList,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _closeSteps();
         },
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            ReportStepIndicator(step: _step),
-            const SizedBox(height: 16),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: KeyedSubtree(key: ValueKey(_step), child: stepView),
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(context.t('New report')),
+            leading: backToList
+                ? IconButton(
+                    tooltip: context.t('Close'),
+                    icon: const Icon(Icons.close),
+                    onPressed: _closeSteps,
+                  )
+                : null,
+          ),
+          body: RefreshIndicator(
+            onRefresh: refresh,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+              children: [
+                ReportStepIndicator(step: _step),
+                const SizedBox(height: 16),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: KeyedSubtree(key: ValueKey(_step), child: stepView),
+                ),
+              ],
             ),
-            const SizedBox(height: 24),
-            LumiSectionHeader(title: context.t('My reports')),
-            if (reports.hasValue)
-              MyReportsList(
-                reports: reports.requireValue.reports,
-                selectedId: selectedId,
-                onOpen: (id) => unawaited(context.push('/report/$id')),
-                onFollow: _follow,
-                onDelete: _deleteReport,
-              )
-            else if (reports.hasError)
-              LumiErrorState(
-                message: context.t(failureMessageKey(reports.error!)),
-                retrying: reports.isLoading,
-                onRetry: () => ref.invalidate(reportsProvider(_listParams)),
-                inline: true,
-              )
-            else
-              const LumiSkeleton(rows: 3, height: 96),
-          ],
+          ),
         ),
-      ),
+      );
+    }
+
+    final Widget list;
+    if (reports.hasValue) {
+      final items = reports.requireValue.reports;
+      list = items.isEmpty
+          ? LumiEmptyState(
+              icon: Icons.description_outlined,
+              title: context.t('No reports yet'),
+              message: context.t(
+                'A report answers one question from papers you choose.',
+              ),
+              actionLabel: context.t('New report'),
+              onAction: _newReport,
+            )
+          : ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 96),
+              children: [
+                MyReportsList(
+                  reports: items,
+                  selectedId: selectedId,
+                  deleting: _deleting,
+                  onOpen: (id) => unawaited(context.push('/report/$id')),
+                  onFollow: _follow,
+                  onDelete: _deleteReport,
+                ),
+              ],
+            );
+    } else if (reports.hasError) {
+      list = LumiErrorState(
+        message: context.t(failureMessageKey(reports.error!)),
+        retrying: reports.isLoading,
+        onRetry: () => ref.invalidate(reportsProvider(_listParams)),
+      );
+    } else {
+      list = const LumiPageSkeleton(height: 88);
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: Text(context.t('Reports'))),
+      // The empty list carries the same action in its message.
+      floatingActionButton: reports.value?.reports.isNotEmpty ?? false
+          ? FloatingActionButton.extended(
+              onPressed: _newReport,
+              icon: const Icon(Icons.add),
+              label: Text(context.t('New report')),
+            )
+          : null,
+      body: RefreshIndicator(onRefresh: refresh, child: list),
     );
   }
 }

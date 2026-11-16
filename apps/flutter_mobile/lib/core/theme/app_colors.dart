@@ -24,8 +24,9 @@ abstract final class LumiLight {
 }
 
 abstract final class LumiDark {
-  static const Color background = Color(0xFF0B1120);
-  static const Color surface = Color(0xFF131C31);
+  // The web's dark palette (globals.css `.dark`): slate-950 page, slate-900 cards.
+  static const Color background = Color(0xFF020817);
+  static const Color surface = Color(0xFF0F172A);
   static const Color surfaceMuted = Color(0xFF1E293B);
   static const Color line = Color(0xFF1E293B);
   static const Color foreground = Color(0xFFF1F5F9);
@@ -33,10 +34,10 @@ abstract final class LumiDark {
   static const Color muted = Color(0xFF94A3B8);
   static const Color primary = Color(0xFF60A5FA);
   static const Color primaryPressed = Color(0xFF93C5FD);
-  static const Color onPrimary = Color(0xFF0B1120);
+  static const Color onPrimary = Color(0xFF020817);
   static const Color primarySoft = Color(0xFF172554);
   static const Color error = Color(0xFFF87171);
-  static const Color onError = Color(0xFF0B1120);
+  static const Color onError = Color(0xFF020817);
   static const Color success = Color(0xFF4ADE80);
   static const Color warning = Color(0xFFFBBF24);
   static const Color focus = Color(0xFF60A5FA);

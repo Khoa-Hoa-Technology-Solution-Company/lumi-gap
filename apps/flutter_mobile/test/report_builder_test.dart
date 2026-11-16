@@ -124,7 +124,8 @@ void main() {
         onDelete: (id) async => deleted.add(id),
       ),
     );
-    await tester.drag(find.text('T'), const Offset(-600, 0));
+    // A button with a label, not a swipe: reachable with a screen reader.
+    await tester.tap(find.byTooltip('Delete report'));
     await tester.pumpAndSettle();
     expect(
       find.text('Delete this report? This cannot be undone.'),
@@ -134,5 +135,25 @@ void main() {
     await tester.pumpAndSettle();
     expect(deleted, isEmpty);
     expect(find.text('T'), findsOneWidget);
+  });
+
+  testWidgets('a report being deleted cannot be deleted again', (tester) async {
+    await _pump(
+      tester,
+      MyReportsList(
+        reports: const [
+          ReportListItem(id: 'r1', query: 'q', status: 'ready', topic: 'T'),
+        ],
+        selectedId: null,
+        deleting: const {'r1'},
+        onOpen: (_) {},
+        onFollow: (_) {},
+        onDelete: (_) async {},
+      ),
+    );
+    final button = tester.widget<IconButton>(
+      find.widgetWithIcon(IconButton, Icons.delete_outline),
+    );
+    expect(button.onPressed, isNull);
   });
 }

@@ -2,14 +2,20 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
-import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/number_format.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_data.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/trends/components/trend_topic_sheet.dart';
 import 'package:flutter_mobile/features/trends/components/trend_verdict.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:go_router/go_router.dart';
 
+/// Signals: the clearest rising topic first, then the emerging keywords,
+/// then every topic in trend order. A row opens the topic sheet, which holds
+/// its actions (papers, report, explain).
 class TrendsSignalsTab extends StatelessWidget {
   const TrendsSignalsTab({
     required this.overview,
@@ -22,284 +28,340 @@ class TrendsSignalsTab extends StatelessWidget {
   final TrendsOverviewParams params;
   final void Function(String) onExplainTopic;
 
+  void _open(BuildContext context, TrendingTopic topic) => unawaited(
+        showTrendTopicSheet(context, topic: topic, onExplain: onExplainTopic),
+      );
+
   @override
   Widget build(BuildContext context) {
-    final cardBg = context.lumi.surface;
-    final borderColor = context.lumi.line;
-
     // Same rules as the web: the order and the "rising" claim come from the
     // API's verdict only, never from raw-count growth.
     final topics = sortTopicsByTrend(overview.topics);
-    final strongestTopic = topRisingTopic(topics);
-    final strongestChange = strongestTopic == null
-        ? null
-        : trendChangeText(context, strongestTopic.classification);
-    final allInsufficient =
-        topics.isNotEmpty &&
+    final strongest = topRisingTopic(topics);
+    final allInsufficient = topics.isNotEmpty &&
         topics.every(
           (t) => t.classification.verdict == TrendVerdict.insufficient,
         );
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(0, 20, 0, 32),
       children: [
-        // Strongest Topic Insight Banner
-        if (strongestTopic != null) ...[
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: context.lumi.primarySoft,
-              border: Border.all(
-                color: context.lumi.primary.withValues(alpha: 0.3),
-              ),
-              borderRadius: BorderRadius.circular(8),
+        if (strongest != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            child: _StrongestTopic(
+              topic: strongest,
+              onOpen: () => _open(context, strongest),
             ),
+          ),
+        if (overview.risingKeywords.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: LumiSectionHeader(title: context.t('Emerging Keywords')),
+          ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               children: [
-                Icon(
-                  Icons.trending_up,
-                  color: context.lumi.primary,
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    strongestChange == null
-                        ? context.t(
-                            '"{{topic}}" is the clearest rising topic in this scope.',
-                            {'topic': strongestTopic.topic},
-                          )
-                        : context.t(
-                            '"{{topic}}" is the clearest rising topic in this scope: {{change}}.',
-                            {
-                              'topic': strongestTopic.topic,
-                              'change': strongestChange,
-                            },
-                          ),
-                    style: context.type.bodyMedium!.copyWith(
-                      height: 1.4,
-                      fontWeight: FontWeight.w600,
+                for (final kw in overview.risingKeywords) ...[
+                  _KeywordChip(
+                    keyword: kw.keyword,
+                    change: '${formatSigned(kw.growthRatePct, 0)}%',
+                    onTap: () => unawaited(
+                      context.push(
+                        '/search?q=${Uri.encodeComponent(kw.keyword)}',
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                ],
               ],
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
-
-        // Rising Keywords Title & Chips
-        if (overview.risingKeywords.isNotEmpty) ...[
-          Row(
-            children: [
-              Icon(Icons.tag, color: context.lumi.primary, size: 18),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  context.t('Emerging Keywords'),
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 38,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: overview.risingKeywords.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, idx) {
-                final kw = overview.risingKeywords[idx];
-                return ActionChip(
-                  label: Text(
-                    '${kw.keyword} (${formatSigned(kw.growthRatePct, 0)}%)',
-                  ),
-                  onPressed: () => unawaited(
-                    context.push(
-                      '/search?q=${Uri.encodeComponent(kw.keyword)}',
-                    ),
-                  ),
-                  backgroundColor: cardBg,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    side: BorderSide(color: borderColor),
-                  ),
-                );
-              },
             ),
           ),
           const SizedBox(height: 24),
         ],
-
-        // Ranked Topics Title
-        Row(
-          children: [
-            Icon(Icons.trending_up, color: context.lumi.primary, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                context.t('Rising Topics Signals'),
-                style: Theme.of(context).textTheme.titleMedium,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LumiSectionHeader(
+                title: context.t('Rising Topics Signals'),
+                caption: allInsufficient
+                    ? context.t(
+                        'Not enough yearly data yet to tell whether these topics are rising or falling.',
+                      )
+                    : null,
               ),
+              if (topics.isEmpty)
+                LumiEmptyState(
+                  icon: Icons.show_chart,
+                  message: context.t(
+                    'No signals found. Change scope to load topics.',
+                  ),
+                  compact: true,
+                )
+              else
+                LumiRowGroup(
+                  children: [
+                    for (var i = 0; i < topics.length; i++)
+                      _TopicRow(
+                        rank: i + 1,
+                        topic: topics[i],
+                        showVerdict: !allInsufficient,
+                        onTap: () => _open(context, topics[i]),
+                      ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The featured topic: its name, its % per year as the figure of the
+/// screen, its real yearly line, and how sure the API is.
+class _StrongestTopic extends StatelessWidget {
+  const _StrongestTopic({required this.topic, required this.onOpen});
+
+  final TrendingTopic topic;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final lumi = context.lumi;
+    final c = topic.classification;
+    final pct = c.shownChangePct;
+    final values = [for (final y in topic.yearlyBreakdown) y.count.toDouble()];
+    final facts = [
+      context.plural(
+        topic.totalPapers,
+        one: '{{count}} paper',
+        other: '{{count}} papers',
+        args: {'count': formatNumber(topic.totalPapers)},
+      ),
+      if (c.confidence != null)
+        context.t(
+          c.confidence == TrendConfidence.high
+              ? 'High confidence'
+              : 'Medium confidence',
+        ),
+    ].join(' · ');
+
+    return LumiCard(
+      onTap: onOpen,
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            context.t('Fastest rising topic'),
+            style: theme.textTheme.titleSmall
+                ?.copyWith(color: lumi.foregroundSecondary),
+          ),
+          const SizedBox(height: 4),
+          Text(topic.topic, style: theme.textTheme.titleLarge),
+          if (pct != null) ...[
+            const SizedBox(height: 8),
+            LumiHeroMetric(
+              value: pct > 0
+                  ? '+${pct.toStringAsFixed(1)}%'
+                  : '${pct.toStringAsFixed(1)}%',
+              unit: context.t('per year'),
+              valueColor: lumi.success,
             ),
           ],
-        ),
-        const SizedBox(height: 12),
-
-        if (allInsufficient) ...[
-          Text(
-            context.t(
-              'Not enough yearly data yet to tell whether these topics are rising or falling.',
+          if (LumiSparkline.canDraw(values)) ...[
+            const SizedBox(height: 12),
+            LumiSparkline(
+              values: values,
+              color: lumi.success,
+              width: null,
+              height: 72,
+              fill: true,
             ),
-            style: context.type.bodySmall!.copyWith(
-              color: context.lumi.foregroundSecondary,
-            ),
-          ),
+          ],
           const SizedBox(height: 12),
-        ],
-        if (topics.isEmpty)
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Text(
-                context.t('No signals found. Change scope to load topics.'),
-                style: TextStyle(
-                  fontStyle: FontStyle.italic,
-                  color: context.lumi.muted,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  facts,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: lumi.foregroundSecondary),
                 ),
               ),
-            ),
-          )
-        else
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: topics.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (context, idx) {
-              final topic = topics[idx];
-              final change = trendChangeText(context, topic.classification);
+              Text(
+                context.t('Details'),
+                style: theme.textTheme.labelLarge?.copyWith(color: lumi.primary),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-              return Card(
-                elevation: 0,
-                margin: EdgeInsets.zero,
-                color: cardBg,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  side: BorderSide(color: borderColor),
+class _KeywordChip extends StatelessWidget {
+  const _KeywordChip({
+    required this.keyword,
+    required this.change,
+    required this.onTap,
+  });
+
+  final String keyword;
+  final String change;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final lumi = context.lumi;
+    return Material(
+      color: lumi.surface,
+      shape: StadiumBorder(side: BorderSide(color: lumi.line)),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const StadiumBorder(),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(keyword, style: theme.textTheme.bodyMedium),
+                const SizedBox(width: 6),
+                Text(
+                  change,
+                  style: theme.textTheme.labelLarge
+                      ?.copyWith(color: lumi.foreground),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One topic: rank, name, field and papers; on the right its % per year,
+/// or its verdict when it has no figure.
+class _TopicRow extends StatelessWidget {
+  const _TopicRow({
+    required this.rank,
+    required this.topic,
+    required this.showVerdict,
+    required this.onTap,
+  });
+
+  final int rank;
+  final TrendingTopic topic;
+  final bool showVerdict;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final lumi = context.lumi;
+    final c = topic.classification;
+    final pct = c.shownChangePct;
+    final style = trendVerdictStyle(c.verdict, lumi);
+    final sub = [
+      if (topic.taxonomy?.fieldName != null) topic.taxonomy!.fieldName!,
+      context.plural(
+        topic.totalPapers,
+        one: '{{count}} paper',
+        other: '{{count}} papers',
+        args: {'count': formatNumber(topic.totalPapers)},
+      ),
+    ].join(' · ');
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(16, 14, 12, 14),
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: lumi.surfaceMuted,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '$rank',
+                style: theme.textTheme.labelLarge
+                    ?.copyWith(color: lumi.foregroundSecondary),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    topic.topic,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    sub,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: lumi.foregroundSecondary),
+                  ),
+                  if (showVerdict && pct == null) ...[
+                    const SizedBox(height: 6),
+                    TrendVerdictPill(verdict: c.verdict),
+                  ],
+                ],
+              ),
+            ),
+            if (showVerdict && pct != null) ...[
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  topic.topic,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  topic.taxonomy?.fieldName ??
-                                      context.t('Unknown field'),
-                                  style: context.type.bodySmall!.copyWith(
-                                    color: context.lumi.muted,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      // Said once above the list when no topic has one.
-                      if (!allInsufficient) ...[
-                        const SizedBox(height: 8),
-                        TrendVerdictLabel(
-                          verdict: topic.classification.verdict,
-                          confidence: topic.classification.confidence,
+                      Icon(style.icon, size: 16, color: style.color),
+                      const SizedBox(width: 2),
+                      Text(
+                        pct > 0
+                            ? '+${pct.toStringAsFixed(1)}%'
+                            : '${pct.toStringAsFixed(1)}%',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
-                      ],
-                      const SizedBox(height: 8),
-                      // Wraps instead of overflowing on a narrow phone.
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          Text(
-                            context.plural(
-                              topic.totalPapers,
-                              one: '{{count}} publication',
-                              other: '{{count}} publications',
-                              args: {'count': formatNumber(topic.totalPapers)},
-                            ),
-                            style: context.type.bodySmall!.copyWith(
-                              color: context.lumi.foregroundSecondary,
-                            ),
-                          ),
-                          if (change != null)
-                            Text(
-                              change,
-                              style: context.type.bodySmall!.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: context.lumi.foreground,
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Divider(height: 1, color: context.lumi.line),
-                      // Labelled actions: an icon alone does not say what
-                      // "explain" or "search" will do.
-                      Wrap(
-                        spacing: 4,
-                        children: [
-                          TextButton.icon(
-                            onPressed: () => unawaited(
-                              context.push(
-                                '/search?q=${Uri.encodeComponent(topic.topic)}',
-                              ),
-                            ),
-                            icon: const Icon(Icons.search, size: 18),
-                            label: Text(context.t('Papers')),
-                          ),
-                          TextButton.icon(
-                            onPressed: () => onExplainTopic(topic.topic),
-                            icon: const Icon(
-                              Icons.summarize_outlined,
-                              size: 18,
-                            ),
-                            label: Text(context.t('Explain')),
-                          ),
-                          TextButton.icon(
-                            onPressed: () => unawaited(
-                              showTrendTopicSheet(
-                                context,
-                                topic: topic,
-                                onExplain: onExplainTopic,
-                              ),
-                            ),
-                            icon: const Icon(Icons.show_chart, size: 18),
-                            label: Text(context.t('Trend graph')),
-                          ),
-                        ],
                       ),
                     ],
                   ),
-                ),
-              );
-            },
-          ),
-      ],
+                  Text(
+                    context.t(style.text),
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: lumi.foregroundSecondary),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right, size: 20, color: lumi.muted),
+          ],
+        ),
+      ),
     );
   }
 }

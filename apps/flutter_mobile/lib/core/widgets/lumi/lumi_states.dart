@@ -62,8 +62,9 @@ class LumiSectionHeader extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 4),
               child: Text(
                 caption!,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: context.lumi.foregroundSecondary),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: context.lumi.foregroundSecondary,
+                ),
               ),
             ),
         ],
@@ -116,10 +117,10 @@ class LumiPageSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
-        physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        child: LumiSkeleton(rows: rows, height: height),
-      );
+    physics: const NeverScrollableScrollPhysics(),
+    padding: const EdgeInsets.all(16),
+    child: LumiSkeleton(rows: rows, height: height),
+  );
 }
 
 /// "Nothing here yet": an icon in a muted circle, a sentence that says why,
@@ -152,15 +153,23 @@ class LumiEmptyState extends StatelessWidget {
     final theme = Theme.of(context);
     final lumi = context.lumi;
 
-    Widget circle(double size, double iconSize) => ExcludeSemantics(
+    // The full block is the screen's only content: its circle is tinted
+    // with the accent. The compact one sits among other sections and stays
+    // neutral.
+    Widget circle(double size, double iconSize, {bool accent = false}) =>
+        ExcludeSemantics(
           child: Container(
             width: size,
             height: size,
             decoration: BoxDecoration(
-              color: lumi.surfaceMuted,
+              color: accent ? lumi.primarySoft : lumi.surfaceMuted,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: iconSize, color: lumi.muted),
+            child: Icon(
+              icon,
+              size: iconSize,
+              color: accent ? lumi.primary : lumi.muted,
+            ),
           ),
         );
 
@@ -178,8 +187,9 @@ class LumiEmptyState extends StatelessWidget {
                 Expanded(
                   child: Text(
                     message,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: lumi.foregroundSecondary),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: lumi.foregroundSecondary,
+                    ),
                   ),
                 ),
               ],
@@ -197,35 +207,49 @@ class LumiEmptyState extends StatelessWidget {
       );
     }
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            circle(56, 28),
-            const SizedBox(height: 16),
-            if (title != null) ...[
-              Text(
-                title!,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.titleMedium,
-              ),
-              const SizedBox(height: 4),
-            ],
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyLarge
-                  ?.copyWith(color: lumi.foregroundSecondary),
+    // Centred in the space it is given; when that space is shorter than the
+    // block (large text, a short box), it scrolls instead of overflowing.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final content = Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                circle(72, 32, accent: true),
+                const SizedBox(height: 16),
+                if (title != null) ...[
+                  Text(
+                    title!,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: lumi.foregroundSecondary,
+                  ),
+                ),
+                if (_hasAction) ...[
+                  const SizedBox(height: 20),
+                  FilledButton(onPressed: onAction, child: Text(actionLabel!)),
+                ],
+              ],
             ),
-            if (_hasAction) ...[
-              const SizedBox(height: 16),
-              FilledButton(onPressed: onAction, child: Text(actionLabel!)),
-            ],
-          ],
-        ),
-      ),
+          ),
+        );
+        if (!constraints.hasBoundedHeight) return content;
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: content,
+          ),
+        );
+      },
     );
   }
 }
@@ -283,8 +307,9 @@ class LumiErrorState extends StatelessWidget {
             Expanded(
               child: Text(
                 text,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: lumi.foregroundSecondary),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: lumi.foregroundSecondary,
+                ),
               ),
             ),
             TextButton(
@@ -307,8 +332,9 @@ class LumiErrorState extends StatelessWidget {
             Text(
               text,
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodyLarge
-                  ?.copyWith(color: lumi.foregroundSecondary),
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: lumi.foregroundSecondary,
+              ),
             ),
             const SizedBox(height: 16),
             FilledButton(

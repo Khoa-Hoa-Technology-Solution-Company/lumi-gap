@@ -3,6 +3,12 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'auth_models.freezed.dart';
 part 'auth_models.g.dart';
 
+/// `authProviders.password` of `/auth/me`, or null when absent.
+Object? readHasPasswordLogin(Map<dynamic, dynamic> json, String _) {
+  final providers = json['authProviders'];
+  return providers is Map ? providers['password'] : null;
+}
+
 enum UserRole { user, student, lecturer, researcher, reviewer, moderator, admin }
 
 enum AcademicProfileType { student, researcher, lecturer }
@@ -21,6 +27,10 @@ abstract class User with _$User {
     @Default(0) int points,
     // Null until the user verifies their email (GET /auth/me, ISO-8601).
     DateTime? emailVerifiedAt,
+    // `authProviders.password`: false for an account that only signs in
+    // with Google. Such an account sets a password without a current one.
+    // True when the API does not say, as on the web.
+    @JsonKey(readValue: readHasPasswordLogin) @Default(true) bool hasPasswordLogin,
   }) = _User;
 
   factory User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);

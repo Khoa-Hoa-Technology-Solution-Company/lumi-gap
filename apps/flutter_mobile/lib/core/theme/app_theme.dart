@@ -85,6 +85,21 @@ class AppTheme {
         systemOverlayStyle:
             isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
       ),
+      // An "off" switch must still be seen: Material draws its track
+      // outline in `outline` (`line`), which in dark mode is the card
+      // border colour and vanished on a card.
+      switchTheme: SwitchThemeData(
+        trackOutlineColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? c.primary
+              : c.muted,
+        ),
+        thumbColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? c.onPrimary
+              : c.muted,
+        ),
+      ),
       navigationBarTheme: NavigationBarThemeData(
         height: 80,
         backgroundColor: c.surface,

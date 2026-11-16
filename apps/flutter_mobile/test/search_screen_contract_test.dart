@@ -28,8 +28,9 @@ void main() {
       'lib/features/trends/components/trends_scope_tab.dart',
     ).readAsStringSync();
 
-    expect(source, contains('_scopeSearchQuery()'));
+    // The query is the narrowest chosen facet's name, else "research".
+    expect(source, contains('_query(q: _scopeTopic())'));
     expect(source, contains("'q': q.trim()"));
-    expect(source, contains("labels.isEmpty ? 'research' : labels.first"));
+    expect(source, contains("'research';"));
   });
 }

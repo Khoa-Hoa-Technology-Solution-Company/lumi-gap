@@ -124,13 +124,13 @@ class ReportPreviewStep extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            context.t('Step 2: Preview Retrieved Evidence'),
+            context.t('Evidence found'),
             style: theme.textTheme.titleMedium,
           ),
           const SizedBox(height: 4),
           Text(
             context.t(
-              'Gemini retrieved {{length}} source candidates matching your query.',
+              '{{length}} papers match your question.',
               {'length': papers.length},
             ),
             style: theme.textTheme.bodySmall
@@ -139,7 +139,7 @@ class ReportPreviewStep extends StatelessWidget {
           const SizedBox(height: 12),
           _Note(
             context.t(
-              'Adding a paper makes it available as grounded evidence for Gemini. It will not force a pre-determined conclusion.',
+              'An added paper becomes evidence the report can cite. It does not force a conclusion.',
             ),
           ),
           const SizedBox(height: 8),
@@ -213,7 +213,7 @@ class ReportEditStep extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  context.t('Step 3: Edit Evidence Pack'),
+                  context.t('Choose the evidence'),
                   style: theme.textTheme.titleMedium,
                 ),
               ),
@@ -230,7 +230,7 @@ class ReportEditStep extends StatelessWidget {
           const SizedBox(height: 12),
           _Note(
             context.t(
-              'Deselected publications will not be used in the RAG generation pipeline.',
+              'Papers you deselect are left out of the report.',
             ),
           ),
           const SizedBox(height: 8),

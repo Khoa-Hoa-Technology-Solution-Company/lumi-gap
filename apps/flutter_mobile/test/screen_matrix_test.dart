@@ -26,6 +26,7 @@ import 'package:flutter_mobile/features/papers/data/papers_models.dart';
 import 'package:flutter_mobile/features/papers/presentation/my_papers_screen.dart';
 import 'package:flutter_mobile/features/papers/presentation/paper_detail_screen.dart';
 import 'package:flutter_mobile/features/papers/presentation/submit_paper_screen.dart';
+import 'package:flutter_mobile/features/profile/presentation/account_screen.dart';
 import 'package:flutter_mobile/features/profile/presentation/profile_screen.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/projects/presentation/projects_screen.dart';
@@ -35,8 +36,6 @@ import 'package:flutter_mobile/features/rankings/presentation/rankings_screen.da
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_mobile/features/reports/presentation/report_detail_screen.dart';
 import 'package:flutter_mobile/features/reports/presentation/reports_screen.dart';
-import 'package:flutter_mobile/features/search/data/search_api.dart';
-import 'package:flutter_mobile/features/search/presentation/keyword_papers_screen.dart';
 import 'package:flutter_mobile/features/search/presentation/search_screen.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_mobile/features/trends/presentation/trends_screen.dart';
@@ -230,6 +229,11 @@ final List<_Case> _cases = [
     overrides: [projectsProvider.overrideWith((ref) async => [_project])],
   ),
   _Case('profile', () => const ProfileScreen(), user: _user()),
+  _Case(
+    'account',
+    () => const AccountScreen(),
+    user: _user().copyWith(researchInterests: ['federated learning', 'privacy']),
+  ),
   _Case('notifications', () => const NotificationsScreen(), user: _user()),
   _Case(
     'bookmarks',
@@ -352,16 +356,6 @@ final List<_Case> _cases = [
           ],
           total: 1,
         ),
-      ),
-    ],
-  ),
-  _Case(
-    'keyword papers',
-    () => const KeywordPapersScreen(keyword: 'federated%20learning'),
-    user: _user(),
-    overrides: [
-      searchResultsProvider.overrideWith(
-        (ref, p) async => PagedPapers(papers: [_paper('p1'), _paper('p2')]),
       ),
     ],
   ),

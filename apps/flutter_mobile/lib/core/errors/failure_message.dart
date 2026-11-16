@@ -35,6 +35,7 @@ String failureMessageKey(Object error) {
     429 => tk('Too many attempts. Please try again later.'),
     403 => tk('You do not have permission to do this.'),
     404 => tk('This item no longer exists.'),
+    409 => tk('This item already exists or was changed. Refresh and try again.'),
     400 || 422 => tk('Some details were not accepted. Check them and try again.'),
     _ => tk('Something went wrong. Please try again.'),
   };

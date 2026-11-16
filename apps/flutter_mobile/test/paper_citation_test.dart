@@ -64,7 +64,7 @@ void main() {
       );
       expect(
         mlaCitation(authors: ['A', 'B'], title: title, year: 2024),
-        'A, and B. "Federated learning in health care." 2024.',
+        'A and B. "Federated learning in health care." 2024.',
       );
       expect(
         mlaCitation(authors: ['A', 'B', 'C'], title: title),

@@ -294,22 +294,25 @@ class TrendingTopic {
 
 /// Topics in the web's trend order (see [compareByTrend]).
 List<T> sortTopicsByTrend<T extends TrendingTopic>(Iterable<T> topics) =>
-    [...topics]..sort(
-        (a, b) => compareByTrend(
-          (classification: a.classification, totalPapers: a.totalPapers, topic: a.topic),
-          (classification: b.classification, totalPapers: b.totalPapers, topic: b.topic),
-        ),
-      );
+    [...topics]..sort(_byTrend);
 
 /// The topic to feature: the first in trend order, only if it is really
 /// rising. Null when nothing rises, so no topic is ever called "rising" on
-/// raw-count growth.
+/// raw-count growth. One pass, no copy: callers usually hold a list they
+/// already sorted.
 T? topRisingTopic<T extends TrendingTopic>(Iterable<T> topics) {
-  for (final t in sortTopicsByTrend(topics)) {
-    if (t.classification.verdict == TrendVerdict.rising) return t;
+  T? best;
+  for (final t in topics) {
+    if (t.classification.verdict != TrendVerdict.rising) continue;
+    if (best == null || _byTrend(t, best) < 0) best = t;
   }
-  return null;
+  return best;
 }
+
+int _byTrend(TrendingTopic a, TrendingTopic b) => compareByTrend(
+      (classification: a.classification, totalPapers: a.totalPapers, topic: a.topic),
+      (classification: b.classification, totalPapers: b.totalPapers, topic: b.topic),
+    );
 
 class YearlyCount {
   const YearlyCount({required this.year, required this.count});
