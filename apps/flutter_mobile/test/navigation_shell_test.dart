@@ -55,6 +55,14 @@ GoRouter _buildRouter() {
           StatefulShellBranch(
             routes: [
               GoRoute(
+                path: '/community',
+                builder: (_, _) => stub('tab-community'),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
                 path: '/profile',
                 builder: (_, _) => const ProfileScreen(),
               ),
@@ -105,11 +113,13 @@ Finder _tab(String label) =>
     find.descendant(of: find.byType(NavigationBar), matching: find.text(label));
 
 void main() {
-  testWidgets('shows exactly 4 labelled destinations', (tester) async {
+  testWidgets('shows exactly 5 labelled destinations (Material 3 maximum)', (
+    tester,
+  ) async {
     await _pumpApp(tester);
 
-    expect(find.byType(NavigationDestination), findsNWidgets(4));
-    for (final label in ['Trang chủ', 'Khám phá', 'Dự án', 'Hồ sơ']) {
+    expect(find.byType(NavigationDestination), findsNWidgets(5));
+    for (final label in ['Trang chủ', 'Khám phá', 'Dự án', 'Cộng đồng', 'Hồ sơ']) {
       expect(_tab(label), findsOneWidget);
     }
     // Notifications moved to the bell; no "Alerts"/"Bookmarks" tab remains.
@@ -128,6 +138,10 @@ void main() {
     await tester.tap(_tab('Dự án'));
     await tester.pumpAndSettle();
     expect(find.text('tab-projects'), findsOneWidget);
+
+    await tester.tap(_tab('Cộng đồng'));
+    await tester.pumpAndSettle();
+    expect(find.text('tab-community'), findsOneWidget);
 
     await tester.tap(_tab('Hồ sơ'));
     await tester.pumpAndSettle();

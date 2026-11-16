@@ -10,6 +10,7 @@ import 'package:flutter_mobile/core/widgets/lumi/lumi_text_field.dart';
 import 'package:flutter_mobile/features/auth/data/auth_api.dart';
 import 'package:flutter_mobile/features/auth/data/auth_failure.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
+import 'package:flutter_mobile/features/profile/presentation/lecturer_verification_card.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Limits of the backend `UpdateProfileSchema` (auth.schema.ts).
@@ -343,6 +344,7 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
               ],
             ),
           ),
+          const LecturerVerificationCard(),
         ],
       ),
     );
