@@ -2,6 +2,10 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/quality/data/quality_api.dart';
 import 'package:flutter_mobile/features/quality/data/quality_paper_rubric.dart';
@@ -114,9 +118,9 @@ class _QualityPanelState extends ConsumerState<QualityPanel> {
           children: [
             Row(
               children: [
-                const Icon(Icons.auto_awesome),
+                const Icon(Icons.summarize_outlined),
                 const SizedBox(width: 8),
-                Expanded(child: Text(s.title, style: const TextStyle(fontWeight: FontWeight.bold))),
+                Expanded(child: Text(s.title, style: const TextStyle(fontWeight: FontWeight.w600))),
               ],
             ),
             if (_isPaper) ...[
@@ -144,7 +148,7 @@ class _QualityPanelState extends ConsumerState<QualityPanel> {
             else
               query!.when(
                 loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
-                error: (e, _) => Padding(padding: const EdgeInsets.only(top: 12), child: Text(e.toString())),
+                error: (e, _) => Padding(padding: const EdgeInsets.only(top: 12), child: Text(context.t(failureMessageKey(e)))),
                 data: (view) => _body(s, view),
               ),
           ],
@@ -157,7 +161,7 @@ class _QualityPanelState extends ConsumerState<QualityPanel> {
     final projects = ref.watch(projectsProvider);
     return projects.when(
       loading: () => const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator())),
-      error: (e, _) => Padding(padding: const EdgeInsets.only(top: 12), child: Text(e.toString())),
+      error: (e, _) => Padding(padding: const EdgeInsets.only(top: 12), child: Text(context.t(failureMessageKey(e)))),
       data: (list) {
         if (list.isEmpty) {
           return Column(
@@ -228,7 +232,7 @@ class _QualityPanelState extends ConsumerState<QualityPanel> {
       child: FilledButton.tonalIcon(
         style: qualityButtonStyle,
         onPressed: _running ? null : () => _run(force: again),
-        icon: Icon(again ? Icons.refresh : Icons.auto_awesome),
+        icon: Icon(again ? Icons.refresh : Icons.summarize_outlined),
         label: Text(again ? s.reEvaluate : s.evaluate),
       ),
     );
@@ -338,7 +342,7 @@ class _QualityPanelState extends ConsumerState<QualityPanel> {
         if (inProject && project != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text(s.inProject, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            child: Text(s.inProject, style: context.type.bodySmall!.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ),
         _evaluateButton(s, again: true),
       ],
@@ -377,7 +381,7 @@ class _QualityPanelState extends ConsumerState<QualityPanel> {
             5,
             (index) => IconButton(
               onPressed: () => setState(() => stars = index + 1),
-              icon: Icon(index < stars ? Icons.star : Icons.star_border, color: Colors.amber),
+              icon: Icon(index < stars ? Icons.star : Icons.star_border, color: context.lumi.warning),
             ),
           ),
         ),

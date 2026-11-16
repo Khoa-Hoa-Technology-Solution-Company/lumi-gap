@@ -6,25 +6,36 @@ import { apiSyncQueue, paperAnalysisQueue, makeConnection, QUEUE_NAMES } from ".
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { isNonRetryableOpenAlexError } from "../modules/api-sync/providers/openalex.client.js";
+import { failStaleSyncRunsSafely } from "../modules/api-sync/stale-runs.js";
 import { runSync, type RunSyncJob } from "../modules/api-sync/sync.service.js";
+import { TOPIC_WATCH_DAILY_JOB, TOPIC_WATCH_RUN_JOB } from "../modules/topic-watch/topic-watch.rules.js";
+import { topicWatchService } from "../modules/topic-watch/topic-watch.service.js";
 
 enforcePostgresOnlyRuntime();
+
+/** The fixed-query cron this worker used to register. Its schedule lives in Redis until it is removed. */
+const RETIRED_CRON_JOB = "scheduled-sync";
 
 /**
  * Standalone OpenAlex sync worker — a SEPARATE Node process from the API.
  * Run with: pnpm --filter backend worker:sync
  *
- * Consumes the "api-sync" BullMQ queue and runs the full ingest pipeline.
- * Also registers the daily cron (SYNC_CRON) as a repeatable job.
+ * Consumes the "api-sync" BullMQ queue: admin-started syncs and the topic watches. Also registers the daily
+ * topic-watch run (SYNC_CRON) as a repeatable job; it does nothing until an admin follows an entry.
  */
 async function main() {
   await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({ workerName: "worker:sync", queueName: QUEUE_NAMES.apiSync });
+  // A run is recorded as "running" when it starts; if a worker was stopped mid-run that row never finishes.
+  await failStaleSyncRunsSafely();
 
   const worker = new Worker(
     QUEUE_NAMES.apiSync,
     async (job) => {
-      logger.info({ jobId: job.id, data: job.data }, "sync job received");
+      logger.info({ jobId: job.id, name: job.name, data: job.data }, "sync job received");
+      if (job.name === RETIRED_CRON_JOB) return { ignored: true };
+      await failStaleSyncRunsSafely();
+      if (job.name === TOPIC_WATCH_DAILY_JOB || job.name === TOPIC_WATCH_RUN_JOB) return topicWatchService.runDaily();
       let result: Awaited<ReturnType<typeof runSync>>;
       try {
         result = await runSync(job.data as RunSyncJob);
@@ -42,17 +53,13 @@ async function main() {
   worker.on("completed", (job) => logger.info({ jobId: job.id }, "sync job completed"));
   worker.on("failed", (job, err) => logger.error({ jobId: job?.id, err }, "sync job failed"));
 
-  // Register the daily cron as a repeatable job. BullMQ dedups by repeat key,
-  // so re-running the worker does not stack duplicate schedules.
-  await apiSyncQueue.add(
-    "scheduled-sync",
-    {
-      searchText: "large language model education",
-      yearFrom: 2022,
-      maxPages: env.SYNC_MAX_PAGES_PER_RUN,
-    } satisfies RunSyncJob,
-    { repeat: { pattern: env.SYNC_CRON } },
-  );
+  // BullMQ keys a repeatable job by name + id + pattern, so a retired job or a changed SYNC_CRON would keep running.
+  for (const existing of await apiSyncQueue.getRepeatableJobs()) {
+    if (existing.name === RETIRED_CRON_JOB || (existing.name === TOPIC_WATCH_DAILY_JOB && existing.pattern !== env.SYNC_CRON)) {
+      await apiSyncQueue.removeRepeatableByKey(existing.key);
+    }
+  }
+  await apiSyncQueue.add(TOPIC_WATCH_DAILY_JOB, {}, { repeat: { pattern: env.SYNC_CRON } });
 
   logger.info({ cron: env.SYNC_CRON }, "sync worker listening on api-sync queue");
 

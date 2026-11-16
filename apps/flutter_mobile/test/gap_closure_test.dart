@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/theme/app_colors.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/gaps/presentation/gap_closure_widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -100,8 +101,8 @@ void main() {
       expect(formatClosureRiskPercent(0.1533), '15.4');
       expect(formatClosureRiskPercent(0.15), '15.0');
       expect(formatClosureRiskPercent(0.1), '10.0');
-      expect(formatClosureRiskPercent(0.0), '0.0');
-      expect(formatClosureRiskPercent(1.0), '100.0');
+      expect(formatClosureRiskPercent(0), '0.0');
+      expect(formatClosureRiskPercent(1), '100.0');
       expect(formatClosureRiskPercent(0.15001), '15.1');
       expect(formatClosureRiskPercent(1.7), '100.0');
     });
@@ -164,7 +165,7 @@ void main() {
     });
 
     test(
-      'every badge text has at least 4.5:1 contrast against its tinted background',
+      'every badge text has at least 4.5:1 contrast against the badge surface',
       () {
         for (final status in [
           'NOT_CHECKED',
@@ -174,11 +175,11 @@ void main() {
         ]) {
           final spec = ClosureBadgeSpec.forGap(_gap({'closureStatus': status}));
           for (final isDark in [false, true]) {
-            final surface = isDark ? const Color(0xFF1A2332) : Colors.white;
+            // The badge sits on the theme surface (see GapClosureBadge).
+            final surface = isDark ? LumiDark.surface : LumiLight.surface;
             final fg = spec.color(isDark: isDark);
-            final bg = Color.alphaBlend(fg.withValues(alpha: 0.12), surface);
             expect(
-              _contrast(fg, bg),
+              _contrast(fg, surface),
               greaterThanOrEqualTo(4.5),
               reason: '$status dark=$isDark',
             );

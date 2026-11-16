@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:intl/intl.dart';
 
 class ProjectBubbleActionPill extends StatelessWidget {
@@ -20,12 +22,12 @@ class ProjectBubbleActionPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final foreground = active ? const Color(0xFF1D4ED8) : colors.onSurface;
+    final foreground = active ? context.lumi.primary : colors.onSurface;
     final background = active
-        ? const Color(0xFF1D4ED8).withValues(alpha: .1)
+        ? context.lumi.primarySoft
         : colors.surface.withValues(alpha: subtle ? .55 : .86);
     final borderColor = active
-        ? const Color(0xFF1D4ED8).withValues(alpha: .16)
+        ? context.lumi.primarySoft
         : colors.outlineVariant.withValues(alpha: .18);
 
     return Material(
@@ -52,10 +54,9 @@ class ProjectBubbleActionPill extends StatelessWidget {
               ],
               Text(
                 label,
-                style: TextStyle(
+                style: context.type.bodySmall!.copyWith(
                   color: foreground,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
@@ -90,13 +91,12 @@ class ProjectMessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final timestamp = DateTime.tryParse(createdAt)?.toLocal();
-    final bubbleColor = mine
-        ? const Color(0xFF1D4ED8)
-        : colors.surfaceContainerHighest.withValues(alpha: .78);
+    final bubbleColor = mine ? context.lumi.primary : context.lumi.surfaceMuted;
     final textColor = mine ? colors.onPrimary : colors.onSurface;
+    // Not `muted` on `surfaceMuted`: under 4.5:1.
     final metaColor = mine
         ? colors.onPrimary.withValues(alpha: .72)
-        : colors.onSurfaceVariant;
+        : context.lumi.foregroundSecondary;
     final maxWidth = MediaQuery.sizeOf(context).width * .68;
 
     final bubble = Container(
@@ -105,10 +105,10 @@ class ProjectMessageBubble extends StatelessWidget {
       decoration: BoxDecoration(
         color: bubbleColor,
         borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(20),
-          topRight: const Radius.circular(20),
-          bottomLeft: Radius.circular(mine ? 20 : 5),
-          bottomRight: Radius.circular(mine ? 5 : 20),
+          topLeft: const Radius.circular(12),
+          topRight: const Radius.circular(12),
+          bottomLeft: Radius.circular(mine ? 12 : 4),
+          bottomRight: Radius.circular(mine ? 4 : 12),
         ),
         boxShadow: [
           BoxShadow(
@@ -131,9 +131,8 @@ class ProjectMessageBubble extends StatelessWidget {
               Flexible(
                 child: Text(
                   heading,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
+                  style: context.type.bodySmall!.copyWith(
+                    fontWeight: FontWeight.w600,
                     color: metaColor,
                   ),
                 ),
@@ -142,7 +141,7 @@ class ProjectMessageBubble extends StatelessWidget {
                 const SizedBox(width: 5),
                 Text(
                   DateFormat.Hm().format(timestamp),
-                  style: TextStyle(fontSize: 10, color: metaColor),
+                  style: context.type.bodySmall!.copyWith( color: metaColor),
                 ),
               ],
             ],
@@ -150,9 +149,8 @@ class ProjectMessageBubble extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             content,
-            style: TextStyle(
+            style: context.type.bodyMedium!.copyWith(
               color: textColor,
-              fontSize: 14.5,
               height: 1.32,
               fontStyle: italic ? FontStyle.italic : null,
             ),
@@ -162,7 +160,7 @@ class ProjectMessageBubble extends StatelessWidget {
             IconTheme(
               data: IconThemeData(color: metaColor, size: 16),
               child: DefaultTextStyle(
-                style: TextStyle(fontSize: 11, color: metaColor),
+                style: context.type.bodySmall!.copyWith( color: metaColor),
                 child: footer!,
               ),
             ),
@@ -248,7 +246,7 @@ class ProjectEmptyChat extends StatelessWidget {
             Text(
               title,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 6),

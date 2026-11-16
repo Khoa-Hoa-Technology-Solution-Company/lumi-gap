@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_theme.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
@@ -14,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'auth_test_support.dart';
+import 'support/readable_text.dart';
 import 'team_chat_support.dart';
 
 /// Characterization test for the project workspace screen, written before it
@@ -96,6 +99,7 @@ Future<_Fakes> _pump(
   ProjectView project = _project,
   bool messages = true,
   double width = 412,
+  Brightness brightness = Brightness.light,
 }) async {
   final fakes = _active = _Fakes();
   fakes.chat.onList = (_, _) async => messages
@@ -154,6 +158,11 @@ Future<_Fakes> _pump(
         locale: AppLocale.en.locale,
         supportedLocales: AppLocale.supportedLocales,
         localizationsDelegates: appLocalizationsDelegates,
+        // The app's own theme: the default Material one would test colours
+        // the app never shows.
+        theme: brightness == Brightness.dark
+            ? AppTheme.darkTheme
+            : AppTheme.lightTheme,
         home: const ProjectDetailScreen(id: 'p1'),
       ),
     ),
@@ -275,25 +284,36 @@ void main() {
     await _dispose(tester);
   });
 
-  for (final width in [412.0, 320.0]) {
-    for (final empty in [false, true]) {
-      _screenTest(
-        'no layout overflow on any tab at ${width.toInt()}dp '
-        '(${empty ? 'empty' : 'full'} project)',
-        (tester) async {
-          await _pump(
-            tester,
-            project: empty ? _emptyProject : _project,
-            messages: !empty,
-            width: width,
-          );
-          for (final tab in _tabs) {
-            await _openTab(tester, tab);
-            expect(_errors, isEmpty, reason: '$tab @ ${width}dp');
-          }
-          await _dispose(tester);
-        },
-      );
+  for (final brightness in Brightness.values) {
+    for (final width in [412.0, 320.0]) {
+      for (final empty in [false, true]) {
+        _screenTest(
+          'every tab fits and reads at ${width.toInt()}dp, '
+          '${brightness.name} (${empty ? 'empty' : 'full'} project)',
+          (tester) async {
+            await _pump(
+              tester,
+              project: empty ? _emptyProject : _project,
+              messages: !empty,
+              width: width,
+              brightness: brightness,
+            );
+            final page = brightness == Brightness.dark
+                ? LumiColors.dark.background
+                : LumiColors.light.background;
+            for (final tab in _tabs) {
+              await _openTab(tester, tab);
+              expect(_errors, isEmpty, reason: '$tab @ ${width}dp');
+              expect(
+                unreadableText(tester, page: page),
+                isEmpty,
+                reason: '$tab, ${brightness.name}',
+              );
+            }
+            await _dispose(tester);
+          },
+        );
+      }
     }
   }
 
@@ -379,7 +399,7 @@ void main() {
       ) async {
         final api = await _pump(tester, messages: false);
         await _openTab(tester, 'AI Assistant');
-        await tester.tap(find.text('Team AI (Shared)'));
+        await tester.tap(find.text('Team AI'));
         await tester.pumpAndSettle();
 
         await _openTab(tester, 'Chat');
@@ -390,7 +410,7 @@ void main() {
 
         await _openTab(tester, 'AI Assistant');
         expect(
-          find.text('Team AI Room - Shared'),
+          find.text('AI answers are visible to every project member'),
           findsOneWidget,
           reason: 'AI channel kept',
         );
@@ -421,7 +441,7 @@ void main() {
         expect(api.aiSends, isEmpty);
         expect(api.teamSends, isEmpty);
 
-        await tester.tap(find.text('Team AI (Shared)'));
+        await tester.tap(find.text('Team AI'));
         await tester.pumpAndSettle();
         expect(
           find.text('Add papers before asking AI.'),
@@ -535,14 +555,12 @@ const Map<String, List<String>> _expected = {
     'Copy',
     'Học liên kết trong y tế',
     'Members',
-    'My AI (Private)',
-    'My AI - Private',
+    'My AI',
     'Only you can see this AI conversation',
     'Outputs',
     'Overview',
     'Papers',
-    'Private',
-    'Team AI (Shared)',
+    'Team AI',
     'Đây là câu trả lời của AI',
   ],
   'Outputs': [
@@ -566,7 +584,9 @@ const Map<String, List<String>> _expected = {
     'Chat',
     'Enter User ID or Email',
     'Học liên kết trong y tế',
+    'LT',
     'Lan Tran',
+    'MN',
     'Member',
     'Members',
     'Minh Nguyen',
@@ -593,6 +613,7 @@ const Map<String, List<String>> _expectedEmpty = {
     'Gaps Detected',
     'Ground Your Research',
     'Members',
+    'No description yet.',
     'Outputs',
     'Overview',
     'Papers',
@@ -632,15 +653,13 @@ const Map<String, List<String>> _expectedEmpty = {
     'Chat',
     'Dự án trống',
     'Members',
-    'My AI (Private)',
-    'My AI - Private',
+    'My AI',
     'No AI messages yet',
     'Only you can see this AI conversation',
     'Outputs',
     'Overview',
     'Papers',
-    'Private',
-    'Team AI (Shared)',
+    'Team AI',
   ],
   'Outputs': [
     'AI Assistant',

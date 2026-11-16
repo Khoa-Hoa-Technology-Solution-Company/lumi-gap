@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/core/theme/theme_provider.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/explore/presentation/explore_screen.dart';
+import 'package:flutter_mobile/features/home/data/home_api.dart';
+import 'package:flutter_mobile/features/home/data/home_models.dart';
 import 'package:flutter_mobile/features/home/presentation/app_shell_screen.dart';
 import 'package:flutter_mobile/features/notifications/data/notifications_api.dart';
 import 'package:flutter_mobile/features/profile/presentation/profile_screen.dart';
@@ -77,6 +80,10 @@ Future<GoRouter> _pumpApp(WidgetTester tester) async {
         authControllerProvider.overrideWith(_SignedOutAuth.new),
         notificationsProvider.overrideWith((ref) async => <AppNotification>[]),
         bookmarksProvider.overrideWith((ref) async => <Bookmark>[]),
+        // Explore shows trending topics from the home overview.
+        homeOverviewProvider.overrideWith(
+          (ref) async => const HomeOverview(topics: [], recentPapers: []),
+        ),
         reportsProvider.overrideWith(
           (ref, params) async => const ReportsList(reports: [], total: 0),
         ),
@@ -124,7 +131,7 @@ void main() {
 
     await tester.tap(_tab('Hồ sơ'));
     await tester.pumpAndSettle();
-    expect(find.text(vi('ACTIVITY')), findsOneWidget);
+    expect(find.text(vi('Activity')), findsOneWidget);
 
     await tester.tap(_tab('Trang chủ'));
     await tester.pumpAndSettle();
@@ -153,7 +160,7 @@ void main() {
     await tester.pumpAndSettle();
 
     for (final entry in ExploreScreen.entries) {
-      final tile = find.widgetWithText(ListTile, vi(entry.title));
+      final tile = find.widgetWithText(LumiListRow, vi(entry.title));
       expect(tile, findsOneWidget);
       expect(tester.getSize(tile).height, greaterThanOrEqualTo(48));
     }
@@ -176,8 +183,9 @@ void main() {
     await tester.tap(_tab('Hồ sơ'));
     await tester.pumpAndSettle();
 
+    // The menu row, not the "Bookmarks" counter above it.
     final row = find.descendant(
-      of: find.byType(Card),
+      of: find.byType(LumiRowGroup),
       matching: find.text(vi('Bookmarks')),
     );
     await tester.scrollUntilVisible(row, 200);

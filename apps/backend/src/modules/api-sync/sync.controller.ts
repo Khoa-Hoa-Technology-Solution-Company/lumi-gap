@@ -1,5 +1,7 @@
+import type { SyncOptions } from "@trend/shared-types";
 import type { Request, Response } from "express";
 import { apiSyncQueue, corpusValidationQueue, openAlexIngestQueue } from "../../infrastructure/queue.js";
+import { AppError } from "../../common/exceptions/app-error.js";
 import { env } from "../../config/env.js";
 import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
@@ -20,12 +22,20 @@ import { CORPUS_VALIDATOR_VERSION, corpusValidationService } from "./scale/corpu
  */
 export const syncController = {
   async trigger(req: Request<unknown, unknown, TriggerSyncInput>, res: Response) {
+    if (!env.SYNC_FREE_TEXT_ENABLED) {
+      throw new AppError(403, "SYNC_FREE_TEXT_DISABLED", "Sync by free search text is turned off; import from a catalogue entry instead");
+    }
     const { searchText, yearFrom, maxPages } = req.body;
     const job = await apiSyncQueue.add("manual-sync", { searchText, yearFrom, maxPages });
     res.status(202).json({
       success: true,
       data: { jobId: job.id, status: "queued", searchText, yearFrom, maxPages },
     });
+  },
+
+  options(_req: Request, res: Response) {
+    const data: SyncOptions = { freeTextSyncEnabled: env.SYNC_FREE_TEXT_ENABLED };
+    res.json({ success: true, data });
   },
 
   async listRuns(_req: Request, res: Response) {

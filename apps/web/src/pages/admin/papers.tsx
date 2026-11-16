@@ -26,13 +26,16 @@ import { cn } from "@/utils/cn";
 import { formatNumber, formatQualityTierName } from "@/utils";
 import { formatPaperRequester, type PaperRequesterValue } from "@/features/admin/utils/paper-request";
 import { useI18n } from "@/i18n";
-import { isAdminSystemRole } from "@trend/shared-types";
+import { isAdminSystemRole, type PaperIngestSource } from "@trend/shared-types";
 
 interface AdminPaper {
   id: string;
   title: string;
   paperStatus: string;
   dataStatus: string;
+  rejectionReason?: string;
+  ingestSource?: PaperIngestSource;
+  ingestSourceDetail?: string;
   publicationYear: number;
   paperKind?: string;
   externalIds?: { doi?: string };
@@ -47,6 +50,18 @@ interface AdminPaper {
   updatedAt?: string;
   createdAt: string;
 }
+
+/** How the paper first entered the corpus, as shown to admins. */
+const INGEST_SOURCE_LABELS: Record<PaperIngestSource, string> = {
+  "free-text-sync": "Free-text sync",
+  "topic-watch": "Daily topic watch",
+  "catalogue-import": "Catalogue import",
+  "search-import": "Import requested from search",
+  campaign: "Campaign",
+  "gap-enrichment": "Gap analysis",
+  "forum-citation": "Forum citation",
+  legacy: "Before sources were recorded",
+};
 
 const STATUS_OPTIONS = ["all", "pending", "not-downloaded", "downloaded", "rejected", "pending-requester-acceptance"];
 const STATUS_LABELS: Record<string, string> = {
@@ -393,6 +408,17 @@ export function AdminPapersPage() {
                       {/* Metadata Row */}
                       <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 flex-wrap font-medium">
                         <span>Year: <strong>{paper.publicationYear}</strong></span>
+                        {paper.ingestSource && (
+                          <span className="min-w-0 break-words" data-testid="paper-ingest-source">
+                            {t("Source")}: <strong>{t(INGEST_SOURCE_LABELS[paper.ingestSource] ?? paper.ingestSource)}</strong>
+                            {paper.ingestSourceDetail ? ` (${paper.ingestSourceDetail})` : ""}
+                          </span>
+                        )}
+                        {paper.dataStatus === "low-quality" && paper.rejectionReason && (
+                          <span className="min-w-0 break-words text-amber-700 dark:text-amber-400" data-testid="paper-low-quality-reason">
+                            {t("Low quality")}: {t(paper.rejectionReason)}
+                          </span>
+                        )}
                         {formatPaperRequester(paper.requestedBy) && (
                           <span className="flex items-center gap-1">
                             <User className="w-3 h-3 text-slate-400" />

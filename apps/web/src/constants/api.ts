@@ -200,6 +200,7 @@ export const API_ROUTES = {
     },
     sync: "/admin/sync",
     syncRuns: "/admin/sync/runs",
+    syncOptions: "/admin/sync/options",
     embedStatus: "/admin/embed/status",
     triggerEmbed: "/admin/embed",
     users: "/admin/users",
@@ -229,12 +230,18 @@ export const API_ROUTES = {
       request: "/admin/topic-backfill",
       runs: "/admin/topic-backfill/runs",
     },
+    topicWatches: {
+      list: "/admin/topic-watches",
+      item: (id: string) => `/admin/topic-watches/${encodeURIComponent(id)}`,
+      run: "/admin/topic-watches/run",
+    },
     tagCampaigns: {
       preflight: "/admin/openalex-ingest/tag-campaigns/preflight",
       list: "/admin/openalex-ingest/tag-campaigns",
     },
     taxonomy: {
       stats: "/admin/taxonomy/stats",
+      sync: "/admin/taxonomy/sync",
       nodes: "/admin/taxonomy/nodes",
       node: (id: string) => `/admin/taxonomy/nodes/${id}`,
       keywords: "/admin/taxonomy/keywords",

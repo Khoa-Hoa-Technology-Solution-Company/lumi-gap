@@ -218,6 +218,19 @@ void main() {
         }
       });
 
+      test('status bar icons contrast with the page', () {
+        // Dark icons on the light theme, light icons on the dark one, set on
+        // the theme so a transparent app bar cannot flip them.
+        final style = theme.appBarTheme.systemOverlayStyle;
+        expect(style, isNotNull);
+        expect(
+          style!.statusBarIconBrightness,
+          theme.brightness == Brightness.light
+              ? Brightness.dark
+              : Brightness.light,
+        );
+      });
+
       test('cards are 8dp, sheets 12dp, nav bar 80dp, app bar 64dp', () {
         expect(
           (theme.cardTheme.shape! as RoundedRectangleBorder).borderRadius,

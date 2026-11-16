@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/trends/components/trends_ai_tab.dart';
 import 'package:flutter_mobile/features/trends/components/trends_compare_tab.dart';
 import 'package:flutter_mobile/features/trends/components/trends_scope_tab.dart';
@@ -60,27 +62,22 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen>
     );
 
     final query = ref.watch(trendsOverviewProvider(currentParams));
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
-    final bgColor = isDark
-        ? const Color(0xFF0F1B2D)
-        : theme.scaffoldBackgroundColor;
+    final bgColor = context.lumi.background;
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: Text(
-          context.t('Trends Workbench'),
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        title: Text(context.t('Trends Workbench')),
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: const Color(0xFF06B6D4),
-          labelColor: const Color(0xFF06B6D4),
-          unselectedLabelColor: const Color(0xFF94A3B8),
+          // Scrolls instead of clipping labels on a narrow screen or with
+          // large text.
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          indicatorColor: context.lumi.primary,
+          labelColor: context.lumi.primary,
+          unselectedLabelColor: context.lumi.muted,
           tabs: [
             Tab(text: context.t('Signals')),
             Tab(text: context.t('Scope')),
@@ -123,11 +120,8 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen>
             ),
           ],
         ),
-        loading: () => AppLoading(
-          fullScreen: true,
-          message: context.t('Loading trends data...'),
-        ),
-        error: (error, _) => AppErrorState(message: error.toString()),
+        loading: () => const LumiPageSkeleton(height: 120),
+        error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
       ),
     );
   }

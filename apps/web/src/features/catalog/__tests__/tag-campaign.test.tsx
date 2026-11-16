@@ -7,7 +7,7 @@ import type { TagCampaign, TagCampaignPreflight } from "@trend/shared-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 
-const mocks = vi.hoisted(() => ({ preflight: vi.fn(), plan: vi.fn(), list: vi.fn() }));
+const mocks = vi.hoisted(() => ({ preflight: vi.fn(), plan: vi.fn(), list: vi.fn(), start: vi.fn(), pause: vi.fn(), cancel: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/i18n", () => ({
   useI18n: () => ({
@@ -18,6 +18,10 @@ vi.mock("@/i18n", () => ({
 vi.mock("../api/catalog.api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/catalog.api")>()),
   tagCampaignsApi: { preflight: mocks.preflight, plan: mocks.plan, list: mocks.list },
+}));
+
+vi.mock("@/features/admin/api/admin.api", () => ({
+  adminApi: { startOpenAlexCampaign: mocks.start, pauseOpenAlexCampaign: mocks.pause, cancelOpenAlexCampaign: mocks.cancel },
 }));
 
 import { TagCampaignDialog, embeddingDays, parseCampaignTarget } from "../components/tag-campaign-dialog";
@@ -250,7 +254,7 @@ describe("TagCampaignDialog", () => {
     await typeTarget("250");
     await click(planButton());
     expect(mocks.plan).toHaveBeenCalledWith("tag-1", 250);
-    expect(toast.success).toHaveBeenCalledWith("Campaign planned for “Machine learning”. Start it on the pipeline page: nothing is downloaded until then.");
+    expect(toast.success).toHaveBeenCalledWith("Campaign planned for “Machine learning”. Start it in the campaign list below: nothing is downloaded until then.");
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -300,6 +304,51 @@ describe("TagCampaignsSection", () => {
     expect(items[1]!.textContent).toMatch(/Works100 \/ 100/);
     const link = Array.from(container.querySelectorAll("a")).find((item) => item.textContent === "Open pipeline");
     expect(link?.getAttribute("href")).toBe("/admin/pipeline");
+  });
+
+  it("starts a planned campaign from the tag page and refreshes the list", async () => {
+    mocks.list.mockResolvedValueOnce([campaign()]).mockResolvedValue([campaign({ state: "running" })]);
+    mocks.start.mockResolvedValue({});
+    await render(<TagCampaignsSection tagId="tag-1" />);
+    expect(button("Pause")).toBeUndefined();
+    await click(button("Start"));
+    expect(mocks.start).toHaveBeenCalledWith("c1");
+    expect(toast.success).toHaveBeenCalledWith("Campaign started. It runs in the background.");
+    expect(container.textContent).toContain("Running");
+    expect(button("Pause")).toBeDefined();
+    expect(button("Start")).toBeUndefined();
+  });
+
+  it("pauses a running campaign and offers to resume a paused one", async () => {
+    mocks.list.mockResolvedValueOnce([campaign({ state: "running" })]).mockResolvedValue([campaign({ state: "paused" })]);
+    mocks.pause.mockResolvedValue({});
+    await render(<TagCampaignsSection tagId="tag-1" />);
+    await click(button("Pause"));
+    expect(mocks.pause).toHaveBeenCalledWith("c1");
+    expect(button("Resume")).toBeDefined();
+  });
+
+  it("cancels only after a second confirmation", async () => {
+    mocks.list.mockResolvedValueOnce([campaign()]).mockResolvedValue([campaign({ state: "cancelled" })]);
+    mocks.cancel.mockResolvedValue({});
+    await render(<TagCampaignsSection tagId="tag-1" />);
+    await click(button("Cancel campaign"));
+    expect(mocks.cancel).not.toHaveBeenCalled();
+    await click(button("Keep it"));
+    expect(button("Start")).toBeDefined();
+    await click(button("Cancel campaign"));
+    await click(button("Yes, cancel it"));
+    expect(mocks.cancel).toHaveBeenCalledWith("c1");
+    expect(button("Cancel campaign")).toBeUndefined();
+  });
+
+  it("shows the server message when an action fails and offers no controls on a finished campaign", async () => {
+    mocks.list.mockResolvedValue([campaign(), campaign({ id: "c0", state: "completed" })]);
+    mocks.start.mockRejectedValue(apiError(409, "OPENALEX_API_KEY_REQUIRED", "Set the OpenAlex key first"));
+    await render(<TagCampaignsSection tagId="tag-1" />);
+    expect(Array.from(document.querySelectorAll("button")).filter((item) => item.textContent?.trim() === "Start")).toHaveLength(1);
+    await click(button("Start"));
+    expect(toast.error).toHaveBeenCalledWith("Set the OpenAlex key first");
   });
 
   it("offers a retry when the list cannot be loaded", async () => {

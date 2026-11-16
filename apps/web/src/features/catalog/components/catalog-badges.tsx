@@ -1,4 +1,4 @@
-import type { KeywordStatus, PaperTagSource, TagStatus, TaxonomyLevel, TaxonomyNodeStatus, TopicBackfillState } from "@trend/shared-types";
+import type { KeywordStatus, PaperTagSource, TagStatus, TaxonomyLevel, TaxonomyNodeStatus, TopicBackfillState, TopicWatchPhase } from "@trend/shared-types";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/i18n";
 
@@ -66,6 +66,21 @@ const BACKFILL_STATE_TONES: Record<TopicBackfillState, keyof typeof TONES> = {
 export function BackfillStateBadge({ state }: { state: TopicBackfillState }) {
   const { t } = useI18n();
   return <Badge variant="outline" className={TONES[BACKFILL_STATE_TONES[state]]}>{t(BACKFILL_STATE_LABELS[state])}</Badge>;
+}
+
+const WATCH_PHASE_LABELS: Record<TopicWatchPhase, string> = {
+  backlog: "Reading older works",
+  tracking: "Following new works",
+};
+
+const WATCH_PHASE_TONES: Record<TopicWatchPhase, keyof typeof TONES> = {
+  backlog: "blue",
+  tracking: "green",
+};
+
+export function WatchPhaseBadge({ phase }: { phase: TopicWatchPhase }) {
+  const { t } = useI18n();
+  return <Badge variant="outline" className={TONES[WATCH_PHASE_TONES[phase]]}>{t(WATCH_PHASE_LABELS[phase])}</Badge>;
 }
 
 const CAMPAIGN_STATE_LABELS: Record<string, string> = {

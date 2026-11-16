@@ -2,9 +2,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter_mobile/core/constants/api_routes.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/network/api_client.dart';
+import 'package:flutter_mobile/features/trends/data/trend_classification.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:meta/meta.dart';
+
+export 'package:flutter_mobile/features/trends/data/trend_classification.dart';
 
 final trendsApiProvider = Provider<TrendsApi>((ref) {
   return TrendsApi(ref.watch(apiClientProvider).dio);
@@ -256,6 +259,7 @@ class TrendingTopic {
     required this.yearlyBreakdown,
     this.taxonomy,
     this.cagr3yPct,
+    this.classification = TrendClassification.none,
   });
 
   factory TrendingTopic.fromJson(Map<String, dynamic> json) {
@@ -270,6 +274,7 @@ class TrendingTopic {
           .toList(),
       taxonomy: json['taxonomy'] is Map<String, dynamic> ? TrendTopicTaxonomy.fromJson(json['taxonomy'] as Map<String, dynamic>) : null,
       cagr3yPct: (json['cagr3yPct'] as num?)?.toDouble(),
+      classification: TrendClassification.fromJson(json['classification']),
     );
   }
 
@@ -279,7 +284,31 @@ class TrendingTopic {
   final int totalPapers;
   final List<YearlyCount> yearlyBreakdown;
   final TrendTopicTaxonomy? taxonomy;
+
+  /// Descriptive only (raw counts): never used to rank or label a trend.
   final double? cagr3yPct;
+
+  /// The API's verdict; ranking and labels come from here only.
+  final TrendClassification classification;
+}
+
+/// Topics in the web's trend order (see [compareByTrend]).
+List<T> sortTopicsByTrend<T extends TrendingTopic>(Iterable<T> topics) =>
+    [...topics]..sort(
+        (a, b) => compareByTrend(
+          (classification: a.classification, totalPapers: a.totalPapers, topic: a.topic),
+          (classification: b.classification, totalPapers: b.totalPapers, topic: b.topic),
+        ),
+      );
+
+/// The topic to feature: the first in trend order, only if it is really
+/// rising. Null when nothing rises, so no topic is ever called "rising" on
+/// raw-count growth.
+T? topRisingTopic<T extends TrendingTopic>(Iterable<T> topics) {
+  for (final t in sortTopicsByTrend(topics)) {
+    if (t.classification.verdict == TrendVerdict.rising) return t;
+  }
+  return null;
 }
 
 class YearlyCount {
@@ -559,6 +588,7 @@ class TopicComparisonItem extends TrendingTopic {
     required super.yearlyBreakdown,
     super.taxonomy,
     super.cagr3yPct,
+    super.classification,
     this.citationTrend = const [],
   });
 
@@ -573,6 +603,7 @@ class TopicComparisonItem extends TrendingTopic {
             .toList(),
         taxonomy: json['taxonomy'] is Map<String, dynamic> ? TrendTopicTaxonomy.fromJson(json['taxonomy'] as Map<String, dynamic>) : null,
         cagr3yPct: (json['cagr3yPct'] as num?)?.toDouble(),
+        classification: TrendClassification.fromJson(json['classification']),
         citationTrend: (json['citationTrend'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(YearlyCitationMetric.fromJson)
@@ -609,6 +640,7 @@ class TrendTopicCandidate extends TrendingTopic {
     required this.matchedBy,
     super.taxonomy,
     super.cagr3yPct,
+    super.classification,
   });
 
   factory TrendTopicCandidate.fromJson(Map<String, dynamic> json) => TrendTopicCandidate(
@@ -623,6 +655,7 @@ class TrendTopicCandidate extends TrendingTopic {
         matchedBy: (json['matchedBy'] ?? 'topic').toString(),
         taxonomy: json['taxonomy'] is Map<String, dynamic> ? TrendTopicTaxonomy.fromJson(json['taxonomy'] as Map<String, dynamic>) : null,
         cagr3yPct: (json['cagr3yPct'] as num?)?.toDouble(),
+        classification: TrendClassification.fromJson(json['classification']),
       );
 
   final String matchedBy;

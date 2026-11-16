@@ -5,6 +5,10 @@ import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/i18n/locale_provider.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/theme/theme_provider.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
+import 'package:flutter_mobile/features/auth/data/auth_models.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
@@ -16,44 +20,83 @@ import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-class ProfileScreen extends ConsumerWidget {
+/// What the person does academically, as chosen in their academic profile.
+/// Null when they have not chosen yet: nothing is shown rather than a guess.
+String? academicProfileLabel(AcademicProfileType? type) => switch (type) {
+      AcademicProfileType.student => tk('Student'),
+      AcademicProfileType.researcher => tk('Researcher'),
+      AcademicProfileType.lecturer => tk('Lecturer'),
+      null => null,
+    };
+
+/// Platform roles worth telling the person about. An ordinary account
+/// (`user`, or the legacy student / lecturer / researcher values) gets no
+/// chip: the academic profile already says what they are.
+String? staffRoleLabel(UserRole? role) => switch (role) {
+      UserRole.admin => tk('Admin'),
+      UserRole.moderator => tk('Moderator'),
+      UserRole.reviewer => tk('Reviewer'),
+      _ => null,
+    };
+
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
-  Future<void> _handleLogout(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.t('Sign out')),
-        content: Text(context.t('Do you want to sign out of Publication Trend?')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(context.t('Cancel')),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: context.lumi.error),
-            child: Text(context.t('Sign out')),
-          ),
-        ],
-      ),
-    );
+  @override
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
 
-    if (confirmed == true) {
-      await ref.read(authControllerProvider.notifier).logout();
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  /// True from the tap on "Sign out" until the dialog is answered and the
+  /// request has finished, so a second tap cannot open a second dialog or
+  /// sign out twice.
+  bool _signingOut = false;
+
+  Future<void> _handleLogout() async {
+    if (_signingOut) return;
+    setState(() => _signingOut = true);
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(context.t('Sign out')),
+          content: Text(context.t('Do you want to sign out of LumiGap?')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(context.t('Cancel')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: context.lumi.error),
+              child: Text(context.t('Sign out')),
+            ),
+          ],
+        ),
+      );
+      if (confirmed ?? false) {
+        await ref.read(authControllerProvider.notifier).logout();
+      }
+    } finally {
+      // After a real sign-out the router has replaced this screen.
+      if (mounted) setState(() => _signingOut = false);
     }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
     final user = authState.value;
     final bookmarks = ref.watch(bookmarksProvider).value ?? [];
-    final reports = ref.watch(reportsProvider(const ReportsParams())).value?.total ?? 0;
-    
-    final paperBookmarks = bookmarks.where((b) => b.targetKind == 'paper').toList();
+    final reports =
+        ref.watch(reportsProvider(const ReportsParams())).value?.total ?? 0;
+
+    final paperBookmarks =
+        bookmarks.where((b) => b.targetKind == 'paper').toList();
     final topicCount = paperBookmarks
-        .expand((bookmark) => bookmark.paperDetail?.topics ?? const <PaperTopic>[])
+        .expand(
+          (bookmark) => bookmark.paperDetail?.topics ?? const <PaperTopic>[],
+        )
         .map((topic) => topic.topicName)
         .toSet()
         .length;
@@ -61,12 +104,31 @@ class ProfileScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final lumi = context.lumi;
 
-    final userPoints = user?.points ?? 0;
-    final userLevel = LevelHelper.getLevel(userPoints);
-    final levelAsset = LevelHelper.getLevelAsset(userLevel);
-
+    final levelAsset =
+        LevelHelper.getLevelAsset(LevelHelper.getLevel(user?.points ?? 0));
     final currentThemeMode = ref.watch(themeModeProvider);
     final languageChoice = ref.watch(localeChoiceProvider);
+
+    final academicKey = academicProfileLabel(user?.academicProfileType);
+    final staffKey = staffRoleLabel(user?.role);
+    final institution = user?.institution?.trim();
+    final fullName = user?.fullName.trim();
+    final email = user?.email;
+    // Never invent a name: fall back to the email, which is always real.
+    final displayName =
+        (fullName != null && fullName.isNotEmpty) ? fullName : (email ?? '');
+
+    Widget groupLabel(String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Semantics(
+            header: true,
+            child: Text(
+              text,
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(color: lumi.foregroundSecondary),
+            ),
+          ),
+        );
 
     return Scaffold(
       appBar: AppBar(
@@ -75,197 +137,182 @@ class ProfileScreen extends ConsumerWidget {
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.all(16),
           children: [
-            // Avatar rank badge
-            Center(
-              child: Column(
+            LumiCard(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: lumi.surface,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: lumi.primary, width: 2),
-                    ),
-                    child: Image.asset(
-                      levelAsset,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    user?.fullName ?? context.t('Researcher'),
-                    style: theme.textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: lumi.primarySoft,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      user?.role.name.toUpperCase() ?? 'RESEARCHER',
-                      style: theme.textTheme.labelMedium
-                          ?.copyWith(color: lumi.primary),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.school, size: 16, color: lumi.foregroundSecondary),
-                      const SizedBox(width: 4),
-                      Text(
-                        user?.institution ?? context.t('FPT University'),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: lumi.foregroundSecondary,
-                        ),
+                  // Rank badge earned from contribution points.
+                  ExcludeSemantics(
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: lumi.primarySoft,
+                        shape: BoxShape.circle,
                       ),
-                    ],
+                      child: Image.asset(levelAsset, fit: BoxFit.contain),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          style: theme.textTheme.titleLarge,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (email != null && email != displayName)
+                          Text(
+                            email,
+                            style: theme.textTheme.bodyMedium
+                                ?.copyWith(color: lumi.foregroundSecondary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        if (academicKey != null || staffKey != null) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              if (academicKey != null)
+                                LumiChip(
+                                  label: context.t(academicKey),
+                                  tone: LumiChipTone.primary,
+                                ),
+                              if (staffKey != null)
+                                LumiChip(label: context.t(staffKey)),
+                            ],
+                          ),
+                        ],
+                        if (institution != null && institution.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.school_outlined,
+                                size: 16,
+                                color: lumi.foregroundSecondary,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  institution,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: lumi.foregroundSecondary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            const EmailVerificationBanner(),
+            const SizedBox(height: 12),
+
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _StatCard(
+                    label: context.t('Bookmarks'),
+                    value: paperBookmarks.length,
+                    onTap: () => unawaited(context.push('/bookmarks')),
+                  ),
+                  const SizedBox(width: 12),
+                  _StatCard(label: context.t('Topics'), value: topicCount),
+                  const SizedBox(width: 12),
+                  _StatCard(
+                    label: context.t('Reports'),
+                    value: reports,
+                    onTap: () => unawaited(context.push('/reports')),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
 
-            const EmailVerificationBanner(),
-            const SizedBox(height: 16),
-
-            // Stats Cards Row
-            Row(
+            groupLabel(context.t('Activity')),
+            LumiRowGroup(
               children: [
-                _StatCard(label: context.t('Bookmarks'), value: paperBookmarks.length.toString(), theme: theme),
-                const SizedBox(width: 12),
-                _StatCard(label: context.t('Topics'), value: topicCount.toString(), theme: theme),
-                const SizedBox(width: 12),
-                _StatCard(label: context.t('Reports'), value: reports.toString(), theme: theme),
+                LumiListRow(
+                  icon: Icons.cloud_upload_outlined,
+                  title: context.t('Submit paper'),
+                  onTap: () => unawaited(context.push('/submit-paper')),
+                ),
+                LumiListRow(
+                  icon: Icons.description_outlined,
+                  title: context.t('My papers'),
+                  onTap: () => unawaited(context.push('/my-papers')),
+                ),
+                LumiListRow(
+                  icon: Icons.bookmark_border,
+                  title: context.t('Bookmarks'),
+                  onTap: () => unawaited(context.push('/bookmarks')),
+                ),
+                LumiListRow(
+                  icon: Icons.emoji_events_outlined,
+                  title: context.t('Leaderboard'),
+                  onTap: () => unawaited(context.push('/rankings')),
+                ),
+                if (user?.role == UserRole.admin)
+                  LumiListRow(
+                    icon: Icons.sync,
+                    title: context.t('Admin sync'),
+                    onTap: () => unawaited(context.push('/admin/sync')),
+                  ),
               ],
             ),
             const SizedBox(height: 24),
 
-            // Activity section
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 8),
-              child: Text(
-                context.t('ACTIVITY'),
-                style: theme.textTheme.labelMedium?.copyWith(color: lumi.muted),
-              ),
-            ),
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-                side: BorderSide(color: lumi.line),
-              ),
-              color: lumi.surface,
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  _SettingsRow(
-                    icon: Icons.cloud_upload_outlined,
-                    label: context.t('Submit Paper'),
-                    onTap: () => context.push('/submit-paper'),
-                    theme: theme,
-                  ),
-                  _SettingsRow(
-                    icon: Icons.description_outlined,
-                    label: context.t('My Papers'),
-                    onTap: () => context.push('/my-papers'),
-                    theme: theme,
-                  ),
-                  _SettingsRow(
-                    icon: Icons.folder_outlined,
-                    label: context.t('Projects'),
-                    onTap: () => context.go('/projects'),
-                    theme: theme,
-                  ),
-                  _SettingsRow(
-                    icon: Icons.bookmark_border,
-                    label: context.t('Bookmarks'),
-                    onTap: () => context.push('/bookmarks'),
-                    theme: theme,
-                  ),
-                  _SettingsRow(
-                    icon: Icons.emoji_events_outlined,
-                    label: context.t('Rankings'),
-                    onTap: () => context.push('/rankings'),
-                    theme: theme,
-                  ),
-                  _SettingsRow(
-                    icon: Icons.notifications_none,
-                    label: context.t('Notifications'),
-                    onTap: () => context.push('/notifications'),
-                    theme: theme,
-                  ),
-                  if (user?.role.name == 'admin')
-                    _SettingsRow(
-                      icon: Icons.sync,
-                      label: context.t('Admin Sync'),
-                      onTap: () => context.push('/admin/sync'),
-                      theme: theme,
-                    ),
-                ],
-              ),
+            groupLabel(context.t('Settings')),
+            LumiRowGroup(
+              children: [
+                LumiListRow(
+                  icon: themeModeIcon(currentThemeMode),
+                  title: context.t('Appearance'),
+                  value: context.t(themeModeLabel(currentThemeMode)),
+                  onTap: () => unawaited(showThemeModeSheet(context)),
+                ),
+                LumiListRow(
+                  icon: Icons.language,
+                  title: context.t('Language'),
+                  value: languageChoiceLabel(context, languageChoice),
+                  onTap: () => unawaited(showLanguageSheet(context)),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
 
-            // Appearance section
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 8),
-              child: Text(
-                context.t('APPEARANCE'),
-                style: theme.textTheme.labelMedium?.copyWith(color: lumi.muted),
-              ),
+            LumiRowGroup(
+              children: [
+                LumiListRow(
+                  icon: Icons.logout,
+                  title: context.t('Sign out'),
+                  destructive: true,
+                  showChevron: false,
+                  onTap: (authState.isLoading || _signingOut)
+                      ? null
+                      : () => unawaited(_handleLogout()),
+                ),
+              ],
             ),
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-                side: BorderSide(color: lumi.line),
-              ),
-              color: lumi.surface,
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  _SettingsRow(
-                    icon: themeModeIcon(currentThemeMode),
-                    label: context.t('Appearance'),
-                    value: context.t(themeModeLabel(currentThemeMode)),
-                    onTap: () => unawaited(showThemeModeSheet(context)),
-                    theme: theme,
-                  ),
-                  _SettingsRow(
-                    icon: Icons.language,
-                    label: context.t('Language'),
-                    value: languageChoiceLabel(context, languageChoice),
-                    onTap: () => unawaited(showLanguageSheet(context)),
-                    theme: theme,
-                  ),
-                  _SettingsRow(
-                    icon: Icons.text_fields,
-                    label: context.t('Font size'),
-                    value: context.t('Default'),
-                    theme: theme,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // Sign out button
-            OutlinedButton(
-              onPressed: authState.isLoading ? null : () => _handleLogout(context, ref),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: lumi.error,
-                side: BorderSide(color: lumi.error),
-              ),
-              child: Text(context.t('Sign out')),
-            ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -274,97 +321,47 @@ class ProfileScreen extends ConsumerWidget {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value, required this.theme});
+  const _StatCard({required this.label, required this.value, this.onTap});
 
   final String label;
-  final String value;
-  final ThemeData theme;
+  final int value;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final lumi = context.lumi;
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: lumi.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: lumi.line),
-        ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: theme.textTheme.titleLarge,
+      child: Semantics(
+        button: onTap != null,
+        child: LumiCard(
+          onTap: onTap,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('$value', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 4),
+                // One word per label: on a narrow screen with large text it
+                // shrinks to fit instead of breaking mid-word ("Bookmark/s").
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: lumi.foregroundSecondary,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: lumi.foregroundSecondary,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
-    );
-  }
-}
-
-class _SettingsRow extends StatelessWidget {
-  const _SettingsRow({
-    required this.icon,
-    required this.label,
-    required this.theme, this.value,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final String? value;
-  final VoidCallback? onTap;
-  final ThemeData theme;
-
-  @override
-  Widget build(BuildContext context) {
-    final lumi = context.lumi;
-    final rowContent = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: 20,
-            color: lumi.foregroundSecondary,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(label, style: theme.textTheme.titleMedium),
-          ),
-          if (value != null) ...[
-            Text(
-              value!,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: lumi.foregroundSecondary,
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          if (onTap != null)
-            Icon(
-              Icons.chevron_right,
-              size: 20,
-              color: lumi.muted,
-            ),
-        ],
-      ),
-    );
-
-    if (onTap == null) return rowContent;
-
-    return InkWell(
-      onTap: onTap,
-      child: rowContent,
     );
   }
 }

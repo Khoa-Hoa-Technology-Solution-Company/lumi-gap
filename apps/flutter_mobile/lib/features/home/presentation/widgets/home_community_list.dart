@@ -23,6 +23,9 @@ class HomeCommunityList extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: homeCardDecoration(lumi),
       child: Column(
+        // Every row spans the card; otherwise a short row is centred and
+        // looks indented next to a long one.
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (var i = 0; i < items.length; i++) ...[
             if (i > 0) Divider(height: 1, color: lumi.line),
@@ -35,7 +38,12 @@ class HomeCommunityList extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(items[i].title, style: theme.textTheme.titleMedium),
+                      Text(
+                        items[i].title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium,
+                      ),
                       if (items[i].community != null)
                         Text(
                           items[i].community!,

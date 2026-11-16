@@ -16,6 +16,7 @@ import { tagRouter } from "../modules/tags/tag.routes.js";
 import { taxonomyRouter } from "../modules/taxonomy/taxonomy.routes.js";
 import { researchCatalogRouter } from "../modules/taxonomy/research-catalog.routes.js";
 import { adminTopicBackfillRouter, topicBackfillRouter } from "../modules/topic-backfill/topic-backfill.routes.js";
+import { topicWatchRouter } from "../modules/topic-watch/topic-watch.routes.js";
 import { notificationRouter } from "../modules/notifications/notification.routes.js";
 import { projectRouter } from "../modules/projects/project.routes.js";
 import { homeRouter } from "../modules/home/home.routes.js";
@@ -91,6 +92,7 @@ apiRouter.use("/research-catalog", researchCatalogRouter);
 apiRouter.use("/admin/taxonomy", taxonomyRouter); // taxonomy nodes + keyword catalogue
 apiRouter.use("/admin/tags", tagRouter); // curated tags + rules
 apiRouter.use("/admin/topic-backfill", adminTopicBackfillRouter); // admin-triggered OpenAlex imports
+apiRouter.use("/admin/topic-watches", topicWatchRouter); // entries the daily OpenAlex job keeps following
 apiRouter.use("/admin/ai-connections", platformAiRouter); // platform-wide AI connection (admins)
 apiRouter.use("/admin", adminRouter); // /admin/users, /admin/stats — user management
 apiRouter.use("/admin", academicProfileAdminRouter);

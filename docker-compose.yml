@@ -1,7 +1,7 @@
 name: lumi-gap
 
 # Local production-style stack. Copy .env.example to .env and set GEMINI_API_KEY,
-# or run pnpm setup. Workers start by default; seed/translation/ingest are opt-in.
+# or run pnpm setup. Workers start by default; seed and translation are opt-in.
 
 x-backend-common: &backend-common
   image: lumigap-backend:local
@@ -256,11 +256,10 @@ services:
     <<: *backend-common
     command: ["pnpm", "--filter", "backend", "worker:topic-backfill"]
 
-  # The campaign is explicit and needs OPENALEX_API_KEY. It never starts a
-  # campaign by itself; an admin must first plan and start one through the API.
+  # Runs the OpenAlex campaigns an admin planned and started; it never starts
+  # one by itself. Without OPENALEX_API_KEY it stays idle and reports no heartbeat.
   worker-openalex-ingest:
     <<: *backend-common
-    profiles: ["ingest"]
     command: ["pnpm", "--filter", "backend", "worker:openalex-ingest"]
 
 volumes:

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/lumi_chart.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/rankings/data/rankings_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -35,8 +38,8 @@ class RankingsScreen extends ConsumerWidget {
                     ? const SizedBox.shrink()
                     : _MyRankCard(data: data),
                 loading: () =>
-                    AppLoading(message: context.t('Loading your rank...')),
-                error: (error, _) => _InlineError(message: error.toString()),
+                    const LumiSkeleton(rows: 1, height: 120),
+                error: (error, _) => _InlineError(message: context.t(failureMessageKey(error))),
               ),
               const SizedBox(height: 20),
               Row(
@@ -45,7 +48,7 @@ class RankingsScreen extends ConsumerWidget {
                     child: Text(
                       context.t('Leaderboard'),
                       style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -55,14 +58,14 @@ class RankingsScreen extends ConsumerWidget {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF06B6D4).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
+                      color: context.lumi.primarySoft,
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       context.t('Top 20'),
                       style: theme.textTheme.labelSmall?.copyWith(
-                        color: const Color(0xFF0891B2),
-                        fontWeight: FontWeight.w800,
+                        color: context.lumi.primary,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -93,8 +96,8 @@ class RankingsScreen extends ConsumerWidget {
                   );
                 },
                 loading: () =>
-                    AppLoading(message: context.t('Loading leaderboard...')),
-                error: (error, _) => AppErrorState(message: error.toString()),
+                    const LumiSkeleton(rows: 5, height: 80),
+                error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
               ),
             ],
           ),
@@ -112,15 +115,14 @@ class _MyRankCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF111C2E) : const Color(0xFFEEF7FF),
+        color: context.lumi.primarySoft,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isDark ? const Color(0xFF26334A) : const Color(0xFFD7E9FF),
+          color: context.lumi.primarySoft,
         ),
       ),
       child: Row(
@@ -129,10 +131,10 @@ class _MyRankCard extends StatelessWidget {
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color: const Color(0xFF1D4ED8),
+              color: context.lumi.primary,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.emoji_events, color: Colors.white),
+            child: Icon(Icons.emoji_events, color: context.lumi.onPrimary),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -142,7 +144,7 @@ class _MyRankCard extends StatelessWidget {
                 Text(
                   context.t('Your rank #{{rank}}', {'rank': data.rank}),
                   style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 9),
@@ -172,18 +174,16 @@ class _LeaderboardTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final rankColor = _rankColor(user.rank);
 
     return Material(
-      color: isDark ? const Color(0xFF111C2E) : Colors.white,
+      color: context.lumi.surface,
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isDark ? const Color(0xFF26334A) : const Color(0xFFE2E8F0),
+            color: context.lumi.line,
           ),
         ),
         child: Row(
@@ -193,14 +193,15 @@ class _LeaderboardTile extends StatelessWidget {
               height: 46,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: rankColor.withValues(alpha: user.rank <= 3 ? 1 : 0.12),
+                // A medal for the top three; the accent pair for the rest.
+                color: LumiMedal.forRank(user.rank) ?? context.lumi.primarySoft,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 '#${user.rank}',
                 style: theme.textTheme.titleSmall?.copyWith(
-                  color: user.rank <= 3 ? Colors.white : rankColor,
-                  fontWeight: FontWeight.w900,
+                  color: LumiMedal.onRank(user.rank) ?? context.lumi.primary,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -214,20 +215,19 @@ class _LeaderboardTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 5),
-                  Text(
-                    '${user.university ?? context.t('University')} - ${user.role}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(
-                        alpha: 0.62,
-                      ),
+                  if (rankingSubtitle(context, user) case final subtitle?) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: context.lumi.foregroundSecondary),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -238,13 +238,13 @@ class _LeaderboardTile extends StatelessWidget {
                 Text(
                   '${user.points}',
                   style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 Text(
                   context.t('points'),
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.54),
+                    color: context.lumi.muted,
                   ),
                 ),
               ],
@@ -256,6 +256,20 @@ class _LeaderboardTile extends StatelessWidget {
   }
 }
 
+/// "University · Role", leaving out whatever the profile does not have.
+/// Null when neither is known, so no empty line or stray dash is shown.
+String? rankingSubtitle(BuildContext context, RankingUser user) {
+  final university = user.university?.trim() ?? '';
+  final role = switch (user.role.trim().toLowerCase()) {
+    'student' => context.t('Student'),
+    'lecturer' => context.t('Lecturer'),
+    'researcher' => context.t('Researcher'),
+    _ => '',
+  };
+  final parts = [university, role].where((p) => p.isNotEmpty).toList();
+  return parts.isEmpty ? null : parts.join(' · ');
+}
+
 class _StatPill extends StatelessWidget {
   const _StatPill({required this.label});
 
@@ -264,20 +278,19 @@ class _StatPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF172338) : Colors.white,
-        borderRadius: BorderRadius.circular(999),
+        color: context.lumi.surface,
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: isDark ? const Color(0xFF26334A) : const Color(0xFFD7E9FF),
+          color: context.lumi.primarySoft,
         ),
       ),
       child: Text(
         label,
         style: theme.textTheme.labelSmall?.copyWith(
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -298,9 +311,4 @@ class _InlineError extends StatelessWidget {
   }
 }
 
-Color _rankColor(int rank) {
-  if (rank == 1) return const Color(0xFFF59E0B);
-  if (rank == 2) return const Color(0xFF64748B);
-  if (rank == 3) return const Color(0xFFB45309);
-  return const Color(0xFF1D4ED8);
-}
+/// Medal colour for the top three, the accent for everyone else.

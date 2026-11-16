@@ -3,7 +3,7 @@ import 'package:flutter_mobile/features/quality/data/quality_models.dart';
 /// Offline copy of the paper rubric (packages/shared-types/src/quality-rubric.ts, quality-v3)
 /// so the scoring scale can be read before the first evaluation. Once an evaluation exists the
 /// rubric inside it (which carries the exact version used) is shown instead.
-/// TODO(quality): replace with a rubric endpoint if the backend adds one.
+// TODO(quality): replace with a rubric endpoint if the backend adds one.
 QualityRubric paperRubricFor(String language) {
   final vi = language == 'vi';
   String p(List<String> w) => w[vi ? 1 : 0];

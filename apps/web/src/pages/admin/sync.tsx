@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { useCurrentUser } from "@/features/auth";
 import { useAdminStats } from "@/features/admin";
-import { useSyncRuns, useTriggerSync, useEmbedStatus, useTriggerEmbedding } from "@/features/admin/hooks/use-admin-sync";
+import { useSyncOptions, useSyncRuns, useTriggerSync, useEmbedStatus, useTriggerEmbedding } from "@/features/admin/hooks/use-admin-sync";
 import type { ApiSyncRun } from "@/features/admin/api/admin.api";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -26,6 +26,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { BackfillRunsSection } from "@/features/catalog/components/backfill-runs-section";
+import { CatalogImportDialog } from "@/features/catalog/components/catalog-import-dialog";
+import { TaxonomySyncCard } from "@/features/catalog/components/taxonomy-sync-card";
+import { TopicWatchesPanel } from "@/features/catalog/components/topic-watches-panel";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -61,8 +65,11 @@ export function AdminSyncPage() {
   const { data: embedStatus, isLoading: isEmbedStatusLoading, refetch: refetchEmbedStatus } = useEmbedStatus(isAdmin);
   const triggerEmbedMutation = useTriggerEmbedding();
 
+  const { data: syncOptions } = useSyncOptions(isAdmin);
+  const freeTextEnabled = syncOptions?.freeTextSyncEnabled === true;
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [searchText, setSearchText] = useState("large language model education");
+  const [searchText, setSearchText] = useState("");
   const [yearFrom, setYearFrom] = useState(2022);
   const [maxPages, setMaxPages] = useState(1);
 
@@ -115,7 +122,12 @@ export function AdminSyncPage() {
           setIsDialogOpen(false);
         },
         onError: (err) => {
-          const axiosErr = err as AxiosError<{ error?: { message?: string } }>;
+          const axiosErr = err as AxiosError<{ error?: { code?: string; message?: string } }>;
+          if (axiosErr?.response?.data?.error?.code === "SYNC_FREE_TEXT_DISABLED") {
+            toast.error(t("Free-text sync is disabled on this server. Import from the catalogue instead."));
+            setIsDialogOpen(false);
+            return;
+          }
           const errMsg = axiosErr?.response?.data?.error?.message ?? "Failed to trigger sync.";
           toast.error(errMsg);
         },
@@ -294,16 +306,26 @@ export function AdminSyncPage() {
         {/* Card 4: Action Control Card */}
         <div className="bg-card dark:bg-[#111B27] border border-dashed border-[#EF4444]/30 dark:border-[#EF4444]/20 rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)] grid min-h-[150px] grid-rows-[auto_1fr_auto]">
           <div aria-hidden />
-          <div className="flex min-w-0 items-center">
+          <div className="flex min-w-0 flex-col justify-center gap-2">
             <Button
-              onClick={() => setIsDialogOpen(true)}
+              onClick={() => setIsImportOpen(true)}
               className="w-full min-w-0 max-w-full bg-[#111111] hover:bg-[#2F3437] dark:bg-white dark:hover:bg-slate-200 text-white dark:text-black gap-1.5 px-2.5 py-2 text-[12px] font-bold h-11 active:scale-[0.98] transition-transform duration-100 rounded-lg shadow-sm"
             >
               <Play className="h-3.5 w-3.5 shrink-0 fill-current stroke-[1.5]" />
               <span className="min-w-0 truncate whitespace-nowrap text-center leading-5">
-                {t("Trigger New Sync")}
+                {t("Import from catalogue")}
               </span>
             </Button>
+            {freeTextEnabled ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsDialogOpen(true)}
+                className="h-11 w-full min-w-0 text-[12px] font-semibold"
+              >
+                <span className="min-w-0 truncate">{t("Free-text sync (debug)")}</span>
+              </Button>
+            ) : null}
           </div>
           <p className="pb-1 text-center text-xs leading-5 text-[#787774] dark:text-slate-400 font-medium">
             {t("Authorized administrators only")}
@@ -380,6 +402,12 @@ export function AdminSyncPage() {
         </div>
       </div>
 
+      <TaxonomySyncCard onlyWhenEmpty />
+
+      <TopicWatchesPanel />
+
+      <BackfillRunsSection limit={10} />
+
       {/* Run History List */}
       <div className="space-y-4">
         <h2 className="text-lg font-bold tracking-tight text-[#111111] dark:text-white">Run History Log</h2>
@@ -455,6 +483,9 @@ export function AdminSyncPage() {
         )}
       </div>
 
+      <CatalogImportDialog open={isImportOpen} onOpenChange={setIsImportOpen} />
+
+      {freeTextEnabled ? (
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[480px] rounded-xl border border-[#EAEAEA] dark:border-[#26334A] dark:bg-[#121E31] p-6 shadow-md">
           <form onSubmit={handleTriggerSync} className="space-y-6">
@@ -464,7 +495,7 @@ export function AdminSyncPage() {
                 Trigger New Synchronization
               </DialogTitle>
               <DialogDescription className="text-sm text-[#787774] dark:text-slate-400">
-                Synchronize academic papers from OpenAlex live directory using a custom search topic.
+                {t("Debug only: synchronize papers from OpenAlex using a free search text. This bypasses the catalogue.")}
               </DialogDescription>
             </DialogHeader>
 
@@ -549,6 +580,7 @@ export function AdminSyncPage() {
           </form>
         </DialogContent>
       </Dialog>
+      ) : null}
     </main>
   );
 }

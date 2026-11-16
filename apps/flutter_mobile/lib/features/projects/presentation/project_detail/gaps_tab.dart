@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -32,28 +34,26 @@ class ProjectGapsTab extends StatelessWidget {
               elevation: 0,
               margin: const EdgeInsets.only(bottom: 12),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
                 side: BorderSide(color: Theme.of(context).dividerColor),
               ),
               child: ListTile(
                 title: Text(
                   gap.title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
+                  style: context.type.bodyMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 subtitle: Text(
                   gap.description,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12),
+                  style: context.type.bodySmall,
                 ),
                 trailing: Text(
                   context.t('{{percent}}% conf', {'percent': (gap.confidence * 100).round()}),
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
+                  style: context.type.bodySmall!.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -65,7 +65,7 @@ class ProjectGapsTab extends StatelessWidget {
       error: (err, _) => Center(
         child: Text(
           context.t('Error loading gaps: {{err}}', {'err': err}),
-          style: const TextStyle(color: Colors.red),
+          style: TextStyle(color: context.lumi.error),
         ),
       ),
     );

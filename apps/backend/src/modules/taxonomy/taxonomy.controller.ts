@@ -2,9 +2,19 @@ import type { Request, Response } from "express";
 import type {
   ListKeywordsQuery, ListNodesQuery, MergeKeywordInput, UpdateKeywordInput, UpdateNodeInput,
 } from "./dto/taxonomy.schema.js";
+import { taxonomyRefreshService } from "./taxonomy-refresh.service.js";
 import { taxonomyService } from "./taxonomy.service.js";
 
 export const taxonomyController = {
+  async syncStatus(_req: Request, res: Response) {
+    res.json({ success: true, data: await taxonomyRefreshService.status() });
+  },
+
+  async requestSync(_req: Request, res: Response) {
+    const result = await taxonomyRefreshService.requestSync();
+    res.status(result.queued ? 202 : 200).json({ success: true, data: result });
+  },
+
   async listNodes(req: Request, res: Response) {
     const result = await taxonomyService.listNodes(req.query as unknown as ListNodesQuery);
     res.json({ success: true, data: result.data, meta: result.meta });

@@ -67,7 +67,7 @@ export const forumPaperService = {
     if (paper.externalIds.openalexId !== openalexId || !hasOpenAlexCitationMetadata(paper)) throw AppError.badRequest("The provider returned incomplete citation metadata");
     const existing = await prisma.paper.findMany({ where: { OR: [{ openalexId }, ...(paper.externalIds.doi ? [{ doi: { equals: paper.externalIds.doi, mode: "insensitive" as const } }] : [])] }, select: { dataStatus: true } });
     if (existing.some((row) => row.dataStatus !== "active")) throw AppError.forbidden("This paper is not available for public forum references");
-    const ingested = await ingestOpenAlexWorks([work], provider.id, { purpose: "citation" });
+    const ingested = await ingestOpenAlexWorks([work], provider.id, { purpose: "citation", origin: { source: "forum-citation", detail: openalexId } });
     const record = ingested.records[0]?.paper;
     if (!record || record.dataStatus !== "active") throw AppError.serviceUnavailable("Could not import this paper. Please try again.");
     const authors = await prisma.paperAuthor.findMany({ where: { paperId: record.id }, orderBy: { position: "asc" }, select: { displayName: true }, take: 30 });
@@ -78,7 +78,7 @@ export const forumPaperService = {
     const result = await lookup(doi);
     if (!result.preview.canAttach) throw AppError.badRequest("The provider returned incomplete citation metadata");
     if (!result.work) return result.preview;
-    const ingested = await ingestOpenAlexWorks([result.work], result.provider!.id, { purpose: "citation" });
+    const ingested = await ingestOpenAlexWorks([result.work], result.provider!.id, { purpose: "citation", origin: { source: "forum-citation", detail: doi } });
     const paper = ingested.records[0]?.paper;
     if (!paper || paper.dataStatus !== "active") throw AppError.serviceUnavailable("Could not import this paper. Please try again.");
     return { ...result.preview, paperId: publicDatabaseId(paper) };
