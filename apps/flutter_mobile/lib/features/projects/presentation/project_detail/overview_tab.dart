@@ -24,7 +24,6 @@ class ProjectOverviewTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cardBg = context.lumi.surface;
 
     final reportsAsync = ref.watch(
       reportsProvider(ReportsParams(projectId: projectId)),
@@ -186,41 +185,8 @@ class ProjectOverviewTab extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 20),
-
-        // Activity log snapshot
-        Text(
-          context.t('Workspace Activity Log'),
-          style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,),
-        ),
-        const SizedBox(height: 10),
-        Card(
-          elevation: 0,
-          color: cardBg,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: BorderSide(color: theme.dividerColor),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.history_toggle_off,
-                  color: context.lumi.muted,
-                  size: 18,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    context.t('Workspace initialized and ready for research.'),
-                    style: context.type.bodySmall!.copyWith( fontStyle: FontStyle.italic),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        // No activity log: the API sends none, and a fixed sentence here
+        // would read as one.
       ],
     );
   }

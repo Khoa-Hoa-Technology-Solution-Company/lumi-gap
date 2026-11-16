@@ -1,15 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
-import 'package:flutter_mobile/features/papers/domain/paper_citation.dart';
-import 'package:flutter_mobile/features/projects/presentation/add_to_project_sheet.dart';
 import 'package:flutter_mobile/features/search/data/search_api.dart';
 import 'package:flutter_mobile/features/search/domain/search_filters.dart';
 import 'package:flutter_mobile/features/search/presentation/search_active_filters.dart';
@@ -96,6 +93,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           ? _scopeFilters.providers.first
           : null;
     }
+    // Taken out of the scope once it has its own filter: see
+    // [withoutPromoted].
+    _scopeFilters = withoutPromoted(
+      _scopeFilters,
+      kind: _filters.paperKind != null,
+      source: _filters.source != null,
+      provider: _provider != null,
+    );
     if (filters.containsKey('domainIds')) {
       _domainIds =
           filters['domainIds']
@@ -260,8 +265,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   Future<void> _toggleBookmark(String paperId) async {
     if (!_bookmarkBusy.add(paperId)) return;
     setState(() {});
+    // Leaving mid-request must still refresh the saved state elsewhere.
+    final container = ProviderScope.containerOf(context, listen: false);
     try {
-      final api = ref.read(bookmarksApiProvider);
+      final api = container.read(bookmarksApiProvider);
       // The server's state, not the icon's: the list may be stale.
       final status = await api.checkStatus('paper', paperId);
       final removing = status.bookmarked && status.bookmarkId != null;
@@ -292,32 +299,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       }
     } finally {
       _bookmarkBusy.remove(paperId);
-      if (mounted) {
-        setState(() {});
-        ref
-          ..invalidate(bookmarksProvider)
-          ..invalidate(
-            bookmarkStatusProvider(BookmarkTarget('paper', paperId)),
-          );
-      }
+      if (mounted) setState(() {});
+      container
+        ..invalidate(bookmarksProvider)
+        ..invalidate(
+          bookmarkStatusProvider(BookmarkTarget('paper', paperId)),
+        );
     }
-  }
-
-  Future<void> _copyCitation(Paper paper) async {
-    await Clipboard.setData(
-      ClipboardData(
-        text: apaCitation(
-          authors: [for (final a in paper.authors) a.displayName],
-          title: paper.title,
-          year: paper.publicationYear,
-          journal: paper.journalName,
-        ),
-      ),
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.t('Citation copied to clipboard'))),
-    );
   }
 
   /// "2020–2024", "From 2020", "Until 2024".
@@ -474,10 +462,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         savingBookmark: _bookmarkBusy.contains(paper.id),
                         onBookmarkTap: () =>
                             unawaited(_toggleBookmark(paper.id)),
-                        onAddProjectTap: () => unawaited(
-                          showAddToProjectSheet(context, paperId: paper.id),
-                        ),
-                        onCiteTap: () => unawaited(_copyCitation(paper)),
                         onTap: () =>
                             unawaited(context.push('/paper/${paper.id}')),
                       );

@@ -12,24 +12,26 @@ import 'package:go_router/go_router.dart';
 /// "Add to project" for one paper, opened from the paper detail screen and
 /// from a search result.
 ///
-/// The messenger and router are taken from the screen that opens the sheet:
-/// the sheet is closed before the request finishes, and its own context is
-/// gone by then, so feedback shown through it would never appear.
+/// The messenger, router and provider container are taken from the screen
+/// that opens the sheet: the sheet is closed before the request finishes,
+/// and its own context and `ref` are disposed by then. Feedback shown
+/// through them would never appear, and Riverpod throws on a disposed `ref`.
 Future<void> showAddToProjectSheet(
   BuildContext context, {
   required String paperId,
 }) {
   final messenger = ScaffoldMessenger.of(context);
   final router = GoRouter.of(context);
+  final container = ProviderScope.containerOf(context, listen: false);
   final lumi = context.lumi;
   return showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => _AddToProjectSheet(
-      onPick: (ref, project) async {
+      onPick: (project) async {
         Navigator.pop(sheetContext);
         try {
-          await ref.read(projectsApiProvider).addPaper(project.id, paperId);
-          ref
+          await container.read(projectsApiProvider).addPaper(project.id, paperId);
+          container
             ..invalidate(projectsProvider)
             ..invalidate(projectProvider(project.id));
           messenger.showSnackBar(
@@ -55,7 +57,7 @@ Future<void> showAddToProjectSheet(
 class _AddToProjectSheet extends ConsumerWidget {
   const _AddToProjectSheet({required this.onPick, required this.onCreate});
 
-  final Future<void> Function(WidgetRef ref, ProjectView project) onPick;
+  final Future<void> Function(ProjectView project) onPick;
   final VoidCallback onCreate;
 
   @override
@@ -110,7 +112,7 @@ class _AddToProjectSheet extends ConsumerWidget {
                       ),
                     ),
                     trailing: Icon(Icons.add, color: lumi.primary),
-                    onTap: () => unawaited(onPick(ref, project)),
+                    onTap: () => unawaited(onPick(project)),
                   );
                 },
               ),

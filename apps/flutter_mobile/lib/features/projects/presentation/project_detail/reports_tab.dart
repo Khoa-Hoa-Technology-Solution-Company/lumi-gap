@@ -42,7 +42,7 @@ class ProjectReportsTab extends StatelessWidget {
               ),
               icon: Icon(Icons.add, color: context.lumi.onPrimary),
               label: Text(
-                context.t('Generate RAG Report'),
+                context.t('Generate Report'),
                 style: TextStyle(
                   color: context.lumi.onPrimary,
                   fontWeight: FontWeight.w600,

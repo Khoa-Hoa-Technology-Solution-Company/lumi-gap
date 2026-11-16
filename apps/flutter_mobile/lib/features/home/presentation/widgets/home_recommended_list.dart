@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
-import 'package:flutter_mobile/core/widgets/paper_card.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
+import 'package:flutter_mobile/core/widgets/paper_row.dart';
 import 'package:flutter_mobile/features/home/data/home_models.dart';
 
-/// "Suggested papers": the shared paper card with the reason or topic as its
-/// chip. Missing authors, venue or year are left out, never "Unknown".
+/// "Suggested papers": one grouped card, the reason or topic above each
+/// title. Missing authors, venue or year are left out, never "Unknown".
 class HomeRecommendedList extends StatelessWidget {
   const HomeRecommendedList({
     required this.items,
@@ -19,15 +20,15 @@ class HomeRecommendedList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return LumiRowGroup(
       children: [
         for (final paper in items)
-          PaperCard(
+          PaperRow(
             id: paper.id,
-            chip: context.t(paper.chipText),
+            overline: context.t(paper.chipText),
             title: paper.title,
-            authors: paper.authors.isEmpty ? null : formatAuthors(paper.authors),
-            venueAndYear: [
+            meta: [
+              if (paper.authors.isNotEmpty) formatAuthors(paper.authors),
               if (paper.venue != null) paper.venue!,
               if (paper.year != null) '${paper.year}',
             ].join(' · '),

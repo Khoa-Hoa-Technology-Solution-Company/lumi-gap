@@ -123,7 +123,7 @@ void main() {
 
     await tester.tap(_tab('Khám phá'));
     await tester.pumpAndSettle();
-    expect(find.text('Công cụ phân tích'), findsOneWidget);
+    expect(find.text('Tìm bài báo, từ khóa…'), findsOneWidget);
 
     await tester.tap(_tab('Dự án'));
     await tester.pumpAndSettle();
@@ -152,24 +152,16 @@ void main() {
     expect(find.text('tab-projects'), findsNothing);
   });
 
-  testWidgets('Explore: search box opens /search and entries are >= 48dp', (
-    tester,
-  ) async {
+  testWidgets(
+      'Explore is for finding papers: the search box opens /search, and the '
+      'analysis tools are not listed a second time', (tester) async {
     await _pumpApp(tester);
     await tester.tap(_tab('Khám phá'));
     await tester.pumpAndSettle();
 
-    for (final entry in ExploreScreen.entries) {
-      final tile = find.widgetWithText(LumiListRow, vi(entry.title));
-      expect(tile, findsOneWidget);
-      expect(tester.getSize(tile).height, greaterThanOrEqualTo(48));
-    }
-    expect(ExploreScreen.entries.map((e) => e.route).toSet(), {
-      '/trends',
-      '/reports',
-      '/gaps',
-      '/rankings',
-    });
+    // Their one entry is the shortcut row on Home (home_screen_test).
+    expect(find.text('Công cụ phân tích'), findsNothing);
+    expect(find.text(vi('Leaderboard')), findsNothing);
 
     await tester.tap(find.text('Tìm bài báo, từ khóa…'));
     await tester.pumpAndSettle();

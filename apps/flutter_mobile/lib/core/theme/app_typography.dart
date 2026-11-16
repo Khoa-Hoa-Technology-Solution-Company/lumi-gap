@@ -23,6 +23,9 @@ abstract final class AppTypography {
         );
 
     return TextTheme(
+      // One per screen at most: the hero figure (36) or the greeting (28).
+      displaySmall: s(36, 44, FontWeight.w700),
+      headlineMedium: s(28, 36, FontWeight.w700),
       headlineSmall: s(24, 32, FontWeight.w600),
       titleLarge: s(20, 28, FontWeight.w600),
       titleMedium: s(16, 24, FontWeight.w600),

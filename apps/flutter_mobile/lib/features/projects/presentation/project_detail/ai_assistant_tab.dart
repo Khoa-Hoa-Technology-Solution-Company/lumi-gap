@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/chat_mode.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/chat_panel.dart';
@@ -151,25 +152,13 @@ class ProjectAiChannelSwitcher extends StatelessWidget {
     // said once, in the panel below.
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: SizedBox(
-        width: double.infinity,
-        child: SegmentedButton<ProjectChatMode>(
-          showSelectedIcon: false,
-          segments: [
-            ButtonSegment(
-              value: ProjectChatMode.privateAi,
-              icon: const Icon(Icons.lock_outline, size: 18),
-              label: Text(context.t('My AI')),
-            ),
-            ButtonSegment(
-              value: ProjectChatMode.teamAi,
-              icon: const Icon(Icons.groups_outlined, size: 18),
-              label: Text(context.t('Team AI')),
-            ),
-          ],
-          selected: {mode},
-          onSelectionChanged: (s) => onChanged(s.single),
-        ),
+      child: LumiSegmentedTabs<ProjectChatMode>(
+        options: [
+          (ProjectChatMode.privateAi, context.t('My AI')),
+          (ProjectChatMode.teamAi, context.t('Team AI')),
+        ],
+        selected: mode,
+        onChanged: onChanged,
       ),
     );
   }

@@ -6,8 +6,8 @@ import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/confirm_dialog.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
-import 'package:flutter_mobile/core/widgets/swipe_delete_tile.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_mobile/features/reports/presentation/report_builder/report_status.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -61,7 +61,7 @@ class ReportStatusStep extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            context.t('Step 4: Report Generation Status'),
+            context.t('Report status'),
             style: theme.textTheme.titleMedium,
           ),
           const SizedBox(height: 12),
@@ -124,6 +124,9 @@ class ReportStatusStep extends StatelessWidget {
 
 /// The reader's reports, newest from the API first. A ready report opens;
 /// one still running is followed in step 4.
+/// The reader's reports as grouped rows. A ready report opens its page; one
+/// still being made opens its progress. Deleting asks first (a report cost
+/// a generation run) and is a button, never a swipe.
 class MyReportsList extends StatelessWidget {
   const MyReportsList({
     required this.reports,
@@ -131,6 +134,7 @@ class MyReportsList extends StatelessWidget {
     required this.onOpen,
     required this.onFollow,
     required this.onDelete,
+    this.deleting = const {},
     super.key,
   });
 
@@ -140,100 +144,86 @@ class MyReportsList extends StatelessWidget {
   final ValueChanged<String> onFollow;
   final Future<void> Function(String id) onDelete;
 
+  /// Reports whose deletion is in flight: their button is off.
+  final Set<String> deleting;
+
+  Future<void> _confirmDelete(BuildContext context, String id) async {
+    final ok = await ConfirmDialog.show(
+      context,
+      title: context.t('Delete report'),
+      message: context.t('Delete this report? This cannot be undone.'),
+      confirmText: context.t('Delete'),
+      isDestructive: true,
+    );
+    if (ok ?? false) await onDelete(id);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final lumi = context.lumi;
-    if (reports.isEmpty) {
-      return LumiEmptyState(
-        icon: Icons.description_outlined,
-        title: context.t('No reports yet'),
-        message: context.t('Create one above.'),
-        compact: true,
-      );
-    }
-    return Column(
+    return LumiRowGroup(
       children: [
         for (final report in reports)
-          SwipeDeleteTile(
-            tileKey: ValueKey(report.id),
-            margin: const EdgeInsets.only(bottom: 12),
-            borderRadius: BorderRadius.circular(8),
-            // A report cost a generation run: ask before it is gone.
-            confirmDelete: () async =>
-                await ConfirmDialog.show(
-                  context,
-                  title: context.t('Delete report'),
-                  message: context.t(
-                    'Delete this report? This cannot be undone.',
+          InkWell(
+            onTap: () => ReportState.parse(report.status) == ReportState.ready
+                ? onOpen(report.id)
+                : onFollow(report.id),
+            child: Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(16, 14, 4, 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: lumi.primarySoft,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.description_outlined,
+                      size: 20,
+                      color: lumi.primary,
+                    ),
                   ),
-                  confirmText: context.t('Delete'),
-                  isDestructive: true,
-                ) ??
-                false,
-            onDelete: () => unawaited(onDelete(report.id)),
-            child: Material(
-              color: selectedId == report.id ? lumi.primarySoft : lumi.surface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-                side: BorderSide(
-                  color: selectedId == report.id ? lumi.primary : lumi.line,
-                ),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () => ReportState.parse(report.status) == ReportState.ready
-                    ? onOpen(report.id)
-                    : onFollow(report.id),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: lumi.primarySoft,
-                          borderRadius: BorderRadius.circular(8),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          report.topic ?? report.query,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium,
                         ),
-                        child: Icon(
-                          Icons.description_outlined,
-                          size: 20,
-                          color: lumi.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              report.topic ?? report.query,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleSmall,
-                            ),
-                            if (report.topic != null) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                report.query,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: lumi.foregroundSecondary,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 8),
-                            ReportStatusLabel(status: report.status),
-                          ],
-                        ),
-                      ),
-                    ],
+                        if (report.topic != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            report.query,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium
+                                ?.copyWith(color: lumi.foregroundSecondary),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        ReportStatusLabel(status: report.status),
+                      ],
+                    ),
                   ),
-                ),
+                  IconButton(
+                    tooltip: context.t('Delete report'),
+                    onPressed: deleting.contains(report.id)
+                        ? null
+                        : () => unawaited(_confirmDelete(context, report.id)),
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: lumi.foregroundSecondary,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

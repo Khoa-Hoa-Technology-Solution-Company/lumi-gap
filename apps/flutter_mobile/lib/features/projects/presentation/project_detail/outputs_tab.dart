@@ -47,7 +47,7 @@ class ProjectOutputsTab extends StatelessWidget {
             ),
             icon: Icon(Icons.add, color: context.lumi.onPrimary),
             label: Text(
-              context.t('Generate RAG Report'),
+              context.t('Generate Report'),
               style: TextStyle(
                 color: context.lumi.onPrimary,
                 fontWeight: FontWeight.w600,
@@ -65,7 +65,7 @@ class ProjectOutputsTab extends StatelessWidget {
             color: context.lumi.primary,
           ),
           title: Text(
-            context.t('RAG Analytical Reports'),
+            context.t('Reports'),
             style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,),
           ),
           children: [

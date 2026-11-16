@@ -43,7 +43,7 @@ class TrendExplanationView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(context.t('AI Summary Rationale'), style: theme.textTheme.titleMedium),
+        Text(context.t('AI summary'), style: theme.textTheme.titleMedium),
         const SizedBox(height: 8),
         LumiCard(
           child: MarkdownBody(
@@ -72,7 +72,7 @@ class TrendExplanationView extends StatelessWidget {
         ),
         if (explanation.metricTrace.isNotEmpty) ...[
           Text(
-            context.t('Metric Trace Evidence'),
+            context.t('Figures behind it'),
             style: theme.textTheme.titleSmall,
           ),
           const SizedBox(height: 8),
@@ -149,7 +149,7 @@ class TrendExplanationView extends StatelessWidget {
           child: OutlinedButton.icon(
             onPressed: () => unawaited(_copy(context)),
             icon: const Icon(Icons.copy, size: 18),
-            label: Text(context.t('Copy Explanation Text')),
+            label: Text(context.t('Copy')),
           ),
         ),
       ],

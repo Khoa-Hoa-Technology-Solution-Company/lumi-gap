@@ -46,31 +46,78 @@ class PaperSection extends StatelessWidget {
   }
 }
 
-class PaperAbstractSection extends StatelessWidget {
+/// The abstract, cut to [collapsedLines] until the reader asks for the
+/// rest. "Show more" only appears when there really is more.
+class PaperAbstractSection extends StatefulWidget {
   const PaperAbstractSection({required this.paper, super.key});
 
   final Paper paper;
 
+  static const int collapsedLines = 6;
+
+  @override
+  State<PaperAbstractSection> createState() => _PaperAbstractSectionState();
+}
+
+class _PaperAbstractSectionState extends State<PaperAbstractSection> {
+  bool _expanded = false;
+
   @override
   Widget build(BuildContext context) {
-    final text = paper.abstractText?.trim() ?? '';
+    final text = widget.paper.abstractText?.trim() ?? '';
     final theme = Theme.of(context);
+    final lumi = context.lumi;
+    if (text.isEmpty) {
+      return PaperSection(
+        icon: Icons.subject,
+        title: context.t('Abstract & Description'),
+        child: Text(
+          context.t('No abstract description available for this publication.'),
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: lumi.foregroundSecondary,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      );
+    }
+    final style = theme.textTheme.bodyLarge
+        ?.copyWith(height: 1.6, color: lumi.foreground);
     return PaperSection(
       icon: Icons.subject,
       title: context.t('Abstract & Description'),
-      child: Text(
-        text.isEmpty
-            ? context.t(
-                'No abstract description available for this publication.',
-              )
-            : text,
-        style: theme.textTheme.bodyLarge?.copyWith(
-          height: 1.6,
-          color: text.isEmpty
-              ? context.lumi.foregroundSecondary
-              : context.lumi.foreground,
-          fontStyle: text.isEmpty ? FontStyle.italic : FontStyle.normal,
-        ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final painter = TextPainter(
+            text: TextSpan(text: text, style: style),
+            maxLines: PaperAbstractSection.collapsedLines,
+            textDirection: Directionality.of(context),
+            textScaler: MediaQuery.textScalerOf(context),
+          )..layout(maxWidth: constraints.maxWidth);
+          final longer = painter.didExceedMaxLines;
+          painter.dispose();
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                text,
+                style: style,
+                maxLines: _expanded || !longer
+                    ? null
+                    : PaperAbstractSection.collapsedLines,
+                overflow: _expanded || !longer
+                    ? TextOverflow.visible
+                    : TextOverflow.ellipsis,
+              ),
+              if (longer)
+                TextButton(
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  child: Text(
+                    _expanded ? context.t('Show less') : context.t('Show more'),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }

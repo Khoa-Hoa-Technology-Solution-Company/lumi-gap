@@ -28,8 +28,8 @@ class GapConfidenceBar extends StatelessWidget {
     final color = v >= 0.7
         ? lumi.success
         : v >= 0.4
-            ? lumi.warning
-            : lumi.muted;
+        ? lumi.warning
+        : lumi.muted;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -52,83 +52,78 @@ class GapConfidenceBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        Text(
-          context.t('{{pct}}% confidence', {'pct': (v * 100).round()}),
-          style: Theme.of(context)
-              .textTheme
-              .labelMedium
-              ?.copyWith(color: lumi.foregroundSecondary),
+        // Wraps rather than overflowing on a narrow screen with large text.
+        Flexible(
+          child: Text(
+            context.t('{{pct}}% confidence', {'pct': (v * 100).round()}),
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(color: lumi.foregroundSecondary),
+          ),
         ),
       ],
     );
   }
 }
 
+/// One gap in the list: what is missing, why it is believed (closure,
+/// confidence, evidence). The card opens the gap's sheet, which holds the
+/// review actions; the list is already filtered by status, so the card does
+/// not repeat it.
 class GapCard extends StatelessWidget {
   const GapCard({
     required this.gap,
     required this.onOpen,
-    required this.onStatusChange,
-    required this.busy,
     super.key,
   });
 
   final ResearchGapItem gap;
   final VoidCallback onOpen;
-  final void Function(String status) onStatusChange;
-
-  /// A status change for this gap is in flight.
-  final bool busy;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final lumi = context.lumi;
-    final status = gapStatusStyle(gap.status);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
         color: lumi.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
           side: BorderSide(color: lumi.line),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onOpen,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(gap.title, style: theme.textTheme.titleSmall),
-                    ),
-                    const SizedBox(width: 8),
-                    LumiChip(label: context.t(status.label), tone: status.tone),
-                  ],
+                Text(
+                  gap.title,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium,
                 ),
                 if (gap.description.trim().isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
                     gap.description,
-                    maxLines: 4,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: lumi.foregroundSecondary, height: 1.4),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: lumi.foregroundSecondary,
+                    ),
                   ),
                 ],
-                const SizedBox(height: 8),
-                GapClosureBadge(gap: gap),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Wrap(
                   spacing: 12,
-                  runSpacing: 4,
+                  runSpacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
+                    GapClosureBadge(gap: gap),
                     GapConfidenceBar(value: gap.confidence),
                     Text(
                       context.plural(
@@ -136,32 +131,12 @@ class GapCard extends StatelessWidget {
                         one: '{{count}} evidence paper',
                         other: '{{count}} evidence papers',
                       ),
-                      style: theme.textTheme.labelMedium
-                          ?.copyWith(color: lumi.foregroundSecondary),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: lumi.foregroundSecondary,
+                      ),
                     ),
                   ],
                 ),
-                if (gap.status == 'active') ...[
-                  const SizedBox(height: 4),
-                  // Wraps on a narrow screen or with large text.
-                  Wrap(
-                    alignment: WrapAlignment.end,
-                    children: [
-                      TextButton.icon(
-                        onPressed:
-                            busy ? null : () => onStatusChange('dismissed'),
-                        icon: const Icon(Icons.close, size: 18),
-                        label: Text(context.t('Reject Gap')),
-                      ),
-                      TextButton.icon(
-                        onPressed:
-                            busy ? null : () => onStatusChange('resolved'),
-                        icon: const Icon(Icons.check, size: 18),
-                        label: Text(context.t('Validate Gap')),
-                      ),
-                    ],
-                  ),
-                ],
               ],
             ),
           ),

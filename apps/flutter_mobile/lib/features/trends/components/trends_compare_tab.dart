@@ -6,6 +6,7 @@ import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_chart.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/trends/components/trend_compare_results.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
@@ -110,77 +111,61 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
   Widget _buildRecommendedSection(bool isDark, ThemeData theme) {
     final recs = widget.overview.recommendedComparisons;
     if (recs.isEmpty) return const SizedBox.shrink();
+    final lumi = context.lumi;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          context.t('Recommended Comparisons'),
-          style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600, color: context.lumi.muted),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 140,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: recs.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 12),
-            itemBuilder: (context, idx) {
-              final rec = recs[idx];
-              final cardBg = context.lumi.surface;
-              final borderColor = context.lumi.line;
-
-              return Container(
-                width: 250,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: cardBg,
-                  border: Border.all(color: borderColor),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
+        LumiSectionHeader(title: context.t('Recommended Comparisons')),
+        // Cards as tall as their text, never clipped at large text sizes.
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < recs.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 12),
+                  SizedBox(
+                    width: 260,
+                    child: LumiCard(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            rec.topics.join(' vs '),
-                            style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600),
-                            maxLines: 2,
+                            recs[i].topics.join(' vs '),
+                            style: theme.textTheme.titleSmall,
+                            maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            rec.reason,
-                            style: context.type.bodySmall!.copyWith(color: context.lumi.muted),
-                            maxLines: 2,
+                            recs[i].reason,
+                            style: theme.textTheme.bodyMedium
+                                ?.copyWith(color: lumi.foregroundSecondary),
+                            maxLines: 3,
                             overflow: TextOverflow.ellipsis,
+                          ),
+                          const Spacer(),
+                          Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: TextButton(
+                              onPressed: () => _useComparison(recs[i].topics),
+                              child: Text(context.t('Compare')),
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    SizedBox(
-                      height: 28,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: context.lumi.primary,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                        ),
-                        onPressed: () => _useComparison(rec.topics),
-                        child: Text(context.t('Compare'), style: context.type.bodySmall!.copyWith(color: context.lumi.onPrimary, fontWeight: FontWeight.w600)),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
       ],
     );
   }
@@ -195,7 +180,11 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(context.t('SELECTED TOPICS'), style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600, color: context.lumi.muted)),
+          Text(
+            context.t('Selected topics'),
+            style: Theme.of(context).textTheme.titleSmall
+                ?.copyWith(color: context.lumi.foregroundSecondary),
+          ),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -241,8 +230,6 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
           decoration: InputDecoration(
             hintText: context.t('Search topics in current scope...'),
             prefixIcon: const Icon(Icons.search, size: 16),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           ),
           onChanged: (val) {
             setState(() {
@@ -252,7 +239,8 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
         ),
         const SizedBox(height: 10),
         SizedBox(
-          height: 38,
+          // Room for the chips' 48dp touch target.
+          height: 52,
           child: candidatesQuery?.isLoading == true
               ? const Align(alignment: Alignment.centerLeft, child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
               : ListView.separated(

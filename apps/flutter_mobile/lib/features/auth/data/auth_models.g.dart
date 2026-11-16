@@ -24,6 +24,8 @@ _User _$UserFromJson(Map<String, dynamic> json) => _User(
   emailVerifiedAt: json['emailVerifiedAt'] == null
       ? null
       : DateTime.parse(json['emailVerifiedAt'] as String),
+  hasPasswordLogin:
+      readHasPasswordLogin(json, 'hasPasswordLogin') as bool? ?? true,
 );
 
 Map<String, dynamic> _$UserToJson(_User instance) => <String, dynamic>{
@@ -38,6 +40,7 @@ Map<String, dynamic> _$UserToJson(_User instance) => <String, dynamic>{
   'researchInterests': instance.researchInterests,
   'points': instance.points,
   'emailVerifiedAt': instance.emailVerifiedAt?.toIso8601String(),
+  'hasPasswordLogin': instance.hasPasswordLogin,
 };
 
 const _$UserRoleEnumMap = {

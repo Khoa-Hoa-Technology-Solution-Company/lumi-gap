@@ -68,7 +68,9 @@ String mlaCitation({
   final people = switch (names.length) {
     0 => '',
     1 => names.single,
-    2 => '${names[0]}, and ${names[1]}',
+    // Names are shown as given, not inverted ("Last, First"), so MLA's
+    // comma before "and" does not apply.
+    2 => '${names[0]} and ${names[1]}',
     _ => '${names.first}, et al',
   };
   final quoted = t.isEmpty ? '' : '"${_sentence(t)}"';
