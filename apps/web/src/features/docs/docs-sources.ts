@@ -25,6 +25,9 @@ export type DocsSourceId =
   | "haldane-1956"
   | "waltman-schreiber-2013"
   | "bornmann-2021"
+  | "joanes-gill-1998"
+  | "hyndman-fan-1996"
+  | "leys-2013"
   | "openalex-works"
   | "openalex-topics"
   | "openalex-group-by";
@@ -314,6 +317,81 @@ export const DOCS_SOURCES: Record<DocsSourceId, DocsSource> = {
       en: "Context: science grows by about 4.10% per year (doubling time 17.3 years), so raw paper counts almost always \"rise\".",
     },
     verification: { status: "verified", method: "Crossref (abstract)", checkedOn: CHECKED_ON },
+  },
+  "joanes-gill-1998": {
+    id: "joanes-gill-1998",
+    shortCite: "Joanes & Gill, 1998",
+    authors: "Joanes, D. N., & Gill, C. A.",
+    year: 1998,
+    work: "Comparing measures of sample skewness and kurtosis",
+    venue: "Journal of the Royal Statistical Society: Series D (The Statistician), 47(1), 183–189",
+    doi: "10.1111/1467-9884.00122",
+    url: "https://doi.org/10.1111/1467-9884.00122",
+    role: "method-origin",
+    kind: "peer-reviewed",
+    roleNote: {
+      vi: "Công thức độ lệch G1 và độ nhọn vượt G2 đã hiệu chỉnh cho mẫu nhỏ, dùng ở bước thống kê mô tả.",
+      en: "The small-sample adjusted skewness G1 and excess kurtosis G2 used in the descriptive step.",
+    },
+    verification: {
+      status: "verified",
+      method: "Crossref (bibliographic record)",
+      checkedOn: "2026-11-16",
+      note: {
+        vi: "Mới đối chiếu thông tin thư mục. Công thức G1, G2 lấy theo cách trình bày phổ biến của bài này (cũng là công thức của các phần mềm thống kê), chưa đối chiếu với toàn văn.",
+        en: "Only the bibliographic record was checked. The G1 and G2 formulas follow the usual presentation of this paper (also the formulas of statistical packages) and were not checked against the full text.",
+      },
+    },
+  },
+  "hyndman-fan-1996": {
+    id: "hyndman-fan-1996",
+    shortCite: "Hyndman & Fan, 1996",
+    authors: "Hyndman, R. J., & Fan, Y.",
+    year: 1996,
+    work: "Sample Quantiles in Statistical Packages",
+    venue: "The American Statistician, 50(4), 361–365",
+    doi: "10.1080/00031305.1996.10473566",
+    url: "https://doi.org/10.1080/00031305.1996.10473566",
+    role: "method-origin",
+    kind: "peer-reviewed",
+    roleNote: {
+      vi: "Định nghĩa phân vị số 7 (nội suy tuyến tính tại vị trí (n − 1)·p), dùng cho trung vị và tứ phân vị.",
+      en: "Quantile definition 7 (linear interpolation at position (n − 1)·p), used for the median and the quartiles.",
+    },
+    verification: {
+      status: "verified",
+      method: "Crossref (bibliographic record)",
+      checkedOn: "2026-11-16",
+      note: {
+        vi: "Thông tin thư mục theo Crossref. Định nghĩa số 7 (p_k = (k − 1)/(n − 1), mặc định của R) đối chiếu theo tài liệu hàm quantile của R, nơi dẫn chính bài này; chưa đối chiếu với toàn văn.",
+        en: "Bibliographic record from Crossref. Definition 7 (p_k = (k − 1)/(n − 1), the default of R) was checked against the R manual of quantile, which cites this paper; the full text itself was not read.",
+      },
+    },
+  },
+  "leys-2013": {
+    id: "leys-2013",
+    shortCite: "Leys et al., 2013",
+    authors: "Leys, C., Ley, C., Klein, O., Bernard, P., & Licata, L.",
+    year: 2013,
+    work: "Detecting outliers: Do not use standard deviation around the mean, use absolute deviation around the median",
+    venue: "Journal of Experimental Social Psychology, 49(4), 764–766",
+    doi: "10.1016/j.jesp.2013.03.013",
+    url: "https://doi.org/10.1016/j.jesp.2013.03.013",
+    role: "method-origin",
+    kind: "peer-reviewed",
+    roleNote: {
+      vi: "Phát hiện giá trị bất thường bằng độ lệch tuyệt đối trung vị (MAD) và ngưỡng 2,5, dùng để đánh dấu năm bất thường.",
+      en: "Outlier detection with the median absolute deviation (MAD) and the cut-off 2.5, used to flag anomalous years.",
+    },
+    verification: {
+      status: "verified",
+      method: "Crossref + full text (open-access copy, dipot.ulb.ac.be)",
+      checkedOn: "2026-11-16",
+      note: {
+        vi: "Đã đối chiếu với toàn văn: MAD = b · trung vị(|x_i − trung vị|) với b = 1,4826; tiêu chí |x_i − M| / MAD > ngưỡng; các tác giả khuyến nghị ngưỡng 2,5 (\"by default, we suggest a threshold of 2.5\").",
+        en: "Checked against the full text: MAD = b · median(|x_i − median|) with b = 1.4826; criterion |x_i − M| / MAD > threshold; the authors recommend 2.5 (\"by default, we suggest a threshold of 2.5\").",
+      },
+    },
   },
   "openalex-works": {
     id: "openalex-works",

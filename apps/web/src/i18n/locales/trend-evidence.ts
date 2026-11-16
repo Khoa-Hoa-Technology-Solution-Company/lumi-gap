@@ -1,7 +1,7 @@
 // Statistical trend evidence on the topic page and the overview share test.
 // Strings of the topic page evidence panel; formulas and sources live in the /docs trend sections.
 const trendEvidenceKeys = [
-  "{{count}} papers of this topic in the local corpus. The trend below is judged by statistical tests on the topic's share of its field, not by raw counts.",
+  "{{count}} papers of this topic in the local corpus. The trend below is judged by statistical tests on the topic's share of publications, not by raw counts.",
   "95% CI: {{lo}} to {{hi}}",
   "All active papers",
   "Annual change of share",
@@ -61,7 +61,7 @@ const trendEvidenceKeys = [
   "Counts come from OpenAlex aggregate queries over every indexed work, not from the local corpus.",
   "OpenAlex could not be reached, so these numbers come from the smaller local corpus and may be incomplete.",
   "These Data Scope filters are not applied to the OpenAlex counts:",
-  "{{count}} papers of this topic in OpenAlex (whole database). The trend below is judged by statistical tests on the topic's share of its field, not by raw counts.",
+  "{{count}} papers of this topic in OpenAlex (whole database). The trend below is judged by statistical tests on the topic's share of publications, not by raw counts.",
   "PP(top 10%)",
   "PP(top 10%):",
   "for activity and",
@@ -112,7 +112,7 @@ const trendEvidenceKeys = [
 export const trendEvidenceStrings = Object.fromEntries(trendEvidenceKeys.map((key) => [key, key])) as Record<(typeof trendEvidenceKeys)[number], string>;
 
 export const trendEvidenceViStrings: Record<(typeof trendEvidenceKeys)[number], string> = {
-  "{{count}} papers of this topic in the local corpus. The trend below is judged by statistical tests on the topic's share of its field, not by raw counts.": "{{count}} bài của chủ đề này trong kho dữ liệu nội bộ. Xu hướng bên dưới được đánh giá bằng kiểm định thống kê trên tỷ trọng của chủ đề trong lĩnh vực, không dựa trên số lượng bài thô.",
+  "{{count}} papers of this topic in the local corpus. The trend below is judged by statistical tests on the topic's share of publications, not by raw counts.": "{{count}} bài của chủ đề này trong kho dữ liệu nội bộ. Xu hướng bên dưới được đánh giá bằng kiểm định thống kê trên tỷ trọng công bố của chủ đề, không dựa trên số lượng bài thô.",
   "95% CI: {{lo}} to {{hi}}": "KTC 95%: {{lo}} đến {{hi}}",
   "All active papers": "Toàn bộ bài báo đang hoạt động",
   "Annual change of share": "Thay đổi tỷ trọng mỗi năm",
@@ -171,7 +171,7 @@ export const trendEvidenceViStrings: Record<(typeof trendEvidenceKeys)[number], 
   "Counts come from OpenAlex aggregate queries over every indexed work, not from the local corpus.": "Số liệu lấy từ truy vấn tổng hợp của OpenAlex trên mọi công trình được lập chỉ mục, không phải từ kho dữ liệu nội bộ.",
   "OpenAlex could not be reached, so these numbers come from the smaller local corpus and may be incomplete.": "Không truy cập được OpenAlex nên các số liệu này lấy từ kho dữ liệu nội bộ nhỏ hơn và có thể chưa đầy đủ.",
   "These Data Scope filters are not applied to the OpenAlex counts:": "Các bộ lọc Phạm vi dữ liệu sau không được áp dụng cho số liệu OpenAlex:",
-  "{{count}} papers of this topic in OpenAlex (whole database). The trend below is judged by statistical tests on the topic's share of its field, not by raw counts.": "{{count}} bài của chủ đề này trên OpenAlex (toàn bộ cơ sở dữ liệu). Xu hướng bên dưới được đánh giá bằng kiểm định thống kê trên tỷ trọng của chủ đề trong lĩnh vực, không dựa trên số lượng bài thô.",
+  "{{count}} papers of this topic in OpenAlex (whole database). The trend below is judged by statistical tests on the topic's share of publications, not by raw counts.": "{{count}} bài của chủ đề này trên OpenAlex (toàn bộ cơ sở dữ liệu). Xu hướng bên dưới được đánh giá bằng kiểm định thống kê trên tỷ trọng công bố của chủ đề, không dựa trên số lượng bài thô.",
   "PP(top 10%)": "PP(top 10%)",
   "PP(top 10%):": "PP(top 10%):",
   "for activity and": "để xem mức độ hoạt động và",

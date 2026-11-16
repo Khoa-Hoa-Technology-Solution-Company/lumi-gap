@@ -263,7 +263,7 @@ export function TopicsTab({
                   </div>
                 </>
               ) : (
-                <p className="text-xs text-slate-455">{t("No topic shows a statistically significant rise in its field share in this scope.")}</p>
+                <p className="text-xs text-slate-455">{t("No topic shows a statistically significant rise in its share of publications in this scope.")}</p>
               )}
             </div>
 
@@ -397,7 +397,7 @@ export function TopicsTab({
                   </h3>
                   <p className="text-xs text-slate-550 dark:text-slate-400 mt-0.5 font-medium">
                     {verdictCaption(sortedTopics.length, matchedTopicCount, verdictFilter)}.{" "}
-                    {t("Topics tested: the largest overall and per field. Use Compare topic search to browse more.")}
+                    {t("Every topic of the Information Technology scope is tested. Use the filters to narrow the list.")}
                   </p>
                 </div>
                 <span className="text-[9px] bg-blue-500/10 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200/30 px-2 py-1 rounded font-bold uppercase tracking-wider">

@@ -86,7 +86,7 @@ export function TrendsPage() {
   const [yearFrom, setYearFrom] = useState<number>(() => parseNumberParam(searchParams, "yearFrom", DEFAULT_TREND_YEAR_FROM, { min: 1900 }));
   const [yearTo, setYearTo] = useState<number>(() => parseNumberParam(searchParams, "yearTo", DEFAULT_TREND_YEAR_TO, { min: 1900 }));
   const openTopicTarget = (topic: string, openalexTopicId?: string) => getTopicTrendTarget(topic, openalexTopicId, { yearFrom, yearTo });
-  // Legacy ?sortBy=momentum|growth (and ?sort=) links map to the verdict ranking.
+  // ?sort= is the older name of ?sortBy=; unknown values fall back to the verdict ranking.
   const [sortBy, setSortBy] = useState<TrendSortKey>(() => parseTrendSortKey(searchParams.get("sortBy") ?? searchParams.get("sort")));
   const [minPapers, setMinPapers] = useState<number>(() => parseNumberParam(searchParams, "minPapers", DEFAULT_TREND_MIN_PAPERS, { min: 1 }));
   const [yearFromInput, setYearFromInput] = useState(() => String(yearFrom));

@@ -13,7 +13,7 @@ import type {
 import { LlmContentError } from "../llm/gemini.client.js";
 import { collectAllowedNumbers, findUnsupportedNumbers, formatEvidence, sanitizeIds, UNTRUSTED_DATA_PREAMBLE } from "../llm/grounding.js";
 
-export const TREND_EXPLAIN_PROMPT_VERSION = "trend-explain-v4";
+export const TREND_EXPLAIN_PROMPT_VERSION = "trend-explain-v5";
 
 export const TREND_EXPLAIN_SYSTEM_PROMPT = [
   UNTRUSTED_DATA_PREAMBLE,
@@ -21,7 +21,7 @@ export const TREND_EXPLAIN_SYSTEM_PROMPT = [
   "Use only numbers that appear in the METRICS block; never compute or estimate new figures.",
   "Do not invent paper titles, authors, institutions or claims that are not in the data.",
   "possibleDrivers may cite only ids from the REPRESENTATIVE PAPERS block and must be phrased as hypotheses (for example \"may reflect\"), never as facts.",
-  "Each topic carries a classification (verdict: rising, declining, stable or insufficient), decided by a Mann–Kendall test on its share of its field. Explain that verdict and never contradict it: call a topic rising or declining only when its verdict says so. momentum, growthRatePct and cagr3yPct are deprecated raw-count figures; do not use them as evidence of a trend.",
+  "Each topic carries a classification (verdict: rising, saturated, past_peak, declining, stable or insufficient), decided by a Mann–Kendall test on its yearly share of publications. saturated means the share rose over the window but is flat near its peak in the recent years (recentRelativeChangePct, peakRatio); past_peak means it rose and has since fallen far below its peak. Explain that verdict and never contradict it: call a topic rising, saturated, past its peak or declining only when its verdict says so. Raw paper counts are descriptive; do not use them as evidence of a trend.",
   "If a signal is weak, the sample is small or the latest year is incomplete, say so in cautions.",
   "Return only the requested JSON.",
 ].join("\n");

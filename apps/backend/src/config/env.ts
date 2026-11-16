@@ -296,6 +296,9 @@ const EnvSchema = z.object({
   // Daily re-check of followed trend topics (notification worker); each run checks at most the batch size.
   TREND_FOLLOW_CRON: z.string().default("0 4 * * *"),
   TREND_FOLLOW_CHECK_BATCH: z.coerce.number().int().min(1).max(1000).default(100),
+  // Re-fetches the yearly series of every IT-scope topic (notification worker) so GET /trends reads them from the
+  // cache. The series are cached for 7 days: keep the interval shorter than that. About 340 OpenAlex requests a run.
+  TREND_WARM_CRON: z.string().default("0 3 */3 * *"),
   // Community "did you mean" suggestions embed the raw query on every cache miss
   // (Gemini, shared quota), so the route is throttled per user/IP.
   COMMUNITY_SUGGEST_MAX_PER_MINUTE: z.coerce.number().int().min(1).default(20),

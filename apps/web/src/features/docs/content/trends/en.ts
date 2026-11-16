@@ -1,6 +1,7 @@
 import { DOCS_SECTIONS as S, docsPath } from "../../docs-section-ids";
 import type { DocsModuleContent } from "../../docs.types";
 import type { TrendSectionId } from "./index";
+import { trendEdaEn, trendLifecycleBlocksEn, trendScopeBlocksEn } from "./eda";
 import { TREND_DOC_CONSTANTS as C } from "./trend-doc-constants";
 
 const link = (text: string, id: Parameters<typeof docsPath>[0], anchor?: string) => `[${text}](${docsPath(id, anchor)})`;
@@ -10,13 +11,13 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
   sections: {
     [S.trendDefinition]: {
       heading: "Definition of a trend",
-      summary: "A topic is rising (declining) when its share of its field's publications increases (decreases) monotonically and significantly.",
+      summary: "A topic is rising (declining) when its share of the publications of the Information Technology disciplines increases (decreases) monotonically and significantly.",
       body: [
         {
           kind: "callout",
           tone: "standard",
           heading: "Definition",
-          text: `**A topic is a rising (declining) trend** when its **share** of the publications of its field shows a **statistically significant monotonic increase (decrease)** according to the ${link("Mann–Kendall", S.trendMannKendall)} test, over complete years of data.`,
+          text: `**A topic is a rising (declining) trend** when its **share** of the publications of the Information Technology disciplines shows a **statistically significant monotonic increase (decrease)** according to the ${link("Mann–Kendall", S.trendMannKendall)} test, over complete years of data. A rise is further split into **rising**, **saturated** or **past its peak** from what happened in recent years.`,
         },
         { kind: "heading", id: "why-share", text: "Why a share and not a paper count" },
         {
@@ -29,19 +30,21 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
           columns: ["Part", "Meaning in LumiGap"],
           rows: [
             ["Unit of analysis", "One OpenAlex Topic, identified by the work's `primary_topic.id`."],
-            ["Reference population", `All works of the topic's field (\`primary_topic.field.id\`) under the same scope filters. See ${link("Data and scope", S.trendData)}.`],
+            ["Reference population", `All works of the Information Technology scope (${C.scopeTopics} topics, version \`${C.scopeVersion}\`) under the same scope filters. See ${link("Data and scope", S.trendData, "it-scope")}.`],
             ["Measure", `Share in year t: s_t = n_t / N_t × 100. See ${link("Share", S.trendShare)}.`],
             ["Test", `Two-sided Mann–Kendall on the series s_t, significance level α = ${C.alpha}.`],
             ["Magnitude", `${link("Sen's slope", S.trendSenSlope)} (percentage points per year) with a 95% confidence interval.`],
             ["Years used", `Complete years only, by default the last ${C.defaultWindowYears} years.`],
           ],
         },
-        { kind: "heading", id: "verdicts", text: "The four possible verdicts" },
+        { kind: "heading", id: "verdicts", text: "The six possible verdicts" },
         {
           kind: "table",
           columns: ["Verdict", "Code", "When"],
           rows: [
-            ["Rising", "`rising`", "The share increases monotonically and significantly."],
+            ["Rising", "`rising`", "The share increases monotonically and significantly, and has not levelled off."],
+            ["Saturated", "`saturated`", "The share rose significantly but has been flat near its peak in recent years."],
+            ["Past its peak", "`past_peak`", "The share rose significantly but ends under half of its peak."],
             ["Declining", "`declining`", "The share decreases monotonically and significantly."],
             ["Stable", "`stable`", "Enough data, but no significant trend was found."],
             ["Insufficient data", "`insufficient`", "Too few years, too few papers, or non-representative data."],
@@ -49,12 +52,12 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
         },
         {
           kind: "paragraph",
-          text: `The exact rule is in ${link("Verdict rules and confidence", S.trendVerdict)}.`,
+          text: `The exact rule is in ${link("Verdict rules and confidence", S.trendVerdict)}. Before concluding, the share series goes through the steps of the ${link("exploratory analysis", S.trendEda)}.`,
         },
         {
           kind: "callout",
           tone: "convention",
-          text: "NSF uses shares at the level of countries and fields of science. Applying the same concept to **a topic within its field** is a choice of this project.",
+          text: "NSF uses shares at the level of countries and fields of science. Applying the same concept to **a topic within the Information Technology disciplines** is a choice of this project.",
         },
         {
           kind: "callout",
@@ -74,20 +77,21 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
           kind: "formula",
           lines: [
             "n_t = works with primary_topic.id = T,          publication year = t, matching the scope",
-            "N_t = works with primary_topic.field.id = F(T), publication year = t, matching the scope*",
+            "N_t = works with primary_topic.subfield.id in the IT scope, publication year = t, matching the scope*",
           ],
           legend: [
             { symbol: "T", meaning: "The topic being analysed (an OpenAlex Topic)." },
-            { symbol: "F(T)", meaning: "The field (OpenAlex Field) that contains topic T." },
+            { symbol: "IT scope", meaning: "The fixed list of subfields of the Information Technology disciplines; see the table below." },
             { symbol: "t", meaning: "Publication year." },
             { symbol: "scope", meaning: "Filters chosen by the user (work type, open access, language, source...)." },
-            { symbol: "*", meaning: "For N_t the taxonomy clauses (domain/field/subfield/topic) of the scope are dropped, because the reference population sets its own field filter." },
+            { symbol: "*", meaning: "For N_t the taxonomy clauses (domain/field/subfield/topic) chosen by the user are dropped: the denominator is always the whole IT scope." },
           ],
         },
         {
           kind: "paragraph",
           text: "Both counts are computed by OpenAlex with `group_by` queries over its **whole** database, without downloading works [@openalex-group-by]. Each work counts only for its **primary topic** (`primary_topic`) [@openalex-works].",
         },
+        ...trendScopeBlocksEn,
         { kind: "heading", id: "complete-years", text: "Complete years and analysis window" },
         {
           kind: "formula",
@@ -114,7 +118,7 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
           tone: "convention",
           items: [
             `Default window of ${C.defaultWindowYears} years.`,
-            "The reference population is the topic's field, not the whole of OpenAlex or the subfield.",
+            "The reference population is the whole Information Technology scope, not the whole of OpenAlex or the topic's own field.",
           ],
         },
         { kind: "sources", ids: ["openalex-group-by", "openalex-works", "openalex-topics", "nsf-sei-2024-technical-appendix"] },
@@ -123,7 +127,7 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
 
     [S.trendShare]: {
       heading: "Share",
-      summary: "Percentage of the field's papers that belong to the topic in a year.",
+      summary: "Percentage of the papers of the Information Technology scope that belong to the topic in a year.",
       body: [
         {
           kind: "formula",
@@ -131,14 +135,14 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
           legend: [
             { symbol: "s_t", meaning: "Share of the topic in year t, in percent." },
             { symbol: "n_t", meaning: "Works whose primary topic is this topic, year t." },
-            { symbol: "N_t", meaning: "Works of the whole field containing the topic, year t." },
+            { symbol: "N_t", meaning: "Works of the whole Information Technology scope, year t." },
           ],
         },
         {
           kind: "example",
           heading: "Example",
           blocks: [
-            { kind: "paragraph", text: "In 2020 the field has N = 12,000 works, of which n = 150 belong to the topic. Share s = 150 / 12,000 × 100 = **1.25%**." },
+            { kind: "paragraph", text: "In 2020 the scope has N = 12,000 works, of which n = 150 belong to the topic. Share s = 150 / 12,000 × 100 = **1.25%**." },
           ],
         },
         { kind: "heading", id: "percentage-points", text: "Percentage points versus percent" },
@@ -154,6 +158,8 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
         { kind: "sources", ids: ["nsf-sei-2024-publications", "nsf-sei-2024-technical-appendix"] },
       ],
     },
+
+    [S.trendEda]: trendEdaEn,
 
     [S.trendMannKendall]: {
       heading: "Mann–Kendall test",
@@ -222,7 +228,7 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
         {
           kind: "callout",
           tone: "limitation",
-          text: "USGS recommends tables of exact p-values when n ≤ 10 and the normal approximation only when n > 10 [@usgs-helsel-2020]. LumiGap uses the normal approximation with continuity correction for every n (the default window is 10 years), so p is **approximate**. Example with n = 5, S = 10: exact p = 2/120 ≈ 0.017, normal approximation ≈ 0.027. With ties only the approximation exists.",
+          text: "USGS recommends tables of exact p-values when n ≤ 10 and the normal approximation only when n > 10 [@usgs-helsel-2020]. LumiGap uses the normal approximation with continuity correction for every n (the default window is 15 years, but a shorter one can be chosen), so for n ≤ 10 p is **approximate**. Example with n = 5, S = 10: exact p = 2/120 ≈ 0.017, normal approximation ≈ 0.027. With ties only the approximation exists.",
         },
         {
           kind: "callout",
@@ -318,7 +324,7 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
         },
         {
           kind: "paragraph",
-          text: "The same b = 0.05 pp per year is a big change for a topic holding 0.5% of its field but a small one for a topic holding 10%. r puts both on one scale, so it is used to **order** rising (declining) topics on the overview.",
+          text: "The same b = 0.05 pp per year is a big change for a topic holding 0.5% of the scope but a small one for a topic holding 10%. r puts both on one scale, so it is used to **order** rising (declining) topics on the overview.",
         },
         {
           kind: "callout",
@@ -334,7 +340,7 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
       body: [
         {
           kind: "paragraph",
-          text: `The overview tests ${C.overviewCandidatesMin} to ${C.overviewCandidatesMax} topics at once. If no topic really trended and the threshold stayed at p < ${C.alpha}, about 5 in every 100 topics would be labelled wrongly. The Benjamini–Hochberg (BH) procedure turns p-values into **q-values** so that the expected proportion of false discoveries (FDR) among the labelled topics stays at most α [@benjamini-hochberg-1995].`,
+          text: `The overview tests **every** topic of the scope at once (${C.scopeTopics} topics). If no topic really trended and the threshold stayed at p < ${C.alpha}, about 5 in every 100 topics would be labelled wrongly. The Benjamini–Hochberg (BH) procedure turns p-values into **q-values** so that the expected proportion of false discoveries (FDR) among the labelled topics stays at most α [@benjamini-hochberg-1995].`,
         },
         {
           kind: "formula",
@@ -379,7 +385,7 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
         {
           kind: "callout",
           tone: "standard",
-          text: "Benjamini & Hochberg (1995) prove that the procedure controls the FDR at level α when the tests are independent. Topics of the same field may be dependent; keep this assumption in mind.",
+          text: "Benjamini & Hochberg (1995) prove that the procedure controls the FDR at level α when the tests are independent. Topics of the same scope may be dependent; keep this assumption in mind.",
         },
         { kind: "sources", ids: ["benjamini-hochberg-1995"] },
       ],
@@ -401,22 +407,25 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
             ["1", "Data source is the local corpus (`source = \"local\"`)", "Insufficient data", "`LOCAL_CORPUS`"],
             ["2", `n < ${C.minYears} years`, "Insufficient data", "`TOO_FEW_YEARS`"],
             ["3", `Total papers < ${C.minPapers}`, "Insufficient data", "`TOO_FEW_PAPERS`"],
-            ["4", `p* < ${C.alpha} and S > 0`, "Rising", "`SIGNIFICANT_INCREASE`"],
-            ["5", `p* < ${C.alpha} and S < 0`, "Declining", "`SIGNIFICANT_DECREASE`"],
-            ["6", "Otherwise", "Stable", "`NO_SIGNIFICANT_TREND`"],
+            ["4", `p* < ${C.alpha}, S > 0, n ≥ ${C.lifecycleMinYears} and peakRatio < ${C.pastPeak}`, "Past its peak", "`DECLINE_AFTER_PEAK`"],
+            ["5", `p* < ${C.alpha}, S > 0, n ≥ ${C.lifecycleMinYears}, |r_R| < ${C.flatPct}% per year and peakRatio ≥ ${C.nearPeak}`, "Saturated", "`PLATEAU_AFTER_INCREASE`"],
+            ["6", `p* < ${C.alpha} and S > 0`, "Rising", "`SIGNIFICANT_INCREASE`"],
+            ["7", `p* < ${C.alpha} and S < 0`, "Declining", "`SIGNIFICANT_DECREASE`"],
+            ["8", "Otherwise", "Stable", "`NO_SIGNIFICANT_TREND`"],
           ],
         },
         {
           kind: "paragraph",
           text: "When the verdict is Insufficient data, every failed condition among 1–3 is listed, so users know what is missing. The statistics are still computed and shown.",
         },
+        ...trendLifecycleBlocksEn,
         { kind: "heading", id: "confidence", text: "Confidence" },
         {
           kind: "table",
-          columns: ["Confidence", "Condition (Rising / Declining only)"],
+          columns: ["Confidence", "Condition (for Rising, Saturated, Past its peak, Declining)"],
           rows: [
             ["High (`high`)", `p* < ${C.highConfidenceP} **and** n ≥ ${C.highConfidenceMinYears} years`],
-            ["Medium (`medium`)", "All other rising / declining cases"],
+            ["Medium (`medium`)", "All other cases of the four verdicts above"],
           ],
         },
         { kind: "heading", id: "thresholds", text: "Basis of the thresholds" },
@@ -437,6 +446,7 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
             `The ${C.minPapers}-paper threshold.`,
             `The high-confidence threshold (p* < ${C.highConfidenceP} and n ≥ ${C.highConfidenceMinYears}).`,
             "Using q instead of p on the overview.",
+            "The saturated and past-peak thresholds.",
           ],
         },
         {
@@ -507,7 +517,7 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
           kind: "callout",
           tone: "limitation",
           heading: "1. Autocorrelation",
-          text: "Mann–Kendall assumes the years are independent (after removing the trend) [@usgs-helsel-2020]. A year's share is usually close to the previous year's, so p can be smaller than it should be, making a trend easier to declare. USGS notes that serial correlation and long-term persistence inflate the variance of the test statistic and raise the type I error rate. With a 10-year window the project does not correct for it.",
+          text: "Mann–Kendall assumes the years are independent (after removing the trend) [@usgs-helsel-2020]. A year's share is usually close to the previous year's, so p can be smaller than it should be, making a trend easier to declare. USGS notes that serial correlation and long-term persistence inflate the variance of the test statistic and raise the type I error rate. The project does not correct for it.",
         },
         {
           kind: "callout",
@@ -518,8 +528,8 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
         {
           kind: "callout",
           tone: "limitation",
-          heading: "3. Candidate list favours large topics",
-          text: `The overview tests at most ${C.overviewCandidatesMax} topics: the largest of the scope plus the ${C.overviewTopicsPerStratum} largest of every field (of every subfield when the scope is one field), so smaller fields are tested too. Inside a field, small emerging topics may still not appear; search for such a topic directly to open its detail page.`,
+          heading: "3. Shares are a zero-sum game",
+          text: "Every topic shares one denominator, so when one area grows very fast (today, artificial intelligence), the other topics **lose share** even if their paper counts do not fall. In the run of 2026-11-14 more than half of the topics of the scope were declining. \"Declining\" here means **a falling share of the disciplines**, not that fewer people work on the topic; look at the papers-per-year chart to tell the two apart.",
         },
         {
           kind: "callout",
@@ -542,8 +552,20 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
         {
           kind: "callout",
           tone: "limitation",
-          heading: "7. Months and quarters",
-          text: `The "By month / quarter" tab runs the same test on monthly or quarterly shares (at least ${C.minYears} complete periods; the running one is never tested). Works dated only by year are filed under January and the latest months are still being indexed; the share of the field cancels most of both. Short periods are noisier and more autocorrelated than years, so read a monthly verdict as recent movement, not a lasting trend.`,
+          heading: "7. Saturated and past its peak rest on project thresholds",
+          text: `The thresholds in ${link("Saturated and past its peak", S.trendVerdict, "lifecycle")} are project conventions without a published source. A topic that rose and then fell so far that Mann–Kendall is no longer significant is called Stable, not Past its peak.`,
+        },
+        {
+          kind: "callout",
+          tone: "limitation",
+          heading: "8. The scope is defined by the project",
+          text: `The list of subfields of the scope (version \`${C.scopeVersion}\`) is a choice of this project. Applied IT areas that sit in other fields (bioinformatics, health informatics, e-learning...) are not counted yet. OpenAlex also changes how it assigns topics to works over time; counts always follow the current assignment.`,
+        },
+        {
+          kind: "callout",
+          tone: "limitation",
+          heading: "9. Months and quarters",
+          text: `The "By month / quarter" tab runs the same test on monthly or quarterly shares (at least ${C.minYears} complete periods; the running one is never tested). Works dated only by year are filed under January and the latest months are still being indexed; the share cancels most of both. This tab uses the same denominator (the whole Information Technology scope) but only tests the largest topics of the window and of every subfield, because period counts cannot be reused across windows; a small topic may be missing here although the yearly overview has it. Short periods are noisier and more autocorrelated than years, so read a monthly verdict as recent movement, not a lasting trend.`,
         },
       ],
     },
@@ -555,7 +577,7 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
         { kind: "heading", id: "data", text: "Step 1. Data and shares" },
         {
           kind: "table",
-          columns: ["Year t", "n_t (topic papers)", "N_t (field papers)", "s_t = n_t / N_t × 100"],
+          columns: ["Year t", "n_t (topic papers)", "N_t (scope papers)", "s_t = n_t / N_t × 100"],
           rows: [
             ["2019", "120", "10,000", "1.20%"],
             ["2020", "150", "12,000", "1.25%"],
@@ -567,7 +589,7 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
         },
         {
           kind: "paragraph",
-          text: "The raw count doubles (120 → 240, +100%), but mostly because the whole field grew. The share only goes from 1.20% to 1.50% (+0.30 percentage points, +25%). n = 6 years, total papers = 1,064.",
+          text: "The raw count doubles (120 → 240, +100%), but mostly because the whole scope grew. The share only goes from 1.20% to 1.50% (+0.30 percentage points, +25%). n = 6 years, total papers = 1,064.",
         },
         { kind: "heading", id: "s", text: "Step 2. The S statistic" },
         {

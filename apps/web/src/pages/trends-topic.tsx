@@ -87,8 +87,8 @@ export function TopicDetailPage() {
             </div>
             <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm max-w-2xl leading-relaxed">
               {dataSource === "openalex"
-                ? t("{{count}} papers of this topic in OpenAlex (whole database). The trend below is judged by statistical tests on the topic's share of its field, not by raw counts.", { count: formatNumber(data.totalPapers) })
-                : t("{{count}} papers of this topic in the local corpus. The trend below is judged by statistical tests on the topic's share of its field, not by raw counts.", { count: formatNumber(data.totalPapers) })}
+                ? t("{{count}} papers of this topic in OpenAlex (whole database). The trend below is judged by statistical tests on the topic's share of publications, not by raw counts.", { count: formatNumber(data.totalPapers) })
+                : t("{{count}} papers of this topic in the local corpus. The trend below is judged by statistical tests on the topic's share of publications, not by raw counts.", { count: formatNumber(data.totalPapers) })}
             </p>
           </div>
 

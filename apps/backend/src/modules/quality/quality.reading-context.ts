@@ -6,6 +6,7 @@ import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { findPaperEmbeddingNeighbours } from "../../infrastructure/database/postgres-paper-search.js";
 import { logger } from "../../infrastructure/logger.js";
+import { cagrPct, linearSlope, truncateToCompleteYears, yoyGrowthPct } from "../trends/trend.formulas.js";
 import { trendService } from "../trends/trend.service.js";
 import type { TopicTrendQuery } from "../trends/dto/trends.schema.js";
 import type { ReadingContextQueryInput } from "./dto/quality.schema.js";
@@ -142,10 +143,12 @@ async function trendFor(topic: { name: string; source: "requested" | "paper_topi
   try {
     // Local PostgreSQL computation only: the reading context never spends OpenAlex budget.
     const detail = await trendService.topicDetailOnly(topic.name, {} as TopicTrendQuery);
+    const complete = truncateToCompleteYears(detail.yearlyBreakdown, detail.lastCompleteYear);
     return {
       topic: topic.name, source: topic.source, totalPapers: detail.totalPapers,
-      growthRatePct: detail.growthRatePct ?? null, momentum: detail.momentum ?? null,
-      ...trendFigures(detail.yearlyBreakdown, detail.cagr3yPct),
+      // Descriptive figures of the local corpus, computed here: the trend API no longer returns raw-count growth.
+      growthRatePct: yoyGrowthPct(complete), momentum: linearSlope(complete),
+      ...trendFigures(detail.yearlyBreakdown, cagrPct(complete)),
       yearlyBreakdown: detail.yearlyBreakdown.map(({ year, count }) => ({ year, count })), paperYear,
     };
   } catch (err) {

@@ -173,12 +173,12 @@ export function OverviewTab({
     }
     let topicInsight = "";
     if (topRisingTopic?.classification) {
-      topicInsight = t("{{topic}} has the largest significant rise in its field share in this dataset ({{change}}).", {
+      topicInsight = t("{{topic}} has the largest significant rise in its share of publications in this dataset ({{change}}).", {
         topic: topRisingTopic.topic,
         change: formatRelativeChange(topRisingTopic.classification, t) ?? "",
       });
     } else {
-      topicInsight = t("No topic shows a statistically significant rise in its field share in this scope.");
+      topicInsight = t("No topic shows a statistically significant rise in its share of publications in this scope.");
     }
     let keywordInsight = "";
     if (fastestKeyword) {
@@ -663,7 +663,7 @@ function TrendVerdictSummaryCard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-[10px] font-extrabold uppercase tracking-widest text-blue-600 dark:text-blue-400">{t("Trend verdicts in this scope")}</p>
-          <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">{t("Among the {{count}} topics tested (the largest overall and per field)", { count: formatNumber(tested) })}</p>
+          <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">{t("Among the {{count}} topics of the Information Technology scope", { count: formatNumber(tested) })}</p>
         </div>
         <TrendHowLink section={DOCS_SECTIONS.trendVerdict} anchor="rules" />
       </div>
@@ -707,7 +707,7 @@ function TrendVerdictSummaryCard({
           </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-400">
-            <p>{t("No topic shows a statistically significant rise in its field share in this scope.")}</p>
+            <p>{t("No topic shows a statistically significant rise in its share of publications in this scope.")}</p>
             <button type="button" onClick={onCompare} className="font-extrabold text-blue-700 hover:underline dark:text-blue-400">
               {t("Compare topics")} ➔
             </button>

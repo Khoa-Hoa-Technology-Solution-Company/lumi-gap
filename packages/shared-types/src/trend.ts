@@ -75,33 +75,7 @@ export interface RecommendedTrendComparison {
     totalPapers: number;
     /** Verdict-based ranking metric: TrendClassification.relativeChangePct. */
     relativeChangePct: number | null;
-    /** @deprecated Raw-count YoY growth; not used for ranking or labels. */
-    growthRatePct: number;
-    /** @deprecated Raw-count least-squares slope; not used for ranking or labels. */
-    momentum: number;
   }>;
-}
-
-/**
- * Growth metrics computed from a yearly publication series.
- *
- * Metrics are computed over COMPLETE years only (the current calendar year is
- * excluded because it is still accumulating papers and would always look like
- * a decline). `yearlyBreakdown` still includes the current year so charts can
- * render it — label it "YTD" on the FE.
- */
-export interface TrendMetrics {
-  /** @deprecated Descriptive only: year-over-year growth of raw counts, %.
-   *  Not tested; never use it to sort or label a trend (use TrendClassification).
-   *  Denominator is clamped to >= 1 so a 0→N jump reads as N*100%. */
-  growthRatePct: number;
-  /** @deprecated Descriptive only: 3-year CAGR of raw counts, %. Not tested;
-   *  never use it to sort or label a trend (use TrendClassification). */
-  cagr3yPct: number | null;
-  /** @deprecated Descriptive only: least-squares slope of raw counts
-   *  (papers/year). Not tested; never use it to sort or label a trend (use
-   *  TrendClassification). */
-  momentum: number;
 }
 
 /** Mann–Kendall test (Mann 1945; Kendall 1975) on the yearly share. */
@@ -120,9 +94,16 @@ export const TREND_CITATION_BANDS = ["0-9", "10-49", "50-99", "100-499", "500-99
 
 export type TrendCitationBand = (typeof TREND_CITATION_BANDS)[number];
 
-export type TrendVerdict = "rising" | "declining" | "stable" | "insufficient";
+/**
+ * rising: the share rises significantly and has not levelled off.
+ * saturated: it rose significantly over the window but is flat near its peak in the recent years.
+ * past_peak: it rose significantly over the window but has since fallen far below its peak.
+ * declining: the share falls significantly. stable: no significant trend.
+ * insufficient: a data gate failed.
+ */
+export type TrendVerdict = "rising" | "saturated" | "past_peak" | "declining" | "stable" | "insufficient";
 
-/** Only set for rising / declining. */
+/** Only set for rising / saturated / past_peak / declining. */
 export type TrendConfidence = "high" | "medium";
 
 export type TrendReasonCode =
@@ -131,6 +112,8 @@ export type TrendReasonCode =
   | "TOO_FEW_PAPERS"
   | "SIGNIFICANT_INCREASE"
   | "SIGNIFICANT_DECREASE"
+  | "PLATEAU_AFTER_INCREASE"
+  | "DECLINE_AFTER_PEAK"
   | "NO_SIGNIFICANT_TREND";
 
 /**
@@ -143,7 +126,7 @@ export type TrendReasonCode =
  */
 export interface TrendClassification {
   verdict: TrendVerdict;
-  /** Only for rising / declining. */
+  /** Only for rising / saturated / past_peak / declining. */
   confidence: TrendConfidence | null;
   /** Number of complete years used (n). */
   yearsUsed: number;
@@ -157,11 +140,15 @@ export interface TrendClassification {
   senSlopeCi95: [number, number] | null;
   /** senSlope / median(share) · 100, % per year (presentation only). */
   relativeChangePct: number | null;
+  /** r_R: Sen's slope over the recent window / median(share of that window) · 100, % per year. */
+  recentRelativeChangePct: number | null;
+  /** median(share of the last 3 years) / max(share over the window), 0..1. */
+  peakRatio: number | null;
   reasons: TrendReasonCode[];
 }
 
 /** One topic in the trends overview list (GET /trends). */
-export interface TrendingTopic extends TrendMetrics {
+export interface TrendingTopic {
   topic: string;
   taxonomy?: TrendTopicTaxonomy;
   totalPapers: number;
@@ -217,6 +204,66 @@ export interface TrendTermShiftAnalysis {
   falling: TrendTermShift[];
 }
 
+/** Descriptive statistics of a short series (backend trend.descriptive.ts). */
+export interface DescriptiveStats {
+  n: number;
+  mean: number;
+  median: number;
+  q1: number;
+  q3: number;
+  /** Sample variance, divisor n − 1. Null when n < 2. */
+  variance: number | null;
+  standardDeviation: number | null;
+  min: number;
+  max: number;
+  range: number;
+  /** s / mean. Null when the mean is 0 or n < 2. */
+  coefficientOfVariation: number | null;
+  /** Adjusted Fisher–Pearson G1 (Joanes & Gill 1998). Null when n < 3 or the series is constant. */
+  skewness: number | null;
+  /** Excess kurtosis G2 (Joanes & Gill 1998), 0 for a normal distribution. Null when n < 4 or the series is constant. */
+  kurtosis: number | null;
+}
+
+/** One used year of the exploratory analysis: the share, the Theil–Sen line and what is left over. */
+export interface TrendEdaYear {
+  year: number;
+  sharePct: number;
+  /** Value of the Theil–Sen line; null when no line could be fitted. */
+  fitted: number | null;
+  /** sharePct − fitted. */
+  residual: number | null;
+  /** (residual − median) / MAD; null when the MAD is 0 or there are fewer than 3 years. */
+  outlierScore: number | null;
+  /** |outlierScore| above the cut-off (2.5, Leys et al. 2013). */
+  outlier: boolean;
+}
+
+/**
+ * Exploratory data analysis of one topic (GET /trends/:topic), in the order the
+ * page shows it: data check, descriptive statistics, trend line and residuals,
+ * anomalous years. It describes the series; only `classification` concludes.
+ */
+export interface TopicEda {
+  /** Years of the window that were left out of every statistic, and why. */
+  excludedYears: Array<{ year: number; reason: "incomplete" | "no_population" }>;
+  /** Used years in which the topic has no paper. */
+  zeroCountYears: number[];
+  /** Of the yearly share s_t, in %. */
+  share: DescriptiveStats | null;
+  /** Of the yearly paper count n_t. */
+  papers: DescriptiveStats | null;
+  /** Theil–Sen line of the share: fitted = intercept + slope · year. */
+  trendLine: { slope: number; intercept: number } | null;
+  years: TrendEdaYear[];
+  /** MAD of the residuals (scaled by 1.4826); null with fewer than 3 years. */
+  residualMad: number | null;
+  /** Years whose residual is an outlier. They are a caution, never a verdict. */
+  outlierYears: number[];
+  /** The recent window R the plateau check looks at; null when no year is used. */
+  recentWindow: { yearFrom: number; yearTo: number } | null;
+}
+
 /** Where the counts come from: the whole OpenAlex population (aggregate
  *  queries) or the local corpus when OpenAlex is unavailable. */
 export type TrendDataSource = "openalex" | "local";
@@ -230,15 +277,18 @@ export interface TopicTrendStatistics {
   totalPapers: number;
   /** Complete years the tests use. */
   yearsUsed: number[];
-  /** Population used as N_t: papers of the same OpenAlex field, or the whole
-   *  corpus when the topic has no field. */
-  baseline: { level: "field" | "corpus"; label: string };
+  /** Population used as N_t: every paper of the IT scope ("scope", with its
+   *  version), papers of the same OpenAlex field for a topic outside the scope
+   *  or in the local corpus, or the whole corpus when the topic has no field. */
+  baseline: { level: "scope" | "field" | "corpus"; label: string; scopeVersion?: string };
   shareSeries: TrendShareYear[];
   mannKendall: MannKendallTrend | null;
   /** Sen's slope of the share, percentage points per year. */
   senSlopePctPoints: number | null;
   /** Verdict of the share trend; p-value only (one hypothesis, qValue null). */
   classification: TrendClassification;
+  /** Exploratory analysis the verdict is read against. */
+  eda: TopicEda;
   impact: TrendImpactYear[];
   termShift: TrendTermShiftAnalysis | null;
 }
@@ -268,6 +318,9 @@ export interface TrendScopeNotice {
 export interface TrendsOverview {
   /** Where every count of this response comes from. */
   dataSource?: TrendDataSource;
+  /** Version of the IT scope the topics were tested in (backend trend.scope.ts);
+   *  absent for the local corpus. Verdicts of two versions are not comparable. */
+  scopeVersion?: string;
   scopeNotice?: TrendScopeNotice;
   yearFrom: number;
   yearTo: number;
@@ -279,16 +332,17 @@ export interface TrendsOverview {
   /** Distinct topic names available in the current active corpus window after
    *  Data Scope filters are applied. This is NOT limited by the overview `limit`. */
   uniqueTopicsInScope: number;
-  /** Topics that went through the trend test in this request, before `topics`
-   *  is paged. OpenAlex: the 30 largest topics of the scope plus the largest of
-   *  every field or subfield (see candidateStrata), at most 200. Local corpus:
-   *  every topic with at least minPapers. Does not depend on limit/offset. */
+  /** Topics listed in this request, before `topics` is paged. OpenAlex: every
+   *  topic of the IT scope is tested; these are the ones with at least
+   *  minPapers papers in the window, inside the subfield or topic filter when
+   *  there is one. Local corpus: every topic with at least minPapers. Does not
+   *  depend on limit/offset. */
   testedTopicCount: number;
   /** Tested topics of the requested `verdict` (all of them without one);
    *  `topics` is the page [offset, offset + limit) of these. */
   matchedTopicCount?: number;
-  /** How OpenAlex candidates were stratified; null when they were not (local
-   *  corpus, or a subfield/topic scope that fits in one page). */
+  /** Always null for the yearly overview since every topic of the scope is
+   *  tested; GET /trends/periods sets it (largest topics of every subfield of the scope). */
   candidateStrata?: TrendCandidateStrata | null;
   /** Verdicts of all tested topics, not only of the `topics` returned. */
   verdictCounts: Record<TrendVerdict, number>;
@@ -350,6 +404,8 @@ export interface TrendingPeriodTopic {
 /** Response shape of GET /api/v1/trends/periods (trends by month or quarter). */
 export interface TrendPeriodsOverview {
   dataSource?: TrendDataSource;
+  /** Version of the IT scope whose total is the denominator; absent for the local corpus. */
+  scopeVersion?: string;
   scopeNotice?: TrendScopeNotice;
   granularity: TrendGranularity;
   window: TrendPeriodWindow;
@@ -366,7 +422,7 @@ export interface TrendPeriodsOverview {
   computedAt: string;
 }
 
-export interface TopicComparisonItem extends TrendMetrics {
+export interface TopicComparisonItem {
   topic: string;
   taxonomy?: TrendTopicTaxonomy;
   totalPapers: number;
@@ -476,7 +532,7 @@ export interface TrendExplanationHistoryResponse {
 }
 
 /** Response shape of GET /api/v1/trends/:topic — deep dive into one topic. */
-export interface PublicationTrend extends TrendMetrics {
+export interface PublicationTrend {
   dataSource?: TrendDataSource;
   topic: string;
   taxonomy?: TrendTopicTaxonomy;
@@ -521,7 +577,7 @@ export interface ProjectTrendSnapshot {
   dataSource: TrendDataSource;
   totalPapers: number;
   classification: TrendClassification;
-  baseline?: { level: "field" | "corpus"; label: string };
+  baseline?: { level: "scope" | "field" | "corpus"; label: string; scopeVersion?: string };
   note?: string;
   createdAt: ISODateString;
 }

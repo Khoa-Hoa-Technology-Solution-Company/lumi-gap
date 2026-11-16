@@ -176,8 +176,8 @@ describe("getOpenAlexTopicDetail", () => {
     ]);
     expect(detail.totalPapers).toBe(300);
     expect(detail.lastCompleteYear).toBe(Math.min(2024, NOW_YEAR - 1));
-    expect(detail.momentum).toEqual(expect.any(Number));
-    expect(detail.growthRatePct).toEqual(expect.any(Number));
+    expect(detail).not.toHaveProperty("momentum");
+    expect(detail).not.toHaveProperty("growthRatePct");
 
     // Citation totals are never invented; PP(top 10%) comes from the percentile filter.
     expect(detail.citationTrend[1]).toEqual({ year: 2022, count: 100, totalCitations: null, avgCitations: null, topCitedCount: 10, ppTop10Pct: 10 });
@@ -206,13 +206,13 @@ describe("getOpenAlexTopicDetail", () => {
     expect(client.openAlexYearCounts).toHaveBeenCalledWith("type:article|review|preprint|conference-paper|book-chapter,primary_topic.field.id:17,primary_topic.id:T10028,publication_year:2021-2024");
   });
 
-  it("defaults to a ten year window and skips breakdown requests when the topic has no papers", async () => {
+  it("defaults to a window of 15 complete years and skips breakdown requests when the topic has no papers", async () => {
     mockTopicApi();
     client.openAlexYearCounts.mockResolvedValue(new Map());
     const detail = (await getOpenAlexTopicDetail("Topic Modeling", { topicId: "T10028", yearTo: 2024 } as never))!;
     expect(detail.totalPapers).toBe(0);
-    expect(detail.yearlyBreakdown).toHaveLength(11);
-    expect(detail.yearlyBreakdown[0]!.year).toBe(2014);
+    expect(detail.yearlyBreakdown).toHaveLength(16);
+    expect(detail.yearlyBreakdown[0]!.year).toBe(2009);
     expect(detail.facets.citationBands).toEqual([]);
     expect(client.openAlexGroupBy).not.toHaveBeenCalled();
   });
@@ -276,9 +276,9 @@ describe("getOpenAlexTopicCandidates", () => {
       taxonomy: { openalexTopicId: "T10028", fieldName: "Computer Science" },
     });
     expect(result.topics[0]!.yearlyBreakdown).toHaveLength(4);
-    expect(result.topics[0]).toHaveProperty("momentum");
-    expect(result.topics[0]).toHaveProperty("growthRatePct");
-    expect(result.topics[0]).toHaveProperty("cagr3yPct");
+    expect(result.topics[0]).not.toHaveProperty("momentum");
+    expect(result.topics[0]).not.toHaveProperty("growthRatePct");
+    expect(result.topics[0]).not.toHaveProperty("cagr3yPct");
   });
 
   it("sorts by papers in the window and returns an empty list when nothing matches", async () => {

@@ -27,7 +27,7 @@ const citationBandListSchema = z.preprocess(
 
 /** Page of the tested topics: only one verdict (optional), from `offset`. */
 const topicPageSchema = {
-  verdict: z.enum(["rising", "stable", "declining", "insufficient"]).optional(),
+  verdict: z.enum(["rising", "saturated", "past_peak", "stable", "declining", "insufficient"]).optional(),
   offset: z.coerce.number().int().min(0).max(1000).default(0),
 };
 
@@ -56,12 +56,8 @@ export const TrendsOverviewQuerySchema = z
     limit: z.coerce.number().int().min(1).max(50).default(10),
     /** Topics with fewer total papers than this are noise — hide them. */
     minPapers: z.coerce.number().int().min(1).max(1000).default(3),
-    /** "trend" = verdict order (trend.verdict.ts compareByTrend). The legacy
-     *  values "momentum" and "growth" are accepted and mean "trend". */
-    sortBy: z.preprocess(
-      (value) => (value === "momentum" || value === "growth" ? "trend" : value),
-      z.enum(["trend", "total"]).default("trend"),
-    ),
+    /** "trend" = verdict order (trend.verdict.ts compareByTrend). */
+    sortBy: z.enum(["trend", "total"]).default("trend"),
     ...topicPageSchema,
     ...trendFacetFiltersSchema,
   })

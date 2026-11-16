@@ -1,6 +1,7 @@
 import { DOCS_SECTIONS as S, docsPath } from "../../docs-section-ids";
 import type { DocsModuleContent } from "../../docs.types";
 import type { TrendSectionId } from "./index";
+import { trendEdaVi, trendLifecycleBlocksVi, trendScopeBlocksVi } from "./eda";
 import { TREND_DOC_CONSTANTS as C, formatDocNumber } from "./trend-doc-constants";
 
 const n = (value: number) => formatDocNumber(value, "vi");
@@ -11,13 +12,13 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
   sections: {
     [S.trendDefinition]: {
       heading: "Định nghĩa xu hướng",
-      summary: "Một chủ đề là xu hướng tăng (giảm) khi thị phần công bố của nó trong lĩnh vực tăng (giảm) đơn điệu, có ý nghĩa thống kê.",
+      summary: "Một chủ đề là xu hướng tăng (giảm) khi thị phần công bố của nó trong nhóm ngành Công nghệ thông tin tăng (giảm) đơn điệu, có ý nghĩa thống kê.",
       body: [
         {
           kind: "callout",
           tone: "standard",
           heading: "Định nghĩa",
-          text: `**Một chủ đề là xu hướng tăng (giảm)** khi **thị phần** công bố của nó trong lĩnh vực của nó có xu hướng **tăng (giảm) đơn điệu, có ý nghĩa thống kê** theo kiểm định ${link("Mann–Kendall", S.trendMannKendall)}, trên các năm đã hoàn chỉnh dữ liệu.`,
+          text: `**Một chủ đề là xu hướng tăng (giảm)** khi **thị phần** công bố của nó trong nhóm ngành Công nghệ thông tin có xu hướng **tăng (giảm) đơn điệu, có ý nghĩa thống kê** theo kiểm định ${link("Mann–Kendall", S.trendMannKendall)}, trên các năm đã hoàn chỉnh dữ liệu. Một xu hướng tăng còn được tách thành **đang tăng**, **bão hoà** hoặc **qua đỉnh** theo diễn biến những năm gần đây.`,
         },
         { kind: "heading", id: "why-share", text: "Vì sao dùng thị phần, không dùng số bài" },
         {
@@ -30,19 +31,21 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
           columns: ["Thành phần", "Ý nghĩa trong LumiGap"],
           rows: [
             ["Đơn vị phân tích", "Một OpenAlex Topic, xác định bằng `primary_topic.id` của bài báo."],
-            ["Quần thể tham chiếu", `Mọi bài có cùng lĩnh vực (\`primary_topic.field.id\`) với chủ đề, cùng bộ lọc phạm vi. Xem ${link("Dữ liệu và phạm vi", S.trendData)}.`],
+            ["Quần thể tham chiếu", `Mọi bài của phạm vi Công nghệ thông tin (${C.scopeTopics} chủ đề, phiên bản \`${C.scopeVersion}\`), cùng bộ lọc phạm vi. Xem ${link("Dữ liệu và phạm vi", S.trendData, "it-scope")}.`],
             ["Đại lượng đo", `Thị phần năm t: s_t = n_t / N_t × 100. Xem ${link("Thị phần", S.trendShare)}.`],
             ["Kiểm định", `Mann–Kendall hai phía trên chuỗi s_t, mức ý nghĩa α = ${n(C.alpha)}.`],
             ["Độ lớn", `${link("Sen's slope", S.trendSenSlope)} (điểm phần trăm/năm) kèm khoảng tin cậy 95%.`],
             ["Năm sử dụng", `Chỉ các năm đã hoàn chỉnh dữ liệu, mặc định ${C.defaultWindowYears} năm gần nhất.`],
           ],
         },
-        { kind: "heading", id: "verdicts", text: "Bốn kết luận có thể có" },
+        { kind: "heading", id: "verdicts", text: "Sáu kết luận có thể có" },
         {
           kind: "table",
           columns: ["Kết luận", "Mã", "Khi nào"],
           rows: [
-            ["Xu hướng tăng", "`rising`", "Thị phần tăng đơn điệu, có ý nghĩa thống kê."],
+            ["Xu hướng tăng", "`rising`", "Thị phần tăng đơn điệu, có ý nghĩa thống kê, và chưa đi ngang."],
+            ["Bão hoà", "`saturated`", "Thị phần đã tăng có ý nghĩa nhưng đi ngang ở gần mức đỉnh trong những năm gần đây."],
+            ["Qua đỉnh", "`past_peak`", "Thị phần đã tăng có ý nghĩa nhưng cuối kỳ tụt xuống dưới một nửa mức đỉnh."],
             ["Xu hướng giảm", "`declining`", "Thị phần giảm đơn điệu, có ý nghĩa thống kê."],
             ["Ổn định", "`stable`", "Đủ dữ liệu nhưng không phát hiện xu hướng có ý nghĩa."],
             ["Chưa đủ dữ liệu", "`insufficient`", "Quá ít năm, quá ít bài, hoặc dữ liệu không đại diện."],
@@ -50,12 +53,12 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
         },
         {
           kind: "paragraph",
-          text: `Quy tắc chính xác nằm ở ${link("Quy tắc kết luận và độ tin cậy", S.trendVerdict)}.`,
+          text: `Quy tắc chính xác nằm ở ${link("Quy tắc kết luận và độ tin cậy", S.trendVerdict)}. Trước khi kết luận, chuỗi thị phần đi qua các bước ${link("phân tích khám phá", S.trendEda)}.`,
         },
         {
           kind: "callout",
           tone: "convention",
-          text: "NSF dùng thị phần ở cấp quốc gia và lĩnh vực khoa học. Áp dụng cùng khái niệm cho **chủ đề trong lĩnh vực của nó** là lựa chọn của dự án.",
+          text: "NSF dùng thị phần ở cấp quốc gia và lĩnh vực khoa học. Áp dụng cùng khái niệm cho **chủ đề trong nhóm ngành Công nghệ thông tin** là lựa chọn của dự án.",
         },
         {
           kind: "callout",
@@ -75,20 +78,21 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
           kind: "formula",
           lines: [
             "n_t = số bài có primary_topic.id = T,        năm xuất bản = t, khớp phạm vi",
-            "N_t = số bài có primary_topic.field.id = F(T), năm xuất bản = t, khớp phạm vi*",
+            "N_t = số bài có primary_topic.subfield.id thuộc phạm vi CNTT, năm xuất bản = t, khớp phạm vi*",
           ],
           legend: [
             { symbol: "T", meaning: "Chủ đề đang phân tích (một OpenAlex Topic)." },
-            { symbol: "F(T)", meaning: "Lĩnh vực (OpenAlex Field) chứa chủ đề T." },
+            { symbol: "phạm vi CNTT", meaning: "Danh sách lĩnh vực con cố định của nhóm ngành Công nghệ thông tin; xem bảng bên dưới." },
             { symbol: "t", meaning: "Năm xuất bản." },
             { symbol: "phạm vi", meaning: "Bộ lọc người dùng chọn (loại bài, truy cập mở, ngôn ngữ, nguồn...)." },
-            { symbol: "*", meaning: "Với N_t, các mệnh đề phân loại (domain/field/subfield/topic) của phạm vi được bỏ đi, vì quần thể tham chiếu tự đặt bộ lọc lĩnh vực của nó." },
+            { symbol: "*", meaning: "Với N_t, các mệnh đề phân loại (domain/field/subfield/topic) do người dùng chọn được bỏ đi: mẫu số luôn là cả phạm vi CNTT." },
           ],
         },
         {
           kind: "paragraph",
           text: "Cả hai con số được OpenAlex tính bằng truy vấn `group_by` trên **toàn bộ** cơ sở dữ liệu của họ, không tải từng bài về [@openalex-group-by]. Mỗi bài chỉ được tính cho **chủ đề chính** (`primary_topic`) của nó [@openalex-works].",
         },
+        ...trendScopeBlocksVi,
         { kind: "heading", id: "complete-years", text: "Năm hoàn chỉnh và cửa sổ phân tích" },
         {
           kind: "formula",
@@ -115,7 +119,7 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
           tone: "convention",
           items: [
             `Cửa sổ mặc định ${C.defaultWindowYears} năm.`,
-            "Quần thể tham chiếu là lĩnh vực (Field) của chủ đề, không phải toàn bộ OpenAlex hay subfield.",
+            "Quần thể tham chiếu là cả phạm vi Công nghệ thông tin, không phải toàn bộ OpenAlex hay riêng lĩnh vực của chủ đề.",
           ],
         },
         { kind: "sources", ids: ["openalex-group-by", "openalex-works", "openalex-topics", "nsf-sei-2024-technical-appendix"] },
@@ -124,7 +128,7 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
 
     [S.trendShare]: {
       heading: "Thị phần",
-      summary: "Phần trăm số bài của lĩnh vực thuộc về chủ đề trong một năm.",
+      summary: "Phần trăm số bài của phạm vi Công nghệ thông tin thuộc về chủ đề trong một năm.",
       body: [
         {
           kind: "formula",
@@ -132,14 +136,14 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
           legend: [
             { symbol: "s_t", meaning: "Thị phần của chủ đề trong năm t, đơn vị phần trăm." },
             { symbol: "n_t", meaning: "Số bài có chủ đề chính là chủ đề đang xét, năm t." },
-            { symbol: "N_t", meaning: "Số bài của cả lĩnh vực chứa chủ đề, năm t." },
+            { symbol: "N_t", meaning: "Số bài của cả phạm vi Công nghệ thông tin, năm t." },
           ],
         },
         {
           kind: "example",
           heading: "Ví dụ",
           blocks: [
-            { kind: "paragraph", text: "Năm 2020 lĩnh vực có N = 12 000 bài, trong đó n = 150 bài thuộc chủ đề. Thị phần s = 150 / 12 000 × 100 = **1,25%**." },
+            { kind: "paragraph", text: "Năm 2020 phạm vi có N = 12 000 bài, trong đó n = 150 bài thuộc chủ đề. Thị phần s = 150 / 12 000 × 100 = **1,25%**." },
           ],
         },
         { kind: "heading", id: "percentage-points", text: "Điểm phần trăm và phần trăm" },
@@ -155,6 +159,8 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
         { kind: "sources", ids: ["nsf-sei-2024-publications", "nsf-sei-2024-technical-appendix"] },
       ],
     },
+
+    [S.trendEda]: trendEdaVi,
 
     [S.trendMannKendall]: {
       heading: "Kiểm định Mann–Kendall",
@@ -223,7 +229,7 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
         {
           kind: "callout",
           tone: "limitation",
-          text: "USGS khuyến nghị dùng bảng p chính xác khi n ≤ 10 và chỉ dùng xấp xỉ chuẩn khi n > 10 [@usgs-helsel-2020]. LumiGap dùng xấp xỉ chuẩn có hiệu chỉnh liên tục cho mọi n (cửa sổ mặc định 10 năm), nên p là **xấp xỉ**. Ví dụ với n = 5, S = 10: p chính xác = 2/120 ≈ 0,017, xấp xỉ chuẩn ≈ 0,027. Khi có giá trị trùng, chỉ có phiên bản xấp xỉ.",
+          text: "USGS khuyến nghị dùng bảng p chính xác khi n ≤ 10 và chỉ dùng xấp xỉ chuẩn khi n > 10 [@usgs-helsel-2020]. LumiGap dùng xấp xỉ chuẩn có hiệu chỉnh liên tục cho mọi n (cửa sổ mặc định 15 năm, nhưng người dùng có thể chọn cửa sổ ngắn hơn), nên với n ≤ 10 thì p là **xấp xỉ**. Ví dụ với n = 5, S = 10: p chính xác = 2/120 ≈ 0,017, xấp xỉ chuẩn ≈ 0,027. Khi có giá trị trùng, chỉ có phiên bản xấp xỉ.",
         },
         {
           kind: "callout",
@@ -319,7 +325,7 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
         },
         {
           kind: "paragraph",
-          text: "Cùng b = 0,05 điểm %/năm là thay đổi lớn với chủ đề chiếm 0,5% lĩnh vực nhưng nhỏ với chủ đề chiếm 10%. r đưa hai trường hợp về cùng thang đo, nên được dùng để **sắp xếp** các chủ đề tăng (giảm) trên trang tổng quan.",
+          text: "Cùng b = 0,05 điểm %/năm là thay đổi lớn với chủ đề chiếm 0,5% phạm vi nhưng nhỏ với chủ đề chiếm 10%. r đưa hai trường hợp về cùng thang đo, nên được dùng để **sắp xếp** các chủ đề tăng (giảm) trên trang tổng quan.",
         },
         {
           kind: "callout",
@@ -335,7 +341,7 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
       body: [
         {
           kind: "paragraph",
-          text: `Trang tổng quan kiểm định từ ${C.overviewCandidatesMin} đến ${C.overviewCandidatesMax} chủ đề cùng lúc. Nếu không chủ đề nào có xu hướng thật mà vẫn dùng ngưỡng p < ${n(C.alpha)}, trung bình cứ 100 chủ đề sẽ có khoảng 5 chủ đề bị gắn nhãn sai. Thủ tục Benjamini–Hochberg (BH) điều chỉnh p thành **q-value** để tỉ lệ phát hiện sai kỳ vọng (FDR) trong số các chủ đề được gắn nhãn không vượt quá α [@benjamini-hochberg-1995].`,
+          text: `Trang tổng quan kiểm định **mọi** chủ đề của phạm vi cùng lúc (${C.scopeTopics} chủ đề). Nếu không chủ đề nào có xu hướng thật mà vẫn dùng ngưỡng p < ${n(C.alpha)}, trung bình cứ 100 chủ đề sẽ có khoảng 5 chủ đề bị gắn nhãn sai. Thủ tục Benjamini–Hochberg (BH) điều chỉnh p thành **q-value** để tỉ lệ phát hiện sai kỳ vọng (FDR) trong số các chủ đề được gắn nhãn không vượt quá α [@benjamini-hochberg-1995].`,
         },
         {
           kind: "formula",
@@ -380,7 +386,7 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
         {
           kind: "callout",
           tone: "standard",
-          text: "Benjamini & Hochberg (1995) chứng minh thủ tục kiểm soát FDR ở mức α khi các kiểm định độc lập. Các chủ đề cùng lĩnh vực có thể phụ thuộc nhau; đây là một giả định cần lưu ý.",
+          text: "Benjamini & Hochberg (1995) chứng minh thủ tục kiểm soát FDR ở mức α khi các kiểm định độc lập. Các chủ đề cùng phạm vi có thể phụ thuộc nhau; đây là một giả định cần lưu ý.",
         },
         { kind: "sources", ids: ["benjamini-hochberg-1995"] },
       ],
@@ -402,22 +408,25 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
             ["1", "Nguồn dữ liệu là corpus nội bộ (`source = \"local\"`)", "Chưa đủ dữ liệu", "`LOCAL_CORPUS`"],
             ["2", `n < ${C.minYears} năm`, "Chưa đủ dữ liệu", "`TOO_FEW_YEARS`"],
             ["3", `Tổng số bài < ${C.minPapers}`, "Chưa đủ dữ liệu", "`TOO_FEW_PAPERS`"],
-            ["4", `p* < ${n(C.alpha)} và S > 0`, "Xu hướng tăng", "`SIGNIFICANT_INCREASE`"],
-            ["5", `p* < ${n(C.alpha)} và S < 0`, "Xu hướng giảm", "`SIGNIFICANT_DECREASE`"],
-            ["6", "Còn lại", "Ổn định", "`NO_SIGNIFICANT_TREND`"],
+            ["4", `p* < ${n(C.alpha)}, S > 0, n ≥ ${C.lifecycleMinYears} và peakRatio < ${n(C.pastPeak)}`, "Qua đỉnh", "`DECLINE_AFTER_PEAK`"],
+            ["5", `p* < ${n(C.alpha)}, S > 0, n ≥ ${C.lifecycleMinYears}, |r_R| < ${n(C.flatPct)}%/năm và peakRatio ≥ ${n(C.nearPeak)}`, "Bão hoà", "`PLATEAU_AFTER_INCREASE`"],
+            ["6", `p* < ${n(C.alpha)} và S > 0`, "Xu hướng tăng", "`SIGNIFICANT_INCREASE`"],
+            ["7", `p* < ${n(C.alpha)} và S < 0`, "Xu hướng giảm", "`SIGNIFICANT_DECREASE`"],
+            ["8", "Còn lại", "Ổn định", "`NO_SIGNIFICANT_TREND`"],
           ],
         },
         {
           kind: "paragraph",
           text: "Khi kết luận là Chưa đủ dữ liệu, mọi điều kiện 1–3 không đạt đều được liệt kê, để người dùng biết cần thêm gì. Các con số thống kê vẫn được tính và hiển thị.",
         },
+        ...trendLifecycleBlocksVi,
         { kind: "heading", id: "confidence", text: "Độ tin cậy" },
         {
           kind: "table",
-          columns: ["Độ tin cậy", "Điều kiện (chỉ cho Xu hướng tăng / giảm)"],
+          columns: ["Độ tin cậy", "Điều kiện (cho Xu hướng tăng, Bão hoà, Qua đỉnh, Xu hướng giảm)"],
           rows: [
             ["Cao (`high`)", `p* < ${n(C.highConfidenceP)} **và** n ≥ ${C.highConfidenceMinYears} năm`],
-            ["Trung bình (`medium`)", "Các trường hợp tăng / giảm còn lại"],
+            ["Trung bình (`medium`)", "Các trường hợp còn lại của bốn kết luận trên"],
           ],
         },
         { kind: "heading", id: "thresholds", text: "Căn cứ của các ngưỡng" },
@@ -438,6 +447,7 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
             `Ngưỡng ${C.minPapers} bài.`,
             `Ngưỡng độ tin cậy cao (p* < ${n(C.highConfidenceP)} và n ≥ ${C.highConfidenceMinYears}).`,
             "Dùng q thay cho p ở trang tổng quan.",
+            "Các ngưỡng bão hoà và qua đỉnh.",
           ],
         },
         {
@@ -508,7 +518,7 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
           kind: "callout",
           tone: "limitation",
           heading: "1. Tự tương quan",
-          text: "Mann–Kendall giả định các năm độc lập (sau khi bỏ xu hướng) [@usgs-helsel-2020]. Thị phần năm sau thường gần năm trước, nên p có thể nhỏ hơn thực tế, tức dễ kết luận có xu hướng hơn. USGS nêu rằng tương quan chuỗi và tính bền vững dài hạn làm tăng phương sai của thống kê kiểm định và tăng xác suất sai lầm loại I. Với cửa sổ 10 năm, dự án không hiệu chỉnh.",
+          text: "Mann–Kendall giả định các năm độc lập (sau khi bỏ xu hướng) [@usgs-helsel-2020]. Thị phần năm sau thường gần năm trước, nên p có thể nhỏ hơn thực tế, tức dễ kết luận có xu hướng hơn. USGS nêu rằng tương quan chuỗi và tính bền vững dài hạn làm tăng phương sai của thống kê kiểm định và tăng xác suất sai lầm loại I. Dự án không hiệu chỉnh.",
         },
         {
           kind: "callout",
@@ -519,8 +529,8 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
         {
           kind: "callout",
           tone: "limitation",
-          heading: "3. Danh sách ứng viên thiên về chủ đề lớn",
-          text: `Trang tổng quan kiểm định tối đa ${C.overviewCandidatesMax} chủ đề: các chủ đề lớn nhất của phạm vi cộng ${C.overviewTopicsPerStratum} chủ đề lớn nhất của mỗi lĩnh vực (mỗi lĩnh vực con khi phạm vi là một lĩnh vực), nên các lĩnh vực nhỏ cũng được kiểm định. Bên trong một lĩnh vực, chủ đề nhỏ mới nổi vẫn có thể không xuất hiện; hãy tìm trực tiếp chủ đề đó để xem trang chi tiết.`,
+          heading: "3. Thị phần là trò chơi tổng bằng không",
+          text: "Mọi chủ đề dùng chung một mẫu số, nên khi một mảng tăng rất nhanh (hiện nay là trí tuệ nhân tạo), các chủ đề còn lại **mất thị phần** dù số bài của chúng không giảm. Trong lần chạy ngày 2026-11-14, hơn một nửa số chủ đề của phạm vi có kết luận Xu hướng giảm. \"Giảm\" ở đây nghĩa là **giảm thị phần trong nhóm ngành**, không có nghĩa là ít người nghiên cứu hơn; hãy xem biểu đồ số bài theo năm để phân biệt.",
         },
         {
           kind: "callout",
@@ -543,8 +553,20 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
         {
           kind: "callout",
           tone: "limitation",
-          heading: "7. Theo tháng và quý",
-          text: `Tab "Theo tháng / quý" chạy cùng phép kiểm định trên thị phần theo tháng hoặc quý (cần ít nhất ${C.minYears} kỳ hoàn chỉnh; kỳ đang diễn ra không bao giờ được kiểm định). Bài chỉ có năm xuất bản được xếp vào tháng 1 và các tháng gần nhất còn đang được lập chỉ mục; thị phần trong lĩnh vực triệt tiêu phần lớn hai sai lệch này. Kỳ ngắn nhiễu và tự tương quan hơn năm, nên hãy đọc kết luận theo tháng là biến động gần đây, không phải xu hướng lâu dài.`,
+          heading: "7. Bão hoà và qua đỉnh dựa trên ngưỡng tự đặt",
+          text: `Các ngưỡng ở ${link("Bão hoà và qua đỉnh", S.trendVerdict, "lifecycle")} là quy ước của dự án, không có nguồn công bố. Một chủ đề tăng rồi giảm đến mức Mann–Kendall không còn ý nghĩa sẽ được kết luận là Ổn định, không phải Qua đỉnh.`,
+        },
+        {
+          kind: "callout",
+          tone: "limitation",
+          heading: "8. Phạm vi do dự án định nghĩa",
+          text: `Danh sách lĩnh vực con của phạm vi (phiên bản \`${C.scopeVersion}\`) là lựa chọn của dự án. Các mảng ứng dụng CNTT nằm ở lĩnh vực khác (tin sinh học, tin học y tế, e-learning...) chưa được tính. OpenAlex cũng đổi cách gán chủ đề cho bài báo theo thời gian; số đếm luôn theo cách gán hiện hành.`,
+        },
+        {
+          kind: "callout",
+          tone: "limitation",
+          heading: "9. Theo tháng và quý",
+          text: `Tab "Theo tháng / quý" chạy cùng phép kiểm định trên thị phần theo tháng hoặc quý (cần ít nhất ${C.minYears} kỳ hoàn chỉnh; kỳ đang diễn ra không bao giờ được kiểm định). Bài chỉ có năm xuất bản được xếp vào tháng 1 và các tháng gần nhất còn đang được lập chỉ mục; thị phần triệt tiêu phần lớn hai sai lệch này. Tab này dùng cùng mẫu số (cả phạm vi Công nghệ thông tin) nhưng chỉ kiểm định các chủ đề lớn nhất của cửa sổ và của mỗi lĩnh vực con, vì số đếm theo kỳ không dùng lại được giữa các cửa sổ; một chủ đề nhỏ có thể không xuất hiện ở đây dù có ở trang tổng quan theo năm. Kỳ ngắn nhiễu và tự tương quan hơn năm, nên hãy đọc kết luận theo tháng là biến động gần đây, không phải xu hướng lâu dài.`,
         },
       ],
     },
@@ -556,7 +578,7 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
         { kind: "heading", id: "data", text: "Bước 1. Dữ liệu và thị phần" },
         {
           kind: "table",
-          columns: ["Năm t", "n_t (bài của chủ đề)", "N_t (bài của lĩnh vực)", "s_t = n_t / N_t × 100"],
+          columns: ["Năm t", "n_t (bài của chủ đề)", "N_t (bài của phạm vi)", "s_t = n_t / N_t × 100"],
           rows: [
             ["2019", "120", "10 000", "1,20%"],
             ["2020", "150", "12 000", "1,25%"],
@@ -568,7 +590,7 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
         },
         {
           kind: "paragraph",
-          text: "Số bài thô tăng gấp đôi (120 → 240, +100%), nhưng phần lớn là do cả lĩnh vực lớn lên. Thị phần chỉ tăng từ 1,20% lên 1,50% (+0,30 điểm phần trăm, +25%). n = 6 năm, tổng số bài = 1 064.",
+          text: "Số bài thô tăng gấp đôi (120 → 240, +100%), nhưng phần lớn là do cả phạm vi lớn lên. Thị phần chỉ tăng từ 1,20% lên 1,50% (+0,30 điểm phần trăm, +25%). n = 6 năm, tổng số bài = 1 064.",
         },
         { kind: "heading", id: "s", text: "Bước 2. Thống kê S" },
         {

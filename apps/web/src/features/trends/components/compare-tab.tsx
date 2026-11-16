@@ -302,14 +302,14 @@ export function CompareTab({
 
     if (fastest && highestCit) {
       if (fastest.topic.topic === highestCit.topic.topic) {
-        return t("Recommendation: {{topic}} is the strongest scoped candidate, with a significant rise in its field share ({{change}}) and the highest citation impact. Focus on this direction.", {
+        return t("Recommendation: {{topic}} is the strongest scoped candidate, with a significant rise in its share of publications ({{change}}) and the highest citation impact. Focus on this direction.", {
           topic: fastest.topic.topic,
           change: formatRelativeChange(fastest.classification, t) ?? "",
         });
       }
       return hasPp
-        ? t("Recommendation: {{topic}} has the strongest significant rise in its field share, but {{other}} has the larger share of highly cited papers. Check PP(top 10%) before choosing a report direction.", { topic: fastest.topic.topic, other: highestCit.topic.topic })
-        : t("Recommendation: {{topic}} has the strongest significant rise in its field share, but {{other}} may be more citation-efficient. Use Avg citations before choosing a report direction.", { topic: fastest.topic.topic, other: highestCit.topic.topic });
+        ? t("Recommendation: {{topic}} has the strongest significant rise in its share of publications, but {{other}} has the larger share of highly cited papers. Check PP(top 10%) before choosing a report direction.", { topic: fastest.topic.topic, other: highestCit.topic.topic })
+        : t("Recommendation: {{topic}} has the strongest significant rise in its share of publications, but {{other}} may be more citation-efficient. Use Avg citations before choosing a report direction.", { topic: fastest.topic.topic, other: highestCit.topic.topic });
     }
     return t("Compare trend verdicts, volumes, and citation metrics to decide your research direction.");
   }, [selectedTopics, compareQuery.data, topRising, highestCitations, hasPp, t]);

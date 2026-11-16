@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChevronDown } from "lucide-react";
 import type { TopicTrendStatistics, TrendTermShift } from "@trend/shared-types";
 import { DOCS_SECTIONS } from "@/features/docs";
 import { useI18n } from "@/i18n";
 import { formatNumber } from "@/utils";
 import { formatSigned } from "../../../pages/trends.insights";
+import { TrendEdaSection } from "./trend-eda-section";
 import { TrendFigures, TrendHowLink, TrendReasons, TrendVerdictBadge } from "./trend-verdict-badge";
 
 export function formatPValue(p: number): string {
@@ -23,7 +24,6 @@ export function TrendEvidencePanel({ statistics }: { statistics: TopicTrendStati
     : t(statistics.baseline.label);
   const ci = classification.senSlopeCi95;
 
-  const shareData = statistics.shareSeries.map((row) => ({ year: String(row.year), share: Number(row.sharePct.toFixed(3)), count: row.count, total: row.total }));
   const impactData = statistics.impact.map((row) => ({ year: String(row.year), pp: row.ppTop10Pct === null ? null : Number(row.ppTop10Pct.toFixed(2)), top: row.topPapers, n: row.papers }));
   const hasImpact = impactData.some((row) => row.pp !== null);
 
@@ -47,8 +47,21 @@ export function TrendEvidencePanel({ statistics }: { statistics: TopicTrendStati
 
   return (
     <section className="mb-8 space-y-6">
-      {/* 1. Conclusion: badge, one number, one sentence, link to the docs */}
+      {/* The method in its order: steps 1–4 explore the data (TrendEdaSection), step 5 concludes. */}
+      <div>
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t("Exploratory analysis")}</h2>
+        <p className="mt-1 text-xs leading-relaxed text-slate-500">
+          {t("The trend is read in five steps: check the data, describe it, draw it, look for anomalous years, then conclude with a statistical test.")}
+        </p>
+      </div>
+      <TrendEdaSection statistics={statistics} baselineLabel={baselineLabel} />
+
+      {/* 5. Conclusion: badge, one number, one sentence, link to the docs */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#121212]">
+        <h3 className="mb-4 flex items-center gap-2.5 text-[15px] font-bold text-slate-900 dark:text-white">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-700 text-xs font-bold text-white" aria-hidden="true">5</span>
+          {t("Conclusion")}
+        </h3>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <TrendVerdictBadge classification={classification} />
           <TrendHowLink />
@@ -57,25 +70,14 @@ export function TrendEvidencePanel({ statistics }: { statistics: TopicTrendStati
           <TrendFigures classification={classification} source={statistics.source} />
         </div>
         <TrendReasons classification={classification} className="mt-2" />
+        {statistics.eda.outlierYears.length > 0 && (
+          <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-700/70 dark:bg-amber-950/30 dark:text-amber-200">
+            {t("Read with care: {{years}} stand out from the trend line (step 4). The conclusion is the same with or without this note.", { years: statistics.eda.outlierYears.join(", ") })}
+          </p>
+        )}
       </div>
 
-      {/* 2. Share series */}
-      <ChartCard heading={t("Share of the reference population (%)")} note={baselineLabel}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={shareData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-            <XAxis dataKey="year" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#64748b" }} />
-            <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#64748b" }} />
-            <Tooltip
-              formatter={(value, _name, item) => [`${value}% (${item.payload.count}/${item.payload.total})`, t("Share")]}
-              labelFormatter={(label) => t("Year {{year}}", { year: String(label) })}
-            />
-            <Line type="monotone" dataKey="share" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3 }} />
-          </LineChart>
-        </ResponsiveContainer>
-      </ChartCard>
-
-      {/* 3. Numbers behind the conclusion, collapsed; the formulas live in /docs */}
+      {/* Numbers behind the conclusion, collapsed; the formulas live in /docs */}
       <Collapsible heading={t("Statistical details")}>
         <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-xs sm:grid-cols-2">
           {rows.map((row) => (

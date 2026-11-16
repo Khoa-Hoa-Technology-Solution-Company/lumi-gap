@@ -7,6 +7,7 @@ export const TREND_SECTION_IDS = [
   DOCS_SECTIONS.trendDefinition,
   DOCS_SECTIONS.trendData,
   DOCS_SECTIONS.trendShare,
+  DOCS_SECTIONS.trendEda,
   DOCS_SECTIONS.trendMannKendall,
   DOCS_SECTIONS.trendSenSlope,
   DOCS_SECTIONS.trendRelativeChange,

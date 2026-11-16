@@ -33,6 +33,7 @@ import { trustSafetyRagViStrings } from "./trust-safety-rag";
 import { projectMemberTranslations } from "./project-members";
 import { projectWorkspaceVi } from "./project-workspace";
 import { trendEvidenceViStrings } from "./trend-evidence";
+import { trendEdaViStrings } from "./trend-eda";
 import { trendVerdictViStrings } from "./trend-verdict";
 import { trendResearchLinkViStrings } from "./trend-research-links";
 import { trendPeriodsViStrings } from "./trend-periods";
@@ -51,6 +52,7 @@ export const vi: Record<keyof typeof en, string> = {
   ...trustSafetyRagViStrings,
   ...trendEvidenceViStrings,
   ...trendVerdictViStrings,
+  ...trendEdaViStrings,
   ...trendResearchLinkViStrings,
   ...trendPeriodsViStrings,
   ...researchHomeVi,

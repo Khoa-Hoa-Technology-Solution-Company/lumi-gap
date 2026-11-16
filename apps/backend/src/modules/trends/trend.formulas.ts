@@ -1,11 +1,14 @@
 import type { YearlyCount } from "@trend/shared-types";
 
 /**
- * Pure trend-math functions. No DB, no I/O — fully unit-testable.
+ * Yearly-series helpers. Pure functions, no DB or I/O.
  *
- * The service feeds these a yearly series (already filtered to the analysis
- * window); each function documents its edge-case conventions explicitly so the
- * numbers shown to users are reproducible by hand.
+ * A topic's trend is never read from these raw counts: the verdict comes from
+ * trend.verdict.ts (Mann-Kendall on the share) and no trend endpoint returns
+ * them. The growth helpers below remain for three descriptive uses outside the
+ * verdict: ordering the rising-keyword list, the parent-topic check of the gap
+ * pipeline (gaps/gap-evidence.ts) and the paper reading context
+ * (quality/quality.reading-context.ts), both of which read the local corpus.
  */
 
 /**
@@ -87,17 +90,6 @@ export function linearSlope(series: YearlyCount[]): number {
     den += (p.year - meanX) ** 2;
   }
   return den === 0 ? 0 : round2(num / den);
-}
-
-/** Compute the full metric set for a (filled) series, excluding the current
- *  incomplete year from the math while leaving the input series untouched. */
-export function computeMetrics(series: YearlyCount[], lastCompleteYear: number) {
-  const complete = truncateToCompleteYears(series, lastCompleteYear);
-  return {
-    growthRatePct: yoyGrowthPct(complete),
-    cagr3yPct: cagrPct(complete),
-    momentum: linearSlope(complete),
-  };
 }
 
 function round1(x: number): number {

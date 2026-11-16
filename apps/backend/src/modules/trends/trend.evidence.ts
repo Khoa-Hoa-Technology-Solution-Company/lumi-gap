@@ -7,8 +7,10 @@ import type {
 import { Prisma } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
+import { buildTopicEda } from "./trend.eda.js";
 import { isOpenAlexBudgetAvailable, openAlexGroupBy, openAlexYearCounts, shortId } from "./trend.openalex-client.js";
 import { DEFAULT_WORK_TYPES_CLAUSE, withScope } from "./trend.openalex-scope.js";
+import { IT_SCOPE_VERSION, isInItScope, itScopeYearCounts, topicYearCounts } from "./trend.scope.js";
 import {
   SIGNIFICANCE_LEVEL,
   benjaminiHochberg,
@@ -41,14 +43,22 @@ interface EvidenceCounts {
  * Statistical evidence for one topic. Counts come from OpenAlex aggregate
  * queries (whole population) when the topic has an OpenAlex id and the daily
  * budget allows it, otherwise from the local corpus. Both run the same tests.
+ *
+ * Reference population N_t of the OpenAlex counts: every paper of the IT scope
+ * (trend.scope.ts) when the topic's subfield belongs to it, so the share is
+ * comparable with the overview. A topic outside the scope keeps its OpenAlex
+ * field as population and says so in `baseline`.
  */
 export async function computeTopicStatistics(input: {
   topic: string;
   topicId?: string;
   fieldId?: string;
   fieldName?: string;
+  subfieldId?: string;
   papers: EvidencePaper[];
   yearFrom: number;
+  /** Last year of the requested window; defaults to lastCompleteYear. */
+  yearTo?: number;
   lastCompleteYear: number;
 }): Promise<TopicTrendStatistics> {
   const openAlexTopic = input.topicId ? shortId(input.topicId) : undefined;
@@ -61,10 +71,10 @@ export async function computeTopicStatistics(input: {
     }
   }
   counts ??= await localCounts(input);
-  return buildStatistics(counts, input.yearFrom, input.lastCompleteYear);
+  return buildStatistics(counts, input.yearFrom, input.yearTo ?? input.lastCompleteYear, input.lastCompleteYear);
 }
 
-async function buildStatistics(counts: EvidenceCounts, yearFrom: number, lastCompleteYear: number): Promise<TopicTrendStatistics> {
+async function buildStatistics(counts: EvidenceCounts, yearFrom: number, yearTo: number, lastCompleteYear: number): Promise<TopicTrendStatistics> {
   // Years without any paper of the population carry no information.
   const yearsUsed = range(yearFrom, lastCompleteYear).filter((year) => (counts.population.get(year) ?? 0) > 0);
   const shareSeries = yearsUsed.map((year) => {
@@ -84,6 +94,7 @@ async function buildStatistics(counts: EvidenceCounts, yearFrom: number, lastCom
     senSlopePctPoints: senSlope(shareSeries.map((row) => ({ x: row.year, y: row.sharePct }))),
     // One topic, one hypothesis: the verdict uses the Mann–Kendall p-value.
     classification: classifyTrend({ ...shareTrendStatistics(shareSeries), source: counts.source }),
+    eda: buildTopicEda({ shareSeries, yearFrom, yearTo, lastCompleteYear }),
     impact: yearsUsed.map((year) => {
       const papers = counts.topic.get(year) ?? 0;
       const topPapers = counts.topCited.get(year) ?? 0;
@@ -139,23 +150,30 @@ async function openAlexCounts(input: {
   topicId: string;
   fieldId?: string;
   fieldName?: string;
+  subfieldId?: string;
   yearFrom: number;
   lastCompleteYear: number;
 }): Promise<EvidenceCounts> {
   const years = `publication_year:${input.yearFrom}-${input.lastCompleteYear}`;
   const topicFilter = `${DEFAULT_WORK_TYPES_CLAUSE},primary_topic.id:${input.topicId}`;
   const fieldId = input.fieldId ? shortId(input.fieldId) : undefined;
-  const [topic, population, topCited] = await Promise.all([
-    openAlexYearCounts(`${topicFilter},${years}`),
-    openAlexYearCounts(fieldId ? `${DEFAULT_WORK_TYPES_CLAUSE},primary_topic.field.id:${fieldId},${years}` : `${DEFAULT_WORK_TYPES_CLAUSE},${years}`),
+  const inScope = isInItScope(input.subfieldId);
+  // The topic and scope series are the ones the overview fetches (whole span, cached), so a detail page after the overview costs one request.
+  const [[topic], population, topCited] = await Promise.all([
+    topicYearCounts([input.topicId]),
+    inScope
+      ? itScopeYearCounts()
+      : openAlexYearCounts(fieldId ? `${DEFAULT_WORK_TYPES_CLAUSE},primary_topic.field.id:${fieldId},${years}` : `${DEFAULT_WORK_TYPES_CLAUSE},${years}`),
     openAlexYearCounts(`${topicFilter},${years},citation_normalized_percentile.is_in_top_10_percent:true`),
   ]);
   return {
     source: "openalex",
-    baseline: fieldId
-      ? { level: "field", label: input.fieldName ?? fieldId }
-      : { level: "corpus", label: "All OpenAlex works" },
-    topic,
+    baseline: inScope
+      ? { level: "scope", label: "Information Technology scope", scopeVersion: IT_SCOPE_VERSION }
+      : fieldId
+        ? { level: "field", label: input.fieldName ?? fieldId }
+        : { level: "corpus", label: "All OpenAlex works" },
+    topic: topic ?? new Map<number, number>(),
     population,
     topCited,
     keywords: (periodA, periodB) => openAlexKeywordCounts(topicFilter, periodA, periodB),

@@ -6,7 +6,7 @@ import { verdictLabel } from "./trend-verdict-badge";
 
 export type VerdictFilter = TrendVerdict | "all";
 
-export const VERDICT_ORDER: TrendVerdict[] = ["rising", "stable", "declining", "insufficient"];
+export const VERDICT_ORDER: TrendVerdict[] = ["rising", "saturated", "stable", "past_peak", "declining", "insufficient"];
 
 /** Topics loaded per page of a verdict list. */
 export const VERDICT_PAGE_SIZE = 20;

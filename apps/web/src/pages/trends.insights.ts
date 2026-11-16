@@ -7,8 +7,7 @@ export type TrendSortKey = "trend" | "total";
 
 export const DEFAULT_TREND_SORT: TrendSortKey = "trend";
 
-/** Reads a sort value from the URL. The legacy "momentum" and "growth" values
- *  (raw-count rankings that no longer exist) map to "trend". */
+/** Reads a sort value from the URL; anything but "total" is the verdict order. */
 export function parseTrendSortKey(value: string | null | undefined): TrendSortKey {
   return value === "total" ? "total" : DEFAULT_TREND_SORT;
 }
@@ -34,10 +33,10 @@ export interface RisingKeywordLike {
   shift?: RisingKeyword["shift"];
 }
 
-const VERDICT_ORDER: Record<TrendVerdict, number> = { rising: 0, stable: 1, declining: 2, insufficient: 3 };
+const VERDICT_ORDER: Record<TrendVerdict, number> = { rising: 0, saturated: 1, stable: 2, past_peak: 3, declining: 4, insufficient: 5 };
 
-/** Spec section 5 order: rising (largest relative change first), stable,
- *  declining (most negative first), insufficient; ties by paper count. */
+/** Same order as the backend (trend.verdict.ts compareByTrend): rising (largest relative change first),
+ *  saturated, stable, past_peak, declining (most negative first), insufficient; ties by paper count. */
 export function compareTopicsByTrend(a: TrendSortable, b: TrendSortable): number {
   const verdictA = a.classification?.verdict ?? "insufficient";
   const verdictB = b.classification?.verdict ?? "insufficient";
@@ -94,7 +93,7 @@ export function isSmallBaseKeyword(keyword: RisingKeywordLike): boolean {
   return keyword.totalPapers < 10 && keyword.growthRatePct >= 100;
 }
 
-/** Default analysis window: the last ten years, the same window the topic page
- *  uses, so share tests are not stretched over decades before a topic existed. */
+/** Default analysis window: 15 complete years plus the running one, the same as the backend
+ *  (FULL_WINDOW_YEARS in trend.verdict.ts). Saturated and past-peak verdicts need at least 10 complete years. */
 export const DEFAULT_TREND_YEAR_TO = new Date().getFullYear();
-export const DEFAULT_TREND_YEAR_FROM = DEFAULT_TREND_YEAR_TO - 10;
+export const DEFAULT_TREND_YEAR_FROM = DEFAULT_TREND_YEAR_TO - 15;

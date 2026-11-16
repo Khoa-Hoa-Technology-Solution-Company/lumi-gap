@@ -16,7 +16,7 @@ import {
 function topic(name: string, verdict: TrendVerdict, relativeChangePct: number | null, totalPapers: number): TrendTopicLike {
   const classification: TrendClassification = {
     verdict,
-    confidence: verdict === "rising" || verdict === "declining" ? "medium" : null,
+    confidence: verdict === "stable" || verdict === "insufficient" ? null : "medium",
     yearsUsed: 10,
     totalPapers,
     mannKendall: null,
@@ -24,6 +24,8 @@ function topic(name: string, verdict: TrendVerdict, relativeChangePct: number | 
     senSlope: null,
     senSlopeCi95: null,
     relativeChangePct,
+    recentRelativeChangePct: null,
+    peakRatio: null,
     reasons: [],
   };
   return { topic: name, totalPapers, yearlyBreakdown: [], classification };

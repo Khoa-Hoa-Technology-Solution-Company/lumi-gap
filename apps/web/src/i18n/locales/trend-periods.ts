@@ -2,7 +2,7 @@
 const trendPeriodsKeys = [
   "By month / quarter",
   "Trends by month and quarter",
-  "The same test as the yearly verdict (the topic's share of its field), run on months or quarters so this year and recent months can be judged. The running period is shown but not tested.",
+  "The same test as the yearly verdict (the topic's share of publications), run on months or quarters so this year and recent months can be judged. The running period is shown but not tested.",
   "Time window",
   "This year, by month",
   "Last 12 months",
@@ -33,12 +33,12 @@ const trendPeriodsKeys = [
   "Actions",
   "Open the yearly trend of this topic",
   "No topic has enough papers in this window.",
-  "Works dated only by year are filed under January, and the latest months are still being indexed. The test uses the share of the field, which cancels most of both, but read January and the last complete month with care. Short periods are noisier than years: a monthly verdict describes recent movement, not a lasting trend.",
+  "Works dated only by year are filed under January, and the latest months are still being indexed. The test uses the share of publications, which cancels most of both, but read January and the last complete month with care. Short periods are noisier than years: a monthly verdict describes recent movement, not a lasting trend.",
   "{{value}}% per month",
   "{{value}}% per quarter",
   "Fewer than 5 complete periods of data.",
-  "Its share of the field grew clearly over these periods.",
-  "Its share of the field shrank clearly over these periods.",
+  "Its share of publications grew clearly over these periods.",
+  "Its share of publications shrank clearly over these periods.",
 ] as const;
 
 export const trendPeriodsStrings = Object.fromEntries(trendPeriodsKeys.map((key) => [key, key])) as Record<(typeof trendPeriodsKeys)[number], string>;
@@ -46,7 +46,7 @@ export const trendPeriodsStrings = Object.fromEntries(trendPeriodsKeys.map((key)
 export const trendPeriodsViStrings: Record<(typeof trendPeriodsKeys)[number], string> = {
   "By month / quarter": "Theo tháng / quý",
   "Trends by month and quarter": "Xu hướng theo tháng và quý",
-  "The same test as the yearly verdict (the topic's share of its field), run on months or quarters so this year and recent months can be judged. The running period is shown but not tested.": "Cùng phép kiểm định với kết luận theo năm (thị phần của chủ đề trong lĩnh vực), chạy trên từng tháng hoặc quý để đánh giá được năm nay và các tháng gần đây. Kỳ đang diễn ra vẫn được hiển thị nhưng không được kiểm định.",
+  "The same test as the yearly verdict (the topic's share of publications), run on months or quarters so this year and recent months can be judged. The running period is shown but not tested.": "Cùng phép kiểm định với kết luận theo năm (thị phần công bố của chủ đề), chạy trên từng tháng hoặc quý để đánh giá được năm nay và các tháng gần đây. Kỳ đang diễn ra vẫn được hiển thị nhưng không được kiểm định.",
   "Time window": "Khoảng thời gian",
   "This year, by month": "Năm nay, theo tháng",
   "Last 12 months": "12 tháng gần nhất",
@@ -77,10 +77,10 @@ export const trendPeriodsViStrings: Record<(typeof trendPeriodsKeys)[number], st
   "Actions": "Thao tác",
   "Open the yearly trend of this topic": "Mở xu hướng theo năm của chủ đề này",
   "No topic has enough papers in this window.": "Không có chủ đề nào đủ số bài trong khoảng này.",
-  "Works dated only by year are filed under January, and the latest months are still being indexed. The test uses the share of the field, which cancels most of both, but read January and the last complete month with care. Short periods are noisier than years: a monthly verdict describes recent movement, not a lasting trend.": "Bài chỉ có năm xuất bản được xếp vào tháng 1, và các tháng gần nhất vẫn đang được lập chỉ mục. Phép kiểm định dùng thị phần trong lĩnh vực nên phần lớn hai sai lệch này tự triệt tiêu, nhưng hãy đọc tháng 1 và tháng hoàn chỉnh gần nhất một cách thận trọng. Kỳ ngắn nhiễu hơn năm: kết luận theo tháng mô tả biến động gần đây, không phải xu hướng lâu dài.",
+  "Works dated only by year are filed under January, and the latest months are still being indexed. The test uses the share of publications, which cancels most of both, but read January and the last complete month with care. Short periods are noisier than years: a monthly verdict describes recent movement, not a lasting trend.": "Bài chỉ có năm xuất bản được xếp vào tháng 1, và các tháng gần nhất vẫn đang được lập chỉ mục. Phép kiểm định dùng thị phần công bố nên phần lớn hai sai lệch này tự triệt tiêu, nhưng hãy đọc tháng 1 và tháng hoàn chỉnh gần nhất một cách thận trọng. Kỳ ngắn nhiễu hơn năm: kết luận theo tháng mô tả biến động gần đây, không phải xu hướng lâu dài.",
   "{{value}}% per month": "{{value}}% mỗi tháng",
   "{{value}}% per quarter": "{{value}}% mỗi quý",
   "Fewer than 5 complete periods of data.": "Có ít hơn 5 kỳ dữ liệu hoàn chỉnh.",
-  "Its share of the field grew clearly over these periods.": "Thị phần của chủ đề trong lĩnh vực tăng rõ rệt qua các kỳ này.",
-  "Its share of the field shrank clearly over these periods.": "Thị phần của chủ đề trong lĩnh vực giảm rõ rệt qua các kỳ này.",
+  "Its share of publications grew clearly over these periods.": "Thị phần công bố của chủ đề tăng rõ rệt qua các kỳ này.",
+  "Its share of publications shrank clearly over these periods.": "Thị phần công bố của chủ đề giảm rõ rệt qua các kỳ này.",
 };

@@ -15,7 +15,7 @@ const RECHECK_AFTER_MS = 20 * 60 * 60 * 1000;
 
 export const topicKey = (topic: string) => topic.trim().toLowerCase();
 
-const VERDICT_LABEL: Record<TrendVerdict, string> = { rising: "rising", declining: "declining", stable: "stable", insufficient: "insufficient data" };
+const VERDICT_LABEL: Record<TrendVerdict, string> = { rising: "rising", saturated: "saturated", past_peak: "past its peak", declining: "declining", stable: "stable", insufficient: "insufficient data" };
 
 async function owner(userId: string) {
   const id = await findUserId(userId);

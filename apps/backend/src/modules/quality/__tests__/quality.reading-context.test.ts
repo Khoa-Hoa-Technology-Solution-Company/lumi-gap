@@ -28,14 +28,14 @@ beforeEach(() => {
   mocks.db.paperTopic.findFirst.mockResolvedValue(null);
   mocks.db.$queryRaw.mockResolvedValue([]);
   mocks.neighbours.mockResolvedValue([neighbour(1, 2023, 5, 0.91), neighbour(2, 2018, 400, 0.88), neighbour(3, 2015, 50, 0.8), neighbour(4, 2024, 1, 0.95), neighbour(5, 2021, 2, 0.7), neighbour(6, 2019, 3, 0.6)]);
-  mocks.topicDetailOnly.mockResolvedValue({ totalPapers: 42, growthRatePct: 12.5, cagr3yPct: 8.1, momentum: 1.2, yearlyBreakdown: [{ year: 2019, count: 3, extra: 1 }, { year: 2020, count: 5 }] });
+  mocks.topicDetailOnly.mockResolvedValue({ totalPapers: 42, lastCompleteYear: 2020, yearlyBreakdown: [{ year: 2019, count: 3, extra: 1 }, { year: 2020, count: 5 }] });
 });
 
 describe("paper reading context", () => {
   it("places the paper on its own top topic and suggests what to read next", async () => {
     const result = await getPaperReadingContext(paperId, {});
     // The 2019 base year has 3 papers, so the 3-year CAGR is withheld.
-    expect(result).toMatchObject({ paperId, requestedTopic: null, trend: { topic: "Writing Feedback", source: "paper_topic", totalPapers: 42, growthRatePct: 12.5, cagr3yPct: null, momentum: 1.2, paperYear: 2020, partialYear: null, yearlyBreakdown: [{ year: 2019, count: 3 }, { year: 2020, count: 5 }] } });
+    expect(result).toMatchObject({ paperId, requestedTopic: null, trend: { topic: "Writing Feedback", source: "paper_topic", totalPapers: 42, growthRatePct: 66.7, cagr3yPct: null, momentum: 2, paperYear: 2020, partialYear: null, yearlyBreakdown: [{ year: 2019, count: 3 }, { year: 2020, count: 5 }] } });
     expect(result.trend?.yearlyBreakdown[0]).not.toHaveProperty("extra");
     expect(result.related.map((item) => [item.title, item.reason])).toEqual([
       ["Paper 1", "same_topic_newer"], ["Paper 2", "same_topic_most_cited"], ["Paper 3", "same_topic_most_cited"],

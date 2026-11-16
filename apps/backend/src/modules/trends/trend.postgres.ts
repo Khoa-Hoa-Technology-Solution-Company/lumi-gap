@@ -17,7 +17,7 @@ import {
   buildCitationMetric,
   fillMissingCitationYears,
 } from "./trend.intelligence.js";
-import { computeMetrics, fillMissingYears, truncateToCompleteYears, yoyGrowthPct } from "./trend.formulas.js";
+import { fillMissingYears, truncateToCompleteYears, yoyGrowthPct } from "./trend.formulas.js";
 import { benjaminiHochberg } from "./trend.statistics.js";
 import { buildRecommendedComparisons, classifyTrend, compareByTotal, compareByTrend, countVerdicts, pageTopics, shareTrendStatistics } from "./trend.verdict.js";
 import type { TrendPeriodsQuery, TrendsOverviewQuery } from "./dto/trends.schema.js";
@@ -483,7 +483,6 @@ function buildTopics(
         ...(group.taxonomy ? { taxonomy: group.taxonomy } : {}),
         totalPapers,
         yearlyBreakdown,
-        ...computeMetrics(yearlyBreakdown, lastCompleteYear),
       },
       stats: shareTrendStatistics(shareSeries),
     });

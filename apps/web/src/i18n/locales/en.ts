@@ -26,6 +26,7 @@ import { studentOnboardingStrings } from "./student-onboarding";
 import { researchHomeEn } from "./research-home-en";
 import { trustSafetyRagStrings } from "./trust-safety-rag";
 import { trendEvidenceStrings } from "./trend-evidence";
+import { trendEdaStrings } from "./trend-eda";
 import { trendVerdictStrings } from "./trend-verdict";
 import { trendResearchLinkStrings } from "./trend-research-links";
 import { trendPeriodsStrings } from "./trend-periods";
@@ -61,6 +62,7 @@ export const en = {
   ...paperDetailIaStrings,
   ...trendEvidenceStrings,
   ...trendVerdictStrings,
+  ...trendEdaStrings,
   ...trendResearchLinkStrings,
   ...trendPeriodsStrings,
   "-day period.": "-day period.",

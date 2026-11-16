@@ -156,14 +156,11 @@ export const openapiSpec = {
           topic: { type: "string", example: "Artificial Intelligence" },
           totalPapers: { type: "integer", example: 142 },
           yearlyBreakdown: { type: "array", items: { $ref: "#/components/schemas/YearlyCount" } },
-          growthRatePct: { type: "number", example: 38.5, deprecated: true, description: "Descriptive only: YoY % of raw counts. Not used for ranking or labels." },
-          cagr3yPct: { type: "number", nullable: true, example: 52.1, deprecated: true, description: "Descriptive only: CAGR of raw counts over <=3 complete years." },
-          momentum: { type: "number", example: 21.4, deprecated: true, description: "Descriptive only: least-squares slope of raw counts, papers/year." },
           classification: {
             type: "object",
             description: "Trend verdict: Mann–Kendall on the yearly share of the topic's field, Sen's slope + 95% CI, BH q-value (overview).",
             properties: {
-              verdict: { type: "string", enum: ["rising", "declining", "stable", "insufficient"] },
+              verdict: { type: "string", enum: ["rising", "saturated", "past_peak", "declining", "stable", "insufficient"] },
               confidence: { type: "string", enum: ["high", "medium"], nullable: true },
               yearsUsed: { type: "integer" },
               totalPapers: { type: "integer" },
@@ -236,9 +233,6 @@ export const openapiSpec = {
             example: 2025,
             description: "Same semantics as TrendsOverview.lastCompleteYear",
           },
-          growthRatePct: { type: "number", example: 38.5 },
-          cagr3yPct: { type: "number", nullable: true, example: 52.1 },
-          momentum: { type: "number", example: 21.4 },
           topJournals: { type: "array", items: { $ref: "#/components/schemas/TopItem" } },
           topAuthors: { type: "array", items: { $ref: "#/components/schemas/TopItem" } },
           topKeywords: { type: "array", items: { $ref: "#/components/schemas/TopItem" } },
@@ -675,18 +669,18 @@ export const openapiSpec = {
     "/api/v1/trends": {
       get: {
         tags: ["Trends"],
-        summary: "Trending topics overview — yearly series + growth metrics + rising keywords",
+        summary: "Trending topics overview — yearly series + trend verdicts + rising keywords",
         description:
-          "Aggregates research_papers per topic per year, then computes growth metrics " +
-          "over COMPLETE years (the running calendar year is charted but excluded from " +
-          "the math). Formulas: YoY growth %, 3-year CAGR %, momentum (least-squares " +
-          "slope, papers/year). Cached in Redis for 1h.",
+          "Counts papers per topic per year and tests each topic's yearly share over " +
+          "COMPLETE years (the running calendar year is charted but excluded from the " +
+          "test): Mann–Kendall with Sen's slope, relabelled saturated or past_peak from " +
+          "the recent change and the peak ratio.",
         parameters: [
           { name: "yearFrom", in: "query", schema: { type: "integer" }, description: "Default: yearTo - 5" },
           { name: "yearTo", in: "query", schema: { type: "integer" }, description: "Default: current year" },
           { name: "limit", in: "query", schema: { type: "integer", default: 10, maximum: 50 } },
           { name: "minPapers", in: "query", schema: { type: "integer", default: 3 }, description: "Hide topics with fewer total papers (noise filter)" },
-          { name: "sortBy", in: "query", schema: { type: "string", enum: ["trend", "total"], default: "trend" }, description: "trend = Mann–Kendall verdict order (rising, stable, declining, insufficient). Legacy momentum/growth are accepted and mean trend." },
+          { name: "sortBy", in: "query", schema: { type: "string", enum: ["trend", "total"], default: "trend" }, description: "trend = verdict order (rising, saturated, stable, past_peak, declining, insufficient)." },
         ],
         responses: {
           "200": {
