@@ -48,7 +48,7 @@ it("places real screening work alongside manual tasks inside To do without anoth
   const todo = container.querySelector('.task-column[data-status="TODO"]')!;
   expect(todo.querySelector('.task-column-count')?.textContent).toBe('4');
   expect(todo.querySelectorAll('.task-card')).toHaveLength(4);
-  expect(container.querySelectorAll('.task-section-nav button')).toHaveLength(2);
+  expect(container.querySelector('.task-section-nav')).toBeNull();
   expect(container.querySelector('[role="tablist"]')).toBeNull();
   expect(container.textContent).not.toContain('Đánh giá tài liệu');
   expect(container.textContent).not.toContain('Đã đánh giá');

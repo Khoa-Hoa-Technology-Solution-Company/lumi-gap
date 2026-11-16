@@ -155,7 +155,7 @@ submissionRouter.get("/:id", validate(submissionParamsSchema, "params"), validat
   res.json({ success: true, data: await submissionService.get(String(req.params.id), req.user!.sub, req.user!.role, projectId) });
 });
 
-submissionRouter.post("/:id/feedback", validate(submissionParamsSchema, "params"), validate(feedbackSchema), async (req, res) => {
+submissionRouter.post("/:id/feedback", deprecatedForReviewRequests, validate(submissionParamsSchema, "params"), validate(feedbackSchema), async (req, res) => {
   const data = await submissionService.submitFeedback(String(req.params.id), req.body, req.user!.sub, req.user!.role);
   res.status(201).json({ success: true, data });
 });
@@ -182,6 +182,10 @@ submissionRouter.post("/:id/revisions", requirePermission("submission:revise"), 
   res.status(201).json({ success: true, data });
 });
 
+const mentorReviewEntryLimiter = createRateLimiter("submissions:mentorReviewEntry", { windowMs: 60_000, limit: 30, keyGenerator: req => req.user!.sub, standardHeaders: true, legacyHeaders: false });
+submissionRouter.post("/:id/mentor-review", mentorReviewEntryLimiter, validate(submissionParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await submissionService.prepareMentorReview(String(req.params.id), req.user!.sub) });
+});
 submissionRouter.get("/:id/revisions", validate(submissionParamsSchema, "params"), async (req, res) => {
   res.json({ success: true, data: await submissionService.listRevisions(String(req.params.id), req.user!.sub, req.user!.role) });
 });

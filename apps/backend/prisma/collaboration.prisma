@@ -28,10 +28,15 @@ model Project {
   mentorshipNeeds String @default("") @map("mentorship_needs") @db.VarChar(2000)
   ownerId           String    @map("owner_id") @db.Uuid
   archivedAt        DateTime? @map("archived_at") @db.Timestamptz(6)
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedById       String?   @map("deleted_by_id") @db.Uuid
+  purgeAt           DateTime? @map("purge_at") @db.Timestamptz(6)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([ownerId])
+  @@index([ownerId, deletedAt])
+  @@index([deletedAt, purgeAt])
   @@unique([createdById, creationKey])
   @@index([status, visibility, updatedAt])
   @@map("projects")

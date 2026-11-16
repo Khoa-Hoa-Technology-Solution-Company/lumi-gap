@@ -81,7 +81,7 @@ async function record(context: WorkspaceContext, id: string) {
 }
 export async function withWorkRecord<T>(projectId: string, actorId: string, id: string, write: boolean, run: (context: WorkspaceContext) => Promise<T>) {
   const db = getPrisma(); const [project, actor] = await Promise.all([db.project.findUnique({ where: workspaceId(projectId) }), db.user.findUnique({ where: workspaceId(actorId) })]);
-  if (!project || !actor) throw AppError.notFound("Contribution not found");
+  if (!project || Boolean(project.deletedAt) || !actor) throw AppError.notFound("Contribution not found");
   return db.$transaction(async tx => {
     await lockProjectAccounts(tx, [actor.id], project.id); await assertActiveProjectAccount(tx, actor.id);
     const live = await tx.project.findUniqueOrThrow({ where: { id: project.id } });

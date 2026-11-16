@@ -31,6 +31,7 @@ export function useCreateSubmission() {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["submissions"] });
       client.invalidateQueries({ queryKey: ["workspace-tasks"] });
+      client.invalidateQueries({ queryKey: ["mentor-workspace"] });
     },
   });
 }
@@ -44,6 +45,7 @@ export function useSubmitFeedback(id: string) {
       client.invalidateQueries({ queryKey: ["submissions", "list"] });
       client.invalidateQueries({ queryKey: ["workspace-tasks"] });
       client.invalidateQueries({ queryKey: ["mentor-access"] });
+      client.invalidateQueries({ queryKey: ["mentor-workspace"] });
     },
   });
 }

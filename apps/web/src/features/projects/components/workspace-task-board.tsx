@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import type { MoveWorkspaceTask, WorkspaceTask, WorkspaceTaskBoard, WorkspaceTaskPriority, WorkspaceTaskStatus } from "@trend/shared-types";
 import { DragDropProvider, KeyboardSensor, PointerSensor, useDroppable } from "@dnd-kit/react";
@@ -17,6 +17,9 @@ import { ScreeningError } from "./screening-common";
 import { ScreeningTeamTask, ScreeningTeamTaskDeadline, screeningTeamAction, withTaskReturn } from "./screening-team-task";
 import { useWorkspaceCommand, useWorkspaceResource } from "../hooks/use-workspace";
 import { taskLabels, WorkspaceArtifactLink, WorkspaceEmpty, WorkspaceError, WorkspaceLoading, WorkspacePager, WorkspacePeoplePicker } from "./workspace-common";
+import { isTaskArtifactPopupKind, type TaskArtifactPreview } from "./workspace-task-artifact-dialog";
+
+const TaskArtifactPreviewDialog = lazy(() => import("./workspace-task-artifact-dialog").then(module => ({ default: module.TaskArtifactPreviewDialog })));
 
 import { calendarToday, taskPriorities, taskStatuses } from "./workspace-task-utils";
 const icons = { TODO: CircleDashed, IN_PROGRESS: Circle, BLOCKED: AlertCircle, DONE: CheckCircle2 };
@@ -63,7 +66,7 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
   const screening = useResearchResource(projectId, ["screening-workspace-summary"], () => screeningApi.workspaceSummary(projectId), true, () => true, 15000);
   const now = useScreeningClock(screening.data, screening.refetch);
   const [mine, setMine] = useState(params.get("taskMine") === "1"), [unassigned, setUnassigned] = useState(params.get("taskUnassigned") === "1"), [overdue, setOverdue] = useState(params.get("taskOverdue") === "1");
-  const [priority, setPriority] = useState(params.get("taskPriority") ?? ""), [status, setStatus] = useState(params.get("taskStatus") ?? ""), [milestone, setMilestone] = useState(params.get("taskMilestone") ?? "");
+  const [priority, setPriority] = useState(params.get("taskPriority") ?? ""), [status, setStatus] = useState(params.get("taskStatus") ?? "");
   const [assignee, setAssignee] = useState<string[]>(params.get("taskAssignee") ? [params.get("taskAssignee")!] : []), [sort, setSort] = useState(params.get("taskSort") ?? "manual"), [page, setPage] = useState(1);
   const [doneDays, setDoneDays] = useState<number | "all">(() => {
     const val = params.get("taskDoneDays");
@@ -74,22 +77,21 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
 
   useEffect(() => { setParams(previous => {
     const next = new URLSearchParams(previous);
-    const values = { taskQ: q, taskSource: source === "ALL" ? "" : source, taskMine: mine ? "1" : "", taskUnassigned: unassigned ? "1" : "", taskOverdue: overdue ? "1" : "", taskPriority: priority, taskStatus: status, taskMilestone: milestone, taskAssignee: assignee[0] ?? "", taskSort: sort === "manual" ? "" : sort, taskDoneDays: doneDays === 14 ? "" : String(doneDays), taskCompletedWindow: completedWindow };
+    const values = { taskQ: q, taskSource: source === "ALL" ? "" : source, taskMine: mine ? "1" : "", taskUnassigned: unassigned ? "1" : "", taskOverdue: overdue ? "1" : "", taskPriority: priority, taskStatus: status, taskAssignee: assignee[0] ?? "", taskSort: sort === "manual" ? "" : sort, taskDoneDays: doneDays === 14 ? "" : String(doneDays), taskCompletedWindow: completedWindow };
     for (const [key, value] of Object.entries(values)) value ? next.set(key, value) : next.delete(key);
     return next;
-  }, { replace: true }); }, [q, source, mine, unassigned, overdue, priority, status, milestone, assignee, sort, doneDays, completedWindow, setParams]);
+  }, { replace: true }); }, [q, source, mine, unassigned, overdue, priority, status, assignee, sort, doneDays, completedWindow, setParams]);
   const [pages, setPages] = useState([1, 1, 1, 1]);
   const resetPages = () => { setPage(1); setPages([1, 1, 1, 1]); };
-  const query = { q, mine: mine ? "1" : undefined, unassigned: unassigned ? "1" : undefined, overdue: overdue ? "1" : undefined, assigneeId: assignee[0], priority: priority || undefined, milestoneId: milestone || undefined };
+  const query = { q, mine: mine ? "1" : undefined, unassigned: unassigned ? "1" : undefined, overdue: overdue ? "1" : undefined, assigneeId: assignee[0], priority: priority || undefined };
   const boardQuery = { ...query, sort: "manual", pageSize: 20, todoPage: pages[0], progressPage: pages[1], blockedPage: pages[2], donePage: pages[3] };
   const listQuery = { ...query, sort, status: status || undefined, page, completedSince };
   const board = useWorkspaceResource(projectId, "task-board", () => workspaceApi.taskBoard(projectId, boardQuery), boardQuery, mode === "board");
   const tasks = useWorkspaceResource(projectId, "tasks", () => workspaceApi.tasks(projectId, listQuery), listQuery, mode === "list" && source !== "SCREENING");
   const screeningListQuery = { page, pageSize: 20, status: status || undefined, sort, q: q || undefined, completedSince };
   const screeningPage = useResearchResource(projectId, ["screening-automatic-tasks-page", page, status, sort, q, completedSince], () => screeningApi.automaticTasksPage(projectId, screeningListQuery), mode === "list" && source !== "MANUAL", () => true, 15000);
-  const [milestonePage, setMilestonePage] = useState(1);
-  const milestones = useWorkspaceResource(projectId, "milestones", () => workspaceApi.milestones(projectId, milestonePage), milestonePage);
   const [optimistic, setOptimistic] = useState<WorkspaceTaskBoard | null>(null);
+  const [artifactPreview, setArtifactPreview] = useState<TaskArtifactPreview | null>(null);
   const [blocked, setBlocked] = useState<{ task: WorkspaceTask; status: WorkspaceTaskStatus; beforeId: string | null } | null>(null), [reason, setReason] = useState("");
   const moveKey = useRef(crypto.randomUUID()); const busy = useRef(false);
   const move = useWorkspaceCommand(projectId, ({ taskId, data }: { taskId: string; data: MoveWorkspaceTask }) => workspaceApi.moveTask(projectId, taskId, data));
@@ -110,10 +112,10 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
     catch { await board.refetch(); moveKey.current = crypto.randomUUID(); }
     finally { setOptimistic(null); busy.current = false; }
   };
-  const filtered = Boolean(q || mine || unassigned || overdue || priority || milestone || assignee.length || status || source !== "ALL" || completedWindow);
+  const filtered = Boolean(q || mine || unassigned || overdue || priority || assignee.length || status || source !== "ALL" || completedWindow);
   const automaticRows = screening.data?.automaticTasks;
   const screeningTasks = (source === "MANUAL" ? [] : automaticRows ? automaticRows.map(automaticWorkTask) : screening.data ? myWorkTasks(screening.data, readOnly, now) : []).filter(task => {
-    if (unassigned || priority || milestone || assignee[0] && assignee[0] !== (task.obligation?.assigneeId ?? actorId) || mode === "list" && status && status !== (task.obligation?.status ?? "TODO")) return false;
+    if (unassigned || priority || assignee[0] && assignee[0] !== (task.obligation?.assigneeId ?? actorId) || mode === "list" && status && status !== (task.obligation?.status ?? "TODO")) return false;
     if (task.obligation && !task.obligation.endedAt && task.deadline && Date.parse(task.deadline) <= now) return false;
     if (overdue && (!task.deadline || new Date(task.deadline).getTime() >= now)) return false;
     if (completedSince && task.obligation?.endedAt && Date.parse(task.obligation.endedAt) < Date.parse(completedSince)) return false;
@@ -122,7 +124,7 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
   const history = screeningTasks.filter(task => task.obligation && ["EXPIRED", "CANCELLED", "REPLACED"].includes(task.obligation.status));
   const boardTasks = screeningTasks.filter(task => !history.includes(task));
   const listScreeningRows = (source === "MANUAL" ? [] : screeningPage.data?.items && screeningPage.data.items.length > 0 ? screeningPage.data.items.map(automaticWorkTask) : boardTasks).filter(task => {
-    if (unassigned || priority || milestone || assignee[0] && assignee[0] !== (task.obligation?.assigneeId ?? actorId) || (status && status !== (task.obligation?.status ?? "TODO"))) return false;
+    if (unassigned || priority || assignee[0] && assignee[0] !== (task.obligation?.assigneeId ?? actorId) || (status && status !== (task.obligation?.status ?? "TODO"))) return false;
     if (task.obligation && !task.obligation.endedAt && task.deadline && Date.parse(task.deadline) <= now) return false;
     if (overdue && (!task.deadline || new Date(task.deadline).getTime() >= now)) return false;
     if (completedSince && task.obligation?.endedAt && Date.parse(task.obligation.endedAt) < Date.parse(completedSince)) return false;
@@ -147,9 +149,9 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
       <span className="task-result-count" role="status">{t("{{count}} tasks", { count: total })}</span>
     </div>
     <div className="task-filter-bar"><button type="button" className="task-filter-chip" aria-pressed={mine} onClick={() => { setMine(!mine); setUnassigned(false); setAssignee([]); resetPages(); }}>{t("My tasks")}</button><button type="button" className="task-filter-chip" aria-pressed={unassigned} onClick={() => { setUnassigned(!unassigned); setMine(false); setAssignee([]); resetPages(); }}>{t("Unassigned")}</button><button type="button" className="task-filter-chip" aria-pressed={overdue} onClick={() => { setOverdue(!overdue); resetPages(); }}><CalendarDays size={13} />{t("Overdue")}</button>
-      <details className="coord-filter-popover task-filters"><summary><SlidersHorizontal size={14} />{t("Filters")}{Boolean(priority || milestone || assignee.length || completedWindow) && <span className="task-active-dot" />}</summary><div className="task-filter-fields"><label>Nguồn công việc<select aria-label="Nguồn công việc" value={source} onChange={e => { setSource(e.target.value); resetPages(); }}><option value="ALL">Tất cả nguồn</option><option value="MANUAL">Task thủ công</option><option value="SCREENING">Paper Screening</option></select></label><label>{t("Completed time")}<select value={completedWindow} onChange={e => { setCompletedWindow(e.target.value); resetPages(); }}><option value="">{t("All time")}</option><option value="7">{t("Last 7 days")}</option><option value="14">{t("Last 14 days (default)")}</option><option value="30">{t("Last 30 days")}</option></select></label><label>{t("Priority")}<select value={priority} onChange={e => { setPriority(e.target.value); resetPages(); }}><option value="">{t("All priorities")}</option>{Object.entries(taskPriorities).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label><WorkspacePeoplePicker projectId={projectId} value={assignee} onChange={ids => { setAssignee(ids); setMine(false); setUnassigned(false); resetPages(); }} /><label>{t("Milestone, optional")}<select value={milestone} onChange={e => { setMilestone(e.target.value); resetPages(); }}><option value="">{t("All milestones")}</option>{milestones.data?.items.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><WorkspacePager data={milestones.data} page={milestonePage} onPage={setMilestonePage} /></div></details>
+      <details className="coord-filter-popover task-filters"><summary><SlidersHorizontal size={14} />{t("Filters")}{Boolean(priority || assignee.length || completedWindow) && <span className="task-active-dot" />}</summary><div className="task-filter-fields"><label>Nguồn công việc<select aria-label="Nguồn công việc" value={source} onChange={e => { setSource(e.target.value); resetPages(); }}><option value="ALL">Tất cả nguồn</option><option value="MANUAL">Task thủ công</option><option value="SCREENING">Paper Screening</option></select></label><label>{t("Completed time")}<select value={completedWindow} onChange={e => { setCompletedWindow(e.target.value); resetPages(); }}><option value="">{t("All time")}</option><option value="7">{t("Last 7 days")}</option><option value="14">{t("Last 14 days (default)")}</option><option value="30">{t("Last 30 days")}</option></select></label><label>{t("Priority")}<select value={priority} onChange={e => { setPriority(e.target.value); resetPages(); }}><option value="">{t("All priorities")}</option>{Object.entries(taskPriorities).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label><WorkspacePeoplePicker projectId={projectId} value={assignee} onChange={ids => { setAssignee(ids); setMine(false); setUnassigned(false); resetPages(); }} /></div></details>
       {mode === "list" && <><select aria-label={t("Task status")} value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}><option value="">{t("All statuses")}</option>{taskStatuses.map(value => <option key={value} value={value}>{t(taskLabels[value])}</option>)}</select><select aria-label={t("Sort tasks")} value={sort} onChange={e => { setSort(e.target.value); setPage(1); }}>{Object.entries({ manual: "Board order", completed: "Recently completed", completed_asc: "Oldest completed", due: "Deadline", priority: "Priority", title: "Title", updated: "Recently updated" }).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></>}
-      {filtered && <button type="button" className="task-reset" onClick={() => { setQ(""); setDraftQ(""); setMine(false); setUnassigned(false); setOverdue(false); setPriority(""); setMilestone(""); setAssignee([]); setStatus(""); setSource("ALL"); setCompletedWindow(""); resetPages(); }}><X size={13} />{t("Reset")}</button>}
+      {filtered && <button type="button" className="task-reset" onClick={() => { setQ(""); setDraftQ(""); setMine(false); setUnassigned(false); setOverdue(false); setPriority(""); setAssignee([]); setStatus(""); setSource("ALL"); setCompletedWindow(""); resetPages(); }}><X size={13} />{t("Reset")}</button>}
     </div>
     {move.error && !blocked && <WorkspaceError error={move.error} />}
     {screening.isError && <ScreeningError error={screening.error} retry={() => void screening.refetch()} />}
@@ -180,20 +182,36 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
       </div></DragDropProvider><p className="task-board-help"><GripVertical size={13} />{t("Drag cards between columns or use the status menu.")}</p>
     </> : (tasks.isLoading || screeningPage.isLoading) ? <WorkspaceLoading /> : tasks.isError ? <WorkspaceError error={tasks.error} retry={() => void tasks.refetch()} /> : screeningPage.isError ? <ScreeningError error={screeningPage.error} retry={() => void screeningPage.refetch()} /> : !manualRows.length && !listScreeningRows.length ? <WorkspaceEmpty title={t(filtered ? "No matching tasks" : "Plan the next research step")}><p>{t("Create a task for a concrete action, such as reading a paper or comparing research methods.")}</p>{!readOnly && <Button onClick={() => onSelect("new")}>{t("Create the first task")}</Button>}</WorkspaceEmpty> : <>
       {status === "DONE" && <div className="task-completed-history-banner"><div className="flex items-center gap-2"><CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400" /><span className="font-semibold text-sm">{t("Completed history")}</span><span className="text-xs text-muted-foreground font-medium">({total} {t("tasks")})</span></div><Button size="sm" variant="outline" className="text-xs h-7" onClick={() => onMode("board")}><LayoutGrid size={13} className="mr-1.5" />{t("Back to Kanban board")}</Button></div>}
-      <div className="coord-table-wrap task-list"><table className="coord-table"><thead><tr>{[status === "DONE" ? "Task" : "Task", "Assignee", "Status", status === "DONE" ? "Completed At" : "Priority", status === "DONE" ? "Priority" : "Deadline", "Milestones", "Linked research artifact"].map(label => <th key={label}>{t(label)}</th>)}</tr></thead><tbody>{listScreeningRows.map(task => <tr key={`screening:${task.obligation?.id ?? task.roundId}`} data-screening-round={task.roundId}>
+      <div className="coord-table-wrap task-list"><table className="coord-table"><thead><tr>{[status === "DONE" ? "Task" : "Task", "Assignee", "Status", status === "DONE" ? "Completed At" : "Priority", status === "DONE" ? "Priority" : "Deadline", "Linked research artifact"].map(label => <th key={label}>{t(label)}</th>)}</tr></thead><tbody>{listScreeningRows.map(task => <tr key={`screening:${task.obligation?.id ?? task.roundId}`} data-screening-round={task.roundId}>
       <td><Link className="task-list-title" to={withTaskReturn(screeningWorkLink(projectId, task, sectionForTask(task)), task, location.pathname + location.search)}>{task.title}</Link><small className="task-screening-kind">{task.label}</small></td>
       <td>Bạn</td><td><span className="task-status-label" data-status={task.obligation?.status ?? "TODO"}>{task.obligation ? automaticTaskStatuses[task.obligation.status] : t(taskLabels.TODO)}</span></td>
       {status === "DONE" ? <><td>{task.obligation?.endedAt ? <span className="task-due font-medium text-emerald-700 dark:text-emerald-300"><CheckCheck size={12} className="inline mr-1 text-emerald-600 dark:text-emerald-400" />{new Intl.DateTimeFormat(language, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(task.obligation.endedAt))}</span> : "–"}</td><td>–</td></> : <><td>–</td><td><ScreeningTeamTaskDeadline task={task} /></td></>}
-      <td>–</td>
       <td><Link className="text-sm text-primary underline underline-offset-4" to={withTaskReturn(screeningWorkLink(projectId, task, sectionForTask(task)), task, location.pathname + location.search)}>{screeningTeamAction(task)}</Link></td>
     </tr>)}{manualRows.map(task => <tr key={task.id}><td><button className="task-list-title" type="button" onClick={() => onSelect(task.id)}>{task.title}</button>{task.status === "BLOCKED" && <small className="task-blocked-reason">{task.blockedReason}</small>}</td><td><Person task={task} /></td><td><span className="task-status-label" data-status={task.status}>{t(taskLabels[task.status])}</span></td>
       {status === "DONE" ? <><td>{task.completedAt ? <span className="task-due font-medium text-emerald-700 dark:text-emerald-300" title={new Date(task.completedAt).toLocaleString(language)}><CheckCheck size={12} className="inline mr-1 text-emerald-600 dark:text-emerald-400" />{new Intl.DateTimeFormat(language, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(task.completedAt))}</span> : "–"}</td><td><TaskPriority priority={task.priority} /></td></> : <><td><TaskPriority priority={task.priority} /></td><td><TaskDueDate task={task} /></td></>}
-      <td>{milestones.data?.items.find(item => item.id === task.milestoneId)?.title ?? (task.milestoneId ? t("Milestone") : "–")}</td><td><WorkspaceArtifactLink projectId={projectId} link={task.link} /></td></tr>)}</tbody></table></div>
+      <td>
+        <WorkspaceArtifactLink
+          projectId={projectId}
+          link={task.link}
+          openInNewTab
+          popup={Boolean(task.link && isTaskArtifactPopupKind(task.link.kind))}
+          onOpenArtifact={(link, href) => {
+            if (!isTaskArtifactPopupKind(link.kind)) return false;
+            setArtifactPreview({ link, href });
+            return true;
+          }}
+        />
+      </td></tr>)}</tbody></table></div>
       <WorkspacePager
         data={source === "SCREENING" ? screeningPage.data : source === "MANUAL" ? tasks.data : { total, hasNext: Boolean(tasks.data?.hasNext || screeningPage.data?.hasNext) }}
         page={page}
         onPage={setPage}
       />
+    {artifactPreview && (
+      <Suspense fallback={null}>
+        <TaskArtifactPreviewDialog projectId={projectId} readOnly={readOnly} artifact={artifactPreview} onClose={() => setArtifactPreview(null)} />
+      </Suspense>
+    )}
     </>}
   </section>;
 }

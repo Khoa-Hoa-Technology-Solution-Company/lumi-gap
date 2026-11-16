@@ -48,12 +48,15 @@ const reviewResponseSchema = z.object({
   notApplicable: z.boolean().optional(),
 }).strict();
 const draftReviewSchema = z.object({
+  clientKey: z.string().uuid().optional(),
+  integrityChecks: z.record(z.string().max(80), z.object({ status: z.enum(["CHECKED", "CONCERN", "NOT_APPLICABLE"]), note: z.string().trim().max(2000).optional() }).strict()).refine(value => Object.keys(value).length <= 8).optional(),
   expectedRevisionId: objectIdSchema.optional(),
   expectedRoundNumber: z.number().int().min(1).optional(),
   keyStrengths: z.string().trim().max(20000).optional(),
   keyConcerns: z.string().trim().max(20000).optional(),
   overallComment: z.string().trim().max(20000).optional(),
   overallAssessment: z.enum(["STRONG", "MINOR_REVISION", "MAJOR_REVISION", "NOT_READY"]).optional(),
+  commentOnly: z.boolean().optional(),
   responses: z.array(reviewResponseSchema).max(60).refine(
     (items) => new Set(items.map((item) => item.criterionKey)).size === items.length,
     "Each review criterion may only appear once",
@@ -61,6 +64,7 @@ const draftReviewSchema = z.object({
   requiredRevisions: z.array(z.object({
     priority: z.enum(["MINOR", "MAJOR"]),
     description: z.string().trim().min(3).max(5000),
+    criterionKey: z.string().max(80).optional(), locator: z.string().trim().max(500).optional(), quotation: z.string().trim().min(1).max(5000).optional(),
   }).strict()).max(30).optional(),
 }).strict();
 const submittedReviewSchema = draftReviewSchema;
@@ -95,6 +99,8 @@ const reviewDueAtSchema = z.string().datetime()
   .refine((value) => new Date(value).getTime() > Date.now(), "The due date must be in the future")
   .refine((value) => new Date(value).getTime() <= Date.now() + MAX_REVIEW_DUE_DAYS * 24 * 60 * 60 * 1000, `The due date must be within ${MAX_REVIEW_DUE_DAYS} days`);
 const createRequestSchema = z.object({
+  revisionId: objectIdSchema.optional(),
+  purpose: z.enum(["MENTOR_GUIDANCE", "PEER_REVIEW"]).optional(),
   submissionId: objectIdSchema.optional(), reportId: objectIdSchema.optional(), reviewerId: objectIdSchema,
   templateVersionId: objectIdSchema, message: z.string().trim().max(3000).optional(), dueAt: reviewDueAtSchema,
 }).strict().refine((value) => Boolean(value.submissionId) !== Boolean(value.reportId), "Select exactly one artifact source");
@@ -111,6 +117,11 @@ const resubmitSchema = z.object({
   revisionId: objectIdSchema.optional(), reportId: objectIdSchema.optional(),
   responses: z.array(z.object({ revisionItemId: objectIdSchema, responseText: z.string().trim().min(3).max(10000) }).strict()).max(30),
 }).strict().refine((value) => Boolean(value.revisionId) !== Boolean(value.reportId), "Select exactly one revised artifact version");
+
+const responseDraftSchema = z.object({
+  revisionId: objectIdSchema,
+  responses: z.array(z.object({revisionItemId:objectIdSchema,responseText:z.string().trim().max(10000)}).strict()).max(30),
+}).strict();
 
 export const reviewAvailabilityRouter: Router = Router();
 reviewAvailabilityRouter.use(requireAuth);
@@ -216,12 +227,15 @@ reviewRequestRouter.post("/:requestId/decline", validate(requestParamsSchema, "p
 reviewRequestRouter.post("/:requestId/cancel", validate(requestParamsSchema, "params"), async (req, res) => {
   await reviewRequestService.cancel(String(req.params.requestId), req.user!.sub); res.status(204).send();
 });
+reviewRequestRouter.put("/:requestId/responses", validate(requestParamsSchema, "params"), validate(responseDraftSchema), async (req, res) => {
+  await reviewRequestService.saveResponseDrafts(String(req.params.requestId), req.user!.sub, req.body); res.status(204).send();
+});
 reviewRequestRouter.post("/:requestId/resubmit", validate(requestParamsSchema, "params"), validate(resubmitSchema), async (req, res) => {
   await reviewRequestService.resubmit(String(req.params.requestId), req.user!.sub, req.body); res.status(204).send();
 });
 
-reviewRequestRouter.patch("/:requestId/revision-items/:itemId", validate(z.object({ requestId: objectIdSchema, itemId: objectIdSchema }), "params"), validate(z.object({ status: z.enum(["ACCEPTED", "REOPENED"]) }).strict()), async (req, res) => {
-  await reviewRequestService.resolveRevisionItem(String(req.params.requestId), String(req.params.itemId), req.body.status, req.user!.sub);
+reviewRequestRouter.patch("/:requestId/revision-items/:itemId", validate(z.object({ requestId: objectIdSchema, itemId: objectIdSchema }), "params"), validate(z.object({ status: z.enum(["ACCEPTED", "REOPENED"]), expectedRevisionId:objectIdSchema.optional() }).strict()), async (req, res) => {
+  await reviewRequestService.resolveRevisionItem(String(req.params.requestId), String(req.params.itemId), req.body.status, req.user!.sub, req.body.expectedRevisionId);
   res.status(204).send();
 });
 

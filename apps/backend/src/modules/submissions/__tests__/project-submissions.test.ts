@@ -5,7 +5,7 @@ vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => 
 vi.mock("../../../infrastructure/pdf-storage.service.js", () => ({ pdfStorageService: { savePdf } }));
 vi.mock("../../../infrastructure/queue.js", () => ({ aiJobsQueue: {} }));
 vi.mock("../../audit/audit.service.js", () => ({ auditService: {} }));
-vi.mock("../../reviews/peer-review-access.js", () => ({ assertPeerReviewer: vi.fn(), lockReviewerAndSubmission: vi.fn(), refreshSubmissionReviewStatus: vi.fn() }));
+vi.mock("../../reviews/peer-review-access.js", () => ({ assertPeerReviewer: vi.fn(), assertReviewerInTransaction: vi.fn(), lockReviewerAndSubmission: vi.fn(), refreshSubmissionReviewStatus: vi.fn() }));
 vi.mock("../../reviews/review-request.service.js", () => ({ reviewRequestService: {} }));
 vi.mock("../../papers/ai-reviewer.client.js", () => ({ aiReviewerClient: {} }));
 import { submissionService } from "../submission.service.js";

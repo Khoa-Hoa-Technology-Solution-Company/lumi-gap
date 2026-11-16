@@ -76,6 +76,7 @@ export interface AiPreReview {
 }
 
 export const submissionsApi = {
+  async prepareMentorReview(id: string): Promise<{ assignmentId: string; requestId: string }> { return (await api.post(`/submissions/${encodeURIComponent(id)}/mentor-review`, {})).data.data; },
   async history(id: string, signal?: AbortSignal): Promise<SubmissionHistory> { return (await api.get(API_ROUTES.submissions.history(id), readOptions(signal))).data.data; },
   async createVersion(id: string, input: { content?: string; sourceRevisionId?: string; expectedRevisionNumber: number; summary: string }): Promise<void> { await api.post(API_ROUTES.submissions.versions(id), input); },
   async setOpenForReview(id: string, enabled: boolean): Promise<void> { await api.patch(API_ROUTES.submissions.openReview(id), { enabled }); },
@@ -95,8 +96,8 @@ export const submissionsApi = {
     const response = await api.get("/submissions/active-mentors", { params: { projectId } });
     return response.data.data;
   },
-  async submitFeedback(id: string, payload: MentorFeedbackPayload): Promise<void> {
-    await api.post(`/submissions/${id}/feedback`, payload);
+  async submitFeedback(id: string, payload: MentorFeedbackPayload): Promise<{submitted:false;requiresCompletion:true;assignmentId:string;requestId:string;reviewId:string;message:string}> {
+    return (await api.post(`/submissions/${id}/feedback`, payload)).data.data;
   },
   async create(input: StructuredSubmissionInput & { mentorId?: string; manuscriptSnapshotId?: string; contentSnapshot?: string; message?: string }, file?: File): Promise<{ submission: SubmissionSummary; revision: SubmissionRevision }> {
     const body = new FormData();
@@ -121,6 +122,9 @@ export const submissionsApi = {
   async runAiPreReview(id: string): Promise<AiPreReview> {
     const response = await api.post(API_ROUTES.submissions.runAiPreReview(id), {});
     return response.data.data;
+  },
+  async revisionBlob(id: string, revisionId: string, signal?: AbortSignal): Promise<Blob> {
+    return (await api.get(API_ROUTES.submissions.revisionDownload(id, revisionId), { responseType: "blob", signal, timeout: 30000 })).data;
   },
   async downloadRevision(id: string, revisionId: string, revisionNumber: number) {
     const response = await api.get(API_ROUTES.submissions.revisionDownload(id, revisionId), { responseType: "blob" });

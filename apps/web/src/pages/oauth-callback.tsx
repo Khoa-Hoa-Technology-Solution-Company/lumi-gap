@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import { authApi } from "@/features/auth/api/auth.api";
 import { resolvePostAuthPath } from "@/features/auth";
 import { consumeAuthReturnTo } from "@/features/auth/utils/auth-return";
+import { consumePostLogoutProjectPath } from "@/features/projects/utils/project-workspace-navigation";
 
 export function OAuthCallbackPage() {
   const [searchParams] = useSearchParams();
@@ -33,7 +34,7 @@ export function OAuthCallbackPage() {
           setAuth({ user, tokens });
           queryClient.clear();
           queryClient.setQueryData(["current-user"], { user });
-          const requestedPath = consumeAuthReturnTo();
+          const requestedPath = consumeAuthReturnTo() ?? consumePostLogoutProjectPath(user.id);
           navigate(resolvePostAuthPath(user, requestedPath), { state: { from: requestedPath }, replace: true });
         })
         .catch(() => {

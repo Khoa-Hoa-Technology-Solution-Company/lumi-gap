@@ -17,11 +17,12 @@ export function workspaceId(value: string) {
 export async function withWorkspace<T>(projectId: string, actorId: string, options: { write?: boolean; owner?: boolean; mentor?: boolean; mentorScope?: "SHARED_RESOURCES"; accounts?: string[]; timeoutMs?: number }, run: (context: WorkspaceContext) => Promise<T>) {
   const db = getPrisma();
   const [project, actor] = await Promise.all([db.project.findUnique({ where: workspaceId(projectId) }), db.user.findUnique({ where: workspaceId(actorId) })]);
-  if (!project || !actor) throw AppError.notFound("Project not found");
+  if (!project || project.deletedAt || !actor) throw AppError.notFound("Project not found");
   return db.$transaction(async tx => {
     await lockProjectAccounts(tx, [actor.id, ...(options.accounts ?? [])], project.id);
     await assertActiveProjectAccount(tx, actor.id);
     const live = await tx.project.findUniqueOrThrow({ where: { id: project.id } });
+    if (live.deletedAt) throw AppError.notFound("Project not found");
     const member = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: live.id, userId: actor.id } } });
     const role = live.ownerId === actor.id ? "OWNER" as const : member?.status === "ACTIVE" ? "MEMBER" as const : null;
     if (role) {

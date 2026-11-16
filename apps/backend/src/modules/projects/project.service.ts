@@ -7,9 +7,12 @@ import type {
   InviteProjectMemberRequest,
   ProjectInvitationPreview,
   ProjectRole,
+  ProjectSoftDeleteResponse,
+  TrashedProjectItem,
   UpdateProjectPaperRequest,
   UpdateProjectRequest,
 } from "@trend/shared-types";
+import { PROJECT_TRASH_RETENTION_DAYS } from "@trend/shared-types";
 import { createHash } from "node:crypto";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { AppError } from "../../common/exceptions/app-error.js";
@@ -19,9 +22,17 @@ import { createOpaqueToken, hashOpaqueToken } from "../auth/token.service.js";
 import { assertResearchWorkflowAccess } from "../authorization/research-access.service.js";
 import { projectActivityService } from "./project-activity.service.js";
 import type { ProjectAiFeature } from "./project-scope.js";
-import { assertProjectActionAllowed, canReadProjectSummary, invitationBelongsToUser } from "./project-workspace.rules.js";
+import {
+  assertProjectActionAllowed,
+  assertTrashedProjectActionAllowed,
+  canReadProjectSummary,
+  computeTrashPurgeDate,
+  invitationBelongsToUser,
+  trashDaysRemaining,
+} from "./project-workspace.rules.js";
 import { queueProjectInvitation } from "./project-invitation-delivery.js";
 import { lockProjectAccounts, authorizeProjectTransaction, assertActiveProjectAccount } from "./project-transaction.js";
+import { purgeProjectRecord } from "./project-purge.js";
 import { researchLedgerService } from "../audit/research-ledger.service.js";
 import { manuscriptEvents } from "../workspaces/manuscript-events.js";
 
@@ -47,9 +58,9 @@ async function resolvePaper(value: string, allowProjectDraft = false) {
   return row;
 }
 
-async function resolveProject(value: string) {
+async function resolveProject(value: string, includeTrashed = false) {
   const row = await getPrisma().project.findUnique({ where: whereId(value) });
-  if (!row) throw AppError.notFound("Project not found");
+  if (!row || (!includeTrashed && row.deletedAt)) throw AppError.notFound("Project not found");
   return row;
 }
 
@@ -110,7 +121,7 @@ async function invitationPreview(invitation: Awaited<ReturnType<typeof invitatio
     prisma.user.findUnique({ where: { id: invitation.invitedById }, select: { fullName: true, email: true } }),
     viewerId ? resolveUser(viewerId) : Promise.resolve(null),
   ]);
-  if (!project) throw AppError.notFound("Project not found");
+  if (!project || project.deletedAt) throw AppError.notFound("Project not found");
   const now = new Date();
   const effectiveStatus = invitation.status === "PENDING" && invitation.expiresAt <= now ? "EXPIRED" : invitation.status;
   if (effectiveStatus === "EXPIRED" && invitation.status === "PENDING") {
@@ -266,6 +277,8 @@ async function hydrate(row: Awaited<ReturnType<typeof resolveProject>>, viewerId
     })),
     recentActivity,
     archivedAt: row.archivedAt?.toISOString(),
+    deletedAt: row.deletedAt?.toISOString(),
+    purgeAt: row.purgeAt?.toISOString(),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -274,11 +287,13 @@ async function hydrate(row: Awaited<ReturnType<typeof resolveProject>>, viewerId
 export class ProjectService {
   async createProject(data: CreateProjectRequest, ownerIdInput: string) {
     const owner = await resolveUser(ownerIdInput);
+    const keywords = [...new Set((data.keywords ?? []).map((item) => item.trim()).filter(Boolean))];
     const normalized = {
       title: data.title.trim(), description: data.description?.trim() || null,
       researchAreas: data.researchAreas ?? (data.researchField?.trim() ? [data.researchField.trim()] : []),
       approach: data.researchApproach ?? "UNDECIDED", status: data.status ?? "PLANNING",
       visibility: data.visibility === "PUBLIC_SUMMARY" || data.visibility === "PUBLIC" ? "PUBLIC" : "PRIVATE",
+      ...(keywords.length ? { keywords } : {}),
     };
     const requestHash = createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
     const row = await getPrisma().$transaction(async tx => {
@@ -294,11 +309,11 @@ export class ProjectService {
       }
       const created = await tx.project.create({ data: {
         title: normalized.title, description: normalized.description,
-        researchAreas: normalized.researchAreas, researchField: normalized.researchAreas[0],
+        researchAreas: normalized.researchAreas, researchField: data.researchField?.trim() || normalized.researchAreas[0],
         status: normalized.status, visibility: normalized.visibility, mentorshipDiscovery: "CLOSED", researchStage: "DISCOVERY",
         ownerId: owner.id, createdById: owner.id, creationKey: data.idempotencyKey, creationRequestHash: requestHash,
       } });
-      await tx.researchPlan.create({ data: { projectId: created.id, approach: normalized.approach, updatedById: owner.id } });
+      await tx.researchPlan.create({ data: { projectId: created.id, approach: normalized.approach, problem: normalized.description ?? "", searchStrategy: keywords.join(", "), updatedById: owner.id } });
       await tx.projectMember.create({ data: { projectId: created.id, userId: owner.id, role: "OWNER", status: ACTIVE } });
       await tx.projectActivity.create({ data: { projectId: created.id, actorId: owner.id, type: "PROJECT_CREATED", metadata: {} } });
       return created;
@@ -316,7 +331,7 @@ export class ProjectService {
     const db = getPrisma();
     const memberships = await db.projectMember.findMany({ where: { userId: actor.id, status: ACTIVE }, select: { projectId: true } });
     const page = Math.max(1, input.page ?? 1), pageSize = Math.min(100, Math.max(1, input.pageSize ?? 100));
-    const where = { OR: [{ ownerId: actor.id }, { id: { in: memberships.map(m => m.projectId) } }] };
+    const where = { deletedAt: null, OR: [{ ownerId: actor.id }, { id: { in: memberships.map(m => m.projectId) } }] };
     const [rows, total] = await Promise.all([
       db.project.findMany({ where, orderBy: [{ updatedAt: "desc" }, { id: "asc" }], skip: (page - 1) * pageSize, take: pageSize }),
       db.project.count({ where }),
@@ -437,10 +452,84 @@ export class ProjectService {
     return hydrate(updated, actor.id);
   }
 
+  async listTrashedProjects(userIdInput: string): Promise<TrashedProjectItem[]> {
+    const actor = await resolveUser(userIdInput);
+    await assertResearchWorkflowAccess(actor.id);
+    const db = getPrisma();
+    const rows = await db.project.findMany({
+      where: { ownerId: actor.id, deletedAt: { not: null } },
+      orderBy: [{ deletedAt: "desc" }, { id: "asc" }],
+    });
+    const ids = rows.map(row => row.id);
+    if (!ids.length) return [];
+    const [members, papers] = await Promise.all([
+      db.projectMember.groupBy({ by: ["projectId"], where: { projectId: { in: ids }, status: ACTIVE }, _count: true }),
+      db.projectPaper.groupBy({ by: ["projectId"], where: { projectId: { in: ids } }, _count: true }),
+    ]);
+    const memberCounts = new Map(members.map(item => [item.projectId, item._count]));
+    const paperCounts = new Map(papers.map(item => [item.projectId, item._count]));
+    const now = new Date();
+    return rows.map(row => {
+      const deletedAt = row.deletedAt ?? row.updatedAt;
+      const purgeAt = row.purgeAt ?? computeTrashPurgeDate(deletedAt);
+      const expired = purgeAt.getTime() <= now.getTime();
+      return {
+        _id: publicDatabaseId(row),
+        title: row.title,
+        description: row.description ?? undefined,
+        researchField: row.researchField ?? undefined,
+        status: row.status as TrashedProjectItem["status"],
+        visibility: row.visibility as TrashedProjectItem["visibility"],
+        memberCount: memberCounts.get(row.id) ?? 1,
+        paperCount: paperCounts.get(row.id) ?? 0,
+        deletedAt: deletedAt.toISOString(),
+        purgeAt: purgeAt.toISOString(),
+        daysRemaining: trashDaysRemaining(purgeAt, now),
+        expired,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      };
+    });
+  }
+
   async restoreProject(projectId: string, userId: string) {
-    const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(userId)]);
+    const [row, actor] = await Promise.all([resolveProject(projectId, true), resolveUser(userId)]);
     const updated = await getPrisma().$transaction(async tx => {
       await lockProjectAccounts(tx, [actor.id], row.id);
+      const live = await tx.project.findUnique({ where: { id: row.id } });
+      if (!live) throw AppError.notFound("Project not found");
+      if (live.deletedAt) {
+        await assertActiveProjectAccount(tx, actor.id, false);
+        const now = new Date();
+        assertTrashedProjectActionAllowed(
+          live.ownerId === actor.id ? "OWNER" : undefined,
+          { deletedAt: live.deletedAt, purgeAt: live.purgeAt },
+          "RESTORE",
+          now,
+        );
+        const next = await tx.project.update({
+          where: { id: row.id },
+          data: { deletedAt: null, deletedById: null, purgeAt: null, version: { increment: 1 } },
+        });
+        await tx.projectActivity.create({
+          data: {
+            projectId: row.id,
+            actorId: actor.id,
+            type: "PROJECT_RESTORED",
+            metadata: { restoredFromTrash: true, preservedStatus: live.status },
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            userId: actor.id,
+            actionName: "PROJECT_RESTORED_FROM_TRASH",
+            targetTableName: "projects",
+            targetRecordId: row.id,
+            details: { preservedStatus: live.status, previousDeletedAt: live.deletedAt.toISOString() },
+          },
+        });
+        return next;
+      }
       const { project } = await authorizeProjectTransaction(tx, row.id, actor.id, "RESTORE");
       if (project.status !== "ARCHIVED") throw AppError.conflict("This project is not archived");
       const event = await tx.projectActivity.findFirst({ where: { projectId: row.id, type: "PROJECT_ARCHIVED" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
@@ -448,69 +537,111 @@ export class ProjectService {
       const previousStatus = metadata?.previousStatus;
       const status = previousStatus && ["PLANNING", "ACTIVE", "ON_HOLD", "COMPLETED"].includes(previousStatus) ? previousStatus : "PLANNING";
       const next = await tx.project.update({ where: { id: row.id }, data: { status, archivedAt: null, version: { increment: 1 } } });
-      await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "PROJECT_RESTORED", metadata: {} } });
+      await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "PROJECT_RESTORED", metadata: { restoredFromArchive: true } } });
       return next;
     });
     return hydrate(updated, actor.id);
   }
 
-  async deleteProject(projectId: string, userId: string) {
+  async deleteProject(projectId: string, userId: string): Promise<ProjectSoftDeleteResponse> {
     const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(userId)]);
+    const activeMembers = await getPrisma().projectMember.findMany({
+      where: { projectId: row.id, status: ACTIVE },
+      select: { userId: true },
+    });
+    const response = await getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [actor.id], row.id);
+      const { project } = await authorizeProjectTransaction(tx, row.id, actor.id, "DELETE");
+      const now = new Date();
+      const purgeAt = computeTrashPurgeDate(now);
+      await tx.project.update({
+        where: { id: row.id },
+        data: { deletedAt: now, deletedById: actor.id, purgeAt, mentorshipDiscovery: "CLOSED", version: { increment: 1 } },
+      });
+      await tx.projectInvitation.updateMany({ where: { projectId: row.id, status: "PENDING" }, data: { status: "CANCELLED", respondedAt: now } });
+      await tx.projectActivity.create({
+        data: {
+          projectId: row.id,
+          actorId: actor.id,
+          type: "PROJECT_SOFT_DELETED",
+          metadata: { purgeAt: purgeAt.toISOString(), retentionDays: PROJECT_TRASH_RETENTION_DAYS },
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actor.id,
+          actionName: "PROJECT_SOFT_DELETED",
+          targetTableName: "projects",
+          targetRecordId: row.id,
+          details: { purgeAt: purgeAt.toISOString(), retentionDays: PROJECT_TRASH_RETENTION_DAYS, previousStatus: project.status },
+        },
+      });
+      return {
+        deleted: true,
+        softDeleted: true,
+        deletedAt: now.toISOString(),
+        purgeAt: purgeAt.toISOString(),
+        retentionDays: PROJECT_TRASH_RETENTION_DAYS,
+      };
+    });
+    const revokedUsers = new Set([...activeMembers.map(member => member.userId), actor.id]);
+    for (const memberId of revokedUsers) {
+      manuscriptEvents.emit("member-revoked", { projectId: row.id, userId: memberId });
+    }
+    return response;
+  }
+
+  async permanentDeleteProject(projectId: string, userId: string) {
+    const [row, actor] = await Promise.all([resolveProject(projectId, true), resolveUser(userId)]);
     await getPrisma().$transaction(async tx => {
       await lockProjectAccounts(tx, [actor.id], row.id);
-      await authorizeProjectTransaction(tx, row.id, actor.id, "DELETE");
-      // One existence query short-circuits on history and avoids dozens of serial round trips under the lock.
-      const [history] = await tx.$queryRaw<Array<{ has_history: boolean }>>`
-        WITH target AS (SELECT ${row.id}::uuid AS project_id, ${actor.id}::uuid AS actor_id)
-        SELECT EXISTS (
-          SELECT 1 FROM project_papers h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM reports h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM research_gaps h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM submissions h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM project_members h, target WHERE h.project_id = target.project_id AND h.user_id <> target.actor_id
-          UNION ALL SELECT 1 FROM project_activities h, target WHERE h.project_id = target.project_id AND h.type NOT IN ('PROJECT_CREATED','PROJECT_UPDATED','PROJECT_ARCHIVED','PROJECT_RESTORED')
-          UNION ALL SELECT 1 FROM project_team_messages h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM project_chat_messages h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM draft_workspaces h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM manuscript_snapshots h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM project_evidence_items h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM screening_settings h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM screening_rounds h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM project_screening_decisions h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM project_paper_files h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM project_workspace_revisions h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM review_requests h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM external_review_invitations h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM literature_corpora h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM research_contributions h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM project_contribution_proposals h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM allocation_periods h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM mentorship_requests h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM mentor_relationships h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM ai_runs h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM gap_analyses h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM review_templates h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM recruitment_openings h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM recruitment_applications h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM project_invitations h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM forum_post_projects h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM academic_featured_works h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM project_tasks h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM project_milestones h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM project_discussions h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM project_decisions h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM project_workspace_comments h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM plan_shares h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM plan_revisions h, target WHERE h.project_id = target.project_id AND h.version > 1
-          UNION ALL SELECT 1 FROM manuscript_attribution_checks h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM research_integrity_cases h, target WHERE h.project_id = target.project_id
-          UNION ALL SELECT 1 FROM research_evidence_events h, target WHERE h.project_id = target.project_id AND h.event_type NOT IN ('PROJECT_VISIBILITY_CHANGED','PROJECT_SECURITY_POLICY_CHANGED')
-        ) AS has_history
-      `;
-      if (history?.has_history) throw AppError.conflict("This project contains research or collaboration history. Archive it to preserve the records");
-      await tx.auditLog.create({ data: { userId: actor.id, actionName: "PROJECT_DELETED", targetTableName: "projects", targetRecordId: row.id, details: { emptyProject: true } } });
-      await tx.project.delete({ where: { id: row.id } });
+      const live = await tx.project.findUnique({ where: { id: row.id } });
+      if (!live) throw AppError.notFound("Project not found");
+      if (!live.deletedAt) {
+        throw AppError.conflict(`Move this project to Trash first. Deleted projects are retained for ${PROJECT_TRASH_RETENTION_DAYS} days before permanent removal`);
+      }
+      await assertActiveProjectAccount(tx, actor.id, false);
+      const now = new Date();
+      assertTrashedProjectActionAllowed(
+        live.ownerId === actor.id ? "OWNER" : undefined,
+        { deletedAt: live.deletedAt, purgeAt: live.purgeAt },
+        "PERMANENT_DELETE",
+        now,
+      );
+      await purgeProjectRecord(tx, row.id, actor.id, {
+        trigger: "OWNER_MANUAL_AFTER_RETENTION",
+        deletedAt: live.deletedAt.toISOString(),
+        purgeAt: (live.purgeAt ?? computeTrashPurgeDate(live.deletedAt)).toISOString(),
+      });
     });
+    return { deleted: true, permanentlyDeleted: true };
+  }
+
+  async purgeExpiredTrashedProjects(limit = 20) {
+    const db = getPrisma();
+    const now = new Date();
+    const expired = await db.project.findMany({
+      where: { deletedAt: { not: null }, purgeAt: { lte: now } },
+      select: { id: true, ownerId: true },
+      orderBy: [{ purgeAt: "asc" }, { id: "asc" }],
+      take: limit,
+    });
+    let purged = 0;
+    for (const item of expired) {
+      const done = await db.$transaction(async tx => {
+        await lockProjectAccounts(tx, [item.ownerId], item.id);
+        const live = await tx.project.findUnique({ where: { id: item.id } });
+        if (!live?.deletedAt || !live.purgeAt || live.purgeAt.getTime() > Date.now()) return false;
+        await purgeProjectRecord(tx, live.id, live.ownerId, {
+          trigger: "RETENTION_WORKER_AUTO_PURGE",
+          deletedAt: live.deletedAt.toISOString(),
+          purgeAt: live.purgeAt.toISOString(),
+        });
+        return true;
+      });
+      if (done) purged += 1;
+    }
+    return purged;
   }
 
   async addPaperToProject(projectId: string, paperId: string, userId: string, proposalReason = "") {
@@ -580,6 +711,9 @@ export class ProjectService {
     const emailInput = input.email?.trim().toLowerCase();
     const db = getPrisma();
     const linked = emailInput ? await db.userEmail.findUnique({ where: { normalizedEmail: emailInput } }) : null;
+    if (input.userId === actor.id || linked?.userId === actor.id || (emailInput && emailInput === actor.email.toLowerCase())) {
+      throw AppError.conflict("You cannot invite yourself to a project");
+    }
     const invited = input.userId ? await resolveUser(input.userId)
       : linked?.verifiedAt ? await db.user.findUnique({ where: { id: linked.userId } })
       : emailInput ? await db.user.findFirst({ where: { email: { equals: emailInput, mode: "insensitive" }, emailVerifiedAt: { not: null } } }) : null;
@@ -593,6 +727,7 @@ export class ProjectService {
         const emails = await verifiedEmailsForUser(invited.id, tx);
         if (!emails.includes(email)) throw AppError.conflict("The selected account no longer owns this verified email");
       }
+      if (invited?.id === actor.id || email === actor.email.toLowerCase()) throw AppError.conflict("You cannot invite yourself to a project");
       if (invited?.id === project.ownerId) throw AppError.conflict("This account already owns the project");
       if (invited && await tx.projectMember.findFirst({ where: { projectId: row.id, userId: invited.id, status: ACTIVE } })) throw AppError.conflict("This user is already a project member");
       const now = new Date();
@@ -671,7 +806,7 @@ export class ProjectService {
     const hasNext = invitations.length > pageSize;
     if (hasNext) invitations.pop();
     const [projects, inviters] = await Promise.all([
-      getPrisma().project.findMany({ where: { id: { in: invitations.map(i => i.projectId) }, status: { not: "ARCHIVED" } }, select: { id: true, legacyMongoId: true, title: true } }),
+      getPrisma().project.findMany({ where: { id: { in: invitations.map(i => i.projectId) }, status: { not: "ARCHIVED" }, deletedAt: null }, select: { id: true, legacyMongoId: true, title: true } }),
       getPrisma().user.findMany({ where: { id: { in: invitations.map(i => i.invitedById) } }, select: { id: true, fullName: true } }),
     ]);
     const byId = new Map(projects.map(p => [p.id, p])), inviterMap = new Map(inviters.map(u => [u.id, u]));
@@ -694,6 +829,7 @@ export class ProjectService {
       await lockProjectAccounts(tx, [actor.id], row.id);
       await assertActiveProjectAccount(tx, actor.id);
       const project = await tx.project.findUniqueOrThrow({ where: { id: row.id } });
+      if (project.deletedAt) throw AppError.notFound("Project not found");
       const invite = await tx.projectInvitation.findUnique({ where: { id: invitationId } });
       if (!invite || invite.projectId !== row.id || expectedTokenHash && invite.tokenHash !== expectedTokenHash) throw AppError.notFound("Invitation not found");
       if (!invitationBelongsToUser(invite, { id: actor.id, verifiedEmails: await verifiedEmailsForUser(actor.id, tx) })) throw AppError.forbidden("This invitation belongs to another verified account");

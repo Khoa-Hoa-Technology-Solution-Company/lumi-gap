@@ -16,7 +16,7 @@ export async function assertAcademicRelationshipManager(projectId: string, actor
   const actor = await db.user.findUnique({ where: { id: actorId } });
   if (!actor?.isActive || actor.accountStatus !== "ACTIVE" || !actor.emailVerifiedAt) throw AppError.forbidden("An active, email-verified project owner is required");
   const project = await db.project.findUnique({ where: { id: projectId } });
-  if (!project) throw AppError.notFound("Project not found");
+  if (!project || Boolean(project.deletedAt)) throw AppError.notFound("Project not found");
   if (!canManageAcademicRelationships(actorId, project)) throw AppError.forbidden("Only the project owner can manage academic relationships");
   if (project.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
   return project;

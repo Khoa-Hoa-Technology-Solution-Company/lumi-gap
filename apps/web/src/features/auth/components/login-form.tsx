@@ -21,6 +21,7 @@ import {
 import { PasswordInput } from "./password-input";
 import { authApi, loginSchema, resolvePostAuthPath, useLogin, type LoginFormValues } from "@/features/auth";
 import { storeAuthReturnTo } from "@/features/auth/utils/auth-return";
+import { consumePostLogoutProjectPath } from "@/features/projects/utils/project-workspace-navigation";
 import { useI18n } from "@/i18n";
 
 interface LoginFormProps {
@@ -59,7 +60,7 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
         const previousLocation = (location.state as LocationState | null)?.from;
         const requestedPath = previousLocation
           ? `${previousLocation.pathname}${previousLocation.search ?? ""}${previousLocation.hash ?? ""}`
-          : redirectTo;
+          : redirectTo ?? consumePostLogoutProjectPath(data.user.id);
         const target = resolvePostAuthPath(data.user, requestedPath);
         navigate(target, { state: { from: requestedPath }, replace: true });
       },

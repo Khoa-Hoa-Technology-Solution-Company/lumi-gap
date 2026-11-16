@@ -6,6 +6,7 @@ import { zipSync, strToU8 } from "fflate";
 import { manuscriptEvents } from "./manuscript-events.js";
 import { assertCanExportProjectSource, researchLedgerService } from "../audit/research-ledger.service.js";
 import { assertVerifiedAttributionForPublish } from "./manuscript-attribution.service.js";
+import { loadManuscriptGovernanceMap } from "./manuscript-governance.js";
 import type { CreateManuscript, ManuscriptSummary, ManuscriptDetail, ManuscriptFile, ManuscriptManifest, ManuscriptSnapshot, ManuscriptContext, ManuscriptComment, ManuscriptFeedbackSummary } from "@trend/shared-types";
 import { Prisma } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
@@ -13,6 +14,7 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, jsonSnapshot, workspacePeople, workspacePerson, workspaceEvent, workspaceRevision, assertWorkspaceLink, type WorkspaceContext } from "../projects/workspace-access.js";
 import { lockProjectAccounts, assertActiveProjectAccount } from "../projects/project-transaction.js";
 import { assertReviewerInTransaction } from "../reviews/peer-review-access.js";
+import { readableReviewAssignments } from "../reviews/mentor-review-access.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { hashBytes, sourceState, sourceDocument, sourceText, validateDocument, manuscriptPath, manuscriptTemplate, citationKey, bibtexEntry, MAX_CRDT_BYTES } from "./manuscript-source.js";
 import type { ManuscriptEngine, CreateManuscriptSnapshot, ManuscriptSyncQuery, ManuscriptSyncLocation } from "@trend/shared-types";
@@ -28,7 +30,7 @@ export { manuscriptEvents } from "./manuscript-events.js";
 export { compilerAvailability } from "./manuscript-compiler.js";
 const fileSelect = { id: true, path: true, kind: true, version: true, sequence: true, sizeBytes: true, mimeType: true, checksum: true, updatedAt: true } as const;
 function fileDto(row: Pick<File, keyof typeof fileSelect>): ManuscriptFile { return { ...row, kind: row.kind as ManuscriptFile["kind"], updatedAt: row.updatedAt.toISOString() }; }
-function draftDto(row: Draft, canWrite: boolean): ManuscriptSummary { return { id: row.id, projectId: row.projectId, title: row.name, description: row.description, documentType: row.documentType as ManuscriptSummary["documentType"], template: row.template as ManuscriptSummary["template"], version: row.version, mainFileId: row.mainFileId, archived: Boolean(row.archivedAt), createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), canWrite: canWrite && !row.archivedAt }; }
+function draftDto(row: Draft, canWrite: boolean): ManuscriptSummary { return { id: row.id, projectId: row.projectId, title: row.name, description: row.description, documentType: row.documentType as ManuscriptSummary["documentType"], template: row.template as ManuscriptSummary["template"], version: row.version, mainFileId: row.mainFileId, archived: Boolean(row.archivedAt), archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null, deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), canWrite: canWrite && !row.archivedAt && !row.deletedAt }; }
 async function manuscript(context: WorkspaceContext, id: string, write = false) {
   const row = await context.tx.draftWorkspace.findFirst({ where: { id, projectId: context.project.id, writingMode: "LATEX", deletedAt: null } });
   if (!row) throw AppError.notFound("Manuscript not found");
@@ -159,21 +161,167 @@ export const manuscriptService = {
     return withWorkspace(projectId, actorId, {}, async context => {
       const rows = await context.tx.draftWorkspace.findMany({ where: { projectId: context.project.id, writingMode: "LATEX", deletedAt: null }, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: 100 });
       const members = await context.tx.projectMember.findMany({ where: { projectId: context.project.id, status: "ACTIVE" }, select: { userId: true } });
-      const [people, feedback] = await Promise.all([workspacePeople(context.tx, [context.project.ownerId, ...members.map(m => m.userId)]), latestFeedback(context.tx, context.project.id)]);
-      return rows.map(row => ({ ...draftDto(row, context.project.status !== "ARCHIVED"), canDelete: context.project.status !== "ARCHIVED" && (context.role === "OWNER" || row.createdById === context.actorId), collaborators: [...people.values()], latestFeedback: feedback.get(row.id) ?? null }));
+      const [people, feedback, governanceMap] = await Promise.all([
+        workspacePeople(context.tx, [context.project.ownerId, ...members.map(m => m.userId)]),
+        latestFeedback(context.tx, context.project.id),
+        loadManuscriptGovernanceMap(context.tx, context.project, context.actorId, context.role, rows),
+      ]);
+      return rows.map(row => {
+        const evaluated = governanceMap.get(row.id);
+        return {
+          ...draftDto(row, context.project.status !== "ARCHIVED"),
+          canDelete: evaluated?.canDelete ?? false,
+          governance: evaluated?.governance,
+          collaborators: [...people.values()],
+          latestFeedback: feedback.get(row.id) ?? null,
+        };
+      });
     });
   },
-  async remove(projectId: string, actorId: string, id: string, expectedVersion: number) {
+  async listDeleted(projectId: string, actorId: string) {
+    return withWorkspace(projectId, actorId, {}, async context => {
+      const rows = await context.tx.draftWorkspace.findMany({
+        where: {
+          projectId: context.project.id,
+          writingMode: "LATEX",
+          deletedAt: { not: null },
+          ...(context.role === "OWNER" ? {} : { createdById: context.actorId }),
+        },
+        orderBy: [{ deletedAt: "desc" }, { id: "desc" }],
+        take: 100,
+      });
+      const [feedback, governanceMap] = await Promise.all([
+        latestFeedback(context.tx, context.project.id),
+        loadManuscriptGovernanceMap(context.tx, context.project, context.actorId, context.role, rows),
+      ]);
+      return rows.map(row => {
+        const evaluated = governanceMap.get(row.id);
+        return {
+          ...draftDto(row, false),
+          canDelete: false,
+          governance: evaluated?.governance,
+          collaborators: evaluated?.governance.contributors ?? [],
+          latestFeedback: feedback.get(row.id) ?? null,
+        };
+      });
+    });
+  },
+  async remove(projectId: string, actorId: string, id: string, expectedVersion: number, reason?: string) {
     const result = await withWorkspace(projectId, actorId, { write: true }, async context => {
       const row = await context.tx.draftWorkspace.findFirst({ where: { id, projectId: context.project.id, writingMode: "LATEX" } });
       if (!row) throw AppError.notFound("Manuscript not found");
-      if (context.role !== "OWNER" && row.createdById !== context.actorId) throw AppError.forbidden("Only the project owner or manuscript creator can delete this manuscript");
+      const evaluated = (await loadManuscriptGovernanceMap(context.tx, context.project, context.actorId, context.role, [row])).get(row.id);
+      const scope = evaluated?.governance.ownershipScope ?? "PERSONAL_DRAFT";
+      if (context.role !== "OWNER" && (row.createdById !== context.actorId || scope !== "PERSONAL_DRAFT")) {
+        throw AppError.forbidden("Only the creator or project owner can delete an unshared personal draft");
+      }
       if (row.deletedAt) return { id };
+      if (!evaluated?.canDelete) {
+        if (evaluated?.governance.deleteBlockedReason === "HAS_SUBMISSIONS_OR_REVIEWS") {
+          throw AppError.conflict("Manuscripts submitted for review or publication must preserve their academic history and cannot be deleted directly. Archive instead.");
+        }
+        throw AppError.conflict("Collaborative manuscripts cannot be deleted unilaterally without co-author approval. Archive instead.");
+      }
       expected(row.version, expectedVersion);
       const removed = await context.tx.draftWorkspace.update({ where: { id }, data: { deletedAt: new Date(), version: { increment: 1 } } });
       await workspaceRevision(context, "MANUSCRIPT", removed);
-      await workspaceEvent(context, "MANUSCRIPT_DELETED", "MANUSCRIPT", id, { version: removed.version });
+      await workspaceEvent(context, "MANUSCRIPT_DELETED", "MANUSCRIPT", id, { version: removed.version, ownershipScope: scope, ...(reason ? { reason } : {}) });
+      await researchLedgerService.record({
+        tx: context.tx,
+        projectId: context.project.id,
+        actorId,
+        eventType: "MANUSCRIPT_SOFT_DELETED",
+        resourceKind: "MANUSCRIPT",
+        resourceId: id,
+        artifactVersion: String(removed.version),
+        reason: reason ?? null,
+        visibility: "PROJECT_TEAM",
+        retentionClass: "RESEARCH_EVIDENCE",
+        metadata: {
+          manuscriptId: id,
+          title: row.name,
+          ownershipScope: scope,
+          remotePreserved: Boolean(evaluated.governance.remoteBinding),
+        },
+      });
       return { id };
+    });
+    notifyChange(projectId, id);
+    return result;
+  },
+  async restoreDeleted(projectId: string, actorId: string, id: string, expectedVersion: number, reason?: string) {
+    const result = await withWorkspace(projectId, actorId, { write: true }, async context => {
+      const row = await context.tx.draftWorkspace.findFirst({ where: { id, projectId: context.project.id, writingMode: "LATEX" } });
+      if (!row) throw AppError.notFound("Manuscript not found");
+      const evaluated = (await loadManuscriptGovernanceMap(context.tx, context.project, context.actorId, context.role, [row])).get(row.id);
+      const scope = evaluated?.governance.ownershipScope ?? "PERSONAL_DRAFT";
+      const authorized = scope === "PERSONAL_DRAFT" ? (context.role === "OWNER" || row.createdById === context.actorId) : context.role === "OWNER";
+      if (!authorized) throw AppError.forbidden("You do not have permission to restore this manuscript");
+      if (!row.deletedAt) {
+        return { ...draftDto(row, context.project.status !== "ARCHIVED"), canDelete: evaluated?.canDelete ?? false, governance: evaluated?.governance };
+      }
+      if (await context.tx.draftWorkspace.count({ where: { projectId: context.project.id, writingMode: "LATEX", deletedAt: null } }) >= 100) {
+        throw AppError.badRequest("Project manuscript limit reached");
+      }
+      expected(row.version, expectedVersion);
+      const restored = await context.tx.draftWorkspace.update({ where: { id }, data: { deletedAt: null, version: { increment: 1 } } });
+      await workspaceRevision(context, "MANUSCRIPT", restored);
+      await workspaceEvent(context, "MANUSCRIPT_RESTORED", "MANUSCRIPT", id, { version: restored.version, ...(reason ? { reason } : {}) });
+      await researchLedgerService.record({
+        tx: context.tx,
+        projectId: context.project.id,
+        actorId,
+        eventType: "MANUSCRIPT_RESTORED_FROM_TRASH",
+        resourceKind: "MANUSCRIPT",
+        resourceId: id,
+        artifactVersion: String(restored.version),
+        reason: reason ?? null,
+        visibility: "PROJECT_TEAM",
+        retentionClass: "RESEARCH_EVIDENCE",
+        metadata: { manuscriptId: id, title: row.name, ownershipScope: scope },
+      });
+      const updatedGovernance = (await loadManuscriptGovernanceMap(context.tx, context.project, context.actorId, context.role, [restored])).get(restored.id);
+      return { ...draftDto(restored, context.project.status !== "ARCHIVED"), canDelete: updatedGovernance?.canDelete ?? false, governance: updatedGovernance?.governance };
+    });
+    notifyChange(projectId, id);
+    return result;
+  },
+  async setArchived(projectId: string, actorId: string, id: string, expectedVersion: number, archived: boolean, reason?: string) {
+    const result = await withWorkspace(projectId, actorId, { write: true }, async context => {
+      const row = await context.tx.draftWorkspace.findFirst({ where: { id, projectId: context.project.id, writingMode: "LATEX", deletedAt: null } });
+      if (!row) throw AppError.notFound("Manuscript not found");
+      const evaluated = (await loadManuscriptGovernanceMap(context.tx, context.project, context.actorId, context.role, [row])).get(row.id);
+      const scope = evaluated?.governance.ownershipScope ?? "PERSONAL_DRAFT";
+      const authorized = scope === "PERSONAL_DRAFT" ? (context.role === "OWNER" || row.createdById === context.actorId) : context.role === "OWNER";
+      if (!authorized) throw AppError.forbidden("Only the project owner can archive or unarchive shared manuscripts");
+      if (Boolean(row.archivedAt) === archived) {
+        return { ...draftDto(row, context.project.status !== "ARCHIVED"), canDelete: evaluated?.canDelete ?? false, governance: evaluated?.governance };
+      }
+      expected(row.version, expectedVersion);
+      const updated = await context.tx.draftWorkspace.update({ where: { id }, data: { archivedAt: archived ? new Date() : null, version: { increment: 1 } } });
+      await workspaceRevision(context, "MANUSCRIPT", updated);
+      const eventType = archived ? "MANUSCRIPT_ARCHIVED" : "MANUSCRIPT_UNARCHIVED";
+      await workspaceEvent(context, eventType, "MANUSCRIPT", id, { version: updated.version, ownershipScope: scope, ...(reason ? { reason } : {}) });
+      await researchLedgerService.record({
+        tx: context.tx,
+        projectId: context.project.id,
+        actorId,
+        eventType,
+        resourceKind: "MANUSCRIPT",
+        resourceId: id,
+        artifactVersion: String(updated.version),
+        reason: reason ?? null,
+        visibility: "PROJECT_TEAM",
+        retentionClass: "RESEARCH_EVIDENCE",
+        metadata: {
+          manuscriptId: id,
+          title: row.name,
+          ownershipScope: scope,
+          remotePreserved: Boolean(evaluated?.governance.remoteBinding),
+        },
+      });
+      const updatedGovernance = (await loadManuscriptGovernanceMap(context.tx, context.project, context.actorId, context.role, [updated])).get(updated.id);
+      return { ...draftDto(updated, context.project.status !== "ARCHIVED"), canDelete: updatedGovernance?.canDelete ?? false, governance: updatedGovernance?.governance };
     });
     notifyChange(projectId, id);
     return result;
@@ -211,8 +359,13 @@ export const manuscriptService = {
         row.compilerEngine ??= last?.toolchain?.match(/^(pdflatex|xelatex|lualatex)/)?.[1] ?? null; row.compilerRelease ??= last?.texLiveVersion ?? null;
       }
       const [files, members] = await Promise.all([context.tx.manuscriptFile.findMany({ where: { workspaceId: id, deletedAt: null }, select: fileSelect, orderBy: { path: "asc" } }), context.tx.projectMember.findMany({ where: { projectId: context.project.id, status: "ACTIVE" }, select: { userId: true } })]);
-      const [people, feedback] = await Promise.all([workspacePeople(context.tx, [context.project.ownerId, ...members.map(m => m.userId)]), latestFeedback(context.tx, context.project.id, id)]);
-      return { ...draftDto(row, context.project.status !== "ARCHIVED"), canManageGithub: context.role === "OWNER" && context.project.status !== "ARCHIVED" && !row.archivedAt, files: files.map(fileDto), collaborators: [...people.values()], latestFeedback: feedback.get(id) ?? null, compiler: compilerAvailability, compilerSettings: { engine: (row.compilerEngine ?? "pdflatex") as ManuscriptEngine, texLiveVersion: (row.compilerRelease ?? "2022") as import("@trend/shared-types").ManuscriptTexLive, revision: row.compilerRevision } };
+      const [people, feedback, governanceMap] = await Promise.all([
+        workspacePeople(context.tx, [context.project.ownerId, ...members.map(m => m.userId)]),
+        latestFeedback(context.tx, context.project.id, id),
+        loadManuscriptGovernanceMap(context.tx, context.project, context.actorId, context.role, [row]),
+      ]);
+      const evaluated = governanceMap.get(row.id);
+      return { ...draftDto(row, context.project.status !== "ARCHIVED"), canDelete: evaluated?.canDelete ?? false, governance: evaluated?.governance, canManageGithub: context.role === "OWNER" && context.project.status !== "ARCHIVED" && !row.archivedAt, files: files.map(fileDto), collaborators: [...people.values()], latestFeedback: feedback.get(id) ?? null, compiler: compilerAvailability, compilerSettings: { engine: (row.compilerEngine ?? "pdflatex") as ManuscriptEngine, texLiveVersion: (row.compilerRelease ?? "2022") as import("@trend/shared-types").ManuscriptTexLive, revision: row.compilerRevision } };
     });
   },
   async compilerSettings(projectId: string, actorId: string, id: string, input: { engine: ManuscriptEngine; texLiveVersion: import("@trend/shared-types").ManuscriptTexLive; expectedRevision: number }) {
@@ -679,8 +832,11 @@ async function withSnapshot<T>(projectId: string, actorId: string, id: string, s
       // Mentor consent never grants source/ZIP/assets or a whole snapshot.
       // Approved sections are served only by mentor-access, as published text.
       if (!mentorRelationshipId) {
-        const revisions = await tx.submissionRevision.findMany({ where: { manuscriptSnapshotId: snapshotId }, select: { id: true } });
-        reviewer = Boolean(await tx.reviewerAssignment.findFirst({ where: { reviewerId: actorId, artifactRevisionId: { in: revisions.map(r => r.id) }, status: { in: ["accepted", "in_review", "completed"] } } }));
+        const revisions = await tx.submissionRevision.findMany({ where: { manuscriptSnapshotId: snapshotId }, select: { id: true, submissionId: true } });
+        for (const revision of revisions) {
+          const assignments = await readableReviewAssignments(tx, revision.submissionId, actorId);
+          if (assignments.some(assignment => assignment.artifactRevisionId === revision.id)) { reviewer = true; break; }
+        }
         if (reviewer) await assertReviewerInTransaction(tx, actorId);
       }
       if (!mentorRelationshipId && !reviewer) throw AppError.notFound("Snapshot not found");

@@ -140,12 +140,13 @@
 .mentor-workspace-tabs {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 4px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: hsl(var(--muted) / 0.6);
   border: 1px solid hsl(var(--border) / 0.6);
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 .mentor-workspace-tabs > button {
   display: inline-flex;
@@ -190,26 +191,8 @@
 }
 
 /* ==========================================================================
-   Mentor Discovery Hub - Compact, Sleek, Intelligent Search Surface
+   Mentor Discovery Hub
    ========================================================================== */
-.mentor-discovery-hub {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 18px 14px;
-  margin-bottom: 20px;
-  border: 1px solid hsl(var(--border) / 0.85);
-  border-radius: 12px;
-  background: hsl(var(--card));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-}
-
-:root.dark .mentor-discovery-hub {
-  background: hsl(var(--card));
-  border-color: hsl(var(--border));
-}
-
 .mentor-discovery-hub {
   position: relative;
   display: flex;
@@ -221,6 +204,11 @@
   border-radius: 12px;
   background: hsl(var(--card));
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+:root.dark .mentor-discovery-hub {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
 }
 
 .mentor-hub-compact-header {

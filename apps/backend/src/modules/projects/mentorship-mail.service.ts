@@ -6,7 +6,8 @@ import { env } from "../../config/env.js";
 import { logger } from "../../infrastructure/logger.js";
 
 const events = ["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED", "MENTORSHIP_REQUEST_ACCEPTED", "MENTORSHIP_OFFER_ACCEPTED",
-  "MENTORSHIP_REQUEST_DECLINED", "MENTORSHIP_OFFER_DECLINED", "MENTORSHIP_CANCELLED", "MENTORSHIP_EXPIRED", "MENTORSHIP_ENDED", "MENTORSHIP_SUGGESTED", "MENTORSHIP_POSITION_FILLED"] as const;
+  "MENTORSHIP_REQUEST_DECLINED", "MENTORSHIP_OFFER_DECLINED", "MENTORSHIP_INFO_REQUESTED", "MENTORSHIP_CANCELLED", "MENTORSHIP_EXPIRED", "MENTORSHIP_ENDED",
+  "MENTORSHIP_SUGGESTED", "MENTORSHIP_SUGGESTION_PLANNED", "MENTORSHIP_SUGGESTION_INVITED", "MENTORSHIP_SUGGESTION_DISMISSED", "MENTORSHIP_POSITION_FILLED"] as const;
 const payloadSchema = z.object({ event: z.enum(events), projectId: z.string().uuid(), projectTitle: z.string().max(100), actorName: z.string().max(200), requestId: z.string().uuid().optional() }).strict();
 
 export function buildMentorshipMail(payload: MentorshipEmailPayload, name: string, locale: "en" | "vi", origin: string) {
@@ -14,12 +15,16 @@ export function buildMentorshipMail(payload: MentorshipEmailPayload, name: strin
   const subjects: Record<MentorshipEvent, [string, string]> = {
     MENTORSHIP_POSITION_FILLED: [`Mentor position assigned for ${project}`, `Vị trí mentor của ${project} đã có người nhận`],
     MENTORSHIP_SUGGESTED: [`A teammate suggested a mentor for ${project}`, `Thành viên đề xuất cố vấn cho ${project}`],
+    MENTORSHIP_SUGGESTION_PLANNED: [`Suggested mentor added to recruitment plan for ${project}`, `Đề xuất cố vấn đã được đưa vào kế hoạch mời cho ${project}`],
+    MENTORSHIP_SUGGESTION_INVITED: [`Official invitation sent for your suggested mentor in ${project}`, `Chủ dự án đã gửi lời mời chính thức cho đề xuất của bạn trong ${project}`],
+    MENTORSHIP_SUGGESTION_DISMISSED: [`Update on your mentor suggestion for ${project}`, `Cập nhật đề xuất cố vấn cho ${project}`],
     MENTORSHIP_REQUEST_RECEIVED: [`${actor} invited you to mentor ${project}`, `${actor} mời bạn hướng dẫn ${project}`],
     MENTORSHIP_OFFER_RECEIVED: [`${actor} offered to mentor ${project}`, `${actor} đề nghị hướng dẫn ${project}`],
     MENTORSHIP_REQUEST_ACCEPTED: [`${actor} accepted your mentorship request`, `${actor} đã chấp nhận lời mời hướng dẫn`],
     MENTORSHIP_OFFER_ACCEPTED: [`${project} accepted your mentorship offer`, `${project} đã chấp nhận đề nghị hướng dẫn`],
     MENTORSHIP_REQUEST_DECLINED: [`Update on your mentorship request for ${project}`, `Cập nhật lời mời hướng dẫn ${project}`],
     MENTORSHIP_OFFER_DECLINED: [`Update on your mentorship offer for ${project}`, `Cập nhật đề nghị hướng dẫn ${project}`],
+    MENTORSHIP_INFO_REQUESTED: [`${actor} requested more information for ${project}`, `${actor} yêu cầu làm rõ thông tin cho ${project}`],
     MENTORSHIP_CANCELLED: [`Mentorship request closed for ${project}`, `Lời mời hướng dẫn ${project} đã đóng`],
     MENTORSHIP_EXPIRED: [`Mentorship request expired for ${project}`, `Lời mời hướng dẫn ${project} đã hết hạn`],
     MENTORSHIP_ENDED: [`Mentorship ended for ${project}`, `Đã kết thúc hướng dẫn ${project}`],
@@ -27,12 +32,19 @@ export function buildMentorshipMail(payload: MentorshipEmailPayload, name: strin
   const messages: Record<MentorshipEvent, [string, string]> = {
     MENTORSHIP_POSITION_FILLED: ["This mentor position was assigned to another lecturer. Your invitation was closed automatically, not declined.", "Vị trí đã được phân công cho giảng viên khác. Lời mời tự động đóng, không được ghi nhận là từ chối."],
     MENTORSHIP_SUGGESTED: ["Review the suggested lecturer in Academic Support.", "Xem giảng viên được đề xuất trong Hỗ trợ học thuật."],
-    MENTORSHIP_REQUEST_RECEIVED: [`${actor} invited you to become the academic mentor for “${project}” on LumiGap. Review the shared preview and choose whether to accept.`, `${actor} mời bạn làm mentor học thuật cho “${project}” trên LumiGap. Xem tóm tắt được chia sẻ và quyết định chấp nhận hoặc từ chối.`],
+    MENTORSHIP_SUGGESTION_PLANNED: ["Your suggested lecturer was added to the project's private recruitment plan. No invitation has been sent to the lecturer yet.", "Giảng viên bạn đề xuất đã được đưa vào kế hoạch mời nội bộ. Giảng viên chưa nhận được lời mời chính thức."],
+    MENTORSHIP_SUGGESTION_INVITED: ["The project owner sent an official mentorship invitation to the lecturer you suggested.", "Chủ dự án đã gửi lời mời chính thức đến giảng viên bạn đề xuất."],
+    MENTORSHIP_SUGGESTION_DISMISSED: ["The project owner dismissed your internal mentor suggestion.", "Chủ dự án đã bỏ qua đề xuất cố vấn nội bộ của bạn."],
+    MENTORSHIP_REQUEST_RECEIVED: [
+      `${actor} invited you to become the academic mentor for “${project}” on LumiGap. Review the Research Mentorship Invitation Dossier (project overview, student profile, competencies, expectations, and proposed permissions) before deciding.`,
+      `${actor} mời bạn làm cố vấn học thuật cho “${project}” trên LumiGap. Vui lòng xem Hồ sơ mời hướng dẫn nghiên cứu (thông tin đề tài, đại diện nhóm, năng lực, kỳ vọng và quyền truy cập đề xuất) trước khi quyết định.`,
+    ],
     MENTORSHIP_OFFER_RECEIVED: [`${actor} offered to mentor “${project}”. Review the lecturer's profile before deciding.`, `${actor} đề nghị hướng dẫn “${project}”. Xem hồ sơ giảng viên trước khi quyết định.`],
     MENTORSHIP_REQUEST_ACCEPTED: [`${actor} accepted the invitation to mentor “${project}”. The mentor now has scoped read and feedback access.`, `${actor} đã nhận lời hướng dẫn “${project}”. Mentor có quyền đọc và góp ý trong phạm vi project.`],
     MENTORSHIP_OFFER_ACCEPTED: [`The team behind “${project}” accepted your offer. You can now open its mentoring workspace.`, `Nhóm của “${project}” đã chấp nhận đề nghị. Bạn có thể mở không gian hướng dẫn của project.`],
     MENTORSHIP_REQUEST_DECLINED: [`The invitation for “${project}” was declined. You may continue searching for another available mentor.`, `Lời mời hướng dẫn “${project}” đã được từ chối. Bạn có thể tìm mentor khác đang nhận nhóm mới.`],
     MENTORSHIP_OFFER_DECLINED: [`The team decided not to proceed with the offer for “${project}” at this time. No further action is required.`, `Nhóm chưa tiếp tục với đề nghị hướng dẫn “${project}” vào lúc này. Bạn không cần thực hiện thêm thao tác.`],
+    MENTORSHIP_INFO_REQUESTED: [`${actor} asked your team to clarify the abstract, methodology, or scope for “${project}” before deciding.`, `${actor} đề nghị nhóm làm rõ thêm Abstract, phương pháp hoặc phạm vi đề tài “${project}” trước khi quyết định.`],
     MENTORSHIP_CANCELLED: [`The request for “${project}” is closed. Review Academic Support for the current status.`, `Lời mời hướng dẫn “${project}” đã đóng. Xem Hỗ trợ học thuật để biết trạng thái hiện tại.`],
     MENTORSHIP_EXPIRED: [`The pending request for “${project}” has expired.`, `Lời mời hướng dẫn “${project}” đã hết hạn.`],
     MENTORSHIP_ENDED: [`The mentorship for “${project}” has ended. Mentor access is no longer active; previous guidance remains in project history.`, `Quan hệ hướng dẫn “${project}” đã kết thúc. Quyền mentor đã được thu hồi; góp ý trước đây vẫn được giữ trong lịch sử project.`],
@@ -42,11 +54,15 @@ export function buildMentorshipMail(payload: MentorshipEmailPayload, name: strin
   if (["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED"].includes(payload.event)) {
     url.searchParams.set("view", "incoming");
     if (payload.requestId) { url.searchParams.set("invitationProjectId", payload.projectId); url.searchParams.set("requestId", payload.requestId); }
-  } else if (payload.event.endsWith("_ACCEPTED")) url.searchParams.set("view", "active");
-  else if (payload.event === "MENTORSHIP_SUGGESTED") { url.pathname = `/projects/${encodeURIComponent(payload.projectId)}`; url.searchParams.set("tab", "support"); }
+  } else if (payload.event === "MENTORSHIP_INFO_REQUESTED" || payload.event === "MENTORSHIP_SUGGESTED") { url.pathname = `/projects/${encodeURIComponent(payload.projectId)}`; url.searchParams.set("tab", "support"); }
+  else if (payload.event.endsWith("_ACCEPTED")) url.searchParams.set("view", "active");
   else url.searchParams.set("view", "history");
   return { subject, ...buildBrandedMail({ locale, subject, greeting: locale === "vi" ? `Xin chào ${name},` : `Hi ${name},`,
-    paragraphs: [messages[payload.event][index]], cta: locale === "vi" ? "Mở Hỗ trợ học thuật" : "Open Academic Support", url: url.toString() }) };
+    paragraphs: [messages[payload.event][index]],
+    cta: payload.event === "MENTORSHIP_REQUEST_RECEIVED"
+      ? (locale === "vi" ? "Xem hồ sơ mời hướng dẫn" : "Review Invitation Dossier")
+      : (locale === "vi" ? "Mở Hỗ trợ học thuật" : "Open Academic Support"),
+    url: url.toString() }) };
 }
 
 export async function deliverMentorshipEmail(notificationId: string) {

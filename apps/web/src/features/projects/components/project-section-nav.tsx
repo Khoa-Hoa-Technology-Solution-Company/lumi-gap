@@ -14,7 +14,7 @@ export const projectSections: Array<{
   { key: "overview", label: "Overview", group: "Workspace", icon: LayoutDashboard, iconColor: "text-blue-500" },
   { key: "papers", label: "Literature", group: "Research", icon: BookOpen, iconColor: "text-indigo-500" },
   { key: "gaps", label: "Research Gaps", group: "Research", icon: Compass, iconColor: "text-amber-500" },
-  { key: "tasks", label: "Tasks & milestones", group: "Collaboration", icon: ListChecks, iconColor: "text-emerald-500" },
+  { key: "tasks", label: "Team tasks", group: "Collaboration", icon: ListChecks, iconColor: "text-emerald-500" },
   { key: "chat", label: "Team Chat", group: "Collaboration", icon: MessageSquare, iconColor: "text-cyan-500" },
   { key: "support", label: "Find Mentors", group: "Collaboration", icon: GraduationCap, iconColor: "text-purple-500" },
   { key: "manuscripts", label: "Manuscripts", group: "Writing & review", icon: FileText, iconColor: "text-indigo-500" },

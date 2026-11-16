@@ -3,6 +3,7 @@ import { z } from "zod";
 import { databaseIdSchema } from "../../common/validation/database-id.js";
 import { projectMentorshipService } from "./project-mentorship.service.js";
 import { mentorPolicySchema } from "./dto/mentor-access.schema.js";
+import { invitationDossierInputSchema } from "./mentorship-dossier.js";
 
 export const mentorshipParamsSchema = z.object({
   id: databaseIdSchema,
@@ -19,10 +20,26 @@ const requestBody = z.object({
   expectedPreviewToken: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   candidateId: z.string().uuid().optional(),
   expectedPlanVersion: z.number().int().positive().optional(),
+  dossier: invitationDossierInputSchema.optional(),
 }).strict();
 const hasContent = (input: { message: string; attachmentIds: string[] }) => Boolean(input.message || input.attachmentIds.length);
 export const requestMentorshipSchema = requestBody.refine(hasContent, "Add a message or an attachment to your invitation");
+export const previewDossierSchema = z.object({
+  mentorUserId: databaseIdSchema,
+  message: z.string().trim().max(1000).default(""),
+  mentorRole: z.enum(["PRIMARY", "SECONDARY"]).default("PRIMARY"),
+  access: mentorPolicySchema.optional(),
+  dossier: invitationDossierInputSchema.optional(),
+}).strict();
 export const suggestMentorSchema = z.object({ mentorUserId: databaseIdSchema, message: z.string().trim().min(1).max(1000) }).strict();
+export const mentorSuggestionsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(30).default(10),
+  scope: z.enum(["pending", "all", "mine", "history"]).default("pending"),
+}).strict();
+export const dismissMentorSuggestionSchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+}).strict();
 
 export const academicSearchSchema = z.object({
   q: z.string().trim().max(160).optional(),
@@ -33,7 +50,7 @@ export const academicSearchSchema = z.object({
   position: z.string().trim().max(160).optional(),
   view: z.enum(["all", "incoming", "outgoing", "active", "history"]).optional(),
 }).strict();
-export const mentorshipOfferSchema = requestBody.omit({ mentorUserId: true, access: true, candidateId: true, expectedPlanVersion: true }).refine(hasContent, "Add a message or an attachment to your invitation");
+export const mentorshipOfferSchema = requestBody.omit({ mentorUserId: true, access: true, candidateId: true, expectedPlanVersion: true, dossier: true }).refine(hasContent, "Add a message or an attachment to your invitation");
 
 export const respondMentorshipSchema = z.object({
   note: z.string().trim().max(1000).optional(),
@@ -41,9 +58,18 @@ export const respondMentorshipSchema = z.object({
   expectedPreviewToken: z.string().regex(/^[a-f0-9]{64}$/).optional(),
 }).strict();
 
+export const requestMentorshipInfoSchema = z.object({
+  note: z.string().trim().min(5).max(1000),
+}).strict();
+
 export const projectMentorshipController = {
   async detail(req: Request, res: Response) {
     const data = await projectMentorshipService.requestDetail(req.params.id as string, req.params.relationshipId as string, req.user!.sub);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ success: true, data });
+  },
+  async previewDossier(req: Request, res: Response) {
+    const data = await projectMentorshipService.previewDossier(req.params.id as string, req.user!.sub, req.body);
     res.setHeader("Cache-Control", "private, no-store");
     res.json({ success: true, data });
   },
@@ -71,6 +97,16 @@ export const projectMentorshipController = {
 
   async decline(req: Request, res: Response) {
     const data = await projectMentorshipService.decline(
+      req.params.id as string,
+      req.params.relationshipId as string,
+      req.user!.sub,
+      req.body.note,
+    );
+    res.json({ success: true, data });
+  },
+
+  async requestInfo(req: Request, res: Response) {
+    const data = await projectMentorshipService.requestInfo(
       req.params.id as string,
       req.params.relationshipId as string,
       req.user!.sub,

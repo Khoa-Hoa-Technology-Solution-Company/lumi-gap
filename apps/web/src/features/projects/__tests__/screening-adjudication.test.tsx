@@ -207,16 +207,16 @@ it("requires renewed sharing approval when the owner changes the selected discus
   expect(mocks.action).toHaveBeenCalledWith("p", "r", "finalizer", expect.objectContaining({ discussionIds: ["c1"], shareWithMentor: true }));
 });
 
-it("V5 requires proposer consent, supports further information, and resets consent after editing", async () => {
+it("supports further information and submits proposer agreement directly without redundant proposer checkbox", async () => {
   const round = { ...agreementRound, settings: { ...agreementRound.settings, workflowVersion: 5 }, agreement: null };
   await render(<ScreeningAgreementPanel projectId="p" round={round} readOnly={false} />);
+  expect(container.textContent).not.toContain("Tôi đồng ý với kết luận và lý do đề xuất này.");
   await reason("Both reviewers need additional information before a decision");
   const select = container.querySelector("select")!;
   await act(async () => { select.value = "NEEDS_MORE_INFO"; select.dispatchEvent(new Event("change", { bubbles: true })); }); await settle();
   const send = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Gửi đề xuất cho reviewer xác nhận")!;
-  expect(send.disabled).toBe(true); await confirm(); expect(send.disabled).toBe(false);
-  await reason("Updated proposal needs a new explicit consent from the author"); expect(send.disabled).toBe(true);
-  await confirm(); await click("Gửi đề xuất cho reviewer xác nhận");
+  expect(send.disabled).toBe(false);
+  await click("Gửi đề xuất cho reviewer xác nhận");
   expect(mocks.proposeAgreement).toHaveBeenCalledWith("p", "r", expect.objectContaining({ decision: "NEEDS_MORE_INFO", confirmed: true, expectedVersion: 8 }));
 });
 it("the other reviewer can continue discussion and cannot decline a stale proposal", async () => {

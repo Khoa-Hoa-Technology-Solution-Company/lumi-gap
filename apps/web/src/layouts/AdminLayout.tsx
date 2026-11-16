@@ -4,7 +4,8 @@ import {
   LayoutDashboard, Users, BadgeCheck, FileText, RefreshCw,
   Activity, CheckCircle, MessageSquare, Cpu, ClipboardCheck, History,
   Server, Settings, ShieldAlert, ChevronRight, Menu, X, ExternalLink,
-  LogOut, User, ArrowLeft, ShieldCheck, Network, Tags, Tag
+  LogOut, User, ArrowLeft, ShieldCheck, Network, Tags, Tag,
+  GraduationCap, FolderOpen
 } from "lucide-react";
 import logoImage from "@/assets/logo.png";
 import { useCurrentUser, useLogout } from "@/features/auth";
@@ -108,6 +109,13 @@ export function AdminLayout() {
       items: [
         { to: "/admin/ai-jobs", label: "AI Jobs & Analysis", icon: Cpu },
         { to: "/admin/evaluation", label: "Quality Evaluation", icon: ClipboardCheck },
+      ],
+    },
+    {
+      title: "Workspaces",
+      items: [
+        { to: "/mentor-workspace", label: "mentorWorkspace.title", icon: GraduationCap },
+        { to: "/projects", label: "Research workspace", icon: FolderOpen },
       ],
     },
     {

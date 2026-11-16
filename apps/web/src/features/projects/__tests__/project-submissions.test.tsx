@@ -9,7 +9,7 @@ import { SubmissionDetailPage } from "@/pages/submissions/submission-detail";
 import { ProjectSubmissionsPanel } from "../components/project-submissions-panel";
 const createVersion = vi.hoisted(() => vi.fn());
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), detail: vi.fn(), projects: vi.fn(), project: vi.fn(), create: vi.fn(), historyQuery: vi.fn(), preReviews: vi.fn(), addRevision: vi.fn(), user: { systemRole: "USER", emailVerifiedAt: "2026-10-01" }, history: { canManage: true, canRequestReview: true, canRunAiPreReview: true, currentRevisionNumber: 2, reviewRequests: [] as Array<{ id: string; reviewerName: string; status: string; revisionNumber: number; dueAt: string | null; canView: boolean }>, revisions: [] } }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), detail: vi.fn(), projects: vi.fn(), project: vi.fn(), create: vi.fn(), historyQuery: vi.fn(), preReviews: vi.fn(), addRevision: vi.fn(), activeMentors: vi.fn(), user: { systemRole: "USER", emailVerifiedAt: "2026-10-01" }, history: { canManage: true, canRequestReview: true, canRunAiPreReview: true, currentRevisionNumber: 2, reviewRequests: [] as Array<{ id: string; reviewerName: string; status: string; revisionNumber: number; dueAt: string | null; canView: boolean }>, revisions: [] } }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key, language: "en" }) }));
 vi.mock("@/features/auth", () => ({ useCurrentUser: () => ({ data: { user: mocks.user }, isLoading: false }) }));
 vi.mock("@/features/submissions", () => ({
@@ -17,7 +17,7 @@ vi.mock("@/features/submissions", () => ({
   useCreateSubmission: () => ({ mutateAsync: mocks.create, isPending: false }),
   useSubmissionHistory: mocks.historyQuery,
   useCreateSubmissionVersion: () => ({ mutateAsync: createVersion, isPending: false }),
-  useAddSubmissionRevision: () => ({ mutateAsync: mocks.addRevision, isPending: false }), useSubmitFeedback: () => ({ mutateAsync: vi.fn(), isPending: false }), useActiveMentors: () => ({ data: [], isLoading: false }), useAiPreReviews: mocks.preReviews, useRunAiPreReview: () => ({}),
+  useAddSubmissionRevision: () => ({ mutateAsync: mocks.addRevision, isPending: false }), useSubmitFeedback: () => ({ mutateAsync: vi.fn(), isPending: false }), useActiveMentors: mocks.activeMentors, useAiPreReviews: mocks.preReviews, useRunAiPreReview: () => ({}),
 }));
 vi.mock("@/features/projects/hooks/use-projects", () => ({ useProjects: mocks.projects, useProject: mocks.project }));
 vi.mock("@/features/submissions/components/version-history", () => ({ VersionHistory: ({ readOnly }: { readOnly: boolean }) => <div data-readonly={readOnly}>Version history</div> }));
@@ -37,6 +37,7 @@ beforeEach(() => {
   mocks.project.mockReturnValue({ data: { _id: "project-a", title: "Current research", researchField: "Education" } });
   mocks.detail.mockReturnValue({ data: { _id: "manuscript", title: "Project paper", status: "submitted", researchQuestions: [] } });
   mocks.create.mockResolvedValue({ submission: { _id: "new-paper" } });
+  mocks.activeMentors.mockReturnValue({ data: [], isLoading: false });
   Object.assign(mocks.history, { canManage: true, canRequestReview: true, canRunAiPreReview: true, reviewRequests: [] });
   mocks.historyQuery.mockReturnValue({ data: mocks.history });
   mocks.preReviews.mockReturnValue({ data: [] });
@@ -256,6 +257,29 @@ it("lets the author edit or clear automatic defaults without a background refres
   await chooseFile();
   await submitForm();
   expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it("blocks submission until a lecturer is chosen when the project has active mentors", async () => {
+  mocks.activeMentors.mockReturnValue({
+    data: [{ id: "mentor-1", fullName: "TS. Nguyễn Văn A", mentorRole: "PRIMARY" }],
+    isLoading: false,
+  });
+  await render(<SubmissionNewPage projectId="project-a" projectTitle="Current research" />);
+  await chooseFile();
+  const submitButton = container.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  expect(submitButton.disabled).toBe(true);
+  await submitForm();
+  expect(mocks.create).not.toHaveBeenCalled();
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain("Vui lòng chọn giảng viên hướng dẫn");
+
+  const select = container.querySelector<HTMLSelectElement>('select[aria-label="Giảng viên hướng dẫn nhận bản thảo"]')!;
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(select, "mentor-1");
+  await act(async () => select.dispatchEvent(new Event("change", { bubbles: true })));
+  expect(submitButton.disabled).toBe(false);
+  await submitForm();
+  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
+    input: expect.objectContaining({ projectId: "project-a", mentorId: "mentor-1" }),
+  }));
 });
 it("uses the selected submission ID instead of the project's route ID and returns to its list", async () => {
   await render(<SubmissionDetailPage submissionId="manuscript" projectId="project-a" />);

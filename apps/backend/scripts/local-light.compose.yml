@@ -1,0 +1,6 @@
+# Optional compiler ports for the native API/worker. Preserve compiler isolation.
+services:
+  manuscript-compiler:
+    ports: ["127.0.0.1:8020:8020"]
+  manuscript-compiler-2025:
+    ports: ["127.0.0.1:8025:8020"]

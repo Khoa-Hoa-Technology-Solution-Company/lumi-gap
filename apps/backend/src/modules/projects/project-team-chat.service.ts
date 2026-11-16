@@ -11,7 +11,7 @@ interface ListTeamMessagesOptions { limit: number; before?: string; beforeId?: s
 interface DeleteTeamMessageOptions { reason?: string; userRole?: string }
 function whereId(value: string) { const parsed = parseDatabaseId(value); if (!parsed) throw AppError.badRequest("Invalid identifier"); return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }; }
 async function user(value: string) { const row = await getPrisma().user.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("User not found"); if (!row.isActive || row.accountStatus !== "ACTIVE") throw AppError.unauthorized(); return row; }
-async function project(value: string) { const row = await getPrisma().project.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("Project not found"); const members = await getPrisma().projectMember.findMany({ where: { projectId: row.id, status: "ACTIVE" } }); return { ...row, members }; }
+async function project(value: string) { const row = await getPrisma().project.findUnique({ where: whereId(value) }); if (!row || Boolean(row.deletedAt)) throw AppError.notFound("Project not found"); const members = await getPrisma().projectMember.findMany({ where: { projectId: row.id, status: "ACTIVE" } }); return { ...row, members }; }
 
 export class ProjectTeamChatService {
   private async assertCanAccess(projectId: string, userId: string, options: { allowAdmin?: boolean } = {}) { const [row, actor] = await Promise.all([project(projectId), user(userId)]); const allowed = row.ownerId === actor.id || row.members.some((member) => member.userId === actor.id); if (!allowed && !options.allowAdmin) throw AppError.forbidden("Access denied to this project"); return { project: row, actor }; }

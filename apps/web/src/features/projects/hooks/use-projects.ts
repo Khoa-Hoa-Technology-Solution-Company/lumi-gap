@@ -30,6 +30,14 @@ function refreshProjectLiterature(client: QueryClient, id: string) {
   ]);
 }
 
+export function useTrashedProjects(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["projects", "trash"],
+    queryFn: projectsApi.listTrash,
+    enabled: options?.enabled ?? true,
+  });
+}
+
 export function useProjects(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["projects"],
@@ -53,6 +61,7 @@ export function useCreateProject() {
     mutationFn: (data: CreateProjectRequest) => projectsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["projects", "trash"] });
     },
   });
 }
@@ -74,6 +83,7 @@ export function useDeleteProject(id: string) {
     mutationFn: () => projectsApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["projects", "trash"] });
       queryClient.removeQueries({ queryKey: ["project", id] });
     },
   });
@@ -155,9 +165,27 @@ export function useProjectTeam(id: string, page: number, invitationPage: number)
   });
 }
 
+export function usePermanentDeleteProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => projectsApi.permanentDelete(id),
+    onSuccess: (_result, id) => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["projects", "trash"] });
+      queryClient.removeQueries({ queryKey: ["project", id] });
+    },
+  });
+}
+
 export function useRestoreProject(id: string) {
   const client = useQueryClient();
-  return useMutation({ mutationFn: () => projectsApi.restore(id), onSuccess: () => refreshProject(client, id) });
+  return useMutation({
+    mutationFn: (overrideId?: string) => projectsApi.restore(overrideId ?? id),
+    onSuccess: (_project, overrideId) => Promise.all([
+      refreshProject(client, overrideId ?? id),
+      client.invalidateQueries({ queryKey: ["projects", "trash"] }),
+    ]),
+  });
 }
 
 export function useMyProjectInvitations() {

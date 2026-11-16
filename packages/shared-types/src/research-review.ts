@@ -178,6 +178,8 @@ export interface ReviewTemplateVersionDetail {
 }
 
 export interface CreateReviewRequestInput {
+  revisionId?: string;
+  purpose?: "MENTOR_GUIDANCE" | "PEER_REVIEW";
   submissionId?: string;
   reportId?: string;
   reviewerId: string;
@@ -204,9 +206,16 @@ export interface ReviewCriterionResponseInput {
 export interface RequiredRevisionInput {
   priority: "MINOR" | "MAJOR";
   description: string;
+  criterionKey?: string;
+  locator?: string;
+  quotation?: string;
 }
 
 export interface AcademicReviewInput {
+  /** Submit mentor comments without a readiness assessment or requested changes. */
+  commentOnly?: boolean;
+  clientKey?: string;
+  integrityChecks?: Record<string, { status: "CHECKED" | "CONCERN" | "NOT_APPLICABLE"; note?: string }>;
   expectedRevisionId?: string;
   expectedRoundNumber?: number;
   keyStrengths?: string;

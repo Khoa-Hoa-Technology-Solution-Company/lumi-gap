@@ -226,7 +226,7 @@ describe.skipIf(!isolated).sequential("project creation and team integration (di
     await expect(reportService.getById(member, report.id)).rejects.toMatchObject({ statusCode: 404 });
     await expect(literatureService.detail(corpus.id, member)).rejects.toMatchObject({ statusCode: 403 });
     await expect(workspaceService.get(workspace.id, member, "researcher")).rejects.toMatchObject({ statusCode: 404 });
-    await expect(projectService.deleteProject(row._id, owner)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(projectService.permanentDeleteProject(row._id, owner)).rejects.toMatchObject({ statusCode: 409 });
     expect(await db.report.count({ where: { id: report.id } })).toBe(1);
   });
 
@@ -255,13 +255,26 @@ describe.skipIf(!isolated).sequential("project creation and team integration (di
     expect(await db.project.count({ where: { createdById: owner, creationKey: request.idempotencyKey } })).toBe(1);
   });
 
-  it("protects a sole owner's research drafts and records empty-project deletion", async () => {
+  it("soft-deletes projects into 30-day trash while preserving records and allowing owner restore", async () => {
     const draft = await project();
     await workspaceService.create({ projectId: draft._id, name: "Academic draft" }, owner, "researcher");
-    await expect(projectService.deleteProject(draft._id, owner)).rejects.toMatchObject({ statusCode: 409 });
-    const empty = await project();
-    await projectService.deleteProject(empty._id, owner);
-    expect(await db.project.count({ where: { id: empty._id } })).toBe(0);
-    expect(await db.auditLog.count({ where: { targetRecordId: empty._id, actionName: "PROJECT_DELETED" } })).toBe(1);
+    const softDeleted = await projectService.deleteProject(draft._id, owner);
+    expect(softDeleted.softDeleted).toBe(true);
+    expect(softDeleted.retentionDays).toBe(30);
+    await expect(projectService.permanentDeleteProject(draft._id, owner)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(projectService.getProjectById(draft._id, owner)).rejects.toMatchObject({ statusCode: 404 });
+    const trashed = await projectService.listTrashedProjects(owner);
+    expect(trashed.some(item => item._id === draft._id)).toBe(true);
+
+    const restored = await projectService.restoreProject(draft._id, owner);
+    expect(restored._id).toBe(draft._id);
+    expect(await db.draftWorkspace.count({ where: { projectId: draft._id } })).toBe(1);
+
+    const aged = await project();
+    await projectService.deleteProject(aged._id, owner);
+    await db.project.update({ where: { id: aged._id }, data: { deletedAt: new Date(Date.now() - 31 * 86400000), purgeAt: new Date(Date.now() - 86400000) } });
+    await projectService.permanentDeleteProject(aged._id, owner);
+    expect(await db.project.count({ where: { id: aged._id } })).toBe(0);
+    expect(await db.auditLog.count({ where: { targetRecordId: aged._id, actionName: "PROJECT_PERMANENTLY_DELETED" } })).toBe(1);
   });
 });

@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileCode2, Plus, ArrowUpRight, X, Clock, Search, Sparkles, Users } from "lucide-react";
+import { FileCode2, Plus, ArrowUpRight, X, Clock, Search, Sparkles, Users, Trash2, Shield, ChevronDown, ChevronUp } from "lucide-react";
 import { MANUSCRIPT_TYPES, MANUSCRIPT_TEMPLATES, type CreateManuscript, type ManuscriptSummary, type ManuscriptType, type ManuscriptTemplate } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -15,7 +15,7 @@ import { ImportManuscript } from "./manuscript-import";
 import { ManuscriptTemplates } from "./manuscript-templates";
 import { ManuscriptGithub } from "./manuscript-github";
 import { ImportManuscriptPdf } from "./manuscript-pdf-import";
-import { DeleteManuscript } from "./manuscript-delete";
+import { ManuscriptActionsMenu } from "./manuscript-delete";
 import "./manuscripts.css";
 export const typeLabel: Record<ManuscriptType, string> = { RESEARCH_PAPER: "Research paper", RESEARCH_PROPOSAL: "Research proposal", THESIS: "Thesis", TECHNICAL_REPORT: "Technical report" };
 export const templateLabel: Record<ManuscriptTemplate, string> = { ARTICLE: "Article template", PROPOSAL: "Proposal template", REPORT: "Report template", IEEE_CONFERENCE: "IEEE conference", PRESENTATION: "Beamer presentation", THESIS: "Thesis template", ELSEVIER: "Elsevier article", SPRINGER: "Springer proceedings", APS: "Physics article", BLANK: "Blank document" };
@@ -26,9 +26,17 @@ export function ManuscriptsPanel({ projectId, readOnly, draft, onDraftConsumed }
   const { t, language } = useI18n(), navigate = useNavigate(), client = useQueryClient();
   const userId = useAuthStore(s => s.user?.id);
   const query = useQuery({ queryKey: ["manuscripts", userId, projectId], queryFn: () => manuscriptsApi.list(projectId), refetchInterval: 15000 });
+  const trashedQuery = useQuery({ queryKey: ["manuscripts-trash", userId, projectId], queryFn: () => manuscriptsApi.listDeleted(projectId), enabled: !readOnly, refetchInterval: 30000 });
   const [form, setForm] = useState(Boolean(draft) && !readOnly);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
+  const [showTrash, setShowTrash] = useState(false);
+
+  const refreshManuscriptQueries = (id: string) => {
+    void client.invalidateQueries({ queryKey: ["manuscripts", userId, projectId] });
+    void client.invalidateQueries({ queryKey: ["manuscripts-trash", userId, projectId] });
+    void client.invalidateQueries({ queryKey: ["manuscript", userId, projectId, id] });
+  };
 
   const filteredManuscripts = useMemo(() => {
     if (!query.data) return [];
@@ -131,8 +139,21 @@ export function ManuscriptsPanel({ projectId, readOnly, draft, onDraftConsumed }
                     <span className="writing-template-pill">{t(templateLabel[row.template] || "Article template")}</span>
                     <span className="writing-status-pill" data-archived={row.archived}>
                       <i aria-hidden="true" />
-                      {row.archived ? t("Read-only") : t("Working draft")}
+                      {row.archived ? t("Archived (Read-only)") : t("Working draft")}
                     </span>
+                    {row.governance ? (
+                      <span
+                        className="writing-scope-pill"
+                        data-scope={row.governance.hasReviewsOrSubmissions ? "protected" : row.governance.ownershipScope === "COLLABORATIVE" ? "shared" : "personal"}
+                      >
+                        <Shield size={11} aria-hidden="true" />
+                        {row.governance.hasReviewsOrSubmissions
+                          ? t("Submitted / Reviewed")
+                          : row.governance.ownershipScope === "COLLABORATIVE"
+                            ? t("Collaborative draft ({{count}})", { count: row.governance.contributorCount })
+                            : t("Personal draft")}
+                      </span>
+                    ) : null}
                   </div>
                   <h3 className="writing-manuscript-title">{row.title}</h3>
                   {row.description ? <p className="writing-manuscript-desc">{row.description}</p> : null}
@@ -141,10 +162,12 @@ export function ManuscriptsPanel({ projectId, readOnly, draft, onDraftConsumed }
                       <Clock size={13} aria-hidden="true" />
                       {t("Edited")} {new Date(row.updatedAt).toLocaleTimeString(language === "vi" ? "vi-VN" : "en-GB", { hour: "2-digit", minute: "2-digit" })} {new Date(row.updatedAt).toLocaleDateString(language === "vi" ? "vi-VN" : "en-GB", { day: "2-digit", month: "2-digit", year: "numeric" })}
                     </span>
-                    {row.collaborators?.length ? (
+                    {(row.governance?.contributors?.length || row.collaborators?.length) ? (
                       <span className="writing-meta-collab">
                         <Users size={13} aria-hidden="true" />
-                        {t("Project collaborators")}: {row.collaborators.map(person => person.name).join(", ")}
+                        {row.governance?.contributors?.length
+                          ? `${t(row.governance.ownershipScope === "COLLABORATIVE" ? "Contributors" : "Author")}: ${row.governance.contributors.map(person => person.name).join(", ")}`
+                          : `${t("Project collaborators")}: ${row.collaborators!.map(person => person.name).join(", ")}`}
                       </span>
                     ) : null}
                   </div>
@@ -155,15 +178,16 @@ export function ManuscriptsPanel({ projectId, readOnly, draft, onDraftConsumed }
               </Link>
               {!readOnly ? (
                 <div className="writing-manuscript-actions-col">
-                  <DeleteManuscript
+                  <ManuscriptActionsMenu
                     projectId={projectId}
                     manuscript={row}
                     onRefresh={() => void query.refetch()}
                     onDeleted={() => {
                       client.setQueryData<ManuscriptSummary[]>(["manuscripts", userId, projectId], rows => rows?.filter(item => item.id !== row.id));
-                      void client.invalidateQueries({ queryKey: ["manuscripts", userId, projectId] });
-                      void client.invalidateQueries({ queryKey: ["manuscript", userId, projectId, row.id] });
+                      refreshManuscriptQueries(row.id);
+                      setShowTrash(true);
                     }}
+                    onChanged={() => refreshManuscriptQueries(row.id)}
                   />
                 </div>
               ) : null}
@@ -191,6 +215,51 @@ export function ManuscriptsPanel({ projectId, readOnly, draft, onDraftConsumed }
         <p>{t("Create a LaTeX draft when your team is ready. Literature, evidence and research questions remain available as you write.")}</p>
       </div>
     )}
+
+    {!readOnly && (trashedQuery.data?.length ?? 0) > 0 ? (
+      <div className="writing-trash-section">
+        <button
+          type="button"
+          className="writing-trash-toggle"
+          aria-expanded={showTrash}
+          onClick={() => setShowTrash(current => !current)}
+        >
+          <span className="writing-trash-toggle-label">
+            <Trash2 size={15} aria-hidden="true" />
+            {t("Manuscript Trash")} ({trashedQuery.data!.length})
+          </span>
+          {showTrash ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
+        </button>
+        {showTrash ? (
+          <div className="writing-trash-list">
+            {trashedQuery.data!.map(item => (
+              <article key={item.id} className="writing-trash-item">
+                <div className="writing-trash-info">
+                  <strong>{item.title}</strong>
+                  <span className="writing-trash-meta">
+                    {item.deletedAt
+                      ? `${t("Moved to trash")} ${new Date(item.deletedAt).toLocaleDateString(language === "vi" ? "vi-VN" : "en-GB", { day: "2-digit", month: "2-digit", year: "numeric" })}`
+                      : t("Personal draft")}
+                    {item.governance?.createdBy ? ` · ${t("Created by")}: ${item.governance.createdBy.name}` : ""}
+                    {item.governance?.snapshotCount ? ` · ${item.governance.snapshotCount} ${t("snapshots preserved")}` : ""}
+                  </span>
+                </div>
+                <ManuscriptActionsMenu
+                  projectId={projectId}
+                  manuscript={item}
+                  mode="trash"
+                  onRefresh={() => {
+                    void query.refetch();
+                    void trashedQuery.refetch();
+                  }}
+                  onChanged={() => refreshManuscriptQueries(item.id)}
+                />
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    ) : null}
   </section></Dialog>;
 }
 

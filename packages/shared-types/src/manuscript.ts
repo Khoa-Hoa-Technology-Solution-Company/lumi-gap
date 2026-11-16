@@ -33,13 +33,42 @@ export interface ManuscriptFeedbackSummary {
   snapshotId: string; snapshotLabel: string; requestedAt: string;
   status: "PENDING" | "RESPONDED" | "RESOLVED" | "ENDED";
 }
+export type ManuscriptOwnershipScope = "PERSONAL_DRAFT" | "COLLABORATIVE";
+export type ManuscriptDeleteBlockReason =
+  | "PROJECT_ARCHIVED"
+  | "COLLABORATIVE_MANUSCRIPT"
+  | "HAS_SUBMISSIONS_OR_REVIEWS"
+  | "NOT_CREATOR_OR_OWNER"
+  | "ALREADY_DELETED";
+export interface ManuscriptRemoteBindingSummary { provider: "GITHUB"; repository: string; branch: string; }
+export interface ManuscriptGovernanceSummary {
+  ownershipScope: ManuscriptOwnershipScope;
+  createdBy: { id: string; name: string };
+  contributors: Array<{ id: string; name: string }>;
+  contributorCount: number;
+  snapshotCount: number;
+  submissionCount: number;
+  reviewThreadCount: number;
+  commentCount: number;
+  hasReviewsOrSubmissions: boolean;
+  remoteBinding: ManuscriptRemoteBindingSummary | null;
+  canArchive: boolean;
+  canUnarchive: boolean;
+  canRestore: boolean;
+  deleteBlockedReason: ManuscriptDeleteBlockReason | null;
+  requiresCoAuthorApprovalForDelete: boolean;
+  approvalStatus: "NOT_APPLICABLE" | "REQUIRES_COAUTHOR_APPROVAL" | "PROTECTED_RECORD";
+}
 export interface ManuscriptSummary {
   id: string; projectId: string; title: string; description: string; documentType: ManuscriptType;
   template: ManuscriptTemplate; version: number; mainFileId: string | null; archived: boolean;
+  archivedAt?: string | null;
+  deletedAt?: string | null;
   createdAt: string; updatedAt: string; canWrite: boolean;
   canDelete?: boolean;
   collaborators?: Array<{ id: string; name: string }>;
   latestFeedback?: ManuscriptFeedbackSummary | null;
+  governance?: ManuscriptGovernanceSummary;
 }
 export interface ManuscriptDetail extends ManuscriptSummary {
   canManageGithub?: boolean;

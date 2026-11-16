@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpenCheck, CalendarDays, Check, Search, Send, UserRoundCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import { useI18n } from "@/i18n";
 interface SubmitReviewDialogProps {
   reportId?: string;
   submissionId?: string;
+  revisionId?: string;
   artifactTitle: string;
   artifactType?: string;
   trigger?: React.ReactNode;
@@ -23,7 +24,7 @@ const sourceLabel = { SYSTEM: "LumiGap Templates", PERSONAL: "My Templates", PRO
 const DEFAULT_DUE_DAYS = 14;
 const MAX_DUE_DAYS = 180; // backend limit
 
-export function SubmitReviewDialog({ reportId, submissionId, artifactTitle, artifactType, trigger, onSubmitted }: SubmitReviewDialogProps) {
+export function SubmitReviewDialog({ reportId, submissionId, revisionId, artifactTitle, artifactType, trigger, onSubmitted }: SubmitReviewDialogProps) {
   const { t } = useI18n();
   const sending = useRef(false);
   const [open, setOpen] = useState(false);
@@ -42,6 +43,11 @@ export function SubmitReviewDialog({ reportId, submissionId, artifactTitle, arti
     const rows = (templates.data ?? []).filter((item) => item.status === "PUBLISHED" && item.activeVersion && (!artifactType || !item.artifactType || item.artifactType === artifactType || (item.artifactType === "MANUSCRIPT" && ["RESEARCH_PAPER", "THESIS_DRAFT", "SOFTWARE_RESEARCH_PROJECT"].includes(artifactType))));
     return Object.entries(sourceLabel).map(([source, label]) => ({ source, label, items: rows.filter((item) => item.source === source) })).filter((group) => group.items.length);
   }, [artifactType, templates.data]);
+  useEffect(() => {
+    if (templateVersionId) return;
+    const recommended = (templates.data ?? []).find(item => item.source === "SYSTEM" && item.name.startsWith("LumiGap Scientific Manuscript Review Rubric v1.0") && item.artifactType === artifactType && item.activeVersion?.status === "PUBLISHED");
+    if (recommended?.activeVersion) setTemplateVersionId(recommended.activeVersion.id);
+  }, [templates.data, artifactType, templateVersionId]);
   const selectedTemplate = (templates.data ?? []).find((item) => item.activeVersion?.id === templateVersionId);
   const selectedReviewer = (reviewers.data ?? []).find((item) => item.id === reviewerId);
 
@@ -64,7 +70,8 @@ export function SubmitReviewDialog({ reportId, submissionId, artifactTitle, arti
     sending.current = true;
     try {
       await create.mutateAsync({
-        reportId, submissionId, reviewerId, templateVersionId,
+        purpose: selectedReviewer?.assignedMentor ? "MENTOR_GUIDANCE" : "PEER_REVIEW",
+        reportId, submissionId, revisionId, reviewerId, templateVersionId,
         message: message.trim() || undefined,
         dueAt: new Date(`${dueAt}T23:59:59`).toISOString(),
       });
@@ -90,7 +97,8 @@ export function SubmitReviewDialog({ reportId, submissionId, artifactTitle, arti
         </fieldset>
 
         <fieldset><legend className="text-sm font-semibold">Reviewer</legend><div className="relative mt-2"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search qualified reviewers" /></div>
-          <div className="mt-2 max-h-52 divide-y overflow-y-auto rounded-xl border">{reviewers.isLoading ? <div className="h-20 animate-pulse bg-muted" /> : (reviewers.data ?? []).map((reviewer) => <button type="button" key={reviewer.id} onClick={() => setReviewerId(reviewer.id)} className={`flex w-full items-start gap-3 p-3 text-left transition-colors ${reviewerId === reviewer.id ? "bg-blue-50 dark:bg-blue-950/30" : "hover:bg-muted/40"}`}><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold dark:bg-slate-800">{reviewer.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="truncate text-sm font-medium">{reviewer.name}</span>{reviewer.availableForReview ? <Badge variant="secondary">Available</Badge> : null}</div><p className="mt-0.5 text-xs text-muted-foreground">{reviewer.institution || "Institution not listed"}</p><p className="mt-1 truncate text-xs text-muted-foreground">{reviewer.expertiseAreas.slice(0, 3).join(" · ") || "Expertise not listed"}</p></div>{reviewerId === reviewer.id ? <UserRoundCheck className="h-4 w-4 text-blue-600" /> : null}</button>)}{!reviewers.isLoading && reviewers.data?.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No qualified reviewer matches this search.</p> : null}</div>
+          <div className="mt-2 max-h-52 divide-y overflow-y-auto rounded-xl border">{reviewers.isLoading ? <div className="h-20 animate-pulse bg-muted" /> : (reviewers.data ?? []).map((reviewer) => <button type="button" key={reviewer.id} onClick={() => setReviewerId(reviewer.id)} className={`flex w-full items-start gap-3 p-3 text-left transition-colors ${reviewerId === reviewer.id ? "bg-blue-50 dark:bg-blue-950/30" : "hover:bg-muted/40"}`}><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold dark:bg-slate-800">{reviewer.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="truncate text-sm font-medium">{reviewer.name}</span>{reviewer.assignedMentor && <Badge variant="outline">{t("Assigned mentor")}</Badge>}{reviewer.availableForReview ? <Badge variant="secondary">Available</Badge> : null}</div><p className="mt-0.5 text-xs text-muted-foreground">{reviewer.institution || "Institution not listed"}</p><p className="mt-1 truncate text-xs text-muted-foreground">{reviewer.expertiseAreas.slice(0, 3).join(" · ") || "Expertise not listed"}</p></div>{reviewerId === reviewer.id ? <UserRoundCheck className="h-4 w-4 text-blue-600" /> : null}</button>)}{!reviewers.isLoading && reviewers.data?.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No qualified reviewer matches this search.</p> : null}</div>
+          {selectedReviewer?.assignedMentor && <p className="mt-2 text-xs text-muted-foreground">{t("mentorWorkspace.deliveryAccessHint")}</p>}
           {selectedReviewer && !selectedReviewer.availableForReview ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">This reviewer has the required capability but is not currently advertising open availability. They may still decline.</p> : null}
         </fieldset>
 

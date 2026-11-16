@@ -1,3 +1,6 @@
+import { registrationEn } from "./registration";
+import { mentorWorkspaceEn } from "./mentor-workspace";
+import { scientificReviewEn } from "./scientific-review";
 import { submissionWorkflowStrings } from "./submission-workflow";
 import { confirmationsEn } from "./confirmations";
 import { researchTasksEn } from "./research-tasks";
@@ -29,6 +32,8 @@ import { adminCatalogEn } from "./admin-catalog";
 import { personalizationStrings } from "./personalization";
 
 export const en = {
+  ...mentorWorkspaceEn,
+  ...registrationEn,
   ...personalizationStrings,
   ...adminCatalogEn,
   ...qualityEvaluationEn,
@@ -39,6 +44,7 @@ export const en = {
   ...researchWorkflowStrings,
   ...workspaceCoordinationStrings,
   ...academicSupportEn,
+  ...scientificReviewEn,
   ...trustSafetyRagStrings,
   ...researchHomeEn,
   ...newUiStrings,

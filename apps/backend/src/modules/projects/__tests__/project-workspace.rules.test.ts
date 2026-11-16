@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { assertProjectActionAllowed, invitationBelongsToUser, projectDeleteError } from "../project-workspace.rules.js";
+import {
+  assertProjectActionAllowed,
+  assertTrashedProjectActionAllowed,
+  computeTrashPurgeDate,
+  invitationBelongsToUser,
+  projectDeleteError,
+  trashDaysRemaining,
+} from "../project-workspace.rules.js";
 
 describe("project workspace permission rules", () => {
   it("allows members to contribute but blocks owner-only settings", () => {
@@ -20,6 +27,35 @@ describe("project workspace permission rules", () => {
 
   it("denies outsiders", () => {
     expect(() => assertProjectActionAllowed(undefined, "ACTIVE", "CONTRIBUTE")).toThrow(/membership/i);
+  });
+
+  it("restricts archive, delete, restore, and permanent delete to the project owner", () => {
+    expect(() => assertProjectActionAllowed("MEMBER", "ACTIVE", "ARCHIVE")).toThrow(/owner/i);
+    expect(() => assertProjectActionAllowed("MEMBER", "ACTIVE", "DELETE")).toThrow(/owner/i);
+    expect(() => assertProjectActionAllowed("MEMBER", "ARCHIVED", "RESTORE")).toThrow(/owner/i);
+    expect(() => assertProjectActionAllowed("MEMBER", "ACTIVE", "PERMANENT_DELETE")).toThrow(/owner/i);
+    expect(() => assertProjectActionAllowed("OWNER", "ACTIVE", "ARCHIVE")).not.toThrow();
+    expect(() => assertProjectActionAllowed("OWNER", "ACTIVE", "DELETE")).not.toThrow();
+    expect(() => assertProjectActionAllowed("OWNER", "ARCHIVED", "RESTORE")).not.toThrow();
+  });
+
+  it("enforces the 30-day trash retention policy on restore and permanent delete", () => {
+    const deletedAt = new Date("2026-10-01T00:00:00.000Z");
+    const purgeAt = computeTrashPurgeDate(deletedAt);
+    const trashed = { deletedAt, purgeAt };
+    const day15 = new Date("2026-10-16T00:00:00.000Z");
+    const day31 = new Date("2026-11-01T00:00:00.000Z");
+
+    expect(trashDaysRemaining(purgeAt, day15)).toBe(15);
+    expect(trashDaysRemaining(purgeAt, day31)).toBe(0);
+
+    expect(() => assertTrashedProjectActionAllowed("MEMBER", trashed, "RESTORE", day15)).toThrow(/owner/i);
+    expect(() => assertTrashedProjectActionAllowed("MEMBER", trashed, "PERMANENT_DELETE", day31)).toThrow(/owner/i);
+
+    expect(() => assertTrashedProjectActionAllowed("OWNER", trashed, "RESTORE", day15)).not.toThrow();
+    expect(() => assertTrashedProjectActionAllowed("OWNER", trashed, "PERMANENT_DELETE", day15)).toThrow(/retained for 30 days/i);
+    expect(() => assertTrashedProjectActionAllowed("OWNER", trashed, "RESTORE", day31)).toThrow(/restore window has expired/i);
+    expect(() => assertTrashedProjectActionAllowed("OWNER", trashed, "PERMANENT_DELETE", day31)).not.toThrow();
   });
 });
 

@@ -5,13 +5,12 @@ import { ScreeningTaskGuard } from "./screening-task-feedback";
 import { RoundHistory } from "./screening-round-history";
 export { RoundHistory } from "./screening-round-history";
 import { ScreeningCaseStatus } from "./screening-case-status";
-import { ScreeningConflictResolution } from "./screening-conflict-resolution";
+import { ScreeningConflictResolution, ScreeningDiscussionCountdown } from "./screening-conflict-resolution";
 import { ScreeningPacketPreview } from "./screening-adjudication";
 import { LibraryAssessment } from "./library-assessment";
 import { LegacyScreeningRepair } from "./screening-legacy-repair";
-import { ProjectPaperAnalysis } from "./project-paper-analysis";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { FileText, ExternalLink, Globe, Copy, Check, Quote, Tag, HelpCircle, CheckCircle2, XCircle, Bookmark, BookOpen, Info, Users, AlertTriangle, Edit3, Sparkles, RotateCcw } from "lucide-react";
+import { FileText, ExternalLink, Globe, Copy, Check, Quote, Tag, HelpCircle, CheckCircle2, XCircle, Bookmark, BookOpen, Info, Users, AlertTriangle, Edit3, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import type { ScreeningChoice, ScreeningPaperRow, ScreeningRoundView, ScreeningSettings, WorkspacePerson } from "@trend/shared-types";
 import { AssessmentContextFields, initialAssessmentContext, ReviewContextSummary } from "./assessment-context";
@@ -262,28 +261,6 @@ export function ScreeningPaperDetail({ projectId, paper, people, readOnly, colla
             </p>
           </div>
         </div>
-
-        {/* AI PAPER INSIGHT PANEL: Vấn đề, Phương pháp, Kết quả, Hạn chế, Mức độ liên quan RQ & Minh chứng */}
-        <details className="paper-secondary-meta-details" open>
-          <summary className="paper-secondary-meta-summary">
-            <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-              <Sparkles size={13} className="shrink-0 text-primary" />
-              <span>AI Paper Insight · Vấn đề, Phương pháp, Kết quả, Hạn chế & Minh chứng</span>
-              <span className="paper-meta-summary-pill">
-                {paper.fullTextAvailable ? "Có toàn văn" : "Chỉ từ tóm tắt (Abstract-only)"}
-              </span>
-            </div>
-            <span className="text-[11px] text-muted-foreground/80">Ẩn/Hiện ▾</span>
-          </summary>
-          <div className="paper-secondary-meta-body pt-3">
-            <ProjectPaperAnalysis
-              projectId={projectId}
-              paperId={paper.paperId}
-              readOnly={readOnly}
-              paper={paper}
-            />
-          </div>
-        </details>
 
         {/* THU GỌN: Chỉ số trích dẫn, Loại bài, Quyền truy cập & Keywords */}
         {(Boolean(paper.keywords?.length) || Boolean(paper.tags?.length) || typeof paper.citationCount === "number" || paper.paperKind || paper.importSource) && (
@@ -604,7 +581,10 @@ function RoundContentInner({ projectId, initial, paper, people, readOnly: projec
         {legacyNotice}
         <div className="screening-resolution-round-heading">
           <h4>{roundHeaderLabel}</h4>
-          <ScreeningStatus status={round.status} round={round} />
+          <div className="screening-resolution-round-status flex flex-wrap items-center justify-end gap-1.5">
+            <ScreeningDiscussionCountdown round={round} />
+            <ScreeningStatus status={round.status} round={round} />
+          </div>
         </div>
         {data.isError && <ScreeningError error={data.error} retry={() => void data.refetch()} />}
         <ScreeningConflictResolution

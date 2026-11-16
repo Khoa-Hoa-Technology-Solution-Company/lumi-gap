@@ -126,6 +126,8 @@ export interface AcademicOnboardingOptions {
 }
 
 export interface AuthResponse {
+  /** Registration succeeds independently of verification-email delivery. */
+  verificationEmailDelivery?: "SENT" | "DISABLED" | "FAILED";
   user: User;
   tokens: AuthTokens;
 }

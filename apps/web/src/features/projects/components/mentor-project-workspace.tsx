@@ -26,7 +26,7 @@ export function MentorProjectWorkspace({ data, standalone = false }: { data: Wor
   const statuses: Record<string, string> = { PLANNING: "Đang lập kế hoạch", ACTIVE: "Đang thực hiện", COMPLETED: "Đã hoàn thành", ARCHIVED: "Đã lưu trữ" };
   if (params.get("tab") === "tasks") return <div className="project-workspace" data-no-i18n><div className="project-page-width py-6 space-y-4">
     {standalone && <MentorProjectNav />}
-    <MentorProjectTasks key={`${data.projectId}:${data.viewerId}`} projectId={data.projectId} />
+    <MentorProjectTasks key={`${data.projectId}:${data.viewerId}`} projectId={data.projectId} readOnly={data.readOnly} />
   </div></div>;
   if (chat) return <div className="project-workspace" data-no-i18n><div className="project-page-width py-6 space-y-4 coord-discussions">
     {standalone && <MentorProjectNav />}

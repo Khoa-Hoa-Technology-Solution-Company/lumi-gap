@@ -15,8 +15,8 @@ vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: unknown) 
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string) => key }) }));
 let root: Root, container: HTMLDivElement, client: QueryClient;
 const sent = { id: "sent", sender: { id: "me" }, content: "Hello", createdAt: "2026-10-17T12:00:00Z", readBy: [], readCount: 1 };
-async function render(node: ReactNode) {
-  await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}</MemoryRouter></QueryClientProvider>); });
+async function render(node: ReactNode, initialEntry = "/projects/p?tab=chat") {
+  await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}</MemoryRouter></QueryClientProvider>); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)); });
 }
 async function fill(value: string) {
@@ -91,7 +91,9 @@ it.each([false, true])("keeps rapid AI turns in server order when serialized tim
   expect([...container.querySelectorAll<HTMLAnchorElement>("a")].find(item => item.textContent?.includes("Open manuscripts"))?.getAttribute("href")).toBe("/projects/p?tab=manuscripts");
   expect([...container.querySelectorAll<HTMLAnchorElement>("a")].find(item => item.textContent?.includes("Explore gaps"))?.getAttribute("href")).toBe("/projects/p?tab=gaps");
 });
-it.each([["My AI", "private"], ["Team AI Room", "team"]])("loads over 50 %s messages with tied prompt-answer times without duplicates", async (label, scope) => {
+it("loads over 50 My AI messages with tied prompt-answer times without duplicates", async () => {
+  const label = "My AI";
+  const scope = "private";
   const turn = (index: number) => {
     const createdAt = new Date(Date.UTC(2026, 9, 17, 12, 0, index)).toISOString();
     return [
@@ -106,7 +108,7 @@ it.each([["My AI", "private"], ["Team AI Room", "team"]])("loads over 50 %s mess
     // Defend against overlapping cached pages while newer replies refresh.
     return messages.slice(Math.max(0, index - 50), index + 1);
   });
-  await render(<ProjectDiscussionPanel projectId="p" paperCount={2} />); await channel(label!);
+  await render(<ProjectDiscussionPanel projectId="p" paperCount={2} />); await channel(label);
   expect(container.textContent).not.toContain("Question 0");
   await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(item => item.textContent === "Load older messages")!.click());
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)); });
@@ -123,24 +125,19 @@ it.each([["My AI", "private"], ["Team AI Room", "team"]])("loads over 50 %s mess
   };
   checkMessages();
   expect([...container.querySelectorAll("button")].some(item => item.textContent === "Load older messages")).toBe(false);
-  if (scope === "team") {
-    messages[1] = { ...messages[1]!, content: "Updated historical answer" };
-    const stream = ai.streamEvents.mock.calls[0]![1] as { onEvent: (event: unknown) => void };
-    await act(async () => stream.onEvent({ type: "message.updated", message: messages[1] }));
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)); });
-    checkMessages();
-  }
   messages.push(...turn(27));
   await act(async () => { await client.invalidateQueries({ queryKey: ["project-chat", "p", scope, "me"] }); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)); });
   checkMessages();
 });
-it("keeps separate drafts in team chat, private AI and team AI", async () => {
-  await render(<ProjectDiscussionPanel projectId="p" paperCount={2} />); await fill("Team update");
+it("keeps separate drafts in team chat and private AI and removes Team AI Room", async () => {
+  await render(<ProjectDiscussionPanel projectId="p" paperCount={2} />, "/projects/p?tab=chat&channel=team-ai");
+  expect([...container.querySelectorAll('[role="tab"]')].map(item => item.textContent)).toEqual(["Team Chat", "My AI", "With mentors"]);
+  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("Team Chat");
+  await fill("Team update");
   await channel("My AI"); expect(container.querySelector("textarea")!.value).toBe(""); await fill("Private question");
-  await channel("Team AI Room"); expect(container.querySelector("textarea")!.value).toBe(""); await fill("Shared question");
-  await channel("My AI"); expect(container.querySelector("textarea")!.value).toBe("Private question");
   await channel("Team Chat"); expect(container.querySelector("textarea")!.value).toBe("Team update");
+  await channel("My AI"); expect(container.querySelector("textarea")!.value).toBe("Private question");
   await render(<ProjectDiscussionPanel projectId="other" paperCount={2} />); expect(container.querySelector("textarea")!.value).toBe("");
 });
 it.each(["Team Chat", "My AI"])("retains a revised %s draft when an earlier send finishes after switching channels", async label => {

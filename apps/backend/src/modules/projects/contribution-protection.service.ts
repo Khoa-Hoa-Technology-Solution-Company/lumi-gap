@@ -39,7 +39,7 @@ export const contributionProtectionService = {
       db.project.findUnique({ where: workspaceId(projectInput) }),
       db.user.findUnique({ where: workspaceId(actorInput) }),
     ]);
-    if (!projectRow || !actorRow) throw AppError.notFound("Contribution history not found");
+    if (!projectRow || Boolean(projectRow.deletedAt) || !actorRow) throw AppError.notFound("Contribution history not found");
 
     return db.$transaction(async tx => {
       await lockProjectAccounts(tx, [actorRow.id], projectRow.id);
@@ -294,7 +294,7 @@ export const contributionProtectionService = {
       db.project.findUnique({ where: workspaceId(projectInput) }),
       db.user.findUnique({ where: workspaceId(actorInput) }),
     ]);
-    if (!projectRow || !actorRow) throw AppError.notFound("Project not found");
+    if (!projectRow || Boolean(projectRow.deletedAt) || !actorRow) throw AppError.notFound("Project not found");
 
     return db.$transaction(async tx => {
       await lockProjectAccounts(tx, [actorRow.id], projectRow.id);

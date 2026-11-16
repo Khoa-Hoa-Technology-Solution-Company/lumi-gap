@@ -5,9 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const api = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn() }));
+const api = vi.hoisted(() => ({ list: vi.fn(), listDeleted: vi.fn(), create: vi.fn(), restoreDeleted: vi.fn() }));
 vi.mock("../manuscripts.api", () => ({ manuscriptsApi: api }));
-vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
+vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, string | number>) => values ? key.replace(/\{\{(\w+)\}\}/g, (_, k) => String(values[k] ?? "")) : key }) }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: "member" } }) }));
 vi.mock("@/features/projects/components/workspace-common", () => ({ canLeaveWorkspace: async () => true, useUnsavedWorkspace: vi.fn() }));
 vi.mock("../manuscript-github", () => ({ ManuscriptGithub: () => null }));
@@ -26,6 +26,7 @@ async function render(initial?: ManuscriptCreationDraft, readOnly = false, consu
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.list.mockResolvedValue([]);
+  api.listDeleted.mockResolvedValue([]);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
@@ -74,4 +75,92 @@ it("keeps the ordinary manuscript form empty with article defaults", async () =>
   expect([...document.querySelectorAll('select')].map(element => element.value)).toEqual(["RESEARCH_PAPER", "ARTICLE"]);
   expect(button("Create and open editor").disabled).toBe(true);
   expect(api.create).not.toHaveBeenCalled();
+});
+
+it("displays collaborative protection badges and lets authorized users inspect and restore Manuscript Trash", async () => {
+  api.list.mockResolvedValueOnce([
+    {
+      id: "m-shared",
+      projectId: "project",
+      title: "Team Shared Draft",
+      description: "",
+      documentType: "RESEARCH_PAPER",
+      template: "ARTICLE",
+      version: 2,
+      mainFileId: null,
+      archived: false,
+      createdAt: "2026-11-14T10:00:00.000Z",
+      updatedAt: "2026-11-14T10:00:00.000Z",
+      canWrite: true,
+      canDelete: false,
+      governance: {
+        ownershipScope: "COLLABORATIVE",
+        createdBy: { id: "u1", name: "Owner" },
+        contributors: [{ id: "u1", name: "Owner" }, { id: "u2", name: "Member" }],
+        contributorCount: 2,
+        snapshotCount: 1,
+        submissionCount: 0,
+        reviewThreadCount: 0,
+        commentCount: 0,
+        hasReviewsOrSubmissions: false,
+        remoteBinding: null,
+        canArchive: true,
+        canUnarchive: false,
+        canRestore: false,
+        deleteBlockedReason: "COLLABORATIVE_MANUSCRIPT",
+        requiresCoAuthorApprovalForDelete: true,
+        approvalStatus: "REQUIRES_COAUTHOR_APPROVAL",
+      },
+    },
+  ]);
+  api.listDeleted.mockResolvedValueOnce([
+    {
+      id: "m-trash",
+      projectId: "project",
+      title: "Deleted Personal Scratchpad",
+      description: "",
+      documentType: "RESEARCH_PAPER",
+      template: "ARTICLE",
+      version: 5,
+      mainFileId: null,
+      archived: false,
+      deletedAt: "2026-11-14T09:00:00.000Z",
+      createdAt: "2026-11-14T08:00:00.000Z",
+      updatedAt: "2026-11-14T09:00:00.000Z",
+      canWrite: false,
+      canDelete: false,
+      governance: {
+        ownershipScope: "PERSONAL_DRAFT",
+        createdBy: { id: "member", name: "Student" },
+        contributors: [{ id: "member", name: "Student" }],
+        contributorCount: 1,
+        snapshotCount: 2,
+        submissionCount: 0,
+        reviewThreadCount: 0,
+        commentCount: 0,
+        hasReviewsOrSubmissions: false,
+        remoteBinding: null,
+        canArchive: false,
+        canUnarchive: false,
+        canRestore: true,
+        deleteBlockedReason: "ALREADY_DELETED",
+        requiresCoAuthorApprovalForDelete: false,
+        approvalStatus: "NOT_APPLICABLE",
+      },
+    },
+  ]);
+
+  await render();
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); });
+
+  expect(host.textContent).toContain("Collaborative draft (2)");
+  expect(host.textContent).toContain("Contributors: Owner, Member");
+  expect(host.textContent).toContain("Manuscript Trash (1)");
+
+  await act(async () => {
+    host.querySelector<HTMLButtonElement>(".writing-trash-toggle")?.click();
+  });
+  expect(host.textContent).toContain("Deleted Personal Scratchpad");
+  expect(host.textContent).toContain("2 snapshots preserved");
+  expect(button("Restore")).toBeDefined();
 });

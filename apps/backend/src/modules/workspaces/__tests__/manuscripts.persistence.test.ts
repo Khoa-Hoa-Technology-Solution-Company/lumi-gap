@@ -378,7 +378,8 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
     const version = await writing.snapshot(d.project, owner, d.id, { label: "Deleted feedback", clientKey: crypto.randomUUID(), minimumSequences: {} });
     const live = await writing.comment(d.project, member, d.id, { body: "Deleted live comment", clientKey: crypto.randomUUID() });
     const shared = await db.projectDiscussion.create({ data: { projectId: d.project, authorId: owner, clientKey: crypto.randomUUID(), title: "Legacy feedback", body: "Deleted snapshot feedback", category: "MENTOR_QUESTION", targetKind: "MANUSCRIPT_SNAPSHOT", targetId: version.id, mentorRelationshipId: relation.id } });
-    await writing.remove(d.project, owner, d.id, d.detail.version);
+    await expect(writing.remove(d.project, owner, d.id, d.detail.version)).rejects.toMatchObject({ statusCode: 409 });
+    await db.draftWorkspace.update({ where: { id: d.id }, data: { deletedAt: new Date() } });
     await expect(discussions.list(d.project, mentor, { page: 1, pageSize: 20 })).rejects.toMatchObject({ statusCode: 404 });
     for (const actor of [owner, member]) expect(await discussions.list(d.project, actor, { page: 1, pageSize: 20 })).toMatchObject({ items: [], total: 0 });
     for (const [actor, thread] of [[owner, live.id], [owner, shared.id], [mentor, shared.id]] as const) {

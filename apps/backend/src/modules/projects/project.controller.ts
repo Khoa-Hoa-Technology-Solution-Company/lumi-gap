@@ -15,6 +15,7 @@ const approachSchema = z.enum(["EXPLORATORY", "LITERATURE_REVIEW", "EMPIRICAL", 
 
 export const createProjectSchema = z.object({
   title: z.string().trim().min(1).max(100),
+  keywords: z.array(z.string().trim().min(1).max(80)).max(10).optional(),
   description: z.string().trim().max(5000).optional(),
   researchField: z.string().trim().max(200).optional(),
   status: projectStatusSchema.exclude(["ARCHIVED"]).optional(),
@@ -99,6 +100,14 @@ export class ProjectController {
     res.json({ success: true, data: result });
   }
 
+  async listTrash(req: Request, res: Response) {
+    res.json({ success: true, data: await projectService.listTrashedProjects(req.user!.sub) });
+  }
+
+  async permanentDeleteProject(req: Request, res: Response) {
+    res.json({ success: true, data: await projectService.permanentDeleteProject(req.params.id as string, req.user!.sub) });
+  }
+
   async restoreProject(req: Request, res: Response) {
     res.json({ success: true, data: await projectService.restoreProject(String(req.params.id), req.user!.sub) });
   }
@@ -129,8 +138,8 @@ export class ProjectController {
   }
 
   async deleteProject(req: Request, res: Response) {
-    await projectService.deleteProject(req.params.id as string, req.user!.sub);
-    res.json({ success: true, data: { deleted: true } });
+    const result = await projectService.deleteProject(req.params.id as string, req.user!.sub);
+    res.json({ success: true, data: result });
   }
 
   async addPaper(req: Request, res: Response) {

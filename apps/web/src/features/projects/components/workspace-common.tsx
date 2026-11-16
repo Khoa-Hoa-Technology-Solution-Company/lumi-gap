@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { isAxiosError } from "axios";
 import { Link, useSearchParams } from "react-router-dom";
 import type { WorkspaceComment, WorkspaceLink, WorkspaceLinkKind, WorkspacePage, WorkspacePerson, WorkspaceRevision } from "@trend/shared-types";
@@ -38,7 +38,7 @@ export function useUnsavedWorkspace(dirty: boolean) {
     const leave = (event: Event) => { event.preventDefault(); };
     const click = (event: MouseEvent) => {
       const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
-      if (!approvedLinkClick && !event.defaultPrevented && event.button === 0 && anchor instanceof HTMLAnchorElement && anchor.href !== window.location.href && anchor.origin === window.location.origin && !anchor.target && !anchor.hasAttribute("download") && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && !checkedLeaveEvents.has(event)) {
+      if (!approvedLinkClick && !event.defaultPrevented && event.button === 0 && anchor instanceof HTMLAnchorElement && anchor.href !== window.location.href && anchor.origin === window.location.origin && !anchor.target && !anchor.hasAttribute("download") && !anchor.hasAttribute("data-artifact-popup") && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && !checkedLeaveEvents.has(event)) {
         checkedLeaveEvents.add(event);
         event.preventDefault(); event.stopPropagation();
         const href = anchor.href;
@@ -99,14 +99,42 @@ export function WorkspaceArtifactPicker({ projectId, value, onChange, allowedKin
     {kind && <div><label htmlFor={inputId}>{t("Find an artifact")}<input id={inputId} type="search" value={q} onChange={e => setQ(e.target.value)} maxLength={200} /></label><select aria-label={t("Select an artifact")} value={value?.id ?? ""} onChange={e => { const item = choices.data?.find(choice => choice.id === e.target.value); onChange(item ? { kind: item.kind, id: item.id } : null); }}><option value="">{t("Choose an artifact")}</option>{value && !choices.data?.some(item => item.id === value.id) && <option value={value.id}>{t("Current linked artifact")}</option>}{choices.data?.map(item => <option key={item.id} value={item.id}>{item.label ?? t(linkLabels[item.kind])}</option>)}</select>{!choices.isLoading && choices.data?.length === 0 && <small>{t("No matching artifacts in this project.")}</small>}</div>}
     </div>{choices.isError && <WorkspaceError error={choices.error} retry={() => void choices.refetch()} />}</fieldset>;
 }
-export function WorkspaceArtifactLink({ projectId, link }: { projectId: string; link: WorkspaceLink | null }) {
+export function WorkspaceArtifactLink({
+  projectId,
+  link,
+  openInNewTab = false,
+  popup = false,
+  onOpenArtifact,
+}: {
+  projectId: string;
+  link: WorkspaceLink | null;
+  openInNewTab?: boolean;
+  popup?: boolean;
+  onOpenArtifact?: (link: WorkspaceLink, href: string) => boolean | void;
+}) {
   const { t } = useI18n();
   const needsResolution = Boolean(link && ["MANUSCRIPT_SNAPSHOT", "MENTOR_FEEDBACK"].includes(link.kind));
   const resolved = useWorkspaceResource(projectId, "artifact-href", () => workspaceApi.artifactHref(projectId, link!), link, needsResolution);
   if (!link) return null;
-  if (needsResolution) return resolved.data ? <Link className="coord-inline-link" to={resolved.data.href}><Link2 size={14} aria-hidden="true" />{t(linkLabels[link.kind])}</Link> : <span className="coord-muted">{t(resolved.isError ? "Linked artifact is unavailable" : "Loading linked artifact…")}</span>;
+  const linkTargetProps = popup
+    ? { "data-artifact-popup": "true" as const }
+    : openInNewTab
+      ? { target: "_blank" as const, rel: "noopener noreferrer" }
+      : {};
+  const handleClick = (event: ReactMouseEvent<HTMLAnchorElement>, href: string) => {
+    if (!onOpenArtifact) return;
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (onOpenArtifact(link, href)) {
+      event.preventDefault();
+    }
+  };
+  if (needsResolution) {
+    return resolved.data
+      ? <Link className="coord-inline-link" to={resolved.data.href} {...linkTargetProps} onClick={event => handleClick(event, resolved.data!.href)}><Link2 size={14} aria-hidden="true" />{t(linkLabels[link.kind])}</Link>
+      : <span className="coord-muted">{t(resolved.isError ? "Linked artifact is unavailable" : "Loading linked artifact…")}</span>;
+  }
   const url = link.kind === "PLAN" ? projectSectionHref(projectId, "plan") : link.kind === "MANUSCRIPT" ? `/projects/${encodeURIComponent(projectId)}/manuscripts/${encodeURIComponent(link.id)}` : link.kind === "EVIDENCE" ? projectSectionHref(projectId, "papers", { view: "evidence", evidence: link.id }) : link.kind === "PAPER" ? projectSectionHref(projectId, "papers", { paper: link.id }) : link.kind === "REPORT" ? `/reports/${encodeURIComponent(link.id)}` : link.kind === "TREND" ? projectSectionHref(projectId, "overview", { trend: link.id }) + `#trend-${link.id}` : link.kind === "REVIEW_REQUEST" ? `/review-requests/${encodeURIComponent(link.id)}` : link.kind === "QUESTION" ? projectSectionHref(projectId, "plan", { question: link.id }) + `#question-${link.id}` : link.kind === "PLAN_REVISION" ? projectSectionHref(projectId, "plan", { revision: link.id }) : projectSectionHref(projectId, link.kind === "GAP" ? "gaps" : link.kind === "SCREENING" ? "papers" : "manuscripts");
-  return <Link className="coord-inline-link" to={url}><Link2 size={14} aria-hidden="true" />{t(linkLabels[link.kind])}</Link>;
+  return <Link className="coord-inline-link" to={url} {...linkTargetProps} onClick={event => handleClick(event, url)}><Link2 size={14} aria-hidden="true" />{t(linkLabels[link.kind])}</Link>;
 }
 export function WorkspaceComments({ projectId, targetKind, targetId, readOnly, mentor = false }: { projectId: string; targetKind: "TASK" | "PLAN_REVISION"; targetId: string; readOnly: boolean; mentor?: boolean }) {
   const { t } = useI18n(); const [page, setPage] = useState(1);

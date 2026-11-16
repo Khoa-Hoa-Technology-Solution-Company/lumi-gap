@@ -1,7 +1,7 @@
 import { useContext, useId, useRef, useState } from "react";
 import type { StructuredSubmissionInput, SubmissionType } from "@trend/shared-types";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, ChevronDown, FileText, Plus, User, Send, AlertCircle, HelpCircle, FileCode2, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, FileText, Plus, User, Send, AlertCircle, FileCode2 } from "lucide-react";
 import { toast } from "sonner";
 import { QueryClient, QueryClientContext, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -82,11 +82,18 @@ export function SubmissionNewPage({ projectId, projectTitle }: { projectId?: str
   const researchField = form.researchField ?? (selectedProject?.researchField || selectedProject?.researchAreas?.join(", ") || "").slice(0, 200);
   const update = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }));
 
+  const mentorsList = activeMentors.data ?? [];
+  const requiresMentorSelection = mentorsList.length > 0;
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (submitting.current || create.isPending) return;
     if (!selectedProjectId || title.trim().length < 3 || title.trim().length > 300) {
       setError(t("Choose a project and enter a title of 3–300 characters."));
+      return;
+    }
+    if (requiresMentorSelection && !mentorId) {
+      setError("Vui lòng chọn giảng viên hướng dẫn trước khi gửi bản thảo.");
       return;
     }
     if (sourceMode === "PDF") {
@@ -119,7 +126,7 @@ export function SubmissionNewPage({ projectId, projectTitle }: { projectId?: str
     setError("");
     try {
       const result = await create.mutateAsync({ input, file: sourceMode === "PDF" ? file : undefined });
-      toast.success(t("Submission saved. Choose a lecturer to request feedback."));
+      toast.success(mentorId ? "Đã gửi bản thảo tới giảng viên hướng dẫn." : t("Submission saved. Choose a lecturer to request feedback."));
       navigate(projectSubmissionPath(selectedProjectId, result.submission._id));
     } catch {
       setError(sourceMode === "PDF"
@@ -129,8 +136,6 @@ export function SubmissionNewPage({ projectId, projectTitle }: { projectId?: str
       submitting.current = false;
     }
   }
-
-  const mentorsList = activeMentors.data ?? [];
 
   return (
     <div className={projectId ? "project-submission-editor" : "mx-auto w-full max-w-3xl px-4 py-8 sm:px-6"} data-no-i18n>
@@ -184,21 +189,53 @@ export function SubmissionNewPage({ projectId, projectTitle }: { projectId?: str
             />
           </Field>
 
-          {mentorsList.length > 0 && (
-            <Field label="Mentor đồng hành (Cố vấn)">
-              <select
-                className={controlClass}
-                value={mentorId}
-                onChange={e => setMentorId(e.target.value)}
-              >
-                <option value="">Chọn Mentor phụ trách (tùy chọn)</option>
-                {mentorsList.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.fullName} ({m.mentorRole === "PRIMARY" ? "Cố vấn chính" : "Cố vấn đồng hành"})
-                  </option>
-                ))}
-              </select>
-            </Field>
+          {selectedProjectId && (
+            activeMentors.isLoading ? (
+              <div className="h-14 animate-pulse rounded-lg bg-muted/60" role="status" aria-label="Đang tải danh sách giảng viên" />
+            ) : requiresMentorSelection ? (
+              <Field label="Giảng viên hướng dẫn nhận bản thảo *">
+                <select
+                  required
+                  aria-label="Giảng viên hướng dẫn nhận bản thảo"
+                  className={controlClass}
+                  value={mentorId}
+                  onChange={e => {
+                    setMentorId(e.target.value);
+                    setError("");
+                  }}
+                >
+                  <option value="">-- Chọn giảng viên hướng dẫn --</option>
+                  {mentorsList.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.fullName} ({m.mentorRole === "PRIMARY" ? "Cố vấn chính" : "Cố vấn đồng hành"})
+                    </option>
+                  ))}
+                </select>
+                {!mentorId && (
+                  <p className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span>Vui lòng chọn giảng viên hướng dẫn trước khi gửi bản thảo.</span>
+                  </p>
+                )}
+              </Field>
+            ) : (
+              <div className="rounded-lg border border-border/80 bg-muted/30 p-3.5 text-xs text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-primary shrink-0" aria-hidden="true" />
+                  <span>Dự án chưa có giảng viên hướng dẫn đang hoạt động</span>
+                </p>
+                <p>
+                  Bạn có thể lưu bản thảo này trước để chọn giảng viên phản biện ở bước tiếp theo, hoặc{" "}
+                  <Link
+                    to={`/projects/${encodeURIComponent(selectedProjectId)}?tab=support`}
+                    className="font-medium text-primary underline underline-offset-2"
+                  >
+                    mời giảng viên hướng dẫn tại mục Tìm cố vấn
+                  </Link>
+                  .
+                </p>
+              </div>
+            )
           )}
 
           {/* Source mode selector: PDF Upload vs Immutable LaTeX Manuscript Snapshot */}
@@ -372,9 +409,25 @@ export function SubmissionNewPage({ projectId, projectTitle }: { projectId?: str
             </Button>
             <Button
               type="submit"
-              disabled={create.isPending || !selectedProjectId || (sourceMode === "PDF" ? !file : !selectedSnapshotId) || title.trim().length < 3}
+              disabled={
+                create.isPending ||
+                !selectedProjectId ||
+                activeMentors.isLoading ||
+                (requiresMentorSelection && !mentorId) ||
+                (sourceMode === "PDF" ? !file : !selectedSnapshotId) ||
+                title.trim().length < 3
+              }
             >
-              {create.isPending ? t("Creating…") : t("Save and continue")}
+              {create.isPending
+                ? t("Creating…")
+                : requiresMentorSelection
+                  ? (
+                    <>
+                      <Send className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                      Gửi giảng viên góp ý
+                    </>
+                  )
+                  : t("Save and continue")}
             </Button>
           </div>
         </footer>

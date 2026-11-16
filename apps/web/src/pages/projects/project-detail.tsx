@@ -14,13 +14,15 @@ import { Link } from "react-router-dom";
 import type { GapAnalysisResult, ResearchGapItem } from "@trend/shared-types";
 import { ProjectLiteratureWorkspace } from "@/features/projects/components/project-literature-workspace";
 import { ResearchLiterature } from "@/features/projects/components/research-literature";
-import { resolveProjectTab, type ProjectTab } from "@/features/projects/components/project-section-nav";
+import { resolveProjectTab, projectSections, type ProjectTab } from "@/features/projects/components/project-section-nav";
 import { WorkspaceOverviewPanel } from "@/features/projects/components/workspace-overview";
 import { WorkspacePlanPanel } from "@/features/projects/components/workspace-plan";
 import { WorkspaceTasksPanel } from "@/features/projects/components/workspace-tasks";
 import { WorkspaceDiscussionsPanel } from "@/features/projects/components/workspace-discussions";
 import { canLeaveWorkspace } from "@/features/projects/components/workspace-common";
 import { ProjectSectionContent } from "@/features/projects/components/project-section-content";
+import { ProjectHorizontalTabs } from "@/features/projects/components/project-horizontal-tabs";
+import { WorkspaceBreadcrumb } from "@/components/layout/workspace-breadcrumb";
 import "@/features/projects/project-workspace.css";
 import { ProjectPaperPickerDialog, type PaperPickerSource } from "@/features/projects/components/project-paper-picker-dialog";
 
@@ -109,6 +111,13 @@ export function ProjectDetailPage() {
   return (
     <div className="project-workspace">
       <div className="project-page-width project-detail-page">
+        <WorkspaceBreadcrumb
+          items={[
+            { label: t("Research workspace") || "Không gian nghiên cứu", href: "/projects" },
+            { label: project.title, href: `/projects/${project._id}?tab=overview` },
+            { label: t(projectSections.find(s => s.key === activeTab)?.label ?? "Overview"), active: true },
+          ]}
+        />
 
         {project.status === "ARCHIVED" ? (
           <p role="status" className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground mb-4">
@@ -126,6 +135,13 @@ export function ProjectDetailPage() {
           </div>
         ) : (
           <>
+            <ProjectHorizontalTabs
+              activeTab={activeTab}
+              onChange={setActiveTab}
+              paperCount={project.paperCount ?? project.papers?.length ?? 0}
+              memberCount={project.memberCount ?? project.members?.length ?? 0}
+            />
+
             {activeTab === "overview" && (
               <ProjectNextSteps
                 key={project._id}

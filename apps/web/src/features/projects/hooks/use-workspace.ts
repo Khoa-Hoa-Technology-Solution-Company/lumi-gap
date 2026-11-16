@@ -14,6 +14,7 @@ export function useWorkspaceCommand<T = void, R = unknown>(id: string, command: 
   const client = useQueryClient();
   return useMutation({ mutationFn: command, onSuccess: async () => {
     await Promise.all([
+      client.invalidateQueries({ queryKey: ["mentor-workspace"] }),
       client.invalidateQueries({ queryKey: ["project-workspace", userId, id] }),
       client.invalidateQueries({ queryKey: ["project-research", userId, id] }),
       client.invalidateQueries({ queryKey: ["project", id] }),

@@ -25,6 +25,7 @@ import { avatars, getLevel } from "@/utils/level";
 import { formatCompactNumber, formatNumber } from "@/utils";
 import { LanguageSwitcher, useI18n } from "@/i18n";
 import { isAdminSystemRole } from "@trend/shared-types";
+import { storePostLogoutProjectPath } from "@/features/projects/utils/project-workspace-navigation";
 import "./app-header.css";
 
 const NotificationMenu = lazy(() => import("@/features/notifications/components/notification-menu"));
@@ -225,7 +226,8 @@ export function MainLayout() {
   const activeUser = currentUserData?.user ?? user;
   const visibleNavGroups = navGroups.map(group => ({
     ...group,
-    items: group.items.filter(item => item.to !== "/academic-support" || activeUser?.academicRole !== "LECTURER"),
+    items: group.items.map(item => item.to === "/academic-support" && activeUser?.academicRole === "LECTURER"
+      ? { ...item, to: "/mentor-workspace", label: "mentorWorkspace.title" } : item),
   }));
   const { data: balanceData } = useCreditBalance({ enabled: isAuthed && !currentUserQuery.isFetching && !!currentUserData?.user });
   const credits = balanceData?.credits ?? activeUser?.credits;
@@ -382,6 +384,7 @@ export function MainLayout() {
 
 function UserMenu({ bookmarkCount, credits }: { bookmarkCount: number; credits?: number }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useI18n();
   const isAuthed = useAuthStore((s) => !!s.tokens?.accessToken);
   const currentUserQuery = useCurrentUser();
@@ -481,6 +484,12 @@ function UserMenu({ bookmarkCount, credits }: { bookmarkCount: number; credits?:
           <Trophy className="mr-2 h-4 w-4" />
           {t("Rankings")}
         </DropdownMenuItem>
+        {(activeUser?.academicRole === "LECTURER" || isAdminSystemRole(systemRole)) && (
+          <DropdownMenuItem onSelect={() => navigate("/mentor-workspace")}>
+            <GraduationCap className="mr-2 h-4 w-4" />
+            {t("mentorWorkspace.title")}
+          </DropdownMenuItem>
+        )}
         {isAdminSystemRole(systemRole) && (
           <>
             <DropdownMenuSeparator />
@@ -492,6 +501,8 @@ function UserMenu({ bookmarkCount, credits }: { bookmarkCount: number; credits?:
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() => {
+            const userId = useAuthStore.getState().user?.id ?? data?.user?.id;
+            storePostLogoutProjectPath(userId, `${location.pathname}${location.search}${location.hash}`);
             logout.mutate(undefined, {
               onSettled: () => navigate("/login", { replace: true }),
             });

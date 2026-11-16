@@ -32,7 +32,7 @@ export function getNotificationDestination(
     }
     if (notification.type.endsWith("_ACCEPTED")) return "/academic-support?view=active";
     if (["_DECLINED", "_CANCELLED", "_EXPIRED", "_ENDED", "_POSITION_FILLED"].some(suffix => notification.type.endsWith(suffix))) return "/academic-support?view=history";
-    if (notification.type === "MENTORSHIP_SUGGESTED" && notification.targetId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=support`;
+    if ((notification.type === "MENTORSHIP_SUGGESTED" || notification.type.startsWith("MENTORSHIP_SUGGESTION_")) && notification.targetId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=support`;
     return notification.targetId ? `/academic-support?projectId=${encodeURIComponent(notification.targetId)}` : "/academic-support";
   }
   if (notification.type.startsWith("academic_verification_")) return "/settings/academic";

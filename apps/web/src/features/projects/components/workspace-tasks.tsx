@@ -1,9 +1,8 @@
 import { lazy, Suspense, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import type { SaveWorkspaceTask, WorkspaceLink, WorkspaceMilestone, WorkspaceTask, WorkspaceTaskStatus } from "@trend/shared-types";
-import { ArrowLeft, Check, CheckCheck, ChevronRight, Flag, Plus, Trash2 } from "lucide-react";
+import type { SaveWorkspaceTask, WorkspaceLink, WorkspaceTask, WorkspaceTaskStatus } from "@trend/shared-types";
+import { ArrowLeft, Check, CheckCheck, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { useI18n } from "@/i18n";
 import { workspaceApi } from "../api/workspace.api";
@@ -13,6 +12,9 @@ import { taskPriorities, taskStatuses, taskToForm } from "./workspace-task-utils
 const TaskBoardView = lazy(() => import("./workspace-task-board").then(module => ({ default: module.TaskBoardView })));
 import { WorkspaceTaskHistory } from "./workspace-task-history";
 import { ScreeningAdjudicationDialog } from "./screening-adjudication";
+import { isTaskArtifactPopupKind, type TaskArtifactPreview } from "./workspace-task-artifact-dialog";
+
+const TaskArtifactPreviewDialog = lazy(() => import("./workspace-task-artifact-dialog").then(module => ({ default: module.TaskArtifactPreviewDialog })));
 import "../research-tasks.css";
 
 const newTask: SaveWorkspaceTask = { title: "", description: "", status: "TODO", blockedReason: "", assigneeId: null, milestoneId: null, dueAt: null, link: null, priority: "MEDIUM", parentTaskId: null, checklist: [] };
@@ -29,14 +31,13 @@ export function WorkspaceTasksPanel({ projectId, readOnly }: { projectId: string
   const initialLink = Object.hasOwn(linkLabels, params.get("linkKind") ?? "") && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(params.get("linkId") ?? "") ? { kind: params.get("linkKind") as WorkspaceLink["kind"], id: params.get("linkId")! } : null;
   return <div className="coord-tasks research-tasks" data-no-i18n>
     <WorkspaceHeading title={t("Team tasks")} description={t("Divide work and follow your research progress.")} action={!readOnly && <Button size="sm" onClick={() => open("new")}><Plus className="mr-2 h-4 w-4" />{t("Create task")}</Button>} />
-    <div className="task-section-nav flex-wrap"><button type="button" aria-current={view !== "milestones" ? "page" : undefined} onClick={() => changeView("board")}>{t("Team tasks")}</button><button type="button" aria-current={view === "milestones" ? "page" : undefined} onClick={() => changeView("milestones")}><Flag size={14} />{t("Milestones")}</button></div>
-    {view === "milestones" ? <Milestones projectId={projectId} readOnly={readOnly} /> : <Suspense fallback={<WorkspaceLoading />}><TaskBoardView projectId={projectId} readOnly={readOnly} onSelect={open} mode={view === "list" ? "list" : "board"} onMode={changeView} /></Suspense>}
+    <Suspense fallback={<WorkspaceLoading />}><TaskBoardView projectId={projectId} readOnly={readOnly} onSelect={open} mode={view === "list" ? "list" : "board"} onMode={changeView} /></Suspense>
     {params.get("screeningRound") && <ScreeningAdjudicationDialog key={params.get("screeningRound")} projectId={projectId} roundId={params.get("screeningRound")!} focusSection={params.get("screeningSection") ?? undefined} open onClose={closeScreening} />}
     {selected && <Sheet open onOpenChange={isOpen => { if (!isOpen) close(); }}><SheetContent className="research-task-drawer" closeLabel={t("Close task details")} data-no-i18n><header className="task-drawer-heading"><SheetTitle>{t(selected === "new" ? "New task" : "Task details")}</SheetTitle><SheetDescription>{t("Keep the next step clear for everyone.")}</SheetDescription></header><TaskDetail key={`${selected}:${params.get("parentTask") ?? ""}`} projectId={projectId} selected={selected} readOnly={readOnly} onClose={close} onSaved={id => select(id || null)} onSelect={open} initialStatus={initialStatus} parentTaskId={params.get("parentTask")} initialLink={initialLink} /></SheetContent></Sheet>}
   </div>;
 }
 function TaskDetail({ projectId, selected, readOnly, onClose, onSaved, onSelect, initialStatus, parentTaskId, initialLink }: { projectId: string; selected: string; readOnly: boolean; onClose: () => void; onSaved: (id: string) => void; onSelect: (id: string, status?: WorkspaceTaskStatus, parent?: string) => void; initialStatus: WorkspaceTaskStatus; parentTaskId: string | null; initialLink: WorkspaceLink | null }) {
-  const { t } = useI18n(); const [page, setPage] = useState(1); const [confirmDelete, setConfirmDelete] = useState(false);
+  const { t } = useI18n(); const [page, setPage] = useState(1); const [confirmDelete, setConfirmDelete] = useState(false); const [artifactPreview, setArtifactPreview] = useState<TaskArtifactPreview | null>(null);
   const detail = useWorkspaceResource(projectId, "task", () => workspaceApi.task(projectId, selected, page), { selected, page }, selected !== "new");
   const remove = useWorkspaceCommand(projectId, () => workspaceApi.deleteTask(projectId, selected, detail.data!.task.version));
   if (selected !== "new" && detail.isLoading) return <WorkspaceLoading />;
@@ -47,7 +48,22 @@ function TaskDetail({ projectId, selected, readOnly, onClose, onSaved, onSelect,
     {task?.deletedAt && <p className="coord-share-notice" role="status">{t("This task was deleted. Its history is retained.")}</p>}
     <TaskEditor projectId={projectId} task={task} initialStatus={initialStatus} parentTaskId={parentTaskId} initialLink={initialLink} readOnly={readOnly} onRefresh={() => detail.refetch()} onSaved={onSaved} />
     {task && <><div className="task-provenance"><span>{t("Created by")} <strong>{task.creator.name}</strong> · <WorkspaceDate value={task.createdAt} /></span><span>{t("Updated")}: <WorkspaceDate value={task.updatedAt} /></span>{task.completedAt && <span>{t("Completed")}: <WorkspaceDate value={task.completedAt} />{task.completedBy ? ` · ${task.completedBy.name}` : ""}</span>}</div>
-      <WorkspaceArtifactLink projectId={projectId} link={task.link} />
+      <WorkspaceArtifactLink
+        projectId={projectId}
+        link={task.link}
+        openInNewTab
+        popup={Boolean(task.link && isTaskArtifactPopupKind(task.link.kind))}
+        onOpenArtifact={(link, href) => {
+          if (!isTaskArtifactPopupKind(link.kind)) return false;
+          setArtifactPreview({ link, href });
+          return true;
+        }}
+      />
+      {artifactPreview && (
+        <Suspense fallback={null}>
+          <TaskArtifactPreviewDialog projectId={projectId} readOnly={readOnly} artifact={artifactPreview} onClose={() => setArtifactPreview(null)} />
+        </Suspense>
+      )}
       {task.parentTaskId ? <button type="button" className="task-parent-link" onClick={() => onSelect(task.parentTaskId!)}><ArrowLeft size={14} />{t("Open parent task")}</button> : <TaskSubtasks projectId={projectId} task={task} readOnly={readOnly} onSelect={onSelect} />}
       <WorkspaceComments projectId={projectId} targetKind="TASK" targetId={task.id} readOnly={readOnly} />
       <details className="coord-history-panel"><summary>{t("Activity history")}</summary><WorkspaceTaskHistory items={detail.data?.history.items ?? []} /><WorkspacePager data={detail.data?.history} page={page} onPage={setPage} /></details>
@@ -58,9 +74,8 @@ function TaskDetail({ projectId, selected, readOnly, onClose, onSaved, onSelect,
 function TaskEditor({ projectId, task, readOnly, onSaved, initialStatus, parentTaskId, initialLink, onRefresh }: { projectId: string; task?: WorkspaceTask; readOnly: boolean; onSaved: (id: string) => void; initialStatus: WorkspaceTaskStatus; parentTaskId: string | null; initialLink: WorkspaceLink | null; onRefresh: () => Promise<unknown> }) {
   const { t } = useI18n(); const initial = task ? taskToForm(task) : { ...newTask, status: initialStatus, parentTaskId, link: initialLink };
   const [form, setForm] = useState<SaveWorkspaceTask>(initial); const [advanced, setAdvanced] = useState(Boolean(task || parentTaskId || initialLink || initialStatus === "BLOCKED"));
-  const [milestonePage, setMilestonePage] = useState(1); const receipt = useRef<{ payload: string; key: string }>(); const busy = useRef(false); const [saved, setSaved] = useState(false);
+  const receipt = useRef<{ payload: string; key: string }>(); const busy = useRef(false); const [saved, setSaved] = useState(false);
   const [baseline, setBaseline] = useState<SaveWorkspaceTask>(initial); const [expectedVersion, setExpectedVersion] = useState(task?.version);
-  const milestones = useWorkspaceResource(projectId, "milestones", () => workspaceApi.milestones(projectId, milestonePage), milestonePage, advanced);
   const save = useWorkspaceCommand(projectId, (data: SaveWorkspaceTask) => {
     const payload = JSON.stringify(data);
     if (receipt.current?.payload !== payload) receipt.current = { payload, key: crypto.randomUUID() };
@@ -83,7 +98,6 @@ function TaskEditor({ projectId, task, readOnly, onSaved, initialStatus, parentT
       </div><aside className="task-properties"><h3>{t("Properties")}</h3><label>{t("Status")}<select value={form.status} onChange={e => field("status", e.target.value as SaveWorkspaceTask["status"])}>{Object.entries(taskLabels).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label><label>{t("Priority")}<select value={form.priority ?? "MEDIUM"} onChange={e => field("priority", e.target.value as SaveWorkspaceTask["priority"])}>{Object.entries(taskPriorities).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label>
         {!readOnly ? <WorkspacePeoplePicker projectId={projectId} value={form.assigneeId ? [form.assigneeId] : []} onChange={ids => field("assigneeId", ids[0] ?? null)} /> : <label>{t("Assignee")}<input value={task?.assignee?.name ?? t("Unassigned")} readOnly /></label>}
         <label>{t("Deadline, optional")}<input type="date" value={dateValue(form.dueAt)} onChange={e => field("dueAt", fromDate(e.target.value))} /><small>{t("Deadlines use the UTC calendar date.")}</small></label>
-        <label>{t("Milestone, optional")}<select value={form.milestoneId ?? ""} onChange={e => field("milestoneId", e.target.value || null)}><option value="">{t("No milestone")}</option>{form.milestoneId && !milestones.data?.items.some(milestone => milestone.id === form.milestoneId) && <option value={form.milestoneId}>{t("Current milestone")}</option>}{milestones.data?.items.map(milestone => <option key={milestone.id} value={milestone.id}>{milestone.title}</option>)}</select></label><WorkspacePager data={milestones.data} page={milestonePage} onPage={setMilestonePage} />
         {form.parentTaskId && <button type="button" className="task-expand" onClick={() => field("parentTaskId", null)}>{t("Detach from parent task")}</button>}
       </aside></div></>}
     </fieldset>
@@ -98,26 +112,4 @@ function TaskSubtasks({ projectId, task, readOnly, onSelect }: { projectId: stri
     {subtasks.isLoading ? <WorkspaceLoading /> : subtasks.isError ? <WorkspaceError error={subtasks.error} retry={() => void subtasks.refetch()} /> : <ul>{subtasks.data?.items.map(child => <li key={child.id}><button type="button" onClick={() => onSelect(child.id)}><span className="task-subtask-check" data-done={child.status === "DONE"}>{child.status === "DONE" && <Check size={12} />}</span><span><strong>{child.title}</strong><small>{child.assignee?.name ?? t("Unassigned")} · {t(taskLabels[child.status])}</small></span><ChevronRight size={14} /></button></li>)}</ul>}
     {subtasks.data?.total === 0 && <p className="coord-muted">{t("Split assignable work into subtasks. Keep small steps in the checklist.")}</p>}<WorkspacePager data={subtasks.data} page={page} onPage={setPage} />
   </section>;
-}
-function Milestones({ projectId, readOnly }: { projectId: string; readOnly: boolean }) {
-  const { t } = useI18n(); const [page, setPage] = useState(1); const [editing, setEditing] = useState<WorkspaceMilestone | "new" | null>(null);
-  const milestones = useWorkspaceResource(projectId, "milestones", () => workspaceApi.milestones(projectId, page), page);
-  return <section><div className="coord-section-title"><p className="coord-muted">{t("Milestones set targets. Completing tasks does not automatically change the research stage.")}</p>{!readOnly && <Button size="sm" variant="outline" onClick={async () => { if ((await canLeaveWorkspace())) setEditing("new"); }}><Plus className="mr-2 h-4 w-4" />{t("New milestone")}</Button>}</div>
-    {editing && <MilestoneEditor key={editing === "new" ? "new" : editing.id} projectId={projectId} milestone={editing === "new" ? undefined : milestones.data?.items.find(item => item.id === editing.id) ?? editing} readOnly={readOnly} onRefresh={() => milestones.refetch()} onClose={() => setEditing(null)} />}
-    {milestones.isLoading ? <WorkspaceLoading /> : milestones.isError ? <WorkspaceError error={milestones.error} retry={() => void milestones.refetch()} /> : !milestones.data?.items.length ? <WorkspaceEmpty title={t("Give the team a clear target")}><p>{t("Add a milestone such as finishing screening or preparing a proposal draft.")}</p></WorkspaceEmpty> : <ul className="coord-action-list">{milestones.data.items.map(milestone => <li key={milestone.id}><button type="button" disabled={readOnly} onClick={async () => { if ((await canLeaveWorkspace())) setEditing(milestone); }}><span><strong>{milestone.title}</strong><small>{t(milestone.status === "COMPLETE" ? "Completed" : "Planned")}{milestone.description ? ` · ${milestone.description}` : ""}</small></span><WorkspaceDate value={milestone.dueAt} /></button></li>)}</ul>}<WorkspacePager data={milestones.data} page={page} onPage={setPage} />
-  </section>;
-}
-function MilestoneEditor({ projectId, milestone, readOnly, onClose, onRefresh }: { projectId: string; milestone?: WorkspaceMilestone; readOnly: boolean; onClose: () => void; onRefresh: () => Promise<unknown> }) {
-  const { t } = useI18n(); const initial = { title: milestone?.title ?? "", description: milestone?.description ?? "", dueAt: milestone?.dueAt ?? null, status: milestone?.status ?? "PLANNED" as const };
-  const [form, setForm] = useState(initial); const [saved, setSaved] = useState(false); const busy = useRef(false);
-  const [baseline, setBaseline] = useState(initial), [expectedVersion, setExpectedVersion] = useState(milestone?.version);
-  const receipt = useRef<{ payload: string; key: string }>();
-  const dirty = !saved && JSON.stringify(form) !== JSON.stringify(baseline);
-  const save = useWorkspaceCommand(projectId, () => {
-    const payload = JSON.stringify(form);
-    if (receipt.current?.payload !== payload) receipt.current = { payload, key: crypto.randomUUID() };
-    return workspaceApi.saveMilestone(projectId, { ...form, ...(milestone ? { expectedVersion } : { clientKey: receipt.current.key }) }, milestone?.id);
-  });
-  useUnsavedWorkspace(dirty || save.isPending);
-  return <Dialog open onOpenChange={async open => { if (!open && !busy.current && (await canLeaveWorkspace())) onClose(); }}><DialogContent closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t(milestone ? "Edit milestone" : "New milestone")}</DialogTitle><DialogDescription>{t("Add a milestone such as finishing screening or preparing a proposal draft.")}</DialogDescription></DialogHeader><form className="coord-editor milestone-dialog-form" onSubmit={async e => { e.preventDefault(); if (busy.current || readOnly) return; busy.current = true; try { await save.mutateAsync(); setSaved(true); onClose(); } catch { await onRefresh(); /* Keep the draft and original version. */ } finally { busy.current = false; } }}>{milestone && milestone.version !== expectedVersion && <div role="status"><p>{t("A newer version is available. Your draft has been kept.")}</p><Button type="button" size="sm" variant="outline" onClick={async () => { if (!dirty || await canLeaveWorkspace()) { setForm(initial); setBaseline(initial); setExpectedVersion(milestone.version); save.reset(); } }}>{t("Load latest version")}</Button></div>}<fieldset disabled={readOnly || save.isPending} className="coord-field-stack"><label>{t("Milestone title")}<input autoFocus required maxLength={240} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></label><label>{t("Description")}<textarea rows={3} maxLength={5000} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></label><div className="coord-form-pair"><label>{t("Deadline, optional")}<input type="date" value={dateValue(form.dueAt)} onChange={e => setForm({ ...form, dueAt: fromDate(e.target.value) })} /></label><label>{t("Status")}<select value={form.status} onChange={e => setForm({ ...form, status: e.target.value as typeof form.status })}><option value="PLANNED">{t("Planned")}</option><option value="COMPLETE">{t("Completed")}</option></select></label></div></fieldset>{save.error && <WorkspaceError error={save.error} />}<div className="coord-form-actions"><Button type="button" size="sm" variant="ghost" disabled={save.isPending} onClick={async () => { if ((await canLeaveWorkspace())) onClose(); }}>{t("Cancel")}</Button><Button disabled={readOnly || save.isPending || !form.title.trim()}>{t(save.isPending ? "Saving…" : "Save milestone")}</Button></div></form></DialogContent></Dialog>;
 }

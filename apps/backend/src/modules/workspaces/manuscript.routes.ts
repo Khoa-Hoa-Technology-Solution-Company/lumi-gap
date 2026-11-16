@@ -25,7 +25,7 @@ import { manuscriptPdfImport, pdfImportSchema } from "./manuscript-pdf-import.js
 import { manuscriptWritingService } from "./manuscript-writing.service.js";
 import { writingReportSchema, writingReportPageSchema } from "./dto/manuscript.schema.js";
 import { withWorkspace } from "../projects/workspace-access.js";
-import { manuscriptParams, createManuscriptSchema, createFileSchema, changeFileSchema, snapshotSchema, commentSchema, snapshotQuery, restoreSchema, compileSchema, importManuscriptSchema } from "./dto/manuscript.schema.js";
+import { manuscriptParams, createManuscriptSchema, createFileSchema, changeFileSchema, snapshotSchema, commentSchema, snapshotQuery, restoreSchema, compileSchema, importManuscriptSchema, manuscriptLifecycleActionSchema } from "./dto/manuscript.schema.js";
 
 export const manuscriptRouter: Router = Router({ mergeParams: true });
 manuscriptRouter.use(requireAuth, requireResearchWorkflow, validate(manuscriptParams, "params"));
@@ -44,8 +44,12 @@ const pdfConversions = createRateLimiter("manuscripts:pdf-conversions", { window
 const ids = async (req: { params: Record<string, unknown>; user?: { sub: string } }) => {
   const parsed = parseDatabaseId(String(req.params.projectId));
   if (!parsed) throw AppError.badRequest("Invalid identifier");
-  const project = parsed.kind === "uuid" ? parsed.value : (await getPrisma().project.findUnique({ where: { legacyMongoId: parsed.value }, select: { id: true } }))?.id;
+  const project = parsed.kind === "uuid" ? parsed.value : (await getPrisma().project.findFirst({ where: { legacyMongoId: parsed.value, deletedAt: null }, select: { id: true } }))?.id;
   if (!project) throw AppError.notFound("Project not found");
+  if (parsed.kind === "uuid") {
+    const active = await getPrisma().project.findFirst({ where: { id: project, deletedAt: null }, select: { id: true } });
+    if (!active) throw AppError.notFound("Project not found");
+  }
   const account = parseDatabaseId(req.user!.sub);
   if (!account) throw AppError.unauthorized("Invalid account identifier");
   const actor = account.kind === "uuid" ? account.value : (await getPrisma().user.findUnique({ where: { legacyMongoId: account.value }, select: { id: true } }))?.id;
@@ -53,6 +57,7 @@ const ids = async (req: { params: Record<string, unknown>; user?: { sub: string 
   return { project, actor, id: String(req.params.id) };
 };
 manuscriptRouter.get("/", async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.list(a.project, a.actor) }); });
+manuscriptRouter.get("/trash", async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.listDeleted(a.project, a.actor) }); });
 manuscriptRouter.post("/", writes, validate(createManuscriptSchema), async (req, res) => { const a = await ids(req); res.status(201).json({ success: true, data: await manuscriptService.create(a.project, a.actor, req.body) }); });
 manuscriptRouter.post("/import", uploads, async (req, _res, next) => { const a = await ids(req); await manuscriptService.list(a.project, a.actor); next(); }, archiveUpload.single("archive"), validate(importManuscriptSchema), async (req, res) => {
   if (!req.file) throw AppError.badRequest("Choose a source ZIP"); const a = await ids(req);
@@ -83,7 +88,10 @@ manuscriptRouter.post("/pdf-imports/:conversionId/accept", writes, validate(pdfI
 });
 manuscriptRouter.use("/:id", validate(manuscriptParams, "params"));
 manuscriptRouter.get("/:id", async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.detail(a.project, a.actor, a.id) }); });
-manuscriptRouter.delete("/:id", writes, validate(z.object({ expectedVersion: z.number().int().min(1) }).strict()), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.remove(a.project, a.actor, a.id, req.body.expectedVersion) }); });
+manuscriptRouter.delete("/:id", writes, validate(manuscriptLifecycleActionSchema), async (req, res) => { const a = await ids(req); const data = req.body.reason ? await manuscriptService.remove(a.project, a.actor, a.id, req.body.expectedVersion, req.body.reason) : await manuscriptService.remove(a.project, a.actor, a.id, req.body.expectedVersion); res.json({ success: true, data }); });
+manuscriptRouter.post("/:id/archive", writes, validate(manuscriptParams, "params"), validate(manuscriptLifecycleActionSchema), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.setArchived(a.project, a.actor, a.id, req.body.expectedVersion, true, req.body.reason) }); });
+manuscriptRouter.post("/:id/unarchive", writes, validate(manuscriptParams, "params"), validate(manuscriptLifecycleActionSchema), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.setArchived(a.project, a.actor, a.id, req.body.expectedVersion, false, req.body.reason) }); });
+manuscriptRouter.post("/:id/restore-trash", writes, validate(manuscriptParams, "params"), validate(manuscriptLifecycleActionSchema), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.restoreDeleted(a.project, a.actor, a.id, req.body.expectedVersion, req.body.reason) }); });
 manuscriptRouter.get("/:id/remote", async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptSync.binding(a.project, a.actor, a.id) }); });
 manuscriptRouter.get("/:id/remote-history", async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptSync.history(a.project, a.actor, a.id) }); });
 manuscriptRouter.put("/:id/remote", writes, validate(remoteBindingSchema), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptSync.bind(a.project, a.actor, a.id, req.body) }); });

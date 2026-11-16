@@ -1,3 +1,5 @@
+import { useRef } from "react";
+import { useI18n } from "@/i18n";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useNavigate } from "react-router-dom";
@@ -28,6 +30,8 @@ interface RegisterFormProps {
 export function RegisterForm({ redirectTo, invitationToken }: RegisterFormProps) {
   const navigate = useNavigate();
   const register = useRegister();
+  const { t } = useI18n();
+  const submitting = useRef(false);
 
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -35,16 +39,26 @@ export function RegisterForm({ redirectTo, invitationToken }: RegisterFormProps)
   });
 
   const onSubmit = (values: RegisterFormValues) => {
+    if (submitting.current) return;
+    submitting.current = true;
+    form.clearErrors();
     register.mutate({ ...values, invitationToken }, {
-      onSuccess: ({ user }) => {
+      onSuccess: ({ user, verificationEmailDelivery }) => {
         toast.success(`Account created successfully. Welcome, ${user.fullName}!`);
         const target = resolvePostAuthPath(user, redirectTo);
-        navigate(target, { state: { from: redirectTo }, replace: true });
+        navigate(target, { state: { from: redirectTo, verificationEmailDelivery }, replace: true });
       },
       onError: (err) => {
         const axiosErr = err as AxiosError<{ error?: { message?: string } }>;
-        toast.error(axiosErr?.response?.data?.error?.message ?? "Registration failed");
+        const status = axiosErr?.response?.status;
+        const message = status === 409 ? t("This email already has an account. Sign in or reset your password.")
+          : !status || status >= 500 ? t("Registration is temporarily unavailable. Your details are still here. Please try again.")
+          : status === 429 ? t("Too many registration attempts. Please wait before trying again.")
+          : t(axiosErr?.response?.data?.error?.message ?? "Registration failed");
+        form.setError(status === 409 ? "email" : "root.server", { type: "server", message });
+        toast.error(message);
       },
+      onSettled: () => { submitting.current = false; },
     });
   };
 
@@ -171,6 +185,7 @@ export function RegisterForm({ redirectTo, invitationToken }: RegisterFormProps)
               )}
             />
 
+            {form.formState.errors.root?.server?.message && <p role="alert" className="text-sm text-destructive">{form.formState.errors.root.server.message}</p>}
             <div className="pt-2">
               <Button type="submit" className="w-full rounded-xl h-12 bg-[#1da1f2] hover:bg-[#1a91da] text-white text-base font-bold shadow-md" disabled={register.isPending}>
                 {register.isPending ? "Creating..." : "Register"}

@@ -6,7 +6,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AcademicSupportPage, MentorProjectPanel, ConsentComposer } from '../academic-support';
 import { MentorAccessWorkspace } from '@/features/projects/components/mentor-access-workspace';
-const mocks=vi.hoisted(()=>({mine:vi.fn(),preferences:vi.fn(),savePreferences:vi.fn(),opportunities:vi.fn(),respond:vi.fn(),offer:vi.fn(),draft:vi.fn(),saveDraft:vi.fn(),projects:vi.fn(),workspace:vi.fn(),list:vi.fn(),mentors:vi.fn(),guidance:vi.fn(),settings:vi.fn(),request:vi.fn(),requestDetail:vi.fn()}));
+const mocks=vi.hoisted(()=>({mine:vi.fn(),preferences:vi.fn(),savePreferences:vi.fn(),opportunities:vi.fn(),respond:vi.fn(),requestInfo:vi.fn(),offer:vi.fn(),draft:vi.fn(),saveDraft:vi.fn(),projects:vi.fn(),workspace:vi.fn(),list:vi.fn(),mentors:vi.fn(),guidance:vi.fn(),settings:vi.fn(),saveSettings:vi.fn(),request:vi.fn(),requestDetail:vi.fn(),previewDossier:vi.fn(),suggestions:vi.fn(),suggest:vi.fn(),dismissSuggestion:vi.fn(),plan:vi.fn(),changePlan:vi.fn()}));
 const accessMocks=vi.hoisted(()=>({workspace:vi.fn(),feedback:vi.fn(),history:vi.fn(),agreements:vi.fn(),comment:vi.fn()}));
 vi.mock('@/features/projects/api/mentor-access.api',()=>({mentorAccessApi:accessMocks}));
 const state=vi.hoisted(()=>({role:'LECTURER'}));
@@ -34,8 +34,13 @@ accessMocks.workspace.mockResolvedValue({viewerId:'mentor',projectId:'project',t
 for (const method of ['feedback','history','agreements'] as const) accessMocks[method].mockResolvedValue({items:[],total:0,page:1,pageSize:20,hasNext:false});
 mocks.preferences.mockResolvedValue({canEnable:true,acceptingMentorships:true,emailEnabled:false,locale:'en'});
 mocks.mine.mockImplementation(async({view}:any)=>({requests:view==='incoming'?[invitation]:[],relationships:[],counts:{incoming:1,active:0,pending:1},requestMeta:meta,relationshipMeta:meta}));
-mocks.opportunities.mockResolvedValue({items:[project],meta});mocks.respond.mockResolvedValue({});mocks.offer.mockResolvedValue({});mocks.projects.mockResolvedValue([]);
+mocks.opportunities.mockResolvedValue({items:[project],meta});mocks.respond.mockResolvedValue({});mocks.requestInfo.mockResolvedValue({});mocks.offer.mockResolvedValue({});mocks.projects.mockResolvedValue([]);
 mocks.requestDetail.mockResolvedValue(invitation);
+mocks.suggestions.mockResolvedValue({items:[],meta:{page:1,pageSize:10,total:0,totalPages:0},counts:{pending:0,total:0,mine:0,minePending:0}});
+mocks.suggest.mockResolvedValue({id:'suggestion-1'});
+mocks.dismissSuggestion.mockResolvedValue({id:'suggestion-1'});
+mocks.plan.mockResolvedValue({version:1,parallelInvitations:false,autoSend:false,currentMentors:[],currentInvitations:[],closedRoles:[],canManage:false,positions:{PRIMARY:{status:'VACANT',pendingRequests:0},SECONDARY:{status:'LOCKED',pendingRequests:0}},candidates:[]});
+mocks.changePlan.mockResolvedValue({});
 mocks.draft.mockResolvedValue({message:'I can help with experiments',mentorRole:'PRIMARY',attachments:[],version:1});mocks.saveDraft.mockImplementation(async(_p:any,_d:any,input:any)=>({...input,attachments:[],version:2}));
 client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});host=document.createElement('div');document.body.append(host);root=createRoot(host);});
 afterEach(async()=>{await act(async()=>root.unmount());client.clear();host.remove();vi.unstubAllGlobals();});
@@ -102,9 +107,9 @@ it('shows the approved abstract before opening any dialog, and repeats the topic
   expect(mocks.workspace).not.toHaveBeenCalled();
 });
 it('lets the lecturer review an invitation then accept through a separate explicit confirmation',async()=>{
-  await mount(); await click('View Project Preview');
+  await mount(); await click('Review Invitation Dossier');
   const preview=document.querySelector('[role="dialog"]')!;
-  expect(preview.textContent).toContain('Research mentorship invitation');
+  expect(preview.textContent).toContain('Research Mentorship Invitation Dossier');
   expect(preview.textContent).toContain(project.summary);
   expect(preview.textContent).toContain('Invited role');
   await act(async()=>{[...preview.querySelectorAll('button')].find(b=>b.textContent==='Accept mentorship')!.click();});await tick();
@@ -228,4 +233,93 @@ it('keeps an unauthorized deep link closed and allows a safe retry',async()=>{
   await click('Try again');
   expect(mocks.requestDetail).toHaveBeenCalledTimes(2);
   expect(mocks.workspace).not.toHaveBeenCalled();
+});
+
+it('guides a student through the streamlined supervision request composer, supports inline abstract editing, enforces preview consent, and submits dossier preferences',async()=>{
+  state.role='STUDENT';
+  const serverDossier={
+    version:1,
+    generatedAt:'2026-11-13T00:00:00Z',
+    project:{id:'project',title:project.title,abstract:'Updated approved research abstract with more than thirty characters and five words',abstractApproved:true,researchField:'AI Ethics',researchAreas:['NLP'],keywords:['Evaluation'],stage:'PLANNING',primaryObjective:'Benchmark robustness',teamMemberCount:3},
+    team:{teamMemberCount:3,representative:{_id:'student',fullName:'Nguyen Van A',academicRole:'STUDENT',institutionName:'FPT University',programName:'Software Engineering',academicYearLabel:'K18',researchInterests:['NLP'],skills:['Python'],expertiseAreas:[],featuredWorks:[],publicLinks:[],affiliationVerified:true,provenance:['VERIFIED_AFFILIATION','SELF_DECLARED']},sharedMembersCount:0,sharedMembers:[],privacyRedactedCount:2},
+    competencies:{researchMethods:[{name:'Ablation study',category:'METHOD',provenance:'SELF_DECLARED'}],technicalSkills:[{name:'Python',category:'SKILL',provenance:'SELF_DECLARED'}],researchTools:[],experienceHighlights:[],integrityNotice:'Các kỹ năng tự khai báo.'},
+    whyThisLecturer:{message:'Your NLP work closely aligns with our study.',lecturerName:'Dr. Tran'},
+    expectations:{supportAreas:['RESEARCH_METHODOLOGY'],expectedPeriod:'1 học kỳ'},
+    accessPreview:{mentorRole:'PRIMARY',preset:'ADVISOR',permissionCount:2,permissions:['OVERVIEW_VIEW','MENTOR_CHAT'],sharedResourceSummary:['Chưa mở khóa tài nguyên nội bộ'],expiresAt:null,responseDeadline:'6 ngày',beforeAcceptNotice:'Before accept notice',afterAcceptNotice:'After accept notice'},
+  };
+  mocks.settings.mockResolvedValue({...project,summary:'Approved research abstract with more than thirty characters and words',version:1,discovery:'CLOSED',previewToken:'a'.repeat(64),dossierDefaults:{representative:serverDossier.team.representative,shareableMemberCount:1,keywords:['Evaluation'],competencies:serverDossier.competencies,defaultExpectations:{supportAreas:[]}}});
+  mocks.saveSettings.mockResolvedValue({...project,summary:'Updated approved research abstract with more than thirty characters and five words',version:2,discovery:'CLOSED',previewToken:'b'.repeat(64),dossierDefaults:{representative:serverDossier.team.representative,shareableMemberCount:1,keywords:['Evaluation'],competencies:serverDossier.competencies,defaultExpectations:{supportAreas:[]}}});
+  mocks.list.mockResolvedValue({positions:{PRIMARY:{status:'VACANT',pendingRequests:0},SECONDARY:{status:'VACANT',pendingRequests:0}},policy:{maxPendingPerRole:3}});
+  mocks.draft.mockResolvedValue({message:'Your NLP work closely aligns with our study.',mentorRole:'PRIMARY',attachments:[],version:1});
+  mocks.previewDossier.mockResolvedValue(serverDossier);
+  mocks.request.mockResolvedValue(invitation);
+
+  await act(async()=>root.render(<QueryClientProvider client={client}><MemoryRouter><ConsentComposer project={{...project,discovery:'CLOSED',stage:'PLANNING',availableRoles:['PRIMARY']}} mentor={{_id:'lecturer',fullName:'Dr. Tran',expertiseAreas:['NLP','AI Safety']}} onClose={()=>{}} /></MemoryRouter></QueryClientProvider>));
+  await tick();await tick();
+
+  const dialogText=document.querySelector('[role="dialog"]')?.textContent ?? '';
+  expect(dialogText).toContain('Gửi yêu cầu hướng dẫn');
+  expect(dialogText).toContain('Giảng viên đã chọn');
+  expect(dialogText).toContain('Đề tài được chia sẻ');
+  expect(dialogText).toContain('Loại hỗ trợ mong muốn');
+  expect(dialogText).toContain('Quyền riêng tư');
+  expect(dialogText).toContain('Chỉ chia sẻ Proposal Preview.');
+
+  const abstractInput=document.querySelector<HTMLTextAreaElement>('[aria-label="Research Abstract"]')!;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(abstractInput,'Updated approved research abstract with more than thirty characters and five words');abstractInput.dispatchEvent(new Event('input',{bubbles:true}));});
+  const objective=document.querySelector<HTMLTextAreaElement>('[aria-label="Mục tiêu nghiên cứu chính"]')!;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(objective,'Benchmark robustness');objective.dispatchEvent(new Event('input',{bubbles:true}));});
+  const whyMsg=document.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(whyMsg,'Your NLP work closely aligns with our study.');whyMsg.dispatchEvent(new Event('input',{bubbles:true}));});
+  await click('Phương pháp nghiên cứu');
+
+  await click('Xem trước hồ sơ');
+  await tick();
+  expect(mocks.saveSettings).toHaveBeenCalledWith('project',expect.objectContaining({summary:'Updated approved research abstract with more than thirty characters and five words',expectedVersion:1}));
+  expect(mocks.previewDossier).toHaveBeenCalledWith('project',expect.objectContaining({mentorUserId:'lecturer',mentorRole:'PRIMARY',dossier:expect.objectContaining({approvedObjective:'Benchmark robustness',expectations:expect.objectContaining({supportAreas:['RESEARCH_METHODOLOGY']})})}));
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Nguyen Van A');
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Đã xác minh đơn vị');
+  expect(button('Send Invitation').disabled).toBe(true);
+
+  const consentBox=document.querySelector<HTMLInputElement>('[aria-label="Xác nhận chia sẻ hồ sơ mời hướng dẫn"]')!;
+  expect(consentBox).not.toBeNull();
+  await act(async()=>{consentBox.click();});
+  await tick();
+  expect(consentBox.checked).toBe(true);
+  expect(button('Send Invitation').disabled).toBe(false);
+  await click('Send Invitation');
+  expect(mocks.request).toHaveBeenCalledWith('project','lecturer','Your NLP work closely aligns with our study.',expect.any(String),expect.objectContaining({mentorRole:'PRIMARY',expectedPreviewToken:'b'.repeat(64),dossier:expect.objectContaining({approvedObjective:'Benchmark robustness'})}));
+});
+
+it('renders the lecturer supervision request card with visible preview sections and Request More Info flow',async()=>{
+  const richInvitation={
+    ...invitation,
+    actions:{accept:true,decline:true,cancel:false,end:false,openProject:false,requestInfo:true},
+    dossier:{
+      version:1,
+      generatedAt:'2026-11-13T00:00:00Z',
+      project:{id:'project',title:project.title,abstract:'Shared abstract about security vulnerabilities.',abstractApproved:true,researchField:'Information Security',researchAreas:['Security'],keywords:['LLM'],stage:'PLANNING',teamMemberCount:3},
+      team:{teamMemberCount:3,representative:{_id:'leader',fullName:'Student leader',institutionName:'FPT University',programName:'Software Engineering',researchInterests:[],skills:[],expertiseAreas:[],featuredWorks:[],publicLinks:[],affiliationVerified:true,provenance:['VERIFIED_AFFILIATION']},sharedMembersCount:0,sharedMembers:[],privacyRedactedCount:2},
+      competencies:{researchMethods:[],technicalSkills:[],researchTools:[],experienceHighlights:[],integrityNotice:''},
+      whyThisLecturer:{message:'Please guide our research'},
+      expectations:{supportAreas:['RESEARCH_DIRECTION','RESEARCH_METHODOLOGY']},
+      accessPreview:{mentorRole:'PRIMARY',preset:'ADVISOR',permissionCount:1,permissions:['OVERVIEW_VIEW'],sharedResourceSummary:[],expiresAt:null,beforeAcceptNotice:'',afterAcceptNotice:''},
+    },
+  };
+  mocks.mine.mockImplementation(async({view}:any)=>({requests:view==='incoming'?[richInvitation]:[],relationships:[],counts:{incoming:1,active:0,pending:1},requestMeta:meta,relationshipMeta:meta}));
+  await mount();
+  expect(host.textContent).toContain('Lecturer Dashboard / Supervision Requests');
+  expect(host.textContent).toContain('Yêu cầu hướng dẫn mới');
+  expect(host.textContent).toContain('Thông tin giảng viên được xem');
+  expect(host.textContent).toContain('Research Abstract');
+  expect(host.textContent).toContain('Research Team');
+  expect(host.textContent).toContain('Expected Support');
+  expect(host.textContent).toContain('Quyết định của giảng viên');
+  expect(host.textContent).toContain('Request More Info');
+
+  await click('Request More Info');
+  const note=document.querySelector<HTMLTextAreaElement>('[aria-label="Note"]')!;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(note,'Please clarify your dataset and sample size.');note.dispatchEvent(new Event('input',{bubbles:true}));});
+  await click('Confirm');
+  expect(mocks.requestInfo).toHaveBeenCalledWith(expect.objectContaining({id:'request'}),'Please clarify your dataset and sample size.');
 });

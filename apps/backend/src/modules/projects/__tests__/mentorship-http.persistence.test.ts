@@ -110,6 +110,14 @@ describe.skipIf(!enabled).sequential("two-way mentorship through authenticated H
   it("validates suggestions, enforces owner decisions and retains rejection without granting privileges", async () => {
     expect((await request(member, `/projects/${project}/mentor-suggestions`, "POST", { mentorUserId: lecturer, message: " " })).status).toBe(400);
     expect((await request(member, `/projects/${project}/mentor-suggestions`, "POST", { mentorUserId: lecturer, message: "Recommended evaluation expert" })).status).toBe(201);
+    const mineList = await request<{ items: Array<{ id: string; status: string }> }>(member, `/projects/${project}/mentor-suggestions?scope=mine`);
+    expect(mineList.status).toBe(200);
+    expect(mineList.data.items).toHaveLength(1);
+    expect(mineList.data.items[0].status).toBe("PENDING");
+    expect((await request(member, `/projects/${project}/mentor-suggestions/${mineList.data.items[0].id}/dismiss`, "POST", {})).status).toBe(403);
+    expect((await request(owner, `/projects/${project}/mentor-suggestions/${mineList.data.items[0].id}/dismiss`, "POST", { reason: "Priority shift" })).status).toBe(200);
+    const dismissedHistory = await request<{ items: Array<{ id: string; status: string; dismissReason?: string }> }>(member, `/projects/${project}/mentor-suggestions?scope=mine`);
+    expect(dismissedHistory.data.items[0]).toMatchObject({ status: "DISMISSED", dismissReason: "Priority shift" });
     await openDiscovery();
     const offer = await request<MentorshipRequest>(lecturer, `/projects/${project}/mentorship-offers`, "POST", { message: "Offer guidance" });
     expect((await request(member, `/projects/${project}/mentorships/${offer.data.id}/accept`, "POST", {})).status).toBe(403);
@@ -145,7 +153,7 @@ describe.skipIf(!enabled).sequential("two-way mentorship through authenticated H
       await memberPage.getByRole("textbox", { name: "Tìm mentor đang nhận nhóm", exact: true }).fill(lecturerName);
       await memberPage.getByRole("article").filter({ hasText: lecturerName }).getByRole("button", { name: "Đề xuất cố vấn", exact: true }).click();
       await memberPage.getByRole("dialog").locator("textarea").fill("Phù hợp với phương pháp nghiên cứu của nhóm");
-      await memberPage.getByRole("button", { name: "Gửi đề xuất", exact: true }).click();
+      await memberPage.getByRole("button", { name: "Gửi đề xuất cho chủ dự án", exact: true }).click();
       await browserExpect(memberPage.getByRole("dialog")).toHaveCount(0);
       await ownerPage.goto("http://127.0.0.1:5180/academic-support?projectId=" + project);
       const projectPanel = ownerPage.locator(".mentor-workspace");

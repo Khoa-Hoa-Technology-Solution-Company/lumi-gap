@@ -9,7 +9,7 @@ export async function currentProjectMembership(projectId: string, userId: string
     db.projectMember.findUnique({ where: { projectId_userId: { projectId, userId } } }),
     db.user.findUnique({ where: { id: userId }, select: { isActive: true, accountStatus: true, emailVerifiedAt: true } }),
   ]);
-  return project && user?.isActive && user.accountStatus === "ACTIVE" && user.emailVerifiedAt && (project.ownerId === userId || member?.status === "ACTIVE") ? project : null;
+  return project && !project.deletedAt && user?.isActive && user.accountStatus === "ACTIVE" && user.emailVerifiedAt && (project.ownerId === userId || member?.status === "ACTIVE") ? project : null;
 }
 
 export async function requireCurrentProjectMembership(projectId: string, userId: string, mutable = false, db: Prisma.TransactionClient = getPrisma()) {
@@ -22,7 +22,11 @@ export async function requireCurrentProjectMembership(projectId: string, userId:
 export async function currentProjectIds(userId: string) {
   const [memberships, owned] = await Promise.all([
     getPrisma().projectMember.findMany({ where: { userId, status: "ACTIVE" }, select: { projectId: true } }),
-    getPrisma().project.findMany({ where: { ownerId: userId }, select: { id: true } }),
+    getPrisma().project.findMany({ where: { ownerId: userId, deletedAt: null }, select: { id: true } }),
   ]);
-  return [...new Set([...memberships.map(m => m.projectId), ...owned.map(p => p.id)])];
+  const memberIds = memberships.map(m => m.projectId);
+  const activeMemberProjects = memberIds.length
+    ? await getPrisma().project.findMany({ where: { id: { in: memberIds }, deletedAt: null }, select: { id: true } })
+    : [];
+  return [...new Set([...activeMemberProjects.map(p => p.id), ...owned.map(p => p.id)])];
 }
