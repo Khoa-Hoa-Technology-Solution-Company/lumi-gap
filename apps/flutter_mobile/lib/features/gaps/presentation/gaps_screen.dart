@@ -4,38 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
-import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
-import 'package:flutter_mobile/core/widgets/lumi/lumi_text_field.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/gaps/presentation/gap_analysis_overlay.dart';
 import 'package:flutter_mobile/features/gaps/presentation/gap_card.dart';
 import 'package:flutter_mobile/features/gaps/presentation/gap_detail_sheet.dart';
+import 'package:flutter_mobile/features/gaps/presentation/gap_sheets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Topic bounds of the gap analysis API (`gaps.schema.ts`).
-const int gapTopicMin = 3;
-const int gapTopicMax = 200;
-
-/// Error key for a topic to analyse, or null when it can be sent.
-String? gapTopicError(String raw) {
-  final text = raw.trim();
-  if (text.length < gapTopicMin) {
-    return tk('Topic must be at least 3 characters long.');
-  }
-  if (text.length > gapTopicMax) return tk('Use at most 200 characters.');
-  return null;
-}
-
-/// Server-side orders, the same as the web list.
-final List<(String, String)> gapSorts = [
-  ('newest', tk('Newest Opportunities First')),
-  ('recommended', tk('Recommended (evidence + confidence)')),
-  ('evidence', tk('Most Evidence-backed')),
-  ('confidence', tk('Highest Confidence')),
-  ('papers', tk('Most Supporting Papers')),
-  ('ai_only_last', tk('AI-only Last')),
-];
+export 'package:flutter_mobile/features/gaps/presentation/gap_sheets.dart'
+    show gapSorts, gapTopicError, gapTopicMax, gapTopicMin;
 
 class GapsScreen extends ConsumerStatefulWidget {
   const GapsScreen({super.key, this.initialTopic});
@@ -47,21 +26,19 @@ class GapsScreen extends ConsumerStatefulWidget {
 }
 
 class _GapsScreenState extends ConsumerState<GapsScreen> {
-  final _topic = TextEditingController();
   late final _searchField =
       TextEditingController(text: widget.initialTopic ?? '');
 
-  /// The search actually sent: the field settles for 350ms first, so
-  /// typing does not fire a request per key.
+  /// The topic filter actually sent (the API's `topic`, as on the web): the
+  /// field settles for 350ms first, so typing does not fire a request per
+  /// key.
   late String _search = widget.initialTopic ?? '';
   Timer? _searchDebounce;
 
   String _status = 'active';
-  double? _minConfidence;
-  String _sortBy = 'newest';
+  GapListFilters _filters = const GapListFilters();
 
   bool _analyzing = false;
-  bool _showTopicError = false;
   String? _analysisId;
   Timer? _pollTimer;
   bool _disposed = false;
@@ -69,18 +46,43 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
   /// Gaps whose status change is in flight.
   final Set<String> _busy = {};
 
-  GapsListParams get _params => GapsListParams(
-        search: _search,
+  /// Pages 1.._pages are shown; scrolling near the end asks for the next.
+  int _pages = 1;
+  bool _canLoadMore = false;
+  final _scroll = ScrollController();
+
+  GapsListParams _paramsFor(int page) => GapsListParams(
+        topic: _search,
         status: _status,
-        minConfidence: _minConfidence,
-        sortBy: _sortBy,
+        minConfidence: _filters.minConfidence,
+        sortBy: _filters.sortBy,
+        page: page,
       );
+
+  /// A filter change shows its own list from the first page.
+  void _setFilter(VoidCallback change) => setState(() {
+        change();
+        _pages = 1;
+      });
+
+  void _maybeLoadMore() {
+    if (!mounted || !_canLoadMore || !_scroll.hasClients) return;
+    if (_scroll.position.extentAfter > 600) return;
+    _canLoadMore = false;
+    setState(() => _pages++);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_maybeLoadMore);
+  }
 
   @override
   void dispose() {
     _disposed = true;
-    _topic.dispose();
     _searchField.dispose();
+    _scroll.dispose();
     _searchDebounce?.cancel();
     _pollTimer?.cancel();
     super.dispose();
@@ -90,7 +92,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       if (mounted && value.trim() != _search.trim()) {
-        setState(() => _search = value.trim());
+        _setFilter(() => _search = value.trim());
       }
     });
   }
@@ -105,22 +107,28 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
     );
   }
 
-  Future<void> _analyze() async {
-    if (_analyzing) return;
-    if (gapTopicError(_topic.text) != null) {
-      setState(() => _showTopicError = true);
-      return;
+  Future<void> _openFilters() async {
+    final picked = await showGapFilterSheet(context, _filters);
+    if (picked != null && picked != _filters && mounted) {
+      _setFilter(() => _filters = picked);
     }
+  }
+
+  Future<void> _askAndAnalyze() async {
+    if (_analyzing) return;
+    final topic = await showAnalyzeTopicSheet(context);
+    if (topic == null || !mounted) return;
+    await _analyze(topic);
+  }
+
+  Future<void> _analyze(String topic) async {
+    if (_analyzing || gapTopicError(topic) != null) return;
     setState(() => _analyzing = true);
     try {
-      final id = await ref.read(gapsApiProvider).analyze(_topic.text.trim());
+      final id = await ref.read(gapsApiProvider).analyze(topic);
       // Never start polling for a screen that is already gone.
       if (_disposed || !mounted) return;
-      _topic.clear();
-      setState(() {
-        _showTopicError = false;
-        _analysisId = id;
-      });
+      setState(() => _analysisId = id);
       _pollTimer?.cancel();
       _pollTimer = Timer.periodic(
         const Duration(seconds: 3),
@@ -138,7 +146,10 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
     _pollTimer = null;
     setState(() => _analysisId = null);
     // The finished job added gaps: show them.
-    if (ready) ref.invalidate(gapsProvider);
+    if (ready) {
+      _pages = 1;
+      ref.invalidate(gapsProvider);
+    }
   }
 
   Future<void> _changeStatus(String id, String status) async {
@@ -160,28 +171,52 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final gaps = ref.watch(gapsProvider(_params));
+    final gaps = ref.watch(gapsProvider(_paramsFor(1)));
     final theme = Theme.of(context);
     final lumi = context.lumi;
-    final topicError = _showTopicError ? gapTopicError(_topic.text) : null;
+
+    // Every page asked so far, in order; a gap that moved onto the next page
+    // between two requests is shown once.
+    final shown = <ResearchGapItem>[];
+    final seen = <String>{};
+    var lastPage = gaps;
+    for (var page = 1; page <= _pages; page++) {
+      final current =
+          page == 1 ? gaps : ref.watch(gapsProvider(_paramsFor(page)));
+      for (final gap in current.value?.data ?? const <ResearchGapItem>[]) {
+        if (seen.add(gap.id)) shown.add(gap);
+      }
+      lastPage = current;
+    }
+    final total = gaps.value?.total ?? 0;
+    // An empty or short page means the list is over, whatever the total
+    // says: no endless requests.
+    _canLoadMore = lastPage.hasValue &&
+        !lastPage.isLoading &&
+        lastPage.requireValue.data.length >= _paramsFor(_pages).pageSize &&
+        shown.length < total;
+    if (_canLoadMore) {
+      // A short first page may not scroll at all: check once laid out.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _maybeLoadMore());
+    }
 
     final Widget list;
     if (gaps.hasValue) {
-      final data = gaps.requireValue;
-      list = data.data.isEmpty
+      list = shown.isEmpty
           ? LumiEmptyState(
               icon: Icons.lightbulb_outline,
               title: context.t('No research gaps found'),
               message: context.t('Try another filter or submit a topic.'),
-              compact: true,
+              actionLabel: context.t('Analyze a topic'),
+              onAction:
+                  _analyzing ? null : () => unawaited(_askAndAnalyze()),
             )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final gap in data.data)
+                for (final gap in shown)
                   GapCard(
                     gap: gap,
-                    busy: _busy.contains(gap.id),
                     onOpen: () => unawaited(
                       showGapDetailSheet(
                         context,
@@ -190,17 +225,29 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                             unawaited(_changeStatus(gap.id, s)),
                       ),
                     ),
-                    onStatusChange: (s) => unawaited(_changeStatus(gap.id, s)),
                   ),
-                Text(
-                  context.plural(
-                    data.total,
-                    one: '{{count}} research gap found',
-                    other: '{{count}} research gaps found',
+                if (_pages > 1 && lastPage.isLoading)
+                  const LumiSkeleton(height: 120)
+                else if (lastPage.hasError)
+                  LumiErrorState(
+                    message: context.t(failureMessageKey(lastPage.error!)),
+                    retrying: lastPage.isLoading,
+                    onRetry: () =>
+                        ref.invalidate(gapsProvider(_paramsFor(_pages))),
+                    inline: true,
                   ),
-                  textAlign: TextAlign.end,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: lumi.foregroundSecondary),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    context.plural(
+                      total,
+                      one: '{{count}} research gap found',
+                      other: '{{count}} research gaps found',
+                    ),
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: lumi.foregroundSecondary),
+                  ),
                 ),
               ],
             );
@@ -208,7 +255,7 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
       list = LumiErrorState(
         message: context.t(failureMessageKey(gaps.error!)),
         retrying: gaps.isLoading,
-        onRetry: () => ref.invalidate(gapsProvider(_params)),
+        onRetry: () => ref.invalidate(gapsProvider(_paramsFor(1))),
         inline: true,
       );
     } else {
@@ -216,129 +263,58 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(context.t('Research Gaps'))),
+      appBar: AppBar(title: Text(context.t('Research gaps'))),
+      // With gaps on screen the way to add more stays in reach; an empty
+      // list carries the same action in its message instead.
+      floatingActionButton: shown.isEmpty || _analysisId != null
+          ? null
+          : FloatingActionButton.extended(
+              onPressed:
+                  _analyzing ? null : () => unawaited(_askAndAnalyze()),
+              icon: const Icon(Icons.add),
+              label: Text(context.t('Analyze')),
+            ),
       body: Stack(
         children: [
           RefreshIndicator(
-            onRefresh: () async => ref.invalidate(gapsProvider(_params)),
+            onRefresh: () async {
+              setState(() => _pages = 1);
+              ref.invalidate(gapsProvider);
+            },
             child: ListView(
-              padding: const EdgeInsets.all(16),
+              controller: _scroll,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 96),
               children: [
-                Text(
-                  context.t(
-                    'Find opportunities and research gaps recommended by Gemini.',
-                  ),
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: lumi.foregroundSecondary),
-                ),
-                const SizedBox(height: 16),
-                LumiCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      LumiTextField(
-                        label: context.t('Analyze new research topic'),
-                        controller: _topic,
-                        enabled: !_analyzing,
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchField,
                         maxLength: gapTopicMax,
-                        textInputAction: TextInputAction.send,
-                        errorText:
-                            topicError == null ? null : context.t(topicError),
-                        onChanged: (_) {
-                          if (_showTopicError) setState(() {});
-                        },
-                        onFieldSubmitted: (_) => unawaited(_analyze()),
+                        onChanged: _onSearchChanged,
+                        decoration: InputDecoration(
+                          hintText: context.t('Filter by topic'),
+                          prefixIcon: const Icon(Icons.search, size: 20),
+                          counterText: '',
+                        ),
                       ),
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed:
-                            _analyzing ? null : () => unawaited(_analyze()),
-                        child: _analyzing
-                            ? SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: lumi.onPrimary,
-                                ),
-                              )
-                            : Text(context.t('Analyze')),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SegmentedButton<String>(
-                  showSelectedIcon: false,
-                  segments: [
-                    ButtonSegment(
-                      value: 'active',
-                      label: Text(context.t('Active')),
                     ),
-                    ButtonSegment(
-                      value: 'resolved',
-                      label: Text(context.t('Resolved')),
-                    ),
-                    ButtonSegment(
-                      value: 'dismissed',
-                      label: Text(context.t('Dismissed')),
+                    const SizedBox(width: 8),
+                    LumiFilterButton(
+                      activeCount: _filters.activeCount,
+                      onPressed: () => unawaited(_openFilters()),
                     ),
                   ],
-                  selected: {_status},
-                  onSelectionChanged: (s) =>
-                      setState(() => _status = s.single),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _searchField,
-                  maxLength: 200,
-                  onChanged: _onSearchChanged,
-                  decoration: InputDecoration(
-                    hintText: context.t('Filter gaps by topic name...'),
-                    prefixIcon: const Icon(Icons.search, size: 20),
-                    counterText: '',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  initialValue: _sortBy,
-                  decoration:
-                      InputDecoration(labelText: context.t('Sort by')),
-                  items: [
-                    for (final (value, label) in gapSorts)
-                      DropdownMenuItem(
-                        value: value,
-                        child: Text(context.t(label)),
-                      ),
+                LumiSegmentedTabs<String>(
+                  options: [
+                    ('active', context.t('Active')),
+                    ('resolved', context.t('Resolved')),
+                    ('dismissed', context.t('Dismissed')),
                   ],
-                  onChanged: (v) {
-                    if (v != null) setState(() => _sortBy = v);
-                  },
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  context.t('Minimum confidence'),
-                  style: theme.textTheme.titleSmall,
-                ),
-                const SizedBox(height: 8),
-                SegmentedButton<double>(
-                  showSelectedIcon: false,
-                  segments: [
-                    ButtonSegment(value: 0, label: Text(context.t('All'))),
-                    ButtonSegment(
-                      value: 0.4,
-                      label: Text(context.t('Medium (≥40%)')),
-                    ),
-                    ButtonSegment(
-                      value: 0.7,
-                      label: Text(context.t('High (≥70%)')),
-                    ),
-                  ],
-                  selected: {_minConfidence ?? 0},
-                  onSelectionChanged: (s) => setState(
-                    () => _minConfidence = s.single == 0 ? null : s.single,
-                  ),
+                  selected: _status,
+                  onChanged: (s) => _setFilter(() => _status = s),
                 ),
                 const SizedBox(height: 16),
                 list,

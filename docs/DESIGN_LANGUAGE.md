@@ -61,7 +61,7 @@ Token thật (`.dark` trong `globals.css`):
 --ring                              217.2 91.2% 59.8%
 ```
 
-Lưu ý tương phản: chữ trắng trên `#3B82F6` chỉ đạt khoảng 3,7:1, thấp hơn mức 4,5:1 cho chữ thường. Vùng Community và Projects của web dùng bộ riêng `.lumi-surface` (`apps/web/src/theme/lumi-surface.css`: nhấn `#60A5FA`, chữ trên nhấn `#0B1120`, đạt khoảng 7,4:1), và bảng token mobile ở §11 theo bộ này. Web hiện còn dùng lẫn vài nền tối khác (`slate-900`, `#121212`, `#09090b`, `#0B1120`); chưa thống nhất.
+Lưu ý tương phản: chữ trắng trên `#3B82F6` chỉ đạt khoảng 3,7:1, thấp hơn mức 4,5:1 cho chữ thường. Vùng Community và Projects của web dùng bộ riêng `.lumi-surface` (`apps/web/src/theme/lumi-surface.css`: nhấn `#60A5FA`, chữ trên nhấn `#0B1120`, đạt khoảng 7,4:1), và màu nhấn tối của mobile ở §11 theo bộ này (`#60A5FA`). Từ TORI-69 (2026-11-16), nền và card tối của mobile theo `.dark` chính của web (`#020817` / `#0F172A`), như mockup đã duyệt. Web hiện còn dùng lẫn vài nền tối khác (`slate-900`, `#121212`, `#09090b`, `#0B1120`); chưa thống nhất.
 
 ### 2.3. Biểu đồ và badge điểm AI
 
@@ -309,8 +309,8 @@ Nguồn: `lib/core/theme/app_colors.dart` (hằng số), `lib/core/theme/lumi_co
 
 | Token (`context.lumi`) | Ý nghĩa | Sáng | Tối |
 |---|---|---|---|
-| `background` | Nền trang | `#F8FAFC` | `#0B1120` |
-| `surface` | Card, sheet, thanh tab | `#FFFFFF` | `#131C31` |
+| `background` | Nền trang | `#F8FAFC` | `#020817` |
+| `surface` | Card, sheet, thanh tab | `#FFFFFF` | `#0F172A` |
 | `surfaceMuted` | Chip, nền phụ, hàng xen kẽ | `#F1F5F9` | `#1E293B` |
 | `line` | Viền, divider | `#E2E8F0` | `#1E293B` |
 | `foreground` | Chữ chính | `#0F172A` | `#F1F5F9` |
@@ -318,9 +318,9 @@ Nguồn: `lib/core/theme/app_colors.dart` (hằng số), `lib/core/theme/lumi_co
 | `muted` | Chữ mờ (metadata, thời gian) | `#64748B` | `#94A3B8` |
 | `primary` | Nút chính, link, tab đang chọn | `#2563EB` | `#60A5FA` |
 | `primaryPressed` | Trạng thái nhấn | `#1D4ED8` | `#93C5FD` |
-| `onPrimary` | Chữ trên nền `primary` | `#FFFFFF` | `#0B1120` |
+| `onPrimary` | Chữ trên nền `primary` | `#FFFFFF` | `#020817` |
 | `primarySoft` | Nền nhạt của chip và badge chính | `#EFF6FF` | `#172554` |
-| `error` / `onError` | Lỗi / chữ trên nền lỗi | `#DC2626` / `#FFFFFF` | `#F87171` / `#0B1120` |
+| `error` / `onError` | Lỗi / chữ trên nền lỗi | `#DC2626` / `#FFFFFF` | `#F87171` / `#020817` |
 | `success` | Thành công | `#15803D` | `#4ADE80` |
 | `warning` | Cảnh báo | `#B45309` | `#FBBF24` |
 | `focus` | Viền focus (2px) | `#2563EB` | `#60A5FA` |
@@ -344,6 +344,8 @@ Font **Source Sans 3**, đóng gói bản TTF tĩnh (400, 500, 600, 700, italic 
 
 | Vai trò Material | Dùng cho | Cỡ / dòng / độ đậm |
 |---|---|---|
+| `displaySmall` | Số nổi bật của một màn (`LumiHeroMetric`) — tối đa một lần/màn | 36 / 44 / 700 |
+| `headlineMedium` | Lời chào Trang chủ | 28 / 36 / 700 |
 | `headlineSmall` | Tiêu đề trang | 24 / 32 / 600 |
 | `titleLarge` | Tiêu đề mục | 20 / 28 / 600 |
 | `titleMedium` | Tiêu đề card, tiêu đề bài báo trong danh sách | 16 / 24 / 600 |
@@ -361,11 +363,18 @@ Màn mới dựng từ các component này thay vì tự vẽ `Container` + `Box
 
 | Component | Dùng cho |
 |---|---|
-| `LumiCard` | Card viền `line`, bo 8, có `onTap` tuỳ chọn (ripple theo bo góc) |
+| `LumiCard` | Card viền `line`, bo 12, có `onTap` tuỳ chọn (ripple theo bo góc) — chỉ cho nội dung nổi bật |
 | `LumiTextField`, `bareInputDecoration()` | Ô nhập có nhãn, lỗi dưới ô, hiện/ẩn mật khẩu; `bareInputDecoration` cho ô nằm sẵn trong một khung (tránh viền lồng viền) |
 | `LumiChip` | Nhãn trạng thái/vai trò với `LumiChipTone` (primary, neutral, success, warning, error) |
 | `LumiAvatar` | Avatar chữ cái đầu khi không có ảnh |
-| `LumiListRow`, `LumiRowGroup` | Danh sách cài đặt/menu kiểu nhóm (Hồ sơ) |
+| `LumiListRow`, `LumiRowGroup` | Dạng danh sách của mọi màn: một card bo 12, các dòng ngăn bằng đường kẻ thụt 16 |
+| `LumiSegmentedTabs` (`lumi_controls.dart`) | Lựa chọn chính của màn (2–4 mục): rãnh `surfaceMuted`, mục chọn là ô `surface` nổi; ô chạm cao 48 |
+| `LumiFilterButton` | Nút 48×48 mở sheet bộ lọc; badge đếm bộ lọc đang bật, ẩn khi 0 |
+| `LumiSearchButton` | Ô tìm kiếm 52dp mở màn Search |
+| `LumiShortcutTile` | Lối tắt: ô icon 56 nền `primarySoft` + nhãn |
+| `LumiSparkline` (`lumi_data.dart`) | Đường giá trị theo năm **thật**; dưới 3 điểm thì không vẽ |
+| `LumiHeroMetric` | Nhãn nhỏ + số lớn (`displaySmall`, số dạng bảng) + đơn vị |
+| `TrendVerdictPill` (`features/trends/components/trend_verdict.dart`) | Pill verdict: nền nhạt màu verdict, icon màu verdict, chữ màu `foreground` (đọc được ở sáng/tối) |
 | `LumiSectionHeader` | Tiêu đề mục + hành động "Xem tất cả" |
 | `LumiSkeleton`, `LumiPageSkeleton` | Chỗ chờ tải tĩnh theo hình nội dung (không shimmer); bản `Page` làm cả thân màn/tab |
 | `LumiEmptyState`, `LumiErrorState` | Trạng thái rỗng (lý do + hành động) và lỗi (thông điệp dịch + Thử lại) |
@@ -375,7 +384,15 @@ Màn mới dựng từ các component này thay vì tự vẽ `Container` + `Box
 
 **Thao tác ghi:** khoá nút khi đang gửi (chống bấm hai lần), hỏi xác nhận trước thao tác mất dữ liệu hay quyền (`ConfirmDialog`, `isDestructive: true`), kiểm tra `mounted` sau mỗi `await`, gửi `newIdempotencyKey()` khi tạo mới, và luôn báo lỗi bằng SnackBar màu `error`.
 
-**Bộ lọc danh sách:** dùng `SegmentedButton` (Dự án, Gaps, Bookmarks, AI của dự án), không tự vẽ tab hay chip. Sheet bộ lọc sửa trên bản nháp và chỉ áp dụng khi bấm "Apply"; đóng cách khác thì không đổi gì. Ô tìm kiếm gửi sau khi ngừng gõ 350ms.
+**Giao diện ít chữ, rõ thứ bậc (TORI-69, mockup đã duyệt 2026-11-15):** nội dung trước, điều khiển thu gọn (ô tìm + một `LumiSegmentedTabs`, còn lại vào sheet qua `LumiFilterButton`); số liệu thành hình khi có dữ liệu thật (số lớn, `LumiSparkline`, pill verdict), luôn kèm chữ/dấu; mỗi dòng một chạm chính (mở chi tiết), hành động phụ trong chi tiết/sheet; bỏ tagline và câu giải thích, cần thì để sau icon (i); danh sách là `LumiRowGroup`; mục rỗng trên Trang chủ ẩn đi; lề màn 20, giữa mục 24–28; tiêu đề bài báo tối đa 2 dòng.
+
+**Bố cục và lối vào (TORI-69, D10):** mỗi chức năng **một lối vào chính** — Trends/Gaps/Reports/Rankings ở hàng lối tắt Trang chủ; Bookmark và Bài của tôi ở Hồ sơ; Nộp bài trong Bài của tôi; Thông báo ở chuông. Ô số liệu không phải lối vào thứ hai. **Trang chủ** là phần của người dùng (việc cần làm, xu hướng, dự án, gợi ý, cộng đồng); **Khám phá** là phần khám phá chung (ô tìm, từ khoá mới nổi, bài mới) — hai tab không lặp nội dung. Một chức năng một tên ("Rankings", "Admin sync"). Màn trùng chức năng thì bỏ, link cũ chuyển hướng (`/keyword/:kw` → `/search?q=`). Mobile giữ việc xem nhanh / theo dõi / phản hồi nhanh; soạn thảo dài, cấu hình, quản trị ở web.
+
+**Chữ phải đúng sự thật:** không nêu tên nhà cung cấp mô hình ("Gemini") hay thuật ngữ nội bộ ("RAG", "Workbench") trên giao diện — người dùng có thể dùng kết nối AI riêng, và việc tìm tài liệu là của hệ thống tìm kiếm, không phải mô hình. Nội dung do AI tạo vẫn ghi rõ "AI". Không câu cố định nào được trình bày như dữ liệu (nhật ký, số liệu, lý do). Nhãn trạng thái lấy đúng giá trị API (`paper_request_state.dart`, `notificationIcon`, `ReportState`), không đoán theo chuỗi con của chữ.
+
+**Thao tác xoá trong danh sách:** nút có `tooltip` + hỏi xác nhận (nút xác nhận nói đúng việc: "Remove"), chặn bấm 2 lần, chỉ bỏ khỏi danh sách sau khi server xác nhận, lỗi thì báo và tải lại. Không vuốt-để-xoá (TalkBack không dùng được, dòng biến mất trước khi biết kết quả).
+
+**Bộ lọc danh sách:** lựa chọn chính dùng `LumiSegmentedTabs` (trước đây `SegmentedButton`), không tự vẽ tab hay chip. Sheet bộ lọc sửa trên bản nháp và chỉ áp dụng khi bấm "Apply"; đóng cách khác thì không đổi gì. Ô tìm kiếm gửi sau khi ngừng gõ 350ms.
 
 **Xu hướng:** nhãn, thứ tự và câu "tăng mạnh nhất" chỉ dựa vào `classification` của API (Rising/Stable/Declining/Insufficient data, kèm độ tin cậy và %/năm); growth và momentum là số mô tả, không bao giờ dùng để gắn nhãn hay xếp hạng. Không vẽ đường xu hướng cạnh chủ đề chưa có kết luận. Tab So sánh tra verdict theo tên trong danh sách tổng quan, không có thì ghi "chưa có kết luận", không mặc định "chưa đủ dữ liệu".
 

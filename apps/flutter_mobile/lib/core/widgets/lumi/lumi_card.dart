@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 
-/// The one card surface of the app: `surface` fill, `line` border, radius 8.
+/// The one card surface of the app: `surface` fill, `line` border, radius 12.
 /// No shadow, so it reads the same in light and dark.
 class LumiCard extends StatelessWidget {
   const LumiCard({
@@ -15,7 +15,7 @@ class LumiCard extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final VoidCallback? onTap;
 
-  static const BorderRadius _radius = BorderRadius.all(Radius.circular(8));
+  static const BorderRadius _radius = BorderRadius.all(Radius.circular(12));
 
   @override
   Widget build(BuildContext context) {

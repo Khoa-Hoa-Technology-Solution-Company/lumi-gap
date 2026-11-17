@@ -79,7 +79,7 @@ class PaperInsightsSection extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                context.t('RAG Grounding Suitability: {{percent}}%', {
+                context.t('Usable as report evidence: {{percent}}%', {
                   'percent': (paper.dataQualityScore * 100).round(),
                 }),
                 style: theme.textTheme.bodyMedium

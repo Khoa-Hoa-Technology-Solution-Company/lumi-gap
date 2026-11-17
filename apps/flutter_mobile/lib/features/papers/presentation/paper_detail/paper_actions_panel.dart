@@ -38,8 +38,12 @@ class _PaperActionsPanelState extends ConsumerState<PaperActionsPanel> {
   Future<void> _toggleBookmark(bool isBookmarked, String? bookmarkId) async {
     if (_savingBookmark) return;
     setState(() => _savingBookmark = true);
+    // The user may leave before the server answers; this widget's `ref` is
+    // unusable then, so the refresh goes through the app's container.
+    final container = ProviderScope.containerOf(context, listen: false);
+    final target = _target;
     try {
-      final api = ref.read(bookmarksApiProvider);
+      final api = container.read(bookmarksApiProvider);
       if (isBookmarked && bookmarkId != null) {
         await api.delete(bookmarkId);
       } else {
@@ -56,8 +60,11 @@ class _PaperActionsPanelState extends ConsumerState<PaperActionsPanel> {
       }
     } finally {
       // Reload either way: after a failure the button shows what the server
-      // really has.
-      ref.invalidate(bookmarkStatusProvider(_target));
+      // really has. The saved list is reloaded too, so Search and Bookmarks
+      // do not keep showing the old state.
+      container
+        ..invalidate(bookmarkStatusProvider(target))
+        ..invalidate(bookmarksProvider);
       if (mounted) setState(() => _savingBookmark = false);
     }
   }

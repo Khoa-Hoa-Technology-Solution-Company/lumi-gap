@@ -4,15 +4,14 @@ import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
 
-/// One search hit: title, authors, a line of facts, and the paper actions.
+/// One search hit: title, authors, a line of facts and a save button. The
+/// row opens the paper, where adding to a project and citing are.
 class SearchResultCard extends StatelessWidget {
   const SearchResultCard({
     required this.paper,
     required this.saved,
     required this.savingBookmark,
     required this.onBookmarkTap,
-    required this.onAddProjectTap,
-    required this.onCiteTap,
     required this.onTap,
     super.key,
   });
@@ -24,8 +23,6 @@ class SearchResultCard extends StatelessWidget {
   final bool? saved;
   final bool savingBookmark;
   final VoidCallback onBookmarkTap;
-  final VoidCallback onAddProjectTap;
-  final VoidCallback onCiteTap;
   final VoidCallback onTap;
 
   @override
@@ -46,7 +43,7 @@ class SearchResultCard extends StatelessWidget {
     ].join(' · ');
     final isSaved = saved ?? false;
 
-    const radius = BorderRadius.all(Radius.circular(8));
+    const radius = BorderRadius.all(Radius.circular(12));
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
@@ -63,7 +60,7 @@ class SearchResultCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16, 14, 4, 14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -74,7 +71,7 @@ class SearchResultCard extends StatelessWidget {
                           child: Text(
                             paper.title,
                             style: theme.textTheme.titleMedium,
-                            maxLines: 3,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -91,6 +88,19 @@ class SearchResultCard extends StatelessWidget {
                             ),
                           ),
                         ],
+                        IconButton(
+                          isSelected: isSaved,
+                          icon: Icon(
+                            isSaved ? Icons.bookmark : Icons.bookmark_outline,
+                            color: isSaved
+                                ? lumi.primary
+                                : lumi.foregroundSecondary,
+                          ),
+                          tooltip: isSaved
+                              ? context.t('Remove bookmark')
+                              : context.t('Save Paper'),
+                          onPressed: savingBookmark ? null : onBookmarkTap,
+                        ),
                       ],
                     ),
                     if (authors.isNotEmpty) ...[
@@ -111,8 +121,8 @@ class SearchResultCard extends StatelessWidget {
                       children: [
                         Text(
                           meta,
-                          style:
-                              theme.textTheme.bodySmall?.copyWith(color: lumi.muted),
+                          style: theme.textTheme.bodyMedium
+                              ?.copyWith(color: lumi.foregroundSecondary),
                         ),
                         if (paper.openAccessUrl != null)
                           LumiChip(
@@ -121,36 +131,6 @@ class SearchResultCard extends StatelessWidget {
                             icon: Icons.lock_open,
                           ),
                       ],
-                    ),
-                  ],
-                ),
-              ),
-              Divider(height: 1, color: lumi.line),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Row(
-                  children: [
-                    IconButton(
-                      isSelected: isSaved,
-                      icon: Icon(
-                        isSaved ? Icons.bookmark : Icons.bookmark_outline,
-                        size: 20,
-                        color: isSaved ? lumi.primary : null,
-                      ),
-                      tooltip: isSaved
-                          ? context.t('Remove bookmark')
-                          : context.t('Save Paper'),
-                      onPressed: savingBookmark ? null : onBookmarkTap,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.create_new_folder_outlined, size: 20),
-                      tooltip: context.t('Add to project'),
-                      onPressed: onAddProjectTap,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.format_quote_outlined, size: 20),
-                      tooltip: context.t('Cite Paper'),
-                      onPressed: onCiteTap,
                     ),
                   ],
                 ),

@@ -118,7 +118,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(context.t('TRIGGER NEW SYNC'), style: context.type.bodySmall!.copyWith( fontWeight: FontWeight.w600, color: context.lumi.muted)),
+                Text(context.t('New sync'), style: context.type.bodySmall!.copyWith( fontWeight: FontWeight.w600, color: context.lumi.muted)),
                 const SizedBox(height: 12),
                 TextField(
                   controller: searchText,
@@ -253,7 +253,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(context.t('EMBEDDING CALCULATIONS'), style: context.type.bodySmall!.copyWith( fontWeight: FontWeight.w600, color: context.lumi.muted)),
+                        Text(context.t('Embeddings'), style: context.type.bodySmall!.copyWith( fontWeight: FontWeight.w600, color: context.lumi.muted)),
                         const SizedBox(height: 16),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -330,7 +330,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
     final user = ref.watch(currentUserProvider);
     if (user?.role != UserRole.admin) {
       return Scaffold(
-        appBar: AppBar(title: Text(context.t('Admin System Workbench'))),
+        appBar: AppBar(title: Text(context.t('Admin sync'))),
         body: Center(child: Text(context.t('Access denied. Admin role required.'), style: TextStyle(color: context.lumi.error))),
       );
     }
@@ -344,7 +344,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
         // The theme's app bar: a transparent one made Android draw light
         // status bar icons over the light page.
         appBar: AppBar(
-          title: Text(context.t('System Workbench')),
+          title: Text(context.t('Admin sync')),
           bottom: TabBar(
             // Scrolls instead of clipping labels on a narrow screen.
             isScrollable: true,

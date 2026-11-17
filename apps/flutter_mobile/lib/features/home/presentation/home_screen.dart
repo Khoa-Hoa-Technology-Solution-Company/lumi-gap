@@ -2,12 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/web_href.dart';
-import 'package:flutter_mobile/core/widgets/lumi/lumi_avatar.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_brand_logo.dart';
-import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
 import 'package:flutter_mobile/core/widgets/notification_bell.dart';
-import 'package:flutter_mobile/core/widgets/paper_card.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
@@ -19,6 +18,7 @@ import 'package:flutter_mobile/features/home/presentation/widgets/home_continue_
 import 'package:flutter_mobile/features/home/presentation/widgets/home_recommended_list.dart';
 import 'package:flutter_mobile/features/home/presentation/widgets/home_section_frame.dart';
 import 'package:flutter_mobile/features/home/presentation/widgets/home_trend_list.dart';
+import 'package:flutter_mobile/features/trends/data/trend_classification.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -44,8 +44,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _toggleBookmark(String paperId) async {
     if (!_bookmarkBusy.add(paperId)) return;
+    // Leaving Home mid-request must still refresh the saved state elsewhere.
+    final container = ProviderScope.containerOf(context, listen: false);
     try {
-      final api = ref.read(bookmarksApiProvider);
+      final api = container.read(bookmarksApiProvider);
       final status = await api.checkStatus('paper', paperId);
       if (status.bookmarked && status.bookmarkId != null) {
         await api.delete(status.bookmarkId!);
@@ -66,13 +68,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _bookmarkBusy.remove(paperId);
       // Re-read the real state whether the request worked or not, so the
       // icon never shows a guess.
-      if (mounted) {
-        ref
-          ..invalidate(bookmarksProvider)
-          ..invalidate(
-            bookmarkStatusProvider(BookmarkTarget('paper', paperId)),
-          );
-      }
+      container
+        ..invalidate(bookmarksProvider)
+        ..invalidate(bookmarkStatusProvider(BookmarkTarget('paper', paperId)));
     }
   }
 
@@ -113,7 +111,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     VoidCallback? onAll,
     int skeletonRows = 2,
     double skeletonHeight = 72,
+    _Show show = _Show.always,
+    bool fullBleed = false,
   }) {
+    const gutter = EdgeInsets.symmetric(horizontal: 20);
+    final ready = async.hasValue && pick(async.requireValue).isReady;
+    final filled =
+        ready && !isEmpty(pick(async.requireValue).data as T);
+    // Home shows what there is: an optional section with nothing in it takes
+    // no room (and "To do" only appears when there is something to do).
+    if (show == _Show.whenFilled && !filled) return const SizedBox.shrink();
+    if (show == _Show.unlessEmpty && ready && !filled) {
+      return const SizedBox.shrink();
+    }
+
     final Widget body;
     String? captionText;
     if (async.hasValue) {
@@ -137,16 +148,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body = HomeSkeleton(rows: skeletonRows, height: skeletonHeight);
     }
     return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.only(bottom: 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          HomeSectionHeader(
-            title: title,
-            onAll: onAll,
-            caption: captionText,
+          Padding(
+            padding: gutter,
+            child: HomeSectionHeader(
+              title: title,
+              onAll: onAll,
+              caption: captionText,
+            ),
           ),
-          body,
+          // A side-scrolling row runs to the screen edges; its own padding
+          // lines its first card up with the titles.
+          if (fullBleed && filled)
+            body
+          else
+            Padding(padding: gutter, child: body),
         ],
       ),
     );
@@ -155,6 +174,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final lumi = context.lumi;
     final user = ref.watch(currentUserProvider);
     final overview = ref.watch(homeOverviewProvider);
     final research = ref.watch(homeResearchProvider);
@@ -164,7 +184,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     final name = research.value?.userName ?? user?.fullName;
     final roleKey = _roleLabel(user?.academicProfileType);
-    final role = roleKey == null ? null : context.t(roleKey);
+
+    void go(String path) => unawaited(context.push(path));
 
     return Scaffold(
       appBar: AppBar(
@@ -178,33 +199,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onRefresh: _refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.only(top: 8, bottom: 24),
           children: [
             Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Row(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  LumiAvatar(name: name),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name == null
-                              ? context.t('Hello')
-                              : context.t('Hello, {{name}}', {'name': name}),
-                          style: theme.textTheme.titleLarge,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        if (role != null) ...[
-                          const SizedBox(height: 4),
-                          LumiChip(label: role),
-                        ],
-                      ],
+                  if (roleKey != null)
+                    Text(
+                      context.t(roleKey),
+                      style: theme.textTheme.bodyLarge
+                          ?.copyWith(color: lumi.foregroundSecondary),
                     ),
+                  Text(
+                    name == null
+                        ? context.t('Hello')
+                        : context.t('Hello, {{name}}', {'name': name}),
+                    style: theme.textTheme.headlineMedium,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
+                  const SizedBox(height: 16),
+                  LumiSearchButton(
+                    hint: context.t('Search papers, keywords…'),
+                    onPressed: () => go('/search'),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 20, 12, 28),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final (icon, label, path) in _shortcuts)
+                    Expanded(
+                      child: LumiShortcutTile(
+                        icon: icon,
+                        label: context.t(label),
+                        onPressed: () => go(path),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -216,10 +252,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               isEmpty: (d) => d.isEmpty,
               emptyText: context.t('You have nothing to handle.'),
               emptyIcon: Icons.task_alt,
-              skeletonRows: 3,
+              show: _Show.whenFilled,
               builder: (items) => HomeAttentionList(
                 items: items.take(5).toList(),
                 onOpen: _open,
+              ),
+            ),
+            _section<HomeOverview, List<HomeTrendTopic>>(
+              title: context.t('Trending topics'),
+              async: overview,
+              pick: (o) => HomeSection.ready(
+                (o.topics.toList()..sort(_byTrend)).take(6).toList(),
+              ),
+              retry: retryOverview,
+              isEmpty: (d) => d.isEmpty,
+              emptyText: context.t('No trend data yet.'),
+              emptyIcon: Icons.show_chart,
+              show: _Show.unlessEmpty,
+              fullBleed: true,
+              skeletonHeight: 160,
+              skeletonRows: 1,
+              caption: (topics) => homeTrendsAllInsufficient(topics)
+                  ? context.t('Not enough yearly data yet to tell whether these topics are rising or falling.')
+                  : null,
+              onAll: () => go('/trends'),
+              builder: (topics) => HomeTrendingCards(
+                topics: topics,
+                onOpen: () => go('/trends'),
               ),
             ),
             _section<HomeResearchOverview, List<HomeResearchWorkspace>>(
@@ -228,15 +287,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               pick: (o) => o.continueSection,
               retry: retryResearch,
               isEmpty: (d) => d.isEmpty,
-              emptyText:
-                  context.t('No projects yet. Create or join a project to get started.'),
+              emptyText: context.t('No projects yet. Create or join a project to get started.'),
               emptyIcon: Icons.folder_open,
               emptyActionLabel: context.t('Go to projects'),
               onEmptyAction: () => context.go('/projects'),
-              skeletonHeight: 160,
               onAll: () => context.go('/projects'),
-              builder: (items) =>
-                  HomeContinueResearch(items: items, onOpen: _open),
+              builder: (items) => HomeContinueResearch(
+                items: items.take(3).toList(),
+                onOpen: _open,
+              ),
             ),
             _section<HomeResearchOverview, List<HomeRecommendedPaper>>(
               title: context.t('Suggested papers'),
@@ -244,62 +303,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               pick: (o) => o.recommendations,
               retry: retryResearch,
               isEmpty: (d) => d.isEmpty,
-              emptyText:
-                  context.t('No suggestions yet. Add topics you are interested in to get suggestions.'),
+              emptyText: context.t('No suggestions yet. Add topics you are interested in to get suggestions.'),
               emptyIcon: Icons.topic_outlined,
-              skeletonHeight: 112,
+              skeletonHeight: 96,
               builder: (items) => HomeRecommendedList(
                 items: items,
-                onOpen: (p) => unawaited(context.push('/paper/${p.id}')),
+                onOpen: (p) => go('/paper/${p.id}'),
                 onBookmark: (p) => unawaited(_toggleBookmark(p.id)),
               ),
             ),
-            _section<HomeOverview, List<HomeTrendTopic>>(
-              title: context.t('Trending topics'),
-              async: overview,
-              pick: (o) => HomeSection.ready(o.topics.take(4).toList()),
-              retry: retryOverview,
-              isEmpty: (d) => d.isEmpty,
-              emptyText: context.t('No trend data yet.'),
-              emptyIcon: Icons.show_chart,
-              caption: (topics) => homeTrendsAllInsufficient(topics)
-                  ? context.t('Not enough yearly data yet to tell whether these topics are rising or falling.')
-                  : null,
-              onAll: () => unawaited(context.push('/trends')),
-              builder: (topics) => HomeTrendList(
-                topics: topics,
-                onOpen: () => unawaited(context.push('/trends')),
-              ),
-            ),
-            _section<HomeOverview, List<HomeRecentPaper>>(
-              title: context.t('New papers'),
-              async: overview,
-              pick: (o) => HomeSection.ready(o.recentPapers.take(5).toList()),
-              retry: retryOverview,
-              isEmpty: (d) => d.isEmpty,
-              emptyText: context.t('No new papers yet.'),
-              emptyIcon: Icons.article_outlined,
-              skeletonHeight: 112,
-              builder: (papers) => Column(
-                children: [
-                  for (final p in papers)
-                    PaperCard(
-                      id: p.id,
-                      title: p.title,
-                      authors:
-                          p.authors.isEmpty ? null : formatAuthors(p.authors),
-                      venueAndYear: [
-                        if (p.venue != null && p.venue!.trim().isNotEmpty)
-                          p.venue!,
-                        if (p.year != null) '${p.year}',
-                        context.t('{{citationCount}} citations', {'citationCount': p.citationCount}),
-                      ].join(' · '),
-                      onTap: () => unawaited(context.push('/paper/${p.id}')),
-                      onBookmarkTap: () => unawaited(_toggleBookmark(p.id)),
-                    ),
-                ],
-              ),
-            ),
+            // The newest papers are on Explore, with the other things
+            // anyone can browse; Home stays about the user.
             _section<HomeResearchOverview, List<HomeCommunityTopic>>(
               title: context.t('Community activity'),
               async: research,
@@ -308,6 +322,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               isEmpty: (d) => d.isEmpty,
               emptyText: context.t('No community activity yet.'),
               emptyIcon: Icons.forum_outlined,
+              show: _Show.unlessEmpty,
               builder: (items) =>
                   HomeCommunityList(items: items, onOpen: _open),
             ),
@@ -317,3 +332,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 }
+
+/// The four entry points under the search box, as on the mockup.
+final List<(IconData, String, String)> _shortcuts = [
+  // A chart, not an arrow: the arrows mean a verdict (rising, declining).
+  (Icons.show_chart, tk('Trends'), '/trends'),
+  (Icons.lightbulb_outline, tk('Gaps'), '/gaps'),
+  (Icons.description_outlined, tk('Reports'), '/reports'),
+  (Icons.emoji_events_outlined, tk('Rankings'), '/rankings'),
+];
+
+/// When an optional Home section takes room.
+enum _Show {
+  /// Loading, error, empty and content alike.
+  always,
+
+  /// Not once it is known to be empty.
+  unlessEmpty,
+
+  /// Only with something in it (no skeleton, no error of its own).
+  whenFilled,
+}
+
+int _byTrend(HomeTrendTopic a, HomeTrendTopic b) => compareByTrend(
+      (classification: a.classification, totalPapers: a.totalPapers, topic: a.topic),
+      (classification: b.classification, totalPapers: b.totalPapers, topic: b.topic),
+    );

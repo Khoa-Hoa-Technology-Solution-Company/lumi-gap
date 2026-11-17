@@ -31,7 +31,7 @@ class HomeSectionHeader extends StatelessWidget {
 BoxDecoration homeCardDecoration(LumiColors lumi) => BoxDecoration(
   color: lumi.surface,
   border: Border.all(color: lumi.line),
-  borderRadius: BorderRadius.circular(8),
+  borderRadius: BorderRadius.circular(12),
 );
 
 /// Loading placeholder: static blocks (no animation, so tests can settle).

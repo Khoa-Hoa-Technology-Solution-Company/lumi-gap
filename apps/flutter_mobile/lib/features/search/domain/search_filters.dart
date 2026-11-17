@@ -1,4 +1,5 @@
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 
 /// The filters the reader can change in the search filter sheet. Immutable:
 /// the sheet edits a copy and hands it back only on "Apply", so closing the
@@ -92,3 +93,29 @@ String paperKindLabel(String code) {
   }
   return tk('Paper Kind');
 }
+
+/// [scope] without the kind, source or provider that Search moved into
+/// filters of their own. A link from Trends sends them in the scope; once a
+/// single one is shown as its own chip, it must not also stay in the scope,
+/// where it would be sent a second time and no chip could take it off.
+TrendScopeFilters withoutPromoted(
+  TrendScopeFilters scope, {
+  required bool kind,
+  required bool source,
+  required bool provider,
+}) =>
+    TrendScopeFilters(
+      paperKinds: kind ? const [] : scope.paperKinds,
+      openAccessStatuses: scope.openAccessStatuses,
+      providers: provider ? const [] : scope.providers,
+      sources: source ? const [] : scope.sources,
+      citationBands: scope.citationBands,
+      domains: scope.domains,
+      fields: scope.fields,
+      subfields: scope.subfields,
+      topics: scope.topics,
+      domainIds: scope.domainIds,
+      fieldIds: scope.fieldIds,
+      subfieldIds: scope.subfieldIds,
+      topicIds: scope.topicIds,
+    );

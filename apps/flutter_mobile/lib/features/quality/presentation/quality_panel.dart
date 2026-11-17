@@ -6,6 +6,7 @@ import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/quality/data/quality_api.dart';
 import 'package:flutter_mobile/features/quality/data/quality_paper_rubric.dart';
@@ -125,21 +126,16 @@ class _QualityPanelState extends ConsumerState<QualityPanel> {
             ),
             if (_isPaper) ...[
               const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<QualityMode>(
-                  style: qualityButtonStyle,
-                  showSelectedIcon: false,
-                  segments: [
-                    ButtonSegment(value: QualityMode.reference, label: Text(s.modeReference, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                    ButtonSegment(value: QualityMode.project, label: Text(s.modeProject, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  ],
-                  selected: {mode},
-                  onSelectionChanged: (v) => setState(() {
-                    mode = v.first;
-                    _error = null;
-                  }),
-                ),
+              LumiSegmentedTabs<QualityMode>(
+                options: [
+                  (QualityMode.reference, s.modeReference),
+                  (QualityMode.project, s.modeProject),
+                ],
+                selected: mode,
+                onChanged: (v) => setState(() {
+                  mode = v;
+                  _error = null;
+                }),
               ),
               if (_projectMode) _projectPicker(s),
             ],

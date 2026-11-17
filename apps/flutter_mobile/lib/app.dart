@@ -19,6 +19,9 @@ class App extends ConsumerWidget {
 
     return MaterialApp.router(
       title: 'LumiGap', // i18n-ignore: product name
+      // No "DEBUG" ribbon in debug builds: it covers the corner in demo
+      // screenshots. Release builds never show it.
+      debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,

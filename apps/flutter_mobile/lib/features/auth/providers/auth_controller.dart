@@ -106,6 +106,22 @@ class AuthController extends Notifier<AsyncValue<User?>> {
     return fresh;
   }
 
+  /// Saves the profile and shows the saved user without a loading state.
+  /// Ignored if the session changed meanwhile (logout, other account).
+  Future<void> updateProfile({
+    String? institution,
+    List<String>? researchInterests,
+  }) async {
+    final current = state.value;
+    if (current == null) return;
+    final updated = await ref.read(authApiProvider).updateProfile(
+          institution: institution,
+          researchInterests: researchInterests,
+        );
+    if (state.value?.id != current.id) return;
+    state = AsyncData(updated);
+  }
+
   Future<void> logout() async {
     state = const AsyncLoading();
     try {

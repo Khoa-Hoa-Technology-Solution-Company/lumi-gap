@@ -82,3 +82,43 @@ class TrendVerdictLabel extends StatelessWidget {
     );
   }
 }
+
+/// The verdict as a small pill: a light tint of the verdict colour, the icon
+/// in that colour and the word in the text colour, so it reads in light and
+/// dark whatever the verdict.
+class TrendVerdictPill extends StatelessWidget {
+  const TrendVerdictPill({required this.verdict, super.key});
+
+  final TrendVerdict verdict;
+
+  @override
+  Widget build(BuildContext context) {
+    final lumi = context.lumi;
+    final style = trendVerdictStyle(verdict, lumi);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 3, 10, 3),
+      decoration: BoxDecoration(
+        color: style.color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(style.icon, size: 16, color: style.color),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              context.t(style.text),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context)
+                  .textTheme
+                  .labelLarge
+                  ?.copyWith(color: lumi.foreground),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -4,6 +4,7 @@ import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
 import 'package:flutter_mobile/features/trends/components/trend_explain_history.dart';
 import 'package:flutter_mobile/features/trends/components/trend_explanation_view.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
@@ -111,7 +112,7 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                context.t('Step 1: Select Topic'),
+                context.t('Topic'),
                 style: theme.textTheme.titleSmall,
               ),
               const SizedBox(height: 8),
@@ -131,26 +132,18 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
               ),
               const SizedBox(height: 16),
               Text(
-                context.t('Step 2: Language'),
+                context.t('Language'),
                 style: theme.textTheme.titleSmall,
               ),
               const SizedBox(height: 8),
-              SegmentedButton<String>(
-                showSelectedIcon: false,
-                segments: [
-                  ButtonSegment(
-                    value: 'en',
-                    label: Text(context.t('English (en)')),
-                  ),
-                  ButtonSegment(
-                    value: 'vi',
-                    label: Text(context.t('Vietnamese (vi)')),
-                  ),
+              LumiSegmentedTabs<String>(
+                options: [
+                  ('en', context.t('English')),
+                  ('vi', context.t('Vietnamese')),
                 ],
-                selected: {language},
-                onSelectionChanged: _loading
-                    ? null
-                    : (s) => setState(() => _language = s.single),
+                selected: language,
+                enabled: !_loading,
+                onChanged: (v) => setState(() => _language = v),
               ),
               const SizedBox(height: 16),
               FilledButton.icon(
@@ -165,7 +158,7 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
         ),
         const SizedBox(height: 24),
         if (_loading)
-          AppLoading(message: context.t('Gemini is running trend diagnostics...'))
+          AppLoading(message: context.t('Explaining the trend…'))
         else if (_explanation != null) ...[
           TrendExplanationView(explanation: _explanation!, topic: _topic),
           const SizedBox(height: 24),

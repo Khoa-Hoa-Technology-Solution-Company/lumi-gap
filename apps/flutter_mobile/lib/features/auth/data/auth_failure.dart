@@ -1,5 +1,4 @@
-import 'package:dio/dio.dart';
-import 'package:flutter_mobile/core/errors/api_exception.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/auth/data/recovery_failure.dart';
 
@@ -45,16 +44,8 @@ extension AuthFailureMessage on AuthFailure {
 /// failure in a `DioException` whose `error` is an `ApiException`; a
 /// connection problem is the one case with no HTTP status.
 AuthFailure classifyAuthError(Object error) {
-  var status = error is ApiException ? error.statusCode : null;
-  if (error is DioException) {
-    final inner = error.error;
-    status ??= error.response?.statusCode ??
-        (inner is ApiException ? inner.statusCode : null);
-    if (status == null && _isConnectionProblem(error.type)) {
-      return AuthFailure.offline;
-    }
-  }
-  return switch (status) {
+  if (isConnectionFailure(error)) return AuthFailure.offline;
+  return switch (failureStatus(error)) {
     401 => AuthFailure.invalidCredentials,
     403 => AuthFailure.accountBlocked,
     409 => AuthFailure.emailTaken,
@@ -63,12 +54,6 @@ AuthFailure classifyAuthError(Object error) {
     _ => AuthFailure.other,
   };
 }
-
-bool _isConnectionProblem(DioExceptionType type) =>
-    type == DioExceptionType.connectionError ||
-    type == DioExceptionType.connectionTimeout ||
-    type == DioExceptionType.sendTimeout ||
-    type == DioExceptionType.receiveTimeout;
 
 /// Limits of the backend `RegisterSchema` / `LoginSchema`
 /// (apps/backend/src/modules/auth/dto/auth.schema.ts). Keep them equal.

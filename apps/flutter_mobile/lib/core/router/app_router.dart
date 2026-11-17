@@ -16,13 +16,13 @@ import 'package:flutter_mobile/features/notifications/presentation/notifications
 import 'package:flutter_mobile/features/papers/presentation/my_papers_screen.dart';
 import 'package:flutter_mobile/features/papers/presentation/paper_detail_screen.dart';
 import 'package:flutter_mobile/features/papers/presentation/submit_paper_screen.dart';
+import 'package:flutter_mobile/features/profile/presentation/account_screen.dart';
 import 'package:flutter_mobile/features/profile/presentation/profile_screen.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail_screen.dart';
 import 'package:flutter_mobile/features/projects/presentation/projects_screen.dart';
 import 'package:flutter_mobile/features/rankings/presentation/rankings_screen.dart';
 import 'package:flutter_mobile/features/reports/presentation/report_detail_screen.dart';
 import 'package:flutter_mobile/features/reports/presentation/reports_screen.dart';
-import 'package:flutter_mobile/features/search/presentation/keyword_papers_screen.dart';
 import 'package:flutter_mobile/features/search/presentation/search_screen.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_mobile/features/trends/presentation/trends_screen.dart';
@@ -181,6 +181,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             initialYearFrom: int.tryParse(params['yearFrom'] ?? ''),
             initialYearTo: int.tryParse(params['yearTo'] ?? ''),
             initialScopeFilters: TrendScopeFilters.fromQuery(params),
+            // A link that asks for a report (or brings its subject) opens
+            // the steps; the plain screen opens on the list.
+            startBuilding: params['create'] == 'true' ||
+                (params['topic'] ?? '').trim().isNotEmpty ||
+                (params['query'] ?? '').trim().isNotEmpty,
           );
         },
       ),
@@ -193,6 +198,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/submit-paper',
         name: 'submit_paper',
         builder: (context, state) => SubmitPaperScreen(editId: state.uri.queryParameters['editId']),
+      ),
+      GoRoute(
+        path: '/account',
+        name: 'account',
+        builder: (context, state) => const AccountScreen(),
       ),
       GoRoute(
         path: '/my-papers',
@@ -230,7 +240,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/keyword/:keyword',
         name: 'keyword_detail',
-        builder: (context, state) => KeywordPapersScreen(keyword: state.pathParameters['keyword'] ?? ''),
+        // Kept for old links: a keyword's papers are a search for it, so
+        // they open Search instead of a second, poorer copy of it.
+        redirect: (context, state) => Uri(
+          path: '/search',
+          queryParameters: {'q': state.pathParameters['keyword'] ?? ''},
+        ).toString(),
       ),
       GoRoute(
         path: '/search',

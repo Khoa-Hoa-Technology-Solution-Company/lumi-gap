@@ -122,7 +122,9 @@ class LumiListRow extends StatelessWidget {
   }
 }
 
-/// Rows in one bordered card, separated by hairlines.
+/// Rows in one bordered card, separated by hairlines inset from the start
+/// edge: the list form of every screen (one card per item is for featured
+/// content only).
 class LumiRowGroup extends StatelessWidget {
   const LumiRowGroup({required this.children, super.key});
 
@@ -134,7 +136,7 @@ class LumiRowGroup extends StatelessWidget {
     return Material(
       color: lumi.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: lumi.line),
       ),
       clipBehavior: Clip.antiAlias,
@@ -142,7 +144,7 @@ class LumiRowGroup extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           for (var i = 0; i < children.length; i++) ...[
-            if (i > 0) Divider(height: 1, color: lumi.line),
+            if (i > 0) Divider(height: 1, indent: 16, color: lumi.line),
             children[i],
           ],
         ],

@@ -65,7 +65,7 @@ class ReportSetupStep extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            context.t('Step 1: Configure RAG Scope'),
+            context.t('Topic and question'),
             style: theme.textTheme.titleMedium,
           ),
           const SizedBox(height: 16),
@@ -88,7 +88,7 @@ class ReportSetupStep extends StatelessWidget {
             maxLines: 5,
             maxLength: ReportLimits.queryMax,
             hintText: context.t(
-              'What specific trends should Gemini write about?',
+              'What should the report answer?',
             ),
             errorText: queryError == null ? null : context.t(queryError),
             onChanged: (_) => onEdited(),
@@ -106,11 +106,11 @@ class ReportSetupStep extends StatelessWidget {
               ),
               DropdownMenuItem(
                 value: ReportLanguage.en,
-                child: Text(context.t('English (en)')),
+                child: Text(context.t('English')),
               ),
               DropdownMenuItem(
                 value: ReportLanguage.vi,
-                child: Text(context.t('Vietnamese (vi)')),
+                child: Text(context.t('Vietnamese')),
               ),
             ],
             onChanged: loading
@@ -130,7 +130,7 @@ class ReportSetupStep extends StatelessWidget {
             ),
             subtitle: Text(
               context.t(
-                'Gemini runs detailed semantic search loops to backfill grounding bibliography.',
+                'Searches further to find more evidence. Takes longer.',
               ),
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: lumi.foregroundSecondary),

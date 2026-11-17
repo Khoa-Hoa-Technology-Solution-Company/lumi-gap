@@ -62,9 +62,13 @@ class ReportStatusLabel extends StatelessWidget {
       children: [
         Icon(state.icon, size: 16, color: color),
         const SizedBox(width: 4),
-        Text(
-          context.t(state.label),
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color),
+        // Wraps on a narrow screen with large text instead of overflowing.
+        Flexible(
+          child: Text(
+            context.t(state.label),
+            style:
+                Theme.of(context).textTheme.labelMedium?.copyWith(color: color),
+          ),
         ),
       ],
     );

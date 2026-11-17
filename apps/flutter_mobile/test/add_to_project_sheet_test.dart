@@ -19,8 +19,14 @@ class _FakeProjectsApi extends Fake implements ProjectsApi {
   Object? addError;
   Object? listError;
 
+  /// When set, addPaper waits for the test to complete it: the request
+  /// then outlives the sheet, as a real one does.
+  Completer<void>? addGate;
+  int listCalls = 0;
+
   @override
   Future<List<ProjectView>> list() async {
+    listCalls++;
     // ignore: only_throw_errors, the test injects whatever the API may throw
     if (listError != null) throw listError!;
     return projects;
@@ -29,6 +35,7 @@ class _FakeProjectsApi extends Fake implements ProjectsApi {
   @override
   Future<void> addPaper(String projectId, String paperId) async {
     added.add((projectId, paperId));
+    if (addGate != null) await addGate!.future;
     // ignore: only_throw_errors, the test injects whatever the API may throw
     if (addError != null) throw addError!;
   }
@@ -128,5 +135,38 @@ void main() {
     await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
     expect(find.text('Federated learning'), findsOneWidget);
+  });
+
+  testWidgets(
+      'a request that outlives the sheet still reports success and '
+      'refreshes the projects', (tester) async {
+    final api = _FakeProjectsApi([_listed])..addGate = Completer<void>();
+    await _pump(tester, api);
+    final listsBefore = api.listCalls;
+    await tester.tap(find.text('Federated learning'));
+    // The sheet is gone and disposed before the server answers.
+    await tester.pumpAndSettle();
+    expect(find.text('Add to project'), findsNothing);
+    api.addGate!.complete();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Added paper to project'), findsOneWidget);
+    expect(find.text('Something went wrong. Please try again.'), findsNothing);
+    // Reopening reads the list again: the invalidate reached the app's
+    // container, not the closed sheet's.
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(api.listCalls, greaterThan(listsBefore));
+  });
+
+  testWidgets('a paper already in the project says so (409)', (tester) async {
+    final api = _FakeProjectsApi([_listed])..addError = httpFailure(409);
+    await _pump(tester, api);
+    await tester.tap(find.text('Federated learning'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('This item already exists or was changed. Refresh and try again.'),
+      findsOneWidget,
+    );
   });
 }

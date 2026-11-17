@@ -12,6 +12,7 @@ import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 TrendingTopic _topic(
   String name, {
@@ -161,7 +162,8 @@ void main() {
           onExplainTopic: (_) {},
         ),
       );
-      expect(find.textContaining('clearest rising'), findsNothing);
+      // Nothing is featured: raw growth never makes a topic "rising".
+      expect(find.text('Fastest rising topic'), findsNothing);
       expect(
         find.text(
           'Not enough yearly data yet to tell whether these topics are rising or falling.',
@@ -171,13 +173,54 @@ void main() {
       expect(find.text('Insufficient data'), findsNothing);
       expect(find.textContaining('per year'), findsNothing);
       expect(find.textContaining('110.8'), findsNothing);
-      expect(find.text('109,071 publications'), findsOneWidget);
-      // Labelled actions, each at least 48dp tall.
-      for (final label in ['Papers', 'Explain', 'Trend graph']) {
-        final button = find.widgetWithText(TextButton, label);
-        expect(button, findsOneWidget, reason: label);
-        expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
-      }
+      expect(find.textContaining('109,071 papers'), findsOneWidget);
+      // One tap per row, at least 48dp tall; the actions are in the sheet
+      // it opens, not repeated on every row.
+      final row = find.ancestor(
+        of: find.text('Local topic'),
+        matching: find.byType(InkWell),
+      );
+      expect(tester.getSize(row.first).height, greaterThanOrEqualTo(48));
+      expect(find.byType(TextButton), findsNothing);
+    });
+
+    testWidgets('a row opens the topic sheet with its actions',
+        (tester) async {
+      final explained = <String>[];
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => Scaffold(
+              body: TrendsSignalsTab(
+                overview: TrendsOverview(topics: [_topic('Local topic')]),
+                params: const TrendsOverviewParams(),
+                onExplainTopic: explained.add,
+              ),
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp.router(
+            locale: AppLocale.en.locale,
+            supportedLocales: AppLocale.supportedLocales,
+            localizationsDelegates: appLocalizationsDelegates,
+            theme: AppTheme.lightTheme,
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Local topic'));
+      await tester.pumpAndSettle();
+      expect(find.text('Search Papers'), findsOneWidget);
+      expect(find.text('Generate Report'), findsOneWidget);
+      await tester.tap(find.text('Explain Trend with AI'));
+      await tester.pumpAndSettle();
+      expect(explained, ['Local topic']);
     });
 
     testWidgets('a rising topic is featured with its verdict and change',
@@ -200,18 +243,17 @@ void main() {
           onExplainTopic: (_) {},
         ),
       );
-      expect(
-        find.text(
-          '"Up" is the clearest rising topic in this scope: +4.3% per year.',
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Rising · High confidence'), findsOneWidget);
+      // Featured: the rising topic, its % per year and how sure the API is.
+      expect(find.text('Fastest rising topic'), findsOneWidget);
+      expect(find.text('+4.3%'), findsNWidgets(2), reason: 'hero and its row');
+      expect(find.textContaining('High confidence'), findsOneWidget);
+      // Each row says its verdict in words next to the figure.
+      expect(find.text('Rising'), findsOneWidget);
       expect(find.text('Declining'), findsOneWidget);
-      expect(find.text('-3.2% per year'), findsOneWidget);
-      // Rising first, even though the API listed it second.
+      expect(find.text('-3.2%'), findsOneWidget);
+      // Rising first in the list, even though the API listed it second.
       expect(
-        tester.getTopLeft(find.text('Up')).dy,
+        tester.getTopLeft(find.text('Up').last).dy,
         lessThan(tester.getTopLeft(find.text('Down')).dy),
       );
     });
@@ -335,6 +377,9 @@ void main() {
         );
         // Reading context.t in initState threw here before.
         expect(tester.takeException(), isNull);
+        // The list comes first; with no reports it offers to start one.
+        await tester.tap(find.text(translate('New report', locale)).last);
+        await tester.pumpAndSettle();
         // No sample topic is typed in for the reader, only suggested.
         expect(
           find.text(translate('e.g. LLM in education...', locale)),
@@ -356,6 +401,8 @@ void main() {
           ),
         ],
       );
+      await tester.tap(find.text('New report').last);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Preview Evidence Pack'));
       await tester.pumpAndSettle();
       // A real API call would fail without a server; none is made.
@@ -364,13 +411,70 @@ void main() {
 
       await tester.enterText(
         find.ancestor(
-          of: find.text('What specific trends should Gemini write about?'),
+          of: find.text('What should the report answer?'),
           matching: find.byType(TextField),
         ),
         'ab',
       );
       await tester.pump();
       expect(find.text('Use at least 3 characters.'), findsOneWidget);
+    });
+  });
+
+  group('reports screen layout', () {
+    const someReports = ReportsList(
+      reports: [
+        ReportListItem(id: 'r1', query: 'q', status: 'ready', topic: 'Topic A'),
+      ],
+      total: 1,
+    );
+
+    testWidgets('the reports come first; "New report" opens the steps and '
+        'closing keeps what was typed', (tester) async {
+      await _pump(
+        tester,
+        const ReportsScreen(),
+        scaffold: false,
+        overrides: [
+          reportsProvider.overrideWith((ref, params) async => someReports),
+        ],
+      );
+      expect(find.text('Topic A'), findsOneWidget);
+      expect(find.text('Preview Evidence Pack'), findsNothing);
+
+      await tester.tap(find.widgetWithText(FloatingActionButton, 'New report'));
+      await tester.pumpAndSettle();
+      expect(find.text('Preview Evidence Pack'), findsOneWidget);
+      await tester.enterText(
+        find.ancestor(
+          of: find.text('What should the report answer?'),
+          matching: find.byType(TextField),
+        ),
+        'How do LLMs grade essays?',
+      );
+
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(find.text('Topic A'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FloatingActionButton, 'New report'));
+      await tester.pumpAndSettle();
+      expect(find.text('How do LLMs grade essays?'), findsOneWidget);
+    });
+
+    testWidgets('a link with a topic opens the steps, filled in',
+        (tester) async {
+      await _pump(
+        tester,
+        const ReportsScreen(initialTopic: 'Federated learning', startBuilding: true),
+        scaffold: false,
+        overrides: [
+          reportsProvider.overrideWith((ref, params) async => someReports),
+        ],
+      );
+      expect(find.text('Preview Evidence Pack'), findsOneWidget);
+      expect(find.text('Federated learning'), findsOneWidget);
+      // Back goes to where the link was, so no "Close" of its own.
+      expect(find.byTooltip('Close'), findsNothing);
     });
   });
 
