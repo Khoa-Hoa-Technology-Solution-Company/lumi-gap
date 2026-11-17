@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="560" viewBox="0 0 1240 560" font-family="Arial">
+<rect width="1240" height="560" fill="white"/>
+<text x="620.0" y="40" font-size="24" font-weight="bold" text-anchor="middle">LumiGap iterations and milestone gates (weeks from kick-off)</text>
+<line x1="330.0" y1="90" x2="330.0" y2="500" stroke="#DDD"/>
+<text x="366.2" y="80" font-size="15" text-anchor="middle">W1</text>
+<line x1="402.5" y1="90" x2="402.5" y2="500" stroke="#DDD"/>
+<text x="438.8" y="80" font-size="15" text-anchor="middle">W2</text>
+<line x1="475.0" y1="90" x2="475.0" y2="500" stroke="#DDD"/>
+<text x="511.2" y="80" font-size="15" text-anchor="middle">W3</text>
+<line x1="547.5" y1="90" x2="547.5" y2="500" stroke="#DDD"/>
+<text x="583.8" y="80" font-size="15" text-anchor="middle">W4</text>
+<line x1="620.0" y1="90" x2="620.0" y2="500" stroke="#DDD"/>
+<text x="656.2" y="80" font-size="15" text-anchor="middle">W5</text>
+<line x1="692.5" y1="90" x2="692.5" y2="500" stroke="#DDD"/>
+<text x="728.8" y="80" font-size="15" text-anchor="middle">W6</text>
+<line x1="765.0" y1="90" x2="765.0" y2="500" stroke="#DDD"/>
+<text x="801.2" y="80" font-size="15" text-anchor="middle">W7</text>
+<line x1="837.5" y1="90" x2="837.5" y2="500" stroke="#DDD"/>
+<text x="873.8" y="80" font-size="15" text-anchor="middle">W8</text>
+<line x1="910.0" y1="90" x2="910.0" y2="500" stroke="#DDD"/>
+<text x="946.2" y="80" font-size="15" text-anchor="middle">W9</text>
+<line x1="982.5" y1="90" x2="982.5" y2="500" stroke="#DDD"/>
+<text x="1018.8" y="80" font-size="15" text-anchor="middle">W10</text>
+<line x1="1055.0" y1="90" x2="1055.0" y2="500" stroke="#DDD"/>
+<text x="1091.2" y="80" font-size="15" text-anchor="middle">W11</text>
+<line x1="1127.5" y1="90" x2="1127.5" y2="500" stroke="#DDD"/>
+<text x="1163.8" y="80" font-size="15" text-anchor="middle">W12</text>
+<line x1="1200.0" y1="90" x2="1200.0" y2="500" stroke="#DDD"/>
+<text x="318" y="124" font-size="16" text-anchor="end">It1  Scope baseline and platform skeleton</text>
+<rect x="333.0" y="106" width="139.0" height="28" rx="5" fill="#9DC3E6" stroke="#2E75B6"/>
+<text x="318" y="168" font-size="16" text-anchor="end">It2  Access control, migrations and CI</text>
+<rect x="478.0" y="150" width="139.0" height="28" rx="5" fill="#9DC3E6" stroke="#2E75B6"/>
+<text x="318" y="212" font-size="16" text-anchor="end">It3  Discovery, trends and community</text>
+<rect x="623.0" y="194" width="139.0" height="28" rx="5" fill="#9DC3E6" stroke="#2E75B6"/>
+<text x="318" y="256" font-size="16" text-anchor="end">It4  WF-01 and WF-02: reports and gaps</text>
+<rect x="768.0" y="238" width="139.0" height="28" rx="5" fill="#9DC3E6" stroke="#2E75B6"/>
+<text x="318" y="300" font-size="16" text-anchor="end">It5  WF-03: submission and human review</text>
+<rect x="913.0" y="282" width="139.0" height="28" rx="5" fill="#9DC3E6" stroke="#2E75B6"/>
+<text x="318" y="344" font-size="16" text-anchor="end">It6  WF-04, credit top-up, release</text>
+<rect x="1058.0" y="326" width="139.0" height="28" rx="5" fill="#9DC3E6" stroke="#2E75B6"/>
+<text x="318" y="404" font-size="16" font-weight="bold" text-anchor="end">Milestone gates</text>
+<polygon points="543.5,388 555.5,400 543.5,412 531.5,400" fill="#C00000"/>
+<text x="543.5" y="434" font-size="14" text-anchor="middle" fill="#C00000">M1  R2 + technical baseline</text>
+<polygon points="761.0,388 773.0,400 761.0,412 749.0,400" fill="#C00000"/>
+<text x="761.0" y="454" font-size="14" text-anchor="middle" fill="#C00000">M2  R3 SRS</text>
+<polygon points="978.5,388 990.5,400 978.5,412 966.5,400" fill="#C00000"/>
+<text x="978.5" y="434" font-size="14" text-anchor="middle" fill="#C00000">M3  R4 SDD</text>
+<polygon points="1123.5,388 1135.5,400 1123.5,412 1111.5,400" fill="#C00000"/>
+<text x="1123.5" y="454" font-size="14" text-anchor="middle" fill="#C00000">M4  integration</text>
+<polygon points="1196.0,388 1208.0,400 1196.0,412 1184.0,400" fill="#C00000"/>
+<text x="1210.0" y="434" font-size="14" text-anchor="end" fill="#C00000">M5  release, R5-R7</text>
+<text x="40" y="544" font-size="13" fill="#555">Calendar dates are fixed when the kick-off and official deadlines are confirmed. Review 2 was held on 05/11/2026.</text>
+</svg>
