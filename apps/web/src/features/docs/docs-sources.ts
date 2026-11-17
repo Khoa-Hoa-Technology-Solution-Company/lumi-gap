@@ -335,11 +335,11 @@ export const DOCS_SOURCES: Record<DocsSourceId, DocsSource> = {
     },
     verification: {
       status: "verified",
-      method: "Crossref (bibliographic record)",
-      checkedOn: "2026-11-16",
+      method: "Crossref + full text (p. 184)",
+      checkedOn: "2026-11-17",
       note: {
-        vi: "Mới đối chiếu thông tin thư mục. Công thức G1, G2 lấy theo cách trình bày phổ biến của bài này (cũng là công thức của các phần mềm thống kê), chưa đối chiếu với toàn văn.",
-        en: "Only the bibliographic record was checked. The G1 and G2 formulas follow the usual presentation of this paper (also the formulas of statistical packages) and were not checked against the full text.",
+        vi: "Đã đối chiếu với toàn văn, trang 184: g1 = m3 / m2^(3/2), g2 = m4 / m2² − 3; G1 = √(n(n−1)) / (n−2) · g1; G2 = (n−1) / ((n−2)(n−3)) · {(n+1)·g2 + 6}. Bài ghi G1, G2 là định nghĩa của SAS, SPSS và Excel.",
+        en: "Checked against the full text, p. 184: g1 = m3 / m2^(3/2), g2 = m4 / m2² − 3; G1 = √(n(n−1)) / (n−2) · g1; G2 = (n−1) / ((n−2)(n−3)) · {(n+1)·g2 + 6}. The paper states that G1 and G2 are the definitions used by SAS, SPSS and Excel.",
       },
     },
   },
@@ -360,11 +360,11 @@ export const DOCS_SOURCES: Record<DocsSourceId, DocsSource> = {
     },
     verification: {
       status: "verified",
-      method: "Crossref (bibliographic record)",
-      checkedOn: "2026-11-16",
+      method: "Crossref + full text (p. 363)",
+      checkedOn: "2026-11-17",
       note: {
-        vi: "Thông tin thư mục theo Crossref. Định nghĩa số 7 (p_k = (k − 1)/(n − 1), mặc định của R) đối chiếu theo tài liệu hàm quantile của R, nơi dẫn chính bài này; chưa đối chiếu với toàn văn.",
-        en: "Bibliographic record from Crossref. Definition 7 (p_k = (k − 1)/(n − 1), the default of R) was checked against the R manual of quantile, which cites this paper; the full text itself was not read.",
+        vi: "Đã đối chiếu với toàn văn, trang 363, Definition 7: p_k = (k − 1)/(n − 1), nội suy tuyến tính giữa các điểm (p_k, X_(k)); các đỉnh chia khoảng giá trị thành n − 1 đoạn.",
+        en: "Checked against the full text, p. 363, Definition 7: p_k = (k − 1)/(n − 1), linear interpolation between the points (p_k, X_(k)); the vertices divide the range into n − 1 intervals.",
       },
     },
   },

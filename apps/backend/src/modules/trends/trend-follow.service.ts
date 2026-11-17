@@ -6,12 +6,21 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import { notificationService } from "../notifications/notification.service.js";
 import type { CreateTrendFollowBody } from "./dto/trends.schema.js";
+import { shortId } from "./trend.openalex-client.js";
+import { itScopeTopics } from "./trend.scope.js";
 import { findUserId, trendService } from "./trend.service.js";
 
 type FollowRow = Awaited<ReturnType<ReturnType<typeof getPrisma>["trendTopicFollow"]["findFirstOrThrow"]>>;
 
 /** Followed topics are re-checked at most once in this interval, so a re-run of the job does not repeat work. */
 const RECHECK_AFTER_MS = 20 * 60 * 60 * 1000;
+
+/**
+ * When the verdict method changed (IT-scope denominator, 15-year window, saturated and past-peak verdicts; spec
+ * 2026-11-14). A baseline stored before this moment was computed with the earlier method, so a different verdict
+ * now is not a change of the trend: the first check after it replaces the baseline without a notification.
+ */
+export const TREND_METHOD_SINCE = new Date("2026-11-17T00:00:00Z");
 
 export const topicKey = (topic: string) => topic.trim().toLowerCase();
 
@@ -23,8 +32,24 @@ async function owner(userId: string) {
   return id;
 }
 
-function toDto(row: FollowRow): TrendTopicFollow {
+/** Ids and names of the topics of the IT scope, or null when OpenAlex cannot be asked (the label is then left out). */
+async function scopeMembership(): Promise<{ ids: Set<string>; names: Set<string> } | null> {
+  try {
+    const topics = await itScopeTopics();
+    return { ids: new Set(topics.map((topic) => topic.id)), names: new Set(topics.map((topic) => topicKey(topic.name))) };
+  } catch (err) {
+    logger.debug({ err }, "trend follow: scope membership unavailable");
+    return null;
+  }
+}
+
+function isInScope(row: FollowRow, scope: { ids: Set<string>; names: Set<string> }): boolean {
+  return row.openalexTopicId ? scope.ids.has(shortId(row.openalexTopicId).toUpperCase()) : scope.names.has(row.topicKey);
+}
+
+function toDto(row: FollowRow, scope?: { ids: Set<string>; names: Set<string> } | null): TrendTopicFollow {
   return {
+    ...(scope ? { inScope: isInScope(row, scope) } : {}),
     id: row.id,
     topic: row.topic,
     openalexTopicId: row.openalexTopicId ?? undefined,
@@ -51,7 +76,9 @@ async function currentVerdict(topic: string, openalexTopicId?: string | null) {
 export const trendFollowService = {
   async list(userId: string): Promise<TrendTopicFollow[]> {
     const rows = await getPrisma().trendTopicFollow.findMany({ where: { userId: await owner(userId) }, orderBy: { createdAt: "desc" } });
-    return rows.map(toDto);
+    // A topic outside the IT scope is still checked, against its own field; the list says so.
+    const scope = rows.length > 0 ? await scopeMembership() : null;
+    return rows.map((row) => toDto(row, scope));
   },
 
   async check(userId: string, topic: string): Promise<{ following: boolean; follow?: TrendTopicFollow }> {
@@ -89,7 +116,8 @@ export const trendFollowService = {
   /**
    * Re-computes the verdict of followed topics that were not checked recently and notifies followers whose
    * topic changed verdict. Each topic is computed once per run, however many users follow it. A topic whose
-   * verdict cannot be computed keeps its previous verdict and is retried on the next run.
+   * verdict cannot be computed keeps its previous verdict and is retried on the next run. A topic inside the IT
+   * scope is measured against the scope, one outside it against its own field (trend.evidence.ts).
    */
   async checkFollowedTopics(now = new Date()): Promise<{ topics: number; changed: number }> {
     const prisma = getPrisma();
@@ -111,6 +139,11 @@ export const trendFollowService = {
         if (row.lastVerdict && row.lastDataSource && row.lastDataSource !== current.dataSource) {
           const data = current.dataSource === "openalex" ? { lastVerdict: current.verdict, lastDataSource: current.dataSource, lastCheckedAt: now } : { lastCheckedAt: now };
           await prisma.trendTopicFollow.update({ where: { id: row.id }, data });
+          continue;
+        }
+        // A baseline from before the method change is replaced silently (see TREND_METHOD_SINCE).
+        if (row.lastVerdict && row.lastCheckedAt && row.lastCheckedAt < TREND_METHOD_SINCE) {
+          await prisma.trendTopicFollow.update({ where: { id: row.id }, data: { lastVerdict: current.verdict, lastDataSource: current.dataSource, lastCheckedAt: now } });
           continue;
         }
         if (row.lastVerdict && row.lastVerdict !== current.verdict) {

@@ -220,7 +220,7 @@ function BoxPlot({ stats, values }: { stats: DescriptiveStats; values: Array<{ v
         </circle>
       ))}
       <text x={left} y={134} fontSize={11} fill="#64748b" textAnchor="start">{`${fixed(stats.min, 3)}%`}</text>
-      <text x={x(stats.median)} y={30} fontSize={11} fill="#334155" textAnchor="middle">{`${fixed(stats.median, 3)}%`}</text>
+      <text x={x(stats.median)} y={30} fontSize={11} fill="currentColor" className="text-slate-700 dark:text-slate-200" textAnchor="middle">{`${fixed(stats.median, 3)}%`}</text>
       <text x={right} y={134} fontSize={11} fill="#64748b" textAnchor="end">{`${fixed(stats.max, 3)}%`}</text>
     </svg>
   );

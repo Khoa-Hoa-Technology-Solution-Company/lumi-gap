@@ -104,9 +104,7 @@ const trendEvidenceKeys = [
   "{{keyword}} is rising but not statistically significant ({{counts}} papers, z = {{z}}, {{q}}), so treat it as exploratory.",
   "{{keyword}} is an early keyword signal ({{growth}}% growth), but it has only {{count}} papers, so treat it as exploratory.",
   "{{keyword}} is an early keyword signal ({{growth}}% growth).",
-  "{{topic}} is the strongest rising topic in this dataset ({{momentum}} papers/year).",
   "No strong trend signals detected in the current scope.",
-  "This topic leads both momentum and volume in this dataset.",
 ] as const;
 
 export const trendEvidenceStrings = Object.fromEntries(trendEvidenceKeys.map((key) => [key, key])) as Record<(typeof trendEvidenceKeys)[number], string>;
@@ -214,7 +212,5 @@ export const trendEvidenceViStrings: Record<(typeof trendEvidenceKeys)[number], 
   "{{keyword}} is rising but not statistically significant ({{counts}} papers, z = {{z}}, {{q}}), so treat it as exploratory.": "{{keyword}} có xu hướng tăng nhưng chưa có ý nghĩa thống kê ({{counts}} bài, z = {{z}}, {{q}}), nên chỉ nên xem là tín hiệu thăm dò.",
   "{{keyword}} is an early keyword signal ({{growth}}% growth), but it has only {{count}} papers, so treat it as exploratory.": "{{keyword}} là tín hiệu từ khóa sớm (tăng {{growth}}%), nhưng chỉ có {{count}} bài nên chỉ nên xem là tín hiệu thăm dò.",
   "{{keyword}} is an early keyword signal ({{growth}}% growth).": "{{keyword}} là tín hiệu từ khóa sớm (tăng {{growth}}%).",
-  "{{topic}} is the strongest rising topic in this dataset ({{momentum}} papers/year).": "{{topic}} là chủ đề tăng mạnh nhất trong bộ dữ liệu này ({{momentum}} bài/năm).",
   "No strong trend signals detected in the current scope.": "Chưa phát hiện tín hiệu xu hướng rõ rệt trong phạm vi hiện tại.",
-  "This topic leads both momentum and volume in this dataset.": "Chủ đề này dẫn đầu cả về động lượng lẫn số lượng bài trong bộ dữ liệu này.",
 };

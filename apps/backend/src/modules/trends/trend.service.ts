@@ -12,7 +12,7 @@ import { aiModel } from "../user-ai/user-ai.runtime.js";
 import { buildAllowedTrendNumbers, buildTrendExplainPrompt, buildTrendMetricTrace, generateTrendExplanationWithRetry, pickRepresentativePapers, TREND_EXPLAIN_PROMPT_VERSION, TREND_EXPLAIN_SYSTEM_PROMPT, validateTrendExplanation } from "./trend-explain.prompt.js";
 import { computeTopicStatistics } from "./trend.evidence.js";
 import { fillMissingYears } from "./trend.formulas.js";
-import { isOpenAlexBudgetAvailable, shortId } from "./trend.openalex-client.js";
+import { isOpenAlexBudgetAvailable, shortId, withOpenAlexRefresh } from "./trend.openalex-client.js";
 import { FULL_WINDOW_YEARS } from "./trend.verdict.js";
 import { getOpenAlexCompare, getOpenAlexRelationships, getOpenAlexTopicCandidates, getOpenAlexTopicDetail } from "./trend.openalex-detail.js";
 import { getOpenAlexTrendsOverview } from "./trend.openalex-overview.js";
@@ -166,13 +166,14 @@ export const trendService = {
   },
 
   /**
-   * Computes the default overview from OpenAlex so the yearly series of every topic of the IT scope are in the cache
-   * (they do not depend on the window or the taxonomy filters). Run by the notification worker on TREND_WARM_CRON.
+   * Re-fetches the default overview from OpenAlex, bypassing the cache read, so the yearly series of every topic of
+   * the IT scope are rewritten in the cache with a fresh lifetime (they do not depend on the window or the taxonomy
+   * filters). Run by the notification worker on TREND_WARM_CRON, which must be shorter than the 7-day cache lifetime.
    * OpenAlex errors are thrown, not hidden behind the local fallback: a failed warm-up must show in the job log.
    */
   async warmScope() {
     const startedAt = Date.now();
-    const overview = await getOpenAlexTrendsOverview(TrendsOverviewQuerySchema.parse({}));
+    const overview = await withOpenAlexRefresh(() => getOpenAlexTrendsOverview(TrendsOverviewQuerySchema.parse({})));
     return { scopeVersion: overview.scopeVersion, topics: overview.testedTopicCount, verdictCounts: overview.verdictCounts, durationMs: Date.now() - startedAt };
   },
 

@@ -7,7 +7,6 @@ import {
   getFastestKeyword,
   getTopicMetric,
   getTopRisingTopic,
-  isSmallBaseKeyword,
   parseTrendSortKey,
   sortTopics,
   type TrendTopicLike,
@@ -93,15 +92,5 @@ describe("trends insights", () => {
   it("only offers a rising topic as the default focus", () => {
     expect(getTopRisingTopic(topics)?.topic).toBe("rising-top");
     expect(getTopRisingTopic([topics[0]!, topics[1]!])).toBeNull();
-  });
-
-  it("flags high-growth keywords from a tiny paper base", () => {
-    const keywords = [
-      { keyword: "tiny spike", totalPapers: 4, growthRatePct: 300, yearlyBreakdown: [] },
-      { keyword: "real growth", totalPapers: 42, growthRatePct: 120, yearlyBreakdown: [] },
-    ];
-    expect(getFastestKeyword(keywords)?.keyword).toBe("tiny spike");
-    expect(isSmallBaseKeyword(keywords[0]!)).toBe(true);
-    expect(isSmallBaseKeyword(keywords[1]!)).toBe(false);
   });
 });

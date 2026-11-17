@@ -93,15 +93,12 @@ export function TrendsPage() {
   const [yearToInput, setYearToInput] = useState(() => String(yearTo));
   const [minPapersInput, setMinPapersInput] = useState(() => String(minPapers));
 
-  // Taxonomy name-based filters
-  const [domains, setDomains] = useState<string[]>(() => parseArrayParam(searchParams, "domains"));
-  const [fields, setFields] = useState<string[]>(() => parseArrayParam(searchParams, "fields"));
+  // Taxonomy name-based filters. The page always covers the Information Technology scope, so there is no
+  // domain or field filter; old links that still carry ?domainIds= or ?fieldIds= are ignored.
   const [subfields, setSubfields] = useState<string[]>(() => parseArrayParam(searchParams, "subfields"));
   const [topicsFilter, setTopicsFilter] = useState<string[]>(() => parseArrayParam(searchParams, "topicsFilter"));
 
   // Taxonomy ID-based filters
-  const [domainIds, setDomainIds] = useState<string[]>(() => parseArrayParam(searchParams, "domainIds"));
-  const [fieldIds, setFieldIds] = useState<string[]>(() => parseArrayParam(searchParams, "fieldIds"));
   const [subfieldIds, setSubfieldIds] = useState<string[]>(() => parseArrayParam(searchParams, "subfieldIds"));
   const [topicIds, setTopicIds] = useState<string[]>(() => parseArrayParam(searchParams, "topicIds"));
 
@@ -163,15 +160,15 @@ export function TrendsPage() {
   useEffect(() => {
     setSearchParams(buildTrendsPageParams({
       yearFrom, yearTo, sortBy, minPapers, activeTab, verdictFilter, focusTopic, focusTopicId,
-      domains, fields, subfields, topicsFilter,
-      domainIds, fieldIds, subfieldIds, topicIds,
+      domains: [], fields: [], subfields, topicsFilter,
+      domainIds: [], fieldIds: [], subfieldIds, topicIds,
       paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
       selectedTopics,
     }), { replace: true });
   }, [
     yearFrom, yearTo, sortBy, minPapers, activeTab, verdictFilter, focusTopic, focusTopicId,
-    domains, fields, subfields, topicsFilter,
-    domainIds, fieldIds, subfieldIds, topicIds,
+    subfields, topicsFilter,
+    subfieldIds, topicIds,
     paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
     selectedTopics, setSearchParams
   ]);
@@ -182,12 +179,8 @@ export function TrendsPage() {
     yearTo,
     sortBy,
     minPapers,
-    domains,
-    fields,
     subfields,
     topics: topicsFilter,
-    domainIds,
-    fieldIds,
     subfieldIds,
     topicIds,
     paperKinds,
@@ -197,8 +190,8 @@ export function TrendsPage() {
     languages,
     citationBands,
   }), [
-    yearFrom, yearTo, sortBy, minPapers, domains, fields, subfields, topicsFilter,
-    domainIds, fieldIds, subfieldIds, topicIds, paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
+    yearFrom, yearTo, sortBy, minPapers, subfields, topicsFilter,
+    subfieldIds, topicIds, paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
   ]);
   const { data, isLoading, isFetching, isError, isPlaceholderData } = useTrendsOverview(overviewParams);
   // keepPreviousData shows the last result while new filters load; it must not pass for the new answer.
@@ -292,11 +285,9 @@ export function TrendsPage() {
     if (!data?.risingKeywords) return [];
     return data.risingKeywords.map((k) => ({
       keyword: k.keyword,
-      growthRatePct: k.growthRatePct,
-      growth: `+${k.growthRatePct}%`,
       totalPapers: k.totalPapers,
       yearlyBreakdown: k.yearlyBreakdown,
-      status: k.growthRatePct > 100 ? "Hot" : "Rising",
+      status: k.shift && k.shift.qValue < 0.05 ? "Hot" : "Rising",
       shift: k.shift,
     }));
   }, [data]);
@@ -310,20 +301,6 @@ export function TrendsPage() {
 
   const scopeString = useMemo(() => {
     const parts: string[] = [];
-    if (domainIds.length > 0) {
-      const name = data?.facets?.domains?.find(d => d.openalexId === domainIds[0] || d.id === domainIds[0])?.name || domainIds[0];
-      if (name) parts.push(name);
-    } else if (domains.length > 0 && domains[0]) {
-      parts.push(domains[0]);
-    }
-
-    if (fieldIds.length > 0) {
-      const name = data?.facets?.fields?.find(f => f.openalexId === fieldIds[0] || f.id === fieldIds[0])?.name || fieldIds[0];
-      if (name) parts.push(name);
-    } else if (fields.length > 0 && fields[0]) {
-      parts.push(fields[0]);
-    }
-
     if (subfieldIds.length > 0) {
       const name = data?.facets?.subfields?.find(s => s.openalexId === subfieldIds[0] || s.id === subfieldIds[0])?.name || subfieldIds[0];
       if (name) parts.push(name);
@@ -338,8 +315,9 @@ export function TrendsPage() {
       parts.push(topicsFilter[0]);
     }
 
-    return parts.length > 0 ? parts.join(" → ") : "All OpenAlex domains";
-  }, [data, domainIds, domains, fieldIds, fields, subfieldIds, subfields, topicIds, topicsFilter]);
+    // Without a filter the page covers the whole IT scope the backend tests (trend.scope.ts), not all of OpenAlex.
+    return parts.length > 0 ? parts.join(" → ") : t("Information Technology scope");
+  }, [data, subfieldIds, subfields, topicIds, topicsFilter, t]);
 
   // Hook queries for sub-features
   const compareQuery = useTrendCompare(
@@ -347,11 +325,7 @@ export function TrendsPage() {
       topics: selectedTopics,
       yearFrom,
       yearTo,
-      domains,
-      fields,
       subfields,
-      domainIds,
-      fieldIds,
       subfieldIds,
       topicIds,
       paperKinds,
@@ -372,12 +346,8 @@ export function TrendsPage() {
       yearFrom,
       yearTo,
       limit: 12,
-      domains,
-      fields,
       subfields,
       topics: topicsFilter,
-      domainIds,
-      fieldIds,
       subfieldIds,
       topicIds,
       paperKinds,
@@ -403,34 +373,7 @@ export function TrendsPage() {
 
   const handleBucketClick = (facet: string, val: string, openalexId?: string) => {
     const isClear = !val && !openalexId;
-    if (facet === "Domains") {
-      if (isClear) {
-        setDomainIds([]);
-        setDomains([]);
-      } else if (openalexId) {
-        setDomainIds(prev => prev.includes(openalexId) ? [] : [openalexId]);
-        setDomains([]);
-      } else {
-        setDomains(prev => prev.includes(val) ? [] : [val]);
-        setDomainIds([]);
-      }
-      setFieldIds([]); setFields([]);
-      setSubfieldIds([]); setSubfields([]);
-      setTopicIds([]); setTopicsFilter([]);
-    } else if (facet === "Fields") {
-      if (isClear) {
-        setFieldIds([]);
-        setFields([]);
-      } else if (openalexId) {
-        setFieldIds(prev => prev.includes(openalexId) ? [] : [openalexId]);
-        setFields([]);
-      } else {
-        setFields(prev => prev.includes(val) ? [] : [val]);
-        setFieldIds([]);
-      }
-      setSubfieldIds([]); setSubfields([]);
-      setTopicIds([]); setTopicsFilter([]);
-    } else if (facet === "Subfields") {
+    if (facet === "Subfields") {
       if (isClear) {
         setSubfieldIds([]);
         setSubfields([]);
@@ -471,12 +414,8 @@ export function TrendsPage() {
   };
 
   const clearAllFilters = () => {
-    setDomains([]);
-    setFields([]);
     setSubfields([]);
     setTopicsFilter([]);
-    setDomainIds([]);
-    setFieldIds([]);
     setSubfieldIds([]);
     setTopicIds([]);
     setPaperKinds([]);
@@ -489,14 +428,14 @@ export function TrendsPage() {
 
   const hasAnyFilter = useMemo(() => {
     return (
-      domains.length > 0 || fields.length > 0 || subfields.length > 0 || topicsFilter.length > 0 ||
-      domainIds.length > 0 || fieldIds.length > 0 || subfieldIds.length > 0 || topicIds.length > 0 ||
+      subfields.length > 0 || topicsFilter.length > 0 ||
+      subfieldIds.length > 0 || topicIds.length > 0 ||
       paperKinds.length > 0 || openAccessStatuses.length > 0 || providers.length > 0 || sources.length > 0 ||
       languages.length > 0 || citationBands.length > 0
     );
   }, [
-    domains, fields, subfields, topicsFilter,
-    domainIds, fieldIds, subfieldIds, topicIds,
+    subfields, topicsFilter,
+    subfieldIds, topicIds,
     paperKinds, openAccessStatuses, providers, sources, languages, citationBands
   ]);
 
@@ -510,10 +449,6 @@ export function TrendsPage() {
       if (cleaned.length > 0) params.set(key, cleaned.join(","));
     };
 
-    addList("domainIds", domainIds);
-    addList("domains", domains);
-    addList("fieldIds", fieldIds);
-    addList("fields", fields);
     addList("subfieldIds", subfieldIds);
     addList("subfields", subfields);
     addList("topicIds", topicIds);
@@ -686,52 +621,13 @@ export function TrendsPage() {
         {data?.facets && (
           <div className="pt-4 border-t border-slate-100 dark:border-slate-800/60 select-none space-y-3">
             <div className="flex flex-col">
-              <span className="text-xs font-bold text-slate-900 dark:text-white">OpenAlex scope</span>
+              <span className="text-xs font-bold text-slate-900 dark:text-white">{t("Information Technology scope")}</span>
               <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Narrow the paper dataset before viewing trends, topics, comparisons, and AI explanations.
+                {t("This page covers the Information Technology scope. Choose a subfield or a topic to narrow the list.")}
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
-              {/* Domain Dropdown */}
-              <div className="relative w-full">
-                <select
-                  value={domainIds[0] || ""}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    const name = data.facets.domains.find(d => d.openalexId === id || d.id === id)?.name || "";
-                    handleBucketClick("Domains", name, id);
-                  }}
-                  className="h-9 w-full px-3 pr-8 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-600 cursor-pointer appearance-none"
-                  style={{ backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundSize: '1.5em 1.5em', backgroundRepeat: 'no-repeat' }}
-                >
-                  <option value="">All Domains</option>
-                  {data.facets.domains.map(d => (
-                    <option key={d.openalexId ?? d.id} value={d.openalexId ?? d.id}>{d.name} ({d.count})</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Field Dropdown */}
-              <div className="relative w-full">
-                <select
-                  value={fieldIds[0] || ""}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    const name = data.facets.fields?.find(f => f.openalexId === id || f.id === id)?.name || "";
-                    handleBucketClick("Fields", name, id);
-                  }}
-                  className="h-9 w-full px-3 pr-8 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-600 cursor-pointer appearance-none"
-                  disabled={!data.facets.fields || data.facets.fields.length === 0}
-                  style={{ backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundSize: '1.5em 1.5em', backgroundRepeat: 'no-repeat' }}
-                >
-                  <option value="">All Fields</option>
-                  {data.facets.fields?.map(f => (
-                    <option key={f.openalexId ?? f.id} value={f.openalexId ?? f.id}>{f.name} ({f.count})</option>
-                  ))}
-                </select>
-              </div>
-
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-3 w-full">
               {/* Subfield Dropdown */}
               <div className="relative w-full">
                 <select
@@ -745,7 +641,7 @@ export function TrendsPage() {
                   disabled={!data.facets.subfields || data.facets.subfields.length === 0}
                   style={{ backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundSize: '1.5em 1.5em', backgroundRepeat: 'no-repeat' }}
                 >
-                  <option value="">All Subfields</option>
+                  <option value="">{t("All subfields")}</option>
                   {data.facets.subfields?.map(s => (
                     <option key={s.openalexId ?? s.id} value={s.openalexId ?? s.id}>{s.name} ({s.count})</option>
                   ))}
@@ -765,7 +661,7 @@ export function TrendsPage() {
                   disabled={!data.facets.topics || data.facets.topics.length === 0}
                   style={{ backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundSize: '1.5em 1.5em', backgroundRepeat: 'no-repeat' }}
                 >
-                  <option value="">All Topics</option>
+                  <option value="">{t("All topics")}</option>
                   {data.facets.topics?.map(t => (
                     <option key={t.openalexId ?? t.id} value={t.openalexId ?? t.id}>{t.name} ({t.count})</option>
                   ))}
@@ -780,34 +676,20 @@ export function TrendsPage() {
 
       {/* 3. Current Scope Summary */}
       {/* Active Scope Breadcrumb */}
-      {(domainIds.length > 0 || fieldIds.length > 0 || subfieldIds.length > 0 || topicIds.length > 0) && (
+      {(subfieldIds.length > 0 || topicIds.length > 0) && (
         <div className="flex items-center gap-2 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/10 px-4 py-2.5 rounded-xl border border-blue-100/50 dark:border-blue-900/30 mb-4 overflow-x-auto whitespace-nowrap">
           <span className="text-slate-550 dark:text-slate-400 font-extrabold uppercase text-[10px] tracking-wider mr-1 select-none">Scope:</span>
-          {domainIds.length > 0 && (
-            <span className="capitalize">{data?.facets?.domains?.find(d => d.openalexId === domainIds[0] || d.id === domainIds[0])?.name ?? domainIds[0]}</span>
-          )}
-          {fieldIds.length > 0 && (
-            <>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <span className="capitalize">{data?.facets?.fields?.find(f => f.openalexId === fieldIds[0] || f.id === fieldIds[0])?.name ?? fieldIds[0]}</span>
-            </>
-          )}
           {subfieldIds.length > 0 && (
-            <>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <span className="capitalize">{data?.facets?.subfields?.find(s => s.openalexId === subfieldIds[0] || s.id === subfieldIds[0])?.name ?? subfieldIds[0]}</span>
-            </>
+            <span className="capitalize">{data?.facets?.subfields?.find(s => s.openalexId === subfieldIds[0] || s.id === subfieldIds[0])?.name ?? subfieldIds[0]}</span>
           )}
           {topicIds.length > 0 && (
             <>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              {subfieldIds.length > 0 && <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
               <span className="capitalize">{data?.facets?.topics?.find(t => t.openalexId === topicIds[0] || t.id === topicIds[0])?.name ?? topicIds[0]}</span>
             </>
           )}
           <button
             onClick={() => {
-              setDomainIds([]);
-              setFieldIds([]);
               setSubfieldIds([]);
               setTopicIds([]);
             }}
@@ -848,12 +730,6 @@ export function TrendsPage() {
           {citationBands.map((x) => (
             <FilterChip key={x} label={`Citations: ${x}`} onRemove={() => toggleFilter<CitationBand>(citationBands, setCitationBands, x)} />
           ))}
-          {domains.map((x) => (
-            <FilterChip key={x} label={`Domain: ${x}`} onRemove={() => toggleFilter(domains, setDomains, x)} />
-          ))}
-          {fields.map((x) => (
-            <FilterChip key={x} label={`Field: ${x}`} onRemove={() => toggleFilter(fields, setFields, x)} />
-          ))}
           {subfields.map((x) => (
             <FilterChip key={x} label={`Subfield: ${x}`} onRemove={() => toggleFilter(subfields, setSubfields, x)} />
           ))}
@@ -861,18 +737,6 @@ export function TrendsPage() {
             <FilterChip key={x} label={`Topic: ${x}`} onRemove={() => toggleFilter(topicsFilter, setTopicsFilter, x)} />
           ))}
 
-          {domainIds.map((x) => {
-            const name = data?.facets?.domains?.find(b => b.openalexId === x || b.id === x)?.name ?? x;
-            return (
-              <FilterChip key={x} label={`Domain: ${name}`} onRemove={() => toggleFilter(domainIds, setDomainIds, x)} />
-            );
-          })}
-          {fieldIds.map((x) => {
-            const name = data?.facets?.fields?.find(b => b.openalexId === x || b.id === x)?.name ?? x;
-            return (
-              <FilterChip key={x} label={`Field: ${name}`} onRemove={() => toggleFilter(fieldIds, setFieldIds, x)} />
-            );
-          })}
           {subfieldIds.map((x) => {
             const name = data?.facets?.subfields?.find(b => b.openalexId === x || b.id === x)?.name ?? x;
             return (
@@ -908,12 +772,10 @@ export function TrendsPage() {
           <p className="text-lg font-bold text-slate-900 dark:text-white">No trends found for this scope.</p>
 
           {/* Active scope details */}
-          {(domainIds.length > 0 || fieldIds.length > 0 || subfieldIds.length > 0 || topicIds.length > 0) && (
+          {(subfieldIds.length > 0 || topicIds.length > 0) && (
             <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 px-4 py-2 rounded-xl mt-3 mb-4 max-w-md border border-slate-200/50 dark:border-slate-800/40">
               Active Scope: {" "}
-              {topicIds.length > 0 ? "Topic Filter" :
-               subfieldIds.length > 0 ? "Subfield Filter" :
-               fieldIds.length > 0 ? "Field Filter" : "Domain Filter"}
+              {topicIds.length > 0 ? "Topic Filter" : "Subfield Filter"}
             </div>
           )}
 
@@ -929,10 +791,8 @@ export function TrendsPage() {
               onClick={() => {
                 if (topicIds.length > 0) setTopicIds([]);
                 else if (subfieldIds.length > 0) setSubfieldIds([]);
-                else if (fieldIds.length > 0) setFieldIds([]);
-                else if (domainIds.length > 0) setDomainIds([]);
               }}
-              disabled={!(domainIds.length > 0 || fieldIds.length > 0 || subfieldIds.length > 0 || topicIds.length > 0)}
+              disabled={!(subfieldIds.length > 0 || topicIds.length > 0)}
             >
               Clear deepest filter
             </Button>
@@ -940,8 +800,6 @@ export function TrendsPage() {
               type="button"
               className="h-9 px-4 font-bold text-xs rounded-lg bg-red-650 hover:bg-red-750 text-white"
               onClick={() => {
-                setDomainIds([]);
-                setFieldIds([]);
                 setSubfieldIds([]);
                 setTopicIds([]);
               }}
@@ -1040,10 +898,6 @@ export function TrendsPage() {
                 scopeParams={{
                   yearFrom,
                   yearTo,
-                  domainIds,
-                  domains,
-                  fieldIds,
-                  fields,
                   subfieldIds,
                   subfields,
                   topicIds,
@@ -1077,10 +931,6 @@ export function TrendsPage() {
                 scopeParams={{
                   yearFrom,
                   yearTo,
-                  domainIds,
-                  domains,
-                  fieldIds,
-                  fields,
                   subfieldIds,
                   subfields,
                   topicIds,
@@ -1101,12 +951,8 @@ export function TrendsPage() {
                 scope={{
                   sortBy,
                   minPapers,
-                  domains,
-                  fields,
                   subfields,
                   topics: topicsFilter,
-                  domainIds,
-                  fieldIds,
                   subfieldIds,
                   topicIds,
                   paperKinds,
@@ -1124,10 +970,6 @@ export function TrendsPage() {
                 data={data}
                 yearFrom={yearFrom}
                 yearTo={yearTo}
-                domainIds={domainIds}
-                domains={domains}
-                fieldIds={fieldIds}
-                fields={fields}
                 subfieldIds={subfieldIds}
                 subfields={subfields}
                 topicIds={topicIds}
@@ -1162,10 +1004,6 @@ export function TrendsPage() {
                 scopeParams={{
                   yearFrom,
                   yearTo,
-                  domainIds,
-                  domains,
-                  fieldIds,
-                  fields,
                   subfieldIds,
                   subfields,
                   topicIds,
@@ -1191,12 +1029,8 @@ export function TrendsPage() {
                 explainHistoryQuery={explainHistoryQuery}
                 yearFrom={yearFrom}
                 yearTo={yearTo}
-                domains={domains}
-                fields={fields}
                 subfields={subfields}
                 topicsFilter={topicsFilter}
-                domainIds={domainIds}
-                fieldIds={fieldIds}
                 subfieldIds={subfieldIds}
                 topicIds={topicIds}
                 paperKinds={paperKinds}

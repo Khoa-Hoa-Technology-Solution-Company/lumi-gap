@@ -2,20 +2,19 @@ import type {
   RisingKeyword,
   TrendFacetBucket,
   TrendTaxonomyCoverage,
-  TrendTermShift,
   TrendingTopic,
   TrendsOverview,
   YearlyCitationMetric,
   YearlyCount,
 } from "@trend/shared-types";
 import type { TrendsOverviewQuery } from "./dto/trends.schema.js";
-import { fillMissingYears, truncateToCompleteYears, yoyGrowthPct } from "./trend.formulas.js";
+import { fillMissingYears } from "./trend.formulas.js";
+import { keywordShifts, risingShifts, splitPeriods } from "./trend.keywords.js";
 import { openAlexKeywordCounts } from "./trend.evidence.js";
 import { openAlexGroupBy, openAlexYearCounts, type OpenAlexGroup } from "./trend.openalex-client.js";
 import { buildOpenAlexScope, withScope, yearsClause, type OpenAlexScope } from "./trend.openalex-scope.js";
 import { buildScopeShareTopics, groupByMerged, runAll, yearPeriods } from "./trend.openalex-topics.js";
 import { IT_SCOPE_VERSION, itScopeWorkClauses, widerThanItScope } from "./trend.scope.js";
-import { benjaminiHochberg, logOddsRatio2x2 } from "./trend.statistics.js";
 import { FULL_WINDOW_YEARS, buildRecommendedComparisons, compareByTotal, countVerdicts, compareByTrend, pageTopics } from "./trend.verdict.js";
 
 /**
@@ -203,36 +202,16 @@ async function buildRisingKeywords(
   yearTo: number,
   lastCompleteYear: number,
 ): Promise<RisingKeyword[]> {
-  const usable = yearlyTotalPapers.filter((row) => row.year <= lastCompleteYear && row.count > 0).map((row) => row.year);
-  if (usable.length < 2) return [];
-  const half = Math.floor(usable.length / 2);
-  const periodA = usable.slice(0, half);
-  const periodB = usable.slice(half);
+  const halves = splitPeriods(yearlyTotalPapers.filter((row) => row.year <= lastCompleteYear && row.count > 0).map((row) => row.year));
+  if (!halves) return [];
+  const { periodA, periodB } = halves;
   const totals = new Map(yearlyTotalPapers.map((row) => [row.year, row.count]));
   const totalA = periodA.reduce((sum, year) => sum + (totals.get(year) ?? 0), 0);
   const totalB = periodB.reduce((sum, year) => sum + (totals.get(year) ?? 0), 0);
 
   const rows = await openAlexKeywordCounts(scopeFilter, periodA, periodB);
   const keys = new Map(rows.map((row) => [row.term, row.key]));
-
-  const tested = rows.flatMap((row) => {
-    const result = logOddsRatio2x2({ withB: row.papersB, totalB, withA: row.papersA, totalA });
-    return result ? [{ row, result }] : [];
-  });
-  const qValues = benjaminiHochberg(tested.map((item) => item.result.pValue));
-  const shifts: TrendTermShift[] = tested.map(({ row, result }, index) => ({
-    term: row.term,
-    papersA: row.papersA,
-    papersB: row.papersB,
-    logOddsRatio: result.logOddsRatio,
-    z: result.z,
-    pValue: result.pValue,
-    qValue: qValues[index] ?? 1,
-  }));
-  const rising = shifts
-    .filter((shift) => shift.z > 0 && keys.has(shift.term))
-    .sort((a, b) => b.z - a.z)
-    .slice(0, RISING_KEYWORDS_LIMIT);
+  const rising = risingShifts(keywordShifts(rows, totalA, totalB), RISING_KEYWORDS_LIMIT);
 
   const series = await runAll(rising.map((shift) => () => openAlexYearCounts(withScope(base, `keywords.id:${keys.get(shift.term)}`))));
   const periods = {
@@ -244,7 +223,6 @@ async function buildRisingKeywords(
     return {
       keyword: shift.term,
       totalPapers: yearlyBreakdown.reduce((sum, row) => sum + row.count, 0),
-      growthRatePct: yoyGrowthPct(truncateToCompleteYears(yearlyBreakdown, lastCompleteYear)),
       yearlyBreakdown,
       shift: { ...shift, ...periods },
     };

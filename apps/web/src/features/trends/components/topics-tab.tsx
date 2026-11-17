@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { ResponsiveContainer, Area, AreaChart } from "recharts";
 import type { TrendingTopic, TrendsOverview, YearlyCount } from "@trend/shared-types";
 import { type RisingKeywordRow, type TrendBarChartDatum } from "./trends-shared.components";
-import { getTopRisingTopic, isSmallBaseKeyword, sortTopics, type TrendSortKey } from "../../../pages/trends.insights";
+import { formatSigned, getTopRisingTopic, sortTopics, type TrendSortKey } from "../../../pages/trends.insights";
 import { TrendIntro, TrendVerdictBadge, formatRelativeChange } from "./trend-verdict-badge";
 import { formatNumber } from "@/utils";
 import { useI18n } from "@/i18n";
@@ -58,10 +58,6 @@ interface TopicsTabProps {
   scopeParams?: {
     yearFrom: number;
     yearTo: number;
-    domainIds: string[];
-    domains: string[];
-    fieldIds: string[];
-    fields: string[];
     subfieldIds: string[];
     subfields: string[];
     topicIds: string[];
@@ -102,7 +98,6 @@ export function TopicsTab({
   const pagedTopics = useMemo(() => topicPages.data?.pages.flatMap((page) => page.topics) ?? [], [topicPages.data]);
   const matchedTopicCount = topicPages.data?.pages[0]?.matchedTopicCount ?? pagedTopics.length;
   // Rows from OpenAlex carry the log odds ratio test; the local fallback does not.
-  const usesKeywordTest = keywordsData.some((row) => row.shift);
   const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, scopeParams);
 
   const getScopedSearchTarget = (query: string) => {
@@ -125,16 +120,16 @@ export function TopicsTab({
 
   const earlyKeyword = useMemo(() => {
     if (!keywordsData || keywordsData.length === 0) return null;
-    const strong = keywordsData.filter(k => (k.shift ? isShiftSignificant(k.shift) : !isSmallBaseKeyword(k)));
+    const strong = keywordsData.filter(k => isShiftSignificant(k.shift));
     if (strong.length === 0) return null;
-    return [...strong].sort((a, b) => (a.shift && b.shift ? b.shift.z - a.shift.z : b.growthRatePct - a.growthRatePct))[0];
+    return [...strong].sort((a, b) => b.shift.z - a.shift.z)[0];
   }, [keywordsData]);
 
   const exploratorySignal = useMemo(() => {
     if (!keywordsData || keywordsData.length === 0) return null;
-    const weak = keywordsData.filter(k => (k.shift ? !isShiftSignificant(k.shift) : isSmallBaseKeyword(k)));
+    const weak = keywordsData.filter(k => !isShiftSignificant(k.shift));
     if (weak.length === 0) return null;
-    return [...weak].sort((a, b) => (a.shift && b.shift ? b.shift.z - a.shift.z : b.growthRatePct - a.growthRatePct))[0];
+    return [...weak].sort((a, b) => b.shift.z - a.shift.z)[0];
   }, [keywordsData]);
 
   // 2. State & Logic cho Quick Sort nội bộ
@@ -170,48 +165,24 @@ export function TopicsTab({
   };
 
   const getSignalQuality = (row: RisingKeywordRow) => {
-    if (row.shift) {
-      const detail = t("{{counts}} papers, {{stats}}, {{periods}}", {
-        counts: formatShiftCounts(row.shift),
-        stats: formatShiftStats(row.shift),
-        periods: formatShiftPeriods(row.shift),
-      });
-      if (isShiftSignificant(row.shift)) {
-        return {
-          label: "Significant rising",
-          shortLabel: "Significant rising",
-          bg: "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-200/50 dark:border-emerald-900/30",
-          tooltip: detail,
-        };
-      }
+    const detail = t("{{counts}} papers, {{stats}}, {{periods}}", {
+      counts: formatShiftCounts(row.shift),
+      stats: formatShiftStats(row.shift),
+      periods: formatShiftPeriods(row.shift),
+    });
+    if (isShiftSignificant(row.shift)) {
       return {
-        label: "Not significant",
-        shortLabel: "Not significant",
-        bg: "bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-slate-200/60 dark:border-slate-700/50",
+        label: "Significant rising",
+        shortLabel: "Significant rising",
+        bg: "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-200/50 dark:border-emerald-900/30",
         tooltip: detail,
       };
     }
-    if (row.totalPapers < 15) {
-      return {
-        label: "Exploratory (Small Base < 15 papers)",
-        shortLabel: "Exploratory",
-        bg: "bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200/50 dark:border-amber-900/30",
-        tooltip: "Early signal matched from paper keywords with a small paper base (<15 papers). High potential volatility."
-      };
-    }
-    if (row.growthRatePct > 50) {
-      return {
-        label: "Hot Signal",
-        shortLabel: "Hot Signal",
-        bg: "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-250/20 dark:border-red-900/30",
-        tooltip: "High-momentum signal with an established base (≥15 papers)."
-      };
-    }
     return {
-      label: "Rising Signal",
-      shortLabel: "Rising Signal",
-      bg: "bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 border-blue-200/50 dark:border-blue-900/30",
-      tooltip: "Steady growth signal with an established base (≥15 papers)."
+      label: "Not significant",
+      shortLabel: "Not significant",
+      bg: "bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-slate-200/60 dark:border-slate-700/50",
+      tooltip: detail,
     };
   };
 
@@ -286,7 +257,7 @@ export function TopicsTab({
             <div className="space-y-3.5 relative z-10">
               <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-455 uppercase tracking-widest text-[9.5px] font-extrabold bg-emerald-100/50 dark:bg-emerald-950/60 px-2 py-0.5 rounded w-fit">
                 <Zap className="w-3.5 h-3.5" />
-                {earlyKeyword?.shift ? "Significant Rising Keyword" : "Early Keyword Signal"}
+                {t("Significant Rising Keyword")}
               </div>
               {earlyKeyword ? (
                 <>
@@ -294,22 +265,11 @@ export function TopicsTab({
                     {earlyKeyword.keyword}
                   </h4>
                   <div className="flex flex-wrap gap-2 pt-0.5">
-                    {earlyKeyword.shift ? (
-                      <>
+                                          <>
                         <span className="bg-white/80 dark:bg-slate-900/60 border border-emerald-100/60 dark:border-emerald-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
                           Papers A → B: <strong className="text-emerald-600 font-extrabold">{formatShiftCounts(earlyKeyword.shift)}</strong>
                         </span>
                       </>
-                    ) : (
-                      <>
-                        <span className="bg-white/80 dark:bg-slate-900/60 border border-emerald-100/60 dark:border-emerald-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
-                          Growth: <strong className="text-emerald-600 font-extrabold">{earlyKeyword.growth}</strong>
-                        </span>
-                        <span className="bg-white/80 dark:bg-slate-900/60 border border-emerald-100/60 dark:border-emerald-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
-                          Volume: <strong className="text-slate-900 dark:text-white font-extrabold">{formatNumber(earlyKeyword.totalPapers)}</strong>
-                        </span>
-                      </>
-                    )}
                   </div>
                 </>
               ) : (
@@ -336,7 +296,7 @@ export function TopicsTab({
             <div className="space-y-3.5 relative z-10">
               <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-455 uppercase tracking-widest text-[9.5px] font-extrabold bg-amber-100/50 dark:bg-amber-950/60 px-2 py-0.5 rounded w-fit">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-500" />
-                {exploratorySignal?.shift ? "Not Significant Keyword" : "Exploratory Signal"}
+                {t("Not Significant Keyword")}
               </div>
               {exploratorySignal ? (
                 <>
@@ -344,26 +304,15 @@ export function TopicsTab({
                     {exploratorySignal.keyword}
                   </h4>
                   <div className="flex flex-wrap gap-2 pt-0.5">
-                    {exploratorySignal.shift ? (
-                      <>
+                                          <>
                         <span className="bg-white/80 dark:bg-slate-900/60 border border-amber-100/60 dark:border-amber-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
                           Papers A → B: <strong className="text-amber-650 font-extrabold">{formatShiftCounts(exploratorySignal.shift)}</strong>
                         </span>
                       </>
-                    ) : (
-                      <>
-                        <span className="bg-white/80 dark:bg-slate-900/60 border border-amber-100/60 dark:border-amber-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
-                          Growth: <strong className="text-amber-650 font-extrabold">{exploratorySignal.growth}</strong>
-                        </span>
-                        <span className="bg-white/80 dark:bg-slate-900/60 border border-amber-100/60 dark:border-amber-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
-                          Volume: <strong className="text-slate-900 dark:text-white font-extrabold">{formatNumber(exploratorySignal.totalPapers)}</strong> <span className="text-amber-650 font-bold text-[10px]">(Small Base)</span>
-                        </span>
-                      </>
-                    )}
                   </div>
                 </>
               ) : (
-                <p className="text-xs text-slate-455">{usesKeywordTest ? "No keywords without significance" : "No exploratory keywords found"}</p>
+                <p className="text-xs text-slate-455">{t("No keywords without significance")}</p>
               )}
             </div>
 
@@ -593,9 +542,7 @@ export function TopicsTab({
             <div className="p-5 pb-4 border-b border-slate-100 dark:border-slate-800/50 select-none">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">Emerging Keywords</h3>
               <p className="text-xs text-slate-550 dark:text-slate-400 mt-0.5 font-medium">
-                {usesKeywordTest
-                  ? "Keywords whose share of papers changed between two periods. Click icons to act."
-                  : "Early signals matched from paper keywords. Click icons to act."}
+                {t("Keywords whose share of papers changed between two periods. Click icons to act.")}
               </p>
             </div>
 
@@ -604,8 +551,8 @@ export function TopicsTab({
                 <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 dark:bg-slate-900/20 border-b border-slate-100 dark:border-slate-800 select-none">
                   <tr>
                     <th className="pl-5 pr-2 py-3 font-semibold">Keyword</th>
-                    <th className="px-3 py-3 font-semibold text-right">{usesKeywordTest ? "Papers A → B" : "Papers"}</th>
-                    <th className="px-3 py-3 font-semibold text-right">Growth</th>
+                    <th className="px-3 py-3 font-semibold text-right">{t("Papers A → B")}</th>
+                    <th className="px-3 py-3 font-semibold text-right" title={t("Test statistic of the keyword shift: larger means stronger evidence of a rise.")}>z</th>
                     <th className="px-2 py-3 font-semibold text-center">Trend</th>
                     <th className="pr-5 pl-2 py-3 font-semibold text-center">Actions</th>
                   </tr>
@@ -613,12 +560,9 @@ export function TopicsTab({
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {keywordsData.map((row, idx) => {
                     const quality = getSignalQuality(row);
-                    const growthNum = parseFloat(row.growth.replace(/[^0-9.-]/g, ""));
-                    const keywordGrowthColor = growthNum > 0
+                    const keywordGrowthColor = isShiftSignificant(row.shift)
                       ? "text-emerald-600 dark:text-emerald-400 font-bold"
-                      : growthNum < 0
-                        ? "text-red-500 dark:text-red-400 font-bold"
-                        : "text-slate-500 font-semibold";
+                      : "text-slate-500 font-semibold";
 
                     return (
                       <tr key={idx} className="hover:bg-slate-50/55 dark:hover:bg-slate-800/10 transition-colors">
@@ -642,16 +586,12 @@ export function TopicsTab({
                           </div>
                         </td>
                         <td className="px-3 py-3 text-right font-mono text-xs font-semibold text-slate-700 dark:text-slate-350">
-                          {row.shift ? (
-                            <div className="flex flex-col items-end leading-tight">
+                                                      <div className="flex flex-col items-end leading-tight">
                               <span>{formatShiftCounts(row.shift)}</span>
                             </div>
-                          ) : (
-                            formatNumber(row.totalPapers)
-                          )}
                         </td>
                         <td className={`px-3 py-3 text-right font-mono text-xs ${keywordGrowthColor}`}>
-                          {row.growth}
+                          {formatSigned(row.shift.z, 1)}
                         </td>
                         <td className="px-2 py-1.5">
                           {row.yearlyBreakdown && row.yearlyBreakdown.length > 0 && (

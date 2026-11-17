@@ -293,16 +293,15 @@ export interface TopicTrendStatistics {
   termShift: TrendTermShiftAnalysis | null;
 }
 
-/** A keyword growing fast from a small base (early signal of a new direction). */
+/** A keyword whose share of the scope's papers rose between the earlier and the later half of the window. */
 export interface RisingKeyword {
   keyword: string;
   totalPapers: number;
-  growthRatePct: number;
   yearlyBreakdown: YearlyCount[];
-  /** 2×2 log odds ratio test of the keyword between the earlier and later half
-   *  of the window (Woolf 1955; Haldane 1956), BH-adjusted across the keywords
-   *  tested. Present when the overview comes from OpenAlex. */
-  shift?: TrendTermShift & {
+  /** 2×2 log odds ratio test of the keyword between the two halves (Woolf 1955;
+   *  Haldane 1956), BH-adjusted across the keywords tested. The list is ordered
+   *  by its z, strongest rise first. */
+  shift: TrendTermShift & {
     periodA: { yearFrom: number; yearTo: number };
     periodB: { yearFrom: number; yearTo: number };
   };
@@ -561,6 +560,9 @@ export interface TrendTopicFollow {
   lastVerdict?: TrendVerdict;
   lastDataSource?: TrendDataSource;
   lastCheckedAt?: ISODateString;
+  /** False when the topic is outside the IT scope: its verdict is then measured against its own field.
+   *  Absent when the scope could not be looked up, and on the response of a single follow check. */
+  inScope?: boolean;
   createdAt: ISODateString;
 }
 

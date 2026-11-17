@@ -57,6 +57,15 @@ export const trendEdaViStrings = {
   "Papers per year": "Số bài mỗi năm",
   "{{value}}% per year in recent years": "{{value}}%/năm trong những năm gần đây",
   "{{value}} over the whole window": "{{value}} trên cả giai đoạn xét",
+  "Significant Rising Keyword": "Từ khoá tăng có ý nghĩa",
+  "Not Significant Keyword": "Từ khoá tăng chưa rõ",
+  "No keywords without significance": "Không có từ khoá nào thuộc nhóm chưa rõ",
+  "Papers A → B": "Số bài A → B",
+  "Test statistic of the keyword shift: larger means stronger evidence of a rise.": "Thống kê kiểm định của mức thay đổi từ khoá: càng lớn thì bằng chứng tăng càng mạnh.",
+  "Outside the IT scope": "Ngoài phạm vi CNTT",
+  "This topic is outside the Information Technology scope, so its trend is measured against its own field.": "Chủ đề này nằm ngoài phạm vi Công nghệ thông tin nên xu hướng của nó được đo so với lĩnh vực của chính nó.",
+  "Field-based verdict": "Kết luận theo lĩnh vực",
+  "This verdict was computed against the topic's own field, not the Information Technology scope used today, so it cannot be compared directly with current verdicts.": "Kết luận này được tính so với lĩnh vực của chủ đề, không phải phạm vi Công nghệ thông tin đang dùng hiện nay, nên không so sánh trực tiếp được với các kết luận hiện tại.",
 } as const;
 
 export const trendEdaStrings = Object.fromEntries(Object.keys(trendEdaViStrings).map((key) => [key, key])) as Record<keyof typeof trendEdaViStrings, string>;

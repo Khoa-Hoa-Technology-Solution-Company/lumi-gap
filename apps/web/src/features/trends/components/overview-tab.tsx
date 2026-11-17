@@ -39,10 +39,6 @@ interface OverviewTabProps {
   scopeParams?: {
     yearFrom: number;
     yearTo: number;
-    domainIds: string[];
-    domains: string[];
-    fieldIds: string[];
-    fields: string[];
     subfieldIds: string[];
     subfields: string[];
     topicIds: string[];
@@ -61,23 +57,14 @@ type Translate = ReturnType<typeof useI18n>["t"];
 /** One-sentence reading of the emerging keyword. With the shift test the
  *  verdict comes from q; without it (local fallback) the small-base rule applies. */
 function describeKeywordInsight(keyword: RisingKeywordLike, t: Translate): string {
-  const shift = keyword.shift;
-  if (shift) {
-    const values = { keyword: keyword.keyword, counts: formatShiftCounts(shift) };
-    return isShiftSignificant(shift)
-      ? t("{{keyword}} is a clearly rising keyword ({{counts}} papers).", values)
-      : t("{{keyword}} is rising, but not clearly enough ({{counts}} papers), so treat it as exploratory.", values);
-  }
-  const values = { keyword: keyword.keyword, growth: formatSigned(keyword.growthRatePct, 1), count: keyword.totalPapers };
-  return keyword.totalPapers < 15
-    ? t("{{keyword}} is an early keyword signal ({{growth}}% growth), but it has only {{count}} papers, so treat it as exploratory.", values)
-    : t("{{keyword}} is an early keyword signal ({{growth}}% growth).", values);
+  const values = { keyword: keyword.keyword, counts: formatShiftCounts(keyword.shift) };
+  return isShiftSignificant(keyword.shift)
+    ? t("{{keyword}} is a clearly rising keyword ({{counts}} papers).", values)
+    : t("{{keyword}} is rising, but not clearly enough ({{counts}} papers), so treat it as exploratory.", values);
 }
 
 function describeKeywordDetail(keyword: RisingKeywordLike): string {
-  const shift = keyword.shift;
-  if (shift) return `${formatShiftCounts(shift)} papers`;
-  return `${formatSigned(keyword.growthRatePct, 1)}% growth · ${formatNumber(keyword.totalPapers)} papers`;
+  return `${formatShiftCounts(keyword.shift)} papers`;
 }
 
 /** Data-driven reading of the chart: the highest complete year of the series. */

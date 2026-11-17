@@ -298,12 +298,24 @@ Giới hạn đã biết: chỉ bắt được hướng mới khi OpenAlex đã 
 
 ---
 
-## 10. Câu hỏi còn mở
+## 10. Quyết định đã chốt (2026-11-17) và câu hỏi còn mở
 
-1. **Follow và snapshot cũ** tính theo mẫu số field: giữ nguyên và đánh dấu "phương pháp cũ" (đề xuất), hay tính lại?
-2. **Chủ đề đang theo dõi nằm ngoài phạm vi CNTT:** ngừng kiểm tra và báo cho người dùng, hay giữ cách tính cũ cho riêng chúng?
-3. **Tần suất job làm nóng cache:** hằng tuần (đề xuất) hay hằng ngày, tuỳ số đo ở bước 0 và ngân sách OpenAlex dùng chung với sync.
-4. **Danh sách chủ đề lớp 3** (Đợt 2) ban đầu do ai chọn.
+**Đã chốt:**
+
+1. **`FLAT_PCT = 2`.** Giữ sau khi xem danh sách của lần chạy 2026-11-14.
+2. **Follow và snapshot cũ: giữ nguyên, gắn nhãn.** Snapshot có `baseline.level` khác `"scope"` hiển thị nhãn "Kết luận theo lĩnh vực". Follow có `lastCheckedAt` trước `TREND_METHOD_SINCE` (hằng số trong `trend-follow.service.ts`) được cập nhật verdict ở lần kiểm tra kế tiếp mà **không** gửi thông báo. Khi triển khai, đặt hằng số này bằng ngày đưa phương pháp mới lên môi trường đó.
+3. **Chủ đề đang theo dõi nằm ngoài phạm vi CNTT: vẫn kiểm tra**, mẫu số là field của chủ đề (như trang chi tiết), danh sách theo dõi hiện nhãn "Ngoài phạm vi CNTT" (`TrendTopicFollow.inScope`).
+4. **Chỉ số đếm thô:** từ khoá đang nổi sắp theo kiểm định log odds ở cả nguồn OpenAlex và dữ liệu cục bộ (`trend.keywords.ts`), trường `growthRatePct` của từ khoá đã xoá. **Ngoại lệ có chủ đích của tiêu chí 4:** `yoyGrowthPct`, `cagrPct`, `linearSlope` còn trong `trend.formulas.ts` vì research gap (`gaps/gap-evidence.ts`) và thẻ ngữ cảnh đọc bài (`quality/quality.reading-context.ts`) dùng trên dữ liệu cục bộ; hai tính năng đó không thuộc phạm vi spec này.
+5. **Job làm nóng cache:** `TREND_WARM_CRON` mặc định 3 ngày một lần (`0 3 */3 * *`), ngắn hơn hạn cache 7 ngày. Job bỏ qua bước đọc cache (`withOpenAlexRefresh`) để ghi lại các chuỗi với hạn mới; chỉ đọc cache thì không kéo dài hạn dùng. Mỗi lần chạy khoảng 375 request.
+6. **Bộ lọc Domain và Field** đã gỡ khỏi trang Xu hướng; link cũ mang `domainIds` / `fieldIds` bị bỏ qua.
+7. **Tab theo tháng/quý** dùng mẫu số phạm vi CNTT nhưng không kiểm định mọi chủ đề: ứng viên là 30 chủ đề lớn nhất của cửa sổ cộng 3 chủ đề lớn nhất của mỗi subfield trong phạm vi.
+
+**Lệch có chủ đích so với §6.6:** tiêu chí 3: mọi chủ đề của phạm vi đều được kiểm định, nhưng `testedTopicCount` đếm các chủ đề được liệt kê (có ít nhất `minPapers` bài), vì đó là con số trang hiển thị.
+
+**Còn mở:**
+
+1. **Danh sách chủ đề lớp 3** (Đợt 2) ban đầu do ai chọn.
+2. **App Flutter** còn đọc `momentum`, `growthRatePct` (hiện 0); để sau.
 
 ---
 

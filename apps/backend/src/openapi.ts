@@ -186,7 +186,6 @@ export const openapiSpec = {
         properties: {
           keyword: { type: "string", example: "retrieval-augmented generation" },
           totalPapers: { type: "integer", example: 9 },
-          growthRatePct: { type: "number", example: 350 },
           yearlyBreakdown: { type: "array", items: { $ref: "#/components/schemas/YearlyCount" } },
         },
       },

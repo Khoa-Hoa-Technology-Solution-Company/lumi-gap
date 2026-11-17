@@ -264,7 +264,7 @@ describe("getOpenAlexTrendsOverview", () => {
     expect(client.openAlexYearCounts).toHaveBeenCalledWith(`${keywordScope},publication_year:2016-2021,keywords.id:large-language-models`);
     expect(keyword!.yearlyBreakdown.map((row) => row.count)).toEqual([0, 0, 5, 40, 100, 160]);
     expect(keyword!.totalPapers).toBe(305);
-    expect(keyword!.growthRatePct).toBe(60);
+    expect(keyword).not.toHaveProperty("growthRatePct");
     expect(keyword!.shift).toMatchObject({
       term: "large language models",
       papersA: 10,
