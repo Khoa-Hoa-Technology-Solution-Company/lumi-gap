@@ -57,11 +57,28 @@ void main() {
       expect(mapWebHref('/projects/a%2Fb'), '/project/a%2Fb');
     });
 
+    test('community, reviews and invitations open their mobile screens', () {
+      expect(mapWebHref('/forum'), '/community');
+      expect(mapWebHref('/forum/my-post-slug'), '/forum/post/my-post-slug');
+      expect(mapWebHref('/forum/my-post-slug/4'), '/forum/post/my-post-slug',
+          reason: 'a reply number still opens the discussion');
+      expect(mapWebHref('/forum/category/methods'), '/community');
+      expect(mapWebHref('/communities'), '/community?view=communities');
+      expect(mapWebHref('/communities/nlp-vn'), '/communities/nlp-vn');
+      expect(mapWebHref('/reviews'), '/reviews');
+      expect(mapWebHref('/review-requests/77'), '/review-requests/77');
+      expect(mapWebHref('/invitations/tok_123'), '/invitations/tok_123');
+    });
+
     test('web-only paths have no mobile route', () {
-      expect(mapWebHref('/review-requests/77'), isNull);
+      // The review editor, forum and community tools stay on the web.
       expect(mapWebHref('/reviews/88'), isNull);
+      expect(mapWebHref('/forum/new'), isNull);
+      expect(mapWebHref('/forum/categories'), isNull);
+      expect(mapWebHref('/forum/moderation'), isNull);
+      expect(mapWebHref('/communities/new'), isNull);
+      expect(mapWebHref('/communities/nlp-vn/manage'), isNull);
       expect(mapWebHref('/academic-support'), isNull);
-      expect(mapWebHref('/forum/my-post-slug'), isNull);
       expect(
         mapWebHref('/projects/abc/members'),
         isNull,
@@ -120,8 +137,8 @@ void main() {
   });
 
   group('shellTabRoutes', () {
-    test('are the four root tabs', () {
-      expect(shellTabRoutes, {'/', '/explore', '/projects', '/profile'});
+    test('are the five root tabs', () {
+      expect(shellTabRoutes, {'/', '/explore', '/projects', '/community', '/profile'});
     });
   });
 

@@ -126,10 +126,22 @@ void main() {
       expect(notificationRoute(_n('1', kind: 'paper')), isNull);
       expect(notificationRoute(_n('1', kind: 'paper', targetId: '')), isNull);
       expect(notificationRoute(_n('1', kind: 'gap_direction')), '/gaps');
+      // Communities, discussions and review requests have screens now.
       expect(
         notificationRoute(_n('1', kind: 'community', targetId: 'c1')),
-        isNull,
+        '/communities/c1',
       );
+      expect(
+        notificationRoute(_n('1', kind: 'forum_post', targetId: 'f 1')),
+        '/forum/post/f%201',
+      );
+      expect(
+        notificationRoute(_n('1', kind: 'review_request', targetId: 'r1')),
+        '/review-requests/r1',
+      );
+      // Without an id there is nothing to open.
+      expect(notificationRoute(_n('1', kind: 'forum_post')), isNull);
+      expect(notificationRoute(_n('1', kind: 'mystery_kind', targetId: 'x')), isNull);
     });
   });
 

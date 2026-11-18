@@ -9,11 +9,12 @@ class AppShellDestination {
   final IconData selectedIcon;
 }
 
-/// The four root tabs, in branch order (see `app_router.dart`).
+/// The five root tabs, in branch order (see `app_router.dart`).
 final appShellDestinations = <AppShellDestination>[
   AppShellDestination(tk('Home'), Icons.home_outlined, Icons.home),
   AppShellDestination(tk('Explore'), Icons.explore_outlined, Icons.explore),
   AppShellDestination(tk('Projects'), Icons.folder_outlined, Icons.folder),
+  AppShellDestination(tk('Community'), Icons.forum_outlined, Icons.forum),
   AppShellDestination(tk('Profile'), Icons.person_outline, Icons.person),
 ];
 

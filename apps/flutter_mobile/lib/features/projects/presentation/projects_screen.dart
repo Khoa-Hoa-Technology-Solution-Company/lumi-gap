@@ -10,8 +10,10 @@ import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/core/widgets/notification_bell.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
+import 'package:flutter_mobile/features/projects/data/invitations_api.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/projects/presentation/create_project_sheet.dart';
+import 'package:flutter_mobile/features/projects/presentation/project_invitations_section.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -78,7 +80,9 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   }
 
   Future<void> _refresh() async {
-    ref.invalidate(projectsProvider);
+    ref
+      ..invalidate(projectsProvider)
+      ..invalidate(myInvitationsProvider);
     try {
       await ref.read(projectsProvider.future);
     } on Object catch (_) {
@@ -90,6 +94,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   Widget build(BuildContext context) {
     final projects = ref.watch(projectsProvider);
     final userId = ref.watch(currentUserProvider)?.id;
+    final hasInvitations =
+        ref.watch(myInvitationsProvider).value?.isNotEmpty ?? false;
 
     final Widget body;
     if (projects.hasValue) {
@@ -115,26 +121,34 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: _refresh,
-              child: shown.isEmpty
+              child: shown.isEmpty && !hasInvitations
                   ? _EmptyProjects(filter: filter, onCreate: _openCreateSheet)
                   : ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                       children: [
-                        LumiRowGroup(
-                          children: [
-                            for (final project in shown)
-                              _ProjectRow(
-                                project: project,
-                                isOwner: filterable
-                                    ? ownsProject(project, userId)
-                                    : null,
-                                onTap: () => unawaited(
-                                  context.push('/project/${project.id}'),
+                        const ProjectInvitationsSection(),
+                        if (shown.isEmpty)
+                          _EmptyProjects(
+                            filter: filter,
+                            onCreate: _openCreateSheet,
+                            inline: true,
+                          )
+                        else
+                          LumiRowGroup(
+                            children: [
+                              for (final project in shown)
+                                _ProjectRow(
+                                  project: project,
+                                  isOwner: filterable
+                                      ? ownsProject(project, userId)
+                                      : null,
+                                  onTap: () => unawaited(
+                                    context.push('/project/${project.id}'),
+                                  ),
                                 ),
-                              ),
-                          ],
-                        ),
+                            ],
+                          ),
                       ],
                     ),
             ),
@@ -177,10 +191,17 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
 }
 
 class _EmptyProjects extends StatelessWidget {
-  const _EmptyProjects({required this.filter, required this.onCreate});
+  const _EmptyProjects({
+    required this.filter,
+    required this.onCreate,
+    this.inline = false,
+  });
 
   final ProjectFilter filter;
   final VoidCallback onCreate;
+
+  /// Under the invitations, inside their list: no page of its own.
+  final bool inline;
 
   @override
   Widget build(BuildContext context) {
@@ -198,18 +219,20 @@ class _EmptyProjects extends StatelessWidget {
           false,
         ),
     };
+    final empty = LumiEmptyState(
+      icon: Icons.folder_open,
+      message: message,
+      actionLabel: canCreate ? context.t('Create project') : null,
+      onAction: canCreate ? onCreate : null,
+    );
+    if (inline) return empty;
     // Scrollable so pull-to-refresh works on an empty list too.
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: LumiEmptyState(
-            icon: Icons.folder_open,
-            message: message,
-            actionLabel: canCreate ? context.t('Create project') : null,
-            onAction: canCreate ? onCreate : null,
-          ),
+          child: empty,
         ),
       ),
     );

@@ -189,6 +189,16 @@ Future<void> _pump(
         builder: (_, _) => const Scaffold(body: Text('projects-tab')),
       ),
       GoRoute(
+        path: '/review-requests/:id',
+        builder: (_, s) =>
+            Scaffold(body: Text('review-request-${s.pathParameters['id']}')),
+      ),
+      GoRoute(
+        path: '/forum/post/:id',
+        builder: (_, s) =>
+            Scaffold(body: Text('forum-post-${s.pathParameters['id']}')),
+      ),
+      GoRoute(
         path: '/trends',
         builder: (_, _) => const Scaffold(body: Text('trends-screen')),
       ),
@@ -626,7 +636,7 @@ void main() {
       expect(find.text('project-p1'), findsOneWidget);
     });
 
-    testWidgets('attention row without a mobile screen opens the web page', (
+    testWidgets('a review request opens in the app, not the browser', (
       tester,
     ) async {
       final h = _Harness();
@@ -636,11 +646,11 @@ void main() {
       await tester.tap(find.text('Lời mời tham gia dự án'));
       await tester.pumpAndSettle();
 
-      expect(h.opened, [Uri.parse('https://lumigap.uk/review-requests/77')]);
-      expect(find.text('project-p1'), findsNothing);
+      expect(find.text('review-request-77'), findsOneWidget);
+      expect(h.opened, isEmpty);
     });
 
-    testWidgets('community topic opens the forum page on the web', (
+    testWidgets('community topic opens the discussion in the app', (
       tester,
     ) async {
       final h = _Harness();
@@ -651,9 +661,8 @@ void main() {
       await tester.tap(find.text('Cách đánh giá bộ dữ liệu y tế?'));
       await tester.pumpAndSettle();
 
-      expect(h.opened, [
-        Uri.parse('https://lumigap.uk/forum/danh-gia-bo-du-lieu'),
-      ]);
+      expect(find.text('forum-post-danh-gia-bo-du-lieu'), findsOneWidget);
+      expect(h.opened, isEmpty);
     });
 
     testWidgets('an off-site href is never opened', (tester) async {

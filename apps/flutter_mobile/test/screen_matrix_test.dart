@@ -13,6 +13,12 @@ import 'package:flutter_mobile/features/auth/presentation/register_screen.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/bookmarks/presentation/bookmarks_screen.dart';
+import 'package:flutter_mobile/features/community/data/communities_api.dart';
+import 'package:flutter_mobile/features/community/data/forum_api.dart';
+import 'package:flutter_mobile/features/community/presentation/community_detail_screen.dart';
+import 'package:flutter_mobile/features/community/presentation/community_screen.dart';
+import 'package:flutter_mobile/features/community/presentation/forum_post_screen.dart';
+import 'package:flutter_mobile/features/community/presentation/new_post_screen.dart';
 import 'package:flutter_mobile/features/explore/presentation/explore_screen.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/gaps/presentation/gaps_screen.dart';
@@ -28,7 +34,9 @@ import 'package:flutter_mobile/features/papers/presentation/paper_detail_screen.
 import 'package:flutter_mobile/features/papers/presentation/submit_paper_screen.dart';
 import 'package:flutter_mobile/features/profile/presentation/account_screen.dart';
 import 'package:flutter_mobile/features/profile/presentation/profile_screen.dart';
+import 'package:flutter_mobile/features/projects/data/invitations_api.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
+import 'package:flutter_mobile/features/projects/presentation/invitation_link_screen.dart';
 import 'package:flutter_mobile/features/projects/presentation/projects_screen.dart';
 import 'package:flutter_mobile/features/quality/data/quality_api.dart';
 import 'package:flutter_mobile/features/rankings/data/rankings_api.dart';
@@ -36,6 +44,9 @@ import 'package:flutter_mobile/features/rankings/presentation/rankings_screen.da
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_mobile/features/reports/presentation/report_detail_screen.dart';
 import 'package:flutter_mobile/features/reports/presentation/reports_screen.dart';
+import 'package:flutter_mobile/features/reviews/data/review_requests_api.dart';
+import 'package:flutter_mobile/features/reviews/presentation/review_center_screen.dart';
+import 'package:flutter_mobile/features/reviews/presentation/review_request_screen.dart';
 import 'package:flutter_mobile/features/search/presentation/search_screen.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_mobile/features/trends/presentation/trends_screen.dart';
@@ -45,6 +56,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'auth_test_support.dart';
+import 'support/community_fakes.dart';
 import 'support/readable_text.dart';
 
 /// Every screen, with data that looks real (long Vietnamese names, several
@@ -226,7 +238,110 @@ final List<_Case> _cases = [
     'projects',
     () => const ProjectsScreen(),
     user: _user(),
-    overrides: [projectsProvider.overrideWith((ref) async => [_project])],
+    overrides: [
+      projectsProvider.overrideWith((ref) async => [_project]),
+      myInvitationsProvider.overrideWith((ref) async => [sampleInvitation()]),
+    ],
+  ),
+  _Case(
+    'community discussions',
+    () => const CommunityScreen(),
+    user: _user(),
+    overrides: [
+      forumApiProvider.overrideWithValue(
+        FakeForumApi(feed: [samplePost('p1', pinned: true), samplePost('p2', status: 'locked')]),
+      ),
+    ],
+  ),
+  _Case(
+    'community list',
+    () => const CommunityScreen(initialView: CommunityView.communities),
+    user: _user(),
+    overrides: [
+      forumApiProvider.overrideWithValue(FakeForumApi()),
+      communitiesProvider.overrideWith(
+        (ref, q) async => [sampleCommunity(membership: 'active'), sampleCommunity(status: 'ARCHIVED')],
+      ),
+    ],
+  ),
+  _Case(
+    'community detail',
+    () => const CommunityDetailScreen(slug: 'nlp-vn'),
+    user: _user(),
+    overrides: [
+      forumApiProvider.overrideWithValue(FakeForumApi(feed: [samplePost('p1')])),
+      communityProvider.overrideWith((ref, slug) async => sampleCommunity()),
+    ],
+  ),
+  _Case(
+    'forum post',
+    () => const ForumPostScreen(idOrSlug: 'post-p1'),
+    user: _user(),
+    overrides: [
+      forumApiProvider.overrideWithValue(
+        FakeForumApi(feed: [samplePost('p1')], replyItems: [sampleReply('r1'), sampleReply('r2')]),
+      ),
+    ],
+  ),
+  _Case(
+    'new post',
+    () => const NewPostScreen(communityId: 'rc1', communityName: 'Vietnamese NLP'),
+    user: _user(),
+    overrides: [forumApiProvider.overrideWithValue(FakeForumApi())],
+  ),
+  _Case(
+    'review center',
+    () => const ReviewCenterScreen(),
+    user: _user(),
+    overrides: [
+      canReviewProvider.overrideWith((ref) async => true),
+      reviewCenterProvider.overrideWith(
+        (ref) async => ReviewCenter(incoming: [sampleReview(), sampleReview(status: 'IN_REVIEW')], sent: const []),
+      ),
+    ],
+  ),
+  _Case(
+    'review request',
+    () => const ReviewRequestScreen(id: 'rr'),
+    user: _user(),
+    overrides: [
+      canReviewProvider.overrideWith((ref) async => true),
+      reviewRequestProvider.overrideWith(
+        (ref, id) async => sampleReview(rounds: [
+          {
+            'roundNumber': 1,
+            'status': 'SUBMITTED',
+            'overallAssessment': 'MINOR_REVISION',
+            'submittedAt': '2026-11-12T08:00:00Z',
+            'keyStrengths': 'A clear research question and a sound sampling plan.',
+            'requiredRevisions': [
+              {'priority': 'MAJOR', 'description': 'Report the inter-annotator agreement.', 'status': 'OPEN'},
+            ],
+          },
+        ]),
+      ),
+    ],
+  ),
+  _Case(
+    'invitation link',
+    () => const InvitationLinkScreen(token: 'tok'),
+    user: _user(),
+    overrides: [
+      invitationPreviewProvider.overrideWith(
+        (ref, token) async => InvitationPreview(
+          status: 'PENDING',
+          authenticated: true,
+          emailMatches: true,
+          alreadyMember: false,
+          projectId: 'p9',
+          projectTitle: longTitle,
+          inviterName: 'Nguyễn Thị Thanh Hương',
+          invitedEmail: 'minh@fpt.edu.vn',
+          message: 'Join us for the literature review.',
+          expiresAt: DateTime.utc(2026, 11, 30),
+        ),
+      ),
+    ],
   ),
   _Case('profile', () => const ProfileScreen(), user: _user()),
   _Case(
