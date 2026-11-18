@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1010" viewBox="0 0 1500 1010" font-family="Arial">
+<rect width="1500" height="1010" fill="white"/>
+<text x="750.0" y="40" font-size="24" font-weight="bold" text-anchor="middle">LumiGap: UML deployment diagram (production, Jenkins pipeline)</text>
+<polygon points="30,102 42,90 292,90 292,228 280,240 30,240" fill="#DDDDDD" stroke="#555"/>
+<rect x="30" y="102" width="250" height="138" fill="#F7F7F7" stroke="#555" stroke-width="1.6"/>
+<line x1="280" y1="102" x2="292" y2="90" stroke="#555"/>
+<text x="155.0" y="124.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«device»</text>
+<text x="155.0" y="145.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">User workstation</text>
+<rect x="55" y="160" width="200" height="64" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="155.0" y="178.8" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="155.0" y="197.6" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Web browser</text>
+<text x="155.0" y="214.8" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">SPA from lumigap.uk</text>
+<polygon points="340,92 352,80 1472,80 1472,758 1460,770 340,770" fill="#DDDDDD" stroke="#555"/>
+<rect x="340" y="92" width="1120" height="678" fill="#F7F7F7" stroke="#555" stroke-width="1.6"/>
+<line x1="1460" y1="92" x2="1472" y2="80" stroke="#555"/>
+<text x="900.0" y="114.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«device»  «execution environment: Docker Engine»</text>
+<text x="900.0" y="135.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Production Docker host</text>
+<polygon points="370,162 382,150 682,150 682,288 670,300 370,300" fill="#DDDDDD" stroke="#555"/>
+<rect x="370" y="162" width="300" height="138" fill="#FFFFFF" stroke="#555" stroke-width="1.6"/>
+<line x1="670" y1="162" x2="682" y2="150" stroke="#555"/>
+<text x="520.0" y="184.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«execution environment»</text>
+<text x="520.0" y="205.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Nginx Proxy Manager</text>
+<text x="520.0" y="234.6" font-size="12" text-anchor="middle" font-weight="normal" fill="#1A1A1A">TLS 443: lumigap.uk -&gt; web</text>
+<text x="520.0" y="249.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#1A1A1A">api.lumigap.uk -&gt; backend</text>
+<text x="520.0" y="263.8" font-size="12" text-anchor="middle" font-weight="normal" fill="#1A1A1A">(proxy network)</text>
+<rect x="720" y="150" width="220" height="70" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="830.0" y="168.8" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="830.0" y="187.6" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">web</text>
+<text x="830.0" y="204.8" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">nginx, 127.0.0.1:9001 -&gt; 80</text>
+<rect x="990" y="150" width="230" height="70" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="1105.0" y="168.8" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="1105.0" y="187.6" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">backend</text>
+<text x="1105.0" y="204.8" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">Express API, 127.0.0.1:9000 -&gt; 4000</text>
+<rect x="720" y="260" width="220" height="64" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="830.0" y="278.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="830.0" y="297.6" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">redis</text>
+<text x="830.0" y="314.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">redis:7-alpine</text>
+<rect x="990" y="260" width="230" height="64" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="1105.0" y="278.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="1105.0" y="297.6" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">libretranslate</text>
+<text x="1105.0" y="314.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">libretranslate v1.9.6</text>
+<text x="905.0" y="374.9" font-size="14" text-anchor="middle" font-weight="bold" fill="#1A1A1A">8 worker containers (app network):</text>
+<rect x="380" y="395" width="240" height="64" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="500.0" y="413.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="500.0" y="432.6" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">worker-report</text>
+<text x="500.0" y="449.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">backend image, BullMQ</text>
+<rect x="645" y="395" width="240" height="64" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="765.0" y="413.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="765.0" y="432.6" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">worker-gaps</text>
+<text x="765.0" y="449.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">backend image, BullMQ</text>
+<rect x="910" y="395" width="240" height="64" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="1030.0" y="413.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="1030.0" y="432.6" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">worker-notifications</text>
+<text x="1030.0" y="449.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">backend image, BullMQ</text>
+<rect x="1175" y="395" width="240" height="64" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="1295.0" y="413.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="1295.0" y="432.6" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">worker-embedding</text>
+<text x="1295.0" y="449.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">backend image, BullMQ</text>
+<rect x="380" y="479" width="240" height="64" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="500.0" y="497.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="500.0" y="516.5" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">worker-paper-analysis</text>
+<text x="500.0" y="533.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">backend image, BullMQ</text>
+<rect x="645" y="479" width="240" height="64" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="765.0" y="497.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="765.0" y="516.5" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">worker-corpus-validation</text>
+<text x="765.0" y="533.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">backend image, BullMQ</text>
+<rect x="910" y="479" width="240" height="64" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="1030.0" y="497.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="1030.0" y="516.5" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">worker-tagging</text>
+<text x="1030.0" y="533.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">backend image, BullMQ</text>
+<rect x="1175" y="479" width="240" height="64" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="1295.0" y="497.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="1295.0" y="516.5" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">worker-topic-backfill</text>
+<text x="1295.0" y="533.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">backend image, BullMQ</text>
+<text x="905.0" y="604.5" font-size="13" text-anchor="middle" font-weight="normal" fill="#333">One-shot containers per deployment: production env validation, db:migrate:deploy, db:migrate:status.</text>
+<text x="905.0" y="644.5" font-size="13" text-anchor="middle" font-weight="normal" fill="#9C3D10">Not started by the production pipeline: PostgreSQL (reached through DATABASE_URL), AI reviewer, LaTeX compiler,</text>
+<text x="905.0" y="666.5" font-size="13" text-anchor="middle" font-weight="normal" fill="#9C3D10">and the ai-jobs, sync, openalex-ingest and community-summary workers (they run in docker-compose environments).</text>
+<polygon points="380,812 392,800 722,800 722,938 710,950 380,950" fill="#DDDDDD" stroke="#555"/>
+<rect x="380" y="812" width="330" height="138" fill="#F7F7F7" stroke="#555" stroke-width="1.6"/>
+<line x1="710" y1="812" x2="722" y2="800" stroke="#555"/>
+<text x="545.0" y="834.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«device»</text>
+<text x="545.0" y="855.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Database server (host not stated)</text>
+<rect x="415" y="870" width="260" height="60" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="545.0" y="888.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="545.0" y="907.5" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">PostgreSQL 16 + pgvector</text>
+<polygon points="800,812 812,800 1452,800 1452,938 1440,950 800,950" fill="#DDDDDD" stroke="#555"/>
+<rect x="800" y="812" width="640" height="138" fill="#F7F7F7" stroke="#555" stroke-width="1.6"/>
+<line x1="1440" y1="812" x2="1452" y2="800" stroke="#555"/>
+<text x="1120.0" y="834.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«external system»</text>
+<text x="1120.0" y="855.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">External services</text>
+<text x="1120.0" y="886.6" font-size="13" text-anchor="middle" font-weight="normal" fill="#1A1A1A">Google Gemini / LLM providers, OpenAlex, PayOS,</text>
+<text x="1120.0" y="902.5" font-size="13" text-anchor="middle" font-weight="normal" fill="#1A1A1A">Google OIDC, ORCID, SMTP, Cloudflare R2, GitHub</text>
+<polyline points="255.0,192.0 370.0,220.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="370.0,220.0 358.8,211.1 355.9,222.8" fill="#44546A"/>
+<text x="305.0" y="194.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTPS 443</text>
+<polygon points="30,312 42,300 292,300 292,448 280,460 30,460" fill="#DDDDDD" stroke="#555"/>
+<rect x="30" y="312" width="250" height="148" fill="#F7F7F7" stroke="#555" stroke-width="1.6"/>
+<line x1="280" y1="312" x2="292" y2="300" stroke="#555"/>
+<text x="155.0" y="334.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«device» Android / iOS</text>
+<text x="155.0" y="355.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Mobile device</text>
+<rect x="55" y="372" width="200" height="64" fill="white" stroke="#2E75B6" stroke-width="1.4"/>
+<text x="155.0" y="390.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#555">«container»</text>
+<text x="155.0" y="409.6" font-size="13" text-anchor="middle" font-weight="bold" fill="#1A1A1A">LumiGap mobile app</text>
+<text x="155.0" y="426.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#333">Flutter; API_BASE_URL</text>
+<polyline points="255.0,404.0 330.0,404.0 330.0,270.0 370.0,270.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="370.0,270.0 357.0,264.0 357.0,276.0" fill="#44546A"/>
+<text x="300.0" y="424.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTPS 443 (api)</text>
+<polyline points="670.0,190.0 720.0,185.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="720.0,185.0 706.5,180.3 707.7,192.3" fill="#44546A"/>
+<polyline points="670.0,170.0 695.0,170.0 695.0,140.0 1105.0,140.0 1105.0,150.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="1105.0,150.0 1111.0,137.0 1099.0,137.0" fill="#44546A"/>
+<polyline points="1105.0,220.0 1105.0,240.0 830.0,240.0 830.0,260.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="830.0,260.0 836.0,247.0 824.0,247.0" fill="#44546A"/>
+<polyline points="1150.0,690.0 1150.0,800.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="1150.0,800.0 1156.0,787.0 1144.0,787.0" fill="#44546A"/>
+<text x="1195.0" y="749.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTPS</text>
+<polyline points="545.0,690.0 545.0,800.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="545.0,800.0 551.0,787.0 539.0,787.0" fill="#44546A"/>
+<text x="625.0" y="749.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">SQL via DATABASE_URL</text>
+<text x="30.0" y="989.5" font-size="13" text-anchor="start" font-weight="normal" fill="#555">Source: Jenkinsfile and docker-compose.yml on main 0be3737. The hosting provider is not stated in the repository.</text>
+</svg>
