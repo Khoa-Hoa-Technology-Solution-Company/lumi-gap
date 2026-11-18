@@ -162,8 +162,7 @@ List<(String, List<AppNotification>)> groupNotificationsByDay(
   ];
 }
 
-/// Screen a notification opens, or null when the app has no screen for it
-/// (communities and forum posts live on the web only).
+/// Screen a notification opens, or null when the app has no screen for it.
 String? notificationRoute(AppNotification item) {
   final id = item.targetId;
   final hasId = id != null && id.isNotEmpty;
@@ -173,6 +172,10 @@ String? notificationRoute(AppNotification item) {
     'project' when hasId => '/project/$id',
     'gap' || 'gap_analysis' || 'gap_direction' || 'gap_closure_check' =>
       '/gaps',
+    'forum_post' when hasId => '/forum/post/${Uri.encodeComponent(id)}',
+    'community' when hasId => '/communities/${Uri.encodeComponent(id)}',
+    'review_request' when hasId =>
+      '/review-requests/${Uri.encodeComponent(id)}',
     _ => null,
   };
 }

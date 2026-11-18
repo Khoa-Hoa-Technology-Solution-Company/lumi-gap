@@ -266,6 +266,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   title: context.t('Bookmarks'),
                   onTap: () => unawaited(context.push('/bookmarks')),
                 ),
+                // Web: Workspace → Review Center.
+                LumiListRow(
+                  icon: Icons.rate_review_outlined,
+                  title: context.t('Review Center'),
+                  onTap: () => unawaited(context.push('/reviews')),
+                ),
                 if (user?.role == UserRole.admin)
                   LumiListRow(
                     icon: Icons.sync,
