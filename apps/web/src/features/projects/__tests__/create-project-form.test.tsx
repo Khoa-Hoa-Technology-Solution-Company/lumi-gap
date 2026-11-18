@@ -109,7 +109,7 @@ it("recovers the same request after a lost response and a form remount", async (
   expect(container.querySelector("output")?.textContent).toContain("/projects/recovered?");
 });
 
-it("blocks self-invite and duplicates, preserves step 1 on back, keeps project if invites fail, and invites selected lecturer", async () => {
+it("blocks self-invite and duplicates, preserves step 1 on back, keeps project if invites fail, and prepares the shared lecturer invitation form", async () => {
   mocks.create.mockResolvedValue({ _id: "team-proj", title: "Team study" });
   mocks.inviteMember.mockRejectedValueOnce(new Error("Delivery error")).mockResolvedValueOnce(undefined);
   mocks.searchMentors.mockResolvedValue({
@@ -170,21 +170,16 @@ it("blocks self-invite and duplicates, preserves step 1 on back, keeps project i
   expect(document.body.textContent).toContain("Dr. Nguyen");
   const selectMentor = [...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Select")!;
   await act(async () => { selectMentor.click(); });
-  expect(document.body.textContent).toContain("Dr. Nguyen (Pending invitation)");
+  expect(document.body.textContent).toContain("Dr. Nguyen (Selected)");
 
   await act(async () => { submit(); });
   expect(mocks.inviteMember).toHaveBeenCalledWith("team-proj", { email: "teammate@example.com" });
   expect(mocks.inviteMember).toHaveBeenCalledWith("team-proj", { email: "second@example.com" });
-  expect(mocks.requestMentor).toHaveBeenCalledWith(
-    "team-proj",
-    "mentor-1",
-    expect.stringContaining("Team study"),
-    expect.any(String),
-    { mentorRole: "PRIMARY", attachmentIds: [] },
-  );
+  expect(mocks.requestMentor).not.toHaveBeenCalled();
+  expect(JSON.parse(sessionStorage.getItem("lumigap-supervisor-invite:creator:team-proj:mentor-1")!)).toMatchObject({ summary: "Explore security vulnerabilities using LLMs", support: [], reason: "" });
   expect(mocks.toastWarning).toHaveBeenCalled();
   expect(mocks.toastSuccess).toHaveBeenCalled();
-  expect(container.querySelector("output")?.textContent).toBe("/projects/team-proj?tab=papers&welcome=1");
+  expect(container.querySelector("output")?.textContent).toBe("/projects/team-proj?tab=support&inviteMentor=mentor-1");
 });
 
 it("navigates to academic support when choosing supervisor setup without selecting a lecturer in step 2", async () => {

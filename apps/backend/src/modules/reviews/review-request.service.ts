@@ -456,16 +456,22 @@ export const reviewRequestService = {
     const incomingIds = assignments.flatMap((item) => item.reviewRequestId ? [item.reviewRequestId] : []);
     const sentIds = (await getPrisma().reviewRequest.findMany({ where: { requesterId: actor.id, status: "REQUESTED" }, select: { id: true } })).map(r => r.id);
     await expireReviewRequests([...incomingIds, ...sentIds]);
-    const [incoming, sent] = await Promise.all([
+    const [incoming, rawSent] = await Promise.all([
       getPrisma().reviewRequest.findMany({ where: { id: { in: incomingIds } }, orderBy: { updatedAt: "desc" } }),
       getPrisma().reviewRequest.findMany({ where: { requesterId: actor.id }, orderBy: { updatedAt: "desc" } }),
     ]);
+    const activeSentProjects = rawSent.length
+      ? new Set((await getPrisma().project.findMany({ where: { id: { in: [...new Set(rawSent.map(r => r.projectId))] }, deletedAt: null }, select: { id: true } })).map(p => p.id))
+      : new Set<string>();
+    const sent = rawSent.filter(r => activeSentProjects.has(r.projectId));
     return { incoming: await Promise.all(incoming.map((row) => summary(row, actor.id))), sent: await Promise.all(sent.map((row) => summary(row, actor.id))) };
   },
 
   async detail(requestInput: string, actorInput: string) {
     const actor = await resolveUser(actorInput);
     const request = await requestRecord(requestInput);
+    const project = await getPrisma().project.findUnique({ where: { id: request.projectId }, select: { deletedAt: true } });
+    if (!project || project.deletedAt) throw AppError.notFound("Project not found");
     const assignment = await assignmentForRequest(request.id);
     if (actor.id !== assignment.reviewerId) await assertRevisionAuthor(request.projectId, request.submissionId, actor.id, getPrisma(), true);
     let canRespond = false;

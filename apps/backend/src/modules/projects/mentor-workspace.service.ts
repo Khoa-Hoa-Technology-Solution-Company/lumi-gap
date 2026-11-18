@@ -126,6 +126,7 @@ export const mentorWorkspaceService = {
       if (query.kind === "REVIEW") filters.push(Prisma.sql`kind IN ('MANUSCRIPT_REVIEW','PROPOSAL_REVIEW')`);
       else if (query.kind) filters.push(Prisma.sql`kind=${query.kind}`);
       if (query.status === "ACTIONABLE") filters.push(Prisma.sql`"needsAction"`);
+      else if (query.status === "OVERDUE") filters.push(Prisma.sql`"needsAction" AND "dueAt"<NOW()`);
       else if (query.status !== "ALL") filters.push(Prisma.sql`status=${query.status}`);
       if (query.item) filters.push(Prisma.sql`id=${query.item}`);
       const where = Prisma.join(filters, " AND ");

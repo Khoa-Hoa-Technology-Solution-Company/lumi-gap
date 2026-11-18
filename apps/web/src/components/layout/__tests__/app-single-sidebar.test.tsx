@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AppSingleSidebar } from "../app-single-sidebar";
 import { WorkspaceBreadcrumb } from "../workspace-breadcrumb";
@@ -84,24 +84,42 @@ async function mount(node: ReactNode, url = "/projects") {
   });
 }
 
-it("renders student view without mentor workspace switcher option", async () => {
+it.each([false, true])("omits redundant research navigation when collapsed=%s", async (collapsed) => {
   await mount(
     <AppSingleSidebar
       activeWorkspace="research"
       canAccessMentor={false}
+      collapsed={collapsed}
+      researchProjects={[{ _id: "project-1", title: "Dự án đang làm" }]}
     />
   );
 
-  expect(host.textContent).toContain("Không gian nghiên cứu");
-  expect(host.textContent).toContain("Tất cả dự án");
-  expect(host.textContent).toContain("Lời mời tham gia");
-  expect(host.textContent).toContain("Thùng rác");
-  // Student should not have the switcher dropdown trigger
-  expect(host.querySelector(".workspace-switcher-static")).not.toBeNull();
+  expect(host.textContent).not.toContain("Không gian nghiên cứu");
+  expect(host.textContent).not.toContain("Nghiên cứu khoa học");
+  expect(host.querySelector('a[href="/projects"]')).toBeNull();
+  expect(host.querySelector('a[href="/projects?view=invitations"]')).toBeNull();
+  expect(host.querySelector('a[href="/projects?view=trash"]')).toBeNull();
+  expect(host.querySelector(".sidebar-workspace-switcher")).toBeNull();
   expect(host.querySelector(".workspace-switcher-trigger")).toBeNull();
+  if (!collapsed) expect(host.textContent).toContain("Dự án đang làm");
 });
 
-it("renders mentor switcher for authorized accounts and shows dropdown options", async () => {
+it("omits recent research projects when inside an active project (currentProjectId is set)", async () => {
+  await mount(
+    <AppSingleSidebar
+      activeWorkspace="research"
+      canAccessMentor={false}
+      collapsed={false}
+      currentProjectId="project-active-123"
+      researchProjects={[{ _id: "project-1", title: "Dự án đang làm" }]}
+    />
+  );
+
+  expect(host.textContent).not.toContain("Dự án đang làm");
+  expect(host.querySelector(".sidebar-recent-section")).toBeNull();
+});
+
+it("also omits the research workspace switcher for mentor accounts", async () => {
   await mount(
     <AppSingleSidebar
       activeWorkspace="research"
@@ -111,8 +129,7 @@ it("renders mentor switcher for authorized accounts and shows dropdown options",
   );
 
   const trigger = host.querySelector<HTMLButtonElement>(".workspace-switcher-trigger");
-  expect(trigger).not.toBeNull();
-  expect(trigger?.getAttribute("aria-label")).toContain("Chuyển không gian");
+  expect(trigger).toBeNull();
 });
 
 it("renders full mentor workspace navigation with badges and recent projects", async () => {

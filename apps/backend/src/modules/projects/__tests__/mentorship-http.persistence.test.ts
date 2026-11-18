@@ -47,6 +47,7 @@ describe.skipIf(!enabled).sequential("two-way mentorship through authenticated H
     const envelope = await response.json() as { data: T; error?: { message: string } };
     return { status: response.status, data: envelope.data, error: envelope.error };
   }
+  const dossier = { researchSummary: "Our team studies reproducible evaluation methods with documented baselines and seeks guidance on the planned controlled experiment.", sharingConfirmed: true, expectations: { supportAreas: ["RESEARCH_METHODOLOGY"] } };
   async function openDiscovery() {
     const settings = await request(owner, `/projects/${project}/mentorship-discovery`, "PUT", { discovery: "SEEKING_MENTOR", summary: "Study design for a controlled experiment", researchAreas: ["Software Engineering"], expertise: ["Evaluation"], mentoringNeeds: "Help design the experiment" });
     expect(settings.status).toBe(200);
@@ -71,7 +72,7 @@ describe.skipIf(!enabled).sequential("two-way mentorship through authenticated H
     expect((await request(owner, `${base}/draft`, "PUT", { ...context, message: "Stale tab", mentorRole: "PRIMARY", attachmentIds: [], expectedVersion: 0 })).status).toBe(409);
     const download = (who: string) => fetch(`${origin}/api/v1${base}/attachments/${file.id}`, { headers: { Authorization: `Bearer ${tokens.get(who)}` } });
     expect((await download(lecturer)).status).toBe(404);
-    const invitation = await request<MentorshipRequest>(owner, `/projects/${project}/mentorships`, "POST", { mentorUserId: lecturer, message: "", mentorRole: "PRIMARY", attachmentIds: [file.id] });
+    const invitation = await request<MentorshipRequest>(owner, `/projects/${project}/mentorships`, "POST", { mentorUserId: lecturer, message: "Please guide our research methodology", dossier, mentorRole: "PRIMARY", attachmentIds: [file.id] });
     expect(invitation.status).toBe(201); expect(invitation.data.attachments).toEqual([file]);
     const response = await download(lecturer);
     expect(response.status).toBe(200); expect(response.headers.get("content-type")).toContain("application/pdf");
@@ -85,12 +86,12 @@ describe.skipIf(!enabled).sequential("two-way mentorship through authenticated H
   it.each(["PROJECT_TO_LECTURER", "LECTURER_TO_PROJECT"])("%s completes consent, denies private access before acceptance and revokes scoped access on end", async direction => {
     await openDiscovery();
     expect((await request(member, `/projects/${project}/available-mentors`)).status).toBe(200);
-    expect((await request(member, `/projects/${project}/mentorships`, "POST", { mentorUserId: lecturer, message: "Forged invitation" })).status).toBe(403);
+    expect((await request(member, `/projects/${project}/mentorships`, "POST", { mentorUserId: lecturer, message: "Forged invitation by member", dossier })).status).toBe(403);
     const discovery = await request(lecturer, "/projects/academic-support/opportunities?area=Software%20Engineering");
     expect(discovery.status).toBe(200); expect(JSON.stringify(discovery.data)).not.toContain("CONFIDENTIAL");
     const path = `/projects/${project}/${direction === "PROJECT_TO_LECTURER" ? "mentorships" : "mentorship-offers"}`;
     const sender = direction === "PROJECT_TO_LECTURER" ? owner : lecturer, receiver = direction === "PROJECT_TO_LECTURER" ? lecturer : owner;
-    const input = { message: "Help design research methods", ...(direction === "PROJECT_TO_LECTURER" ? { mentorUserId: lecturer } : {}) };
+    const input = { message: "Help design research methods", ...(direction === "PROJECT_TO_LECTURER" ? { mentorUserId: lecturer, dossier } : {}) };
     const pending = await request<MentorshipRequest>(sender, path, "POST", input);
     expect(pending.status).toBe(201); expect(JSON.stringify(pending.data)).not.toContain("CONFIDENTIAL");
     expect((await request(sender, path, "POST", input)).status).toBe(409);
@@ -100,7 +101,10 @@ describe.skipIf(!enabled).sequential("two-way mentorship through authenticated H
     expect(incoming.data.requests.map(r => r.id)).toContain(pending.data.id);
     const accepted = await request<MentorshipRequest>(receiver, `/projects/${project}/mentorships/${pending.data.id}/accept`, "POST", {});
     expect(accepted.status).toBe(200);
-    expect((await request(lecturer, `/projects/${project}/academic-support/guidance`, "POST", { note: "Compare multiple baselines" })).status).toBe(201);
+    // Accepted mentors use scoped collaboration, not the team's unrestricted context endpoint.
+    expect((await request(lecturer, `/projects/${project}/academic-support/guidance`, "POST", { note: "Compare multiple baselines" })).status).toBe(403);
+    const policy = await db.mentorAccess.findUniqueOrThrow({ where: { requestId: pending.data.id } });
+    expect((await request(lecturer, `/projects/${project}/mentor-access/${policy.id}/feedback`, "POST", { kind: "MESSAGE", body: "Compare multiple baselines", clientKey: crypto.randomUUID() })).status).toBe(201);
     expect((await request(lecturer, `/projects/${project}`, "PUT", { title: "Unauthorized change" })).status).toBe(403);
     expect(await db.projectMember.count({ where: { projectId: project, userId: lecturer } })).toBe(0);
     expect((await request(owner, `/projects/${project}/mentorships/${accepted.data.relationshipId}/end`, "POST", {})).status).toBe(200);

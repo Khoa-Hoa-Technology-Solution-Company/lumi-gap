@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SubmissionIntroductionView } from "@/features/submissions/components/submission-introduction-view";
+import { MentorManuscriptDialog } from "@/features/submissions/components/mentor-manuscript-dialog";
 import { VersionHistory } from "@/features/submissions/components/version-history";
 import { SubmitReviewDialog } from "@/features/reviews/components/submit-review-dialog";
 import { SubmissionReviewProgress } from "@/features/submissions/components/submission-review-progress";
@@ -79,12 +80,13 @@ export function SubmissionDetailPage({
   const runPreReview = useRunAiPreReview(id);
 
   // Active selected version
-  const [selectedVersionId, setSelectedVersionId] = useState<string>("");
+  const [selectedVersionId, setSelectedVersionId] = useState<string>(() => new URLSearchParams(window.location.search).get("revision") ?? "");
   const [showDiff, setShowDiff] = useState(false);
   const [addressedAiItems, setAddressedAiItems] = useState<Record<string, boolean>>({});
 
   // Revision upload modal / section state
   const [showRevision, setShowRevision] = useState(false);
+  const [mentorSendOpen, setMentorSendOpen] = useState(false);
   const [revisionFile, setRevisionFile] = useState<File>();
   const [revisionResponse, setRevisionResponse] = useState("");
   const [revisionContent, setRevisionContent] = useState("");
@@ -203,6 +205,7 @@ export function SubmissionDetailPage({
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
+      <MentorManuscriptDialog open={mentorSendOpen} onOpenChange={setMentorSendOpen} projectId={projectId ?? data.projectId} submissionId={id} manuscriptId={data.sourceManuscriptId ?? undefined} onSent={() => { setMentorSendOpen(false); void history.refetch(); toast.success(t("Manuscript sent for mentor feedback.")); }} />
       {/* Top Bar Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <Link
@@ -249,12 +252,12 @@ export function SubmissionDetailPage({
             {canRevise && (
               <Button
                 variant={data.status.toLowerCase().includes("revision") ? "default" : "outline"}
-                onClick={() => setShowRevision(v => !v)}
+                onClick={() => history.data?.assignedMentor ? setMentorSendOpen(true) : setShowRevision(v => !v)}
                 disabled={revisionPending}
                 className="gap-1.5 shadow-xs"
               >
                 <Upload className="h-4 w-4" />
-                {t("New PDF version")}
+                {t(history.data?.assignedMentor ? "Send next version for mentor feedback" : "New PDF version")}
               </Button>
             )}
             {canRequestReview && (
@@ -789,7 +792,7 @@ export function SubmissionDetailPage({
                 <div className="pt-3 border-t">
                   <Button
                     className="w-full gap-2"
-                    onClick={() => { setShowRevision(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                    onClick={() => { if (history.data?.assignedMentor) setMentorSendOpen(true); else { setShowRevision(true); window.scrollTo({ top: 0, behavior: "smooth" }); } }}
                   >
                     <Upload className="h-4 w-4" />
                     Tạo phiên bản chỉnh sửa (v{data.currentRevisionNumber + 1})

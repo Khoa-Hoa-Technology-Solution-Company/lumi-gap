@@ -10,21 +10,28 @@ import { MentorProjectTasks } from "../components/mentor-project-tasks";
 import { MentorWorkspacePage } from "@/pages/academics/mentor-workspace";
 import { mentorWorkspaceEn } from "@/i18n/locales/mentor-workspace";
 import { vi as vietnameseDictionary } from "@/i18n/locales/vi";
+import { mentorWorkspaceDestination } from "../utils/mentor-workspace-navigation";
 
 const mocks = vi.hoisted(() => ({ actor: "mentor", read: vi.fn(), profile: { data: { academicRole: "LECTURER", academicRoleVerificationStatus: "VERIFIED", verificationStatuses: { position: "VERIFIED" } }, isLoading: false, isError: false, refetch: vi.fn() } }));
 vi.mock("../api/mentor-workspace.api", () => ({ mentorWorkspaceApi: { read: mocks.read } }));
 vi.mock("@/features/academic-profile/hooks/use-academic-profile", () => ({ useAcademicProfile: () => mocks.profile }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (v: unknown) => unknown) => select({ user: { id: mocks.actor } }) }));
-vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values: Record<string, string | number> = {}) => {
+vi.mock("@/i18n", () => ({ LanguageSwitcher: () => null, useI18n: () => ({ language: "en", t: (key: string, values: Record<string, string | number> = {}) => {
   let result = mentorWorkspaceEn[key as keyof typeof mentorWorkspaceEn] ?? key;
   for (const [name, value] of Object.entries(values)) result = result.replaceAll(`{{${name}}}`, String(value));
   return result;
 } }) }));
 vi.mock("../components/workspace-discussions", () => ({ DiscussionDetail: ({ selected }: { selected: string }) => <p>Shared question: {selected}</p> }));
+vi.mock("@/pages/academics/academic-support", () => ({ AcademicSupportPage: ({ embedded }: { embedded: boolean }) => <p>Existing support screen: {String(embedded)}</p> }));
+vi.mock("@/pages/notifications", () => ({ NotificationsPage: ({ embedded }: { embedded: boolean }) => <p>Existing notification screen: {String(embedded)}</p> }));
+vi.mock("@/pages/academics/mentor-project", () => ({ MentorProjectPage: ({ embedded }: { embedded: boolean }) => <p>Existing project screen: {String(embedded)}</p> }));
+vi.mock("@/pages/reviews/review-dashboard", () => ({ ReviewDashboardPage: () => <p>Existing Review Center</p> }));
+vi.mock("@/pages/reviews/review-templates", () => ({ ReviewTemplatesPage: () => <p>Existing Review Templates</p> }));
 
 let root: Root, host: HTMLDivElement, client: QueryClient, data: MentorWorkspaceData;
 beforeEach(() => {
   vi.clearAllMocks(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  localStorage.removeItem("lumigap.sidebar.collapsed");
   mocks.actor = "mentor";
   mocks.profile.data = { academicRole: "LECTURER", academicRoleVerificationStatus: "VERIFIED", verificationStatuses: { position: "VERIFIED" } };
   data = {
@@ -58,7 +65,7 @@ it("shows the real sender, project, exact revision, overdue state and canonical 
   await mount(<MentorWorkRows items={data.items} />);
   expect(host.textContent).toContain("Actual pinned manuscript"); expect(host.textContent).toContain("Student sender");
   expect(host.textContent).toContain("Version 3"); expect(host.textContent).toContain("Overdue");
-  expect(host.querySelector('a[href="/reviews/assignment"]')).not.toBeNull();
+  expect(host.querySelector('a[href="/mentor-workspace?view=review&assignmentId=assignment"]')).not.toBeNull();
   expect(host.textContent).not.toContain("AI decision");
 });
 it("resets server pagination on filters and never accepts another assignee as a filter", async () => {
@@ -85,9 +92,137 @@ it("hides stale private rows when a refetch is denied", async () => {
 it("keeps invitations and notifications separate from work and opens the aggregate dashboard", async () => {
   await mount(<MentorWorkspacePage />);
   expect(host.textContent).toContain("Needs your attention");
-  expect(host.querySelector('a[href="/academic-support?view=incoming"]')).not.toBeNull();
-  expect(host.querySelector('a[href="/notifications"]')).not.toBeNull();
-  expect(host.querySelector('a[href="/reviews/assignment"]')).not.toBeNull();
+  expect(host.querySelector('a[href="/mentor-workspace?view=incoming"]')).not.toBeNull();
+  expect(host.querySelector('a[href="/mentor-workspace?view=notifications"]')).not.toBeNull();
+  expect(host.querySelector('a[href="/mentor-workspace?view=review&assignmentId=assignment"]')).not.toBeNull();
+});
+it("shows actionable work beside real research teams and keeps review tools inside the mentor shell", async () => {
+  await mount(<MentorWorkspacePage />);
+  expect(host.querySelector("h1")?.textContent).toBe("Research guidance overview");
+  expect(host.querySelector(".mentor-overview-priorities")?.textContent).toContain("Actual pinned manuscript");
+  expect(host.querySelector(".mentor-overview-teams")?.textContent).toContain("Team owner");
+  expect(host.querySelector(".mentor-overview-teams")?.textContent).toContain("Study design");
+  expect(host.querySelector('.mentor-overview-resources a[href="/mentor-workspace?view=reviews"]')).not.toBeNull();
+  expect(host.querySelector('.mentor-overview-resources a[href="/mentor-workspace?view=templates"]')).not.toBeNull();
+  expect(host.querySelector(".mentor-kpi-card")).toBeNull();
+});
+it.each([
+  ["overdue requests", { status: "OVERDUE", sort: "deadline" }],
+  ["blocked items", { status: "BLOCKED" }],
+])("opens an actual server filter for %s", async (label, filter) => {
+  data.summary.blocked = 1;
+  await mount(<MentorWorkspacePage />);
+  const button = [...host.querySelectorAll<HTMLButtonElement>(".mentor-overview-alerts button")].find(b => b.textContent?.includes(label))!;
+  await act(async () => button.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining(filter));
+  expect(host.querySelector<HTMLSelectElement>('select[aria-label="Status"]')?.value).toBe(filter.status);
+});
+it("uses the same review scope as its summary count, including proposal reviews", async () => {
+  await mount(<MentorWorkspacePage />);
+  const button = [...host.querySelectorAll<HTMLButtonElement>(".mentor-overview-statistics button")].find(b => b.textContent?.includes("Reviews waiting"))!;
+  await act(async () => button.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "REVIEW", status: "ACTIONABLE" }));
+  expect(host.querySelector<HTMLSelectElement>('select[aria-label="Work type"]')?.value).toBe("REVIEW");
+});
+it("scopes a team's pending action to that project without leaving the mentor shell", async () => {
+  await mount(<MentorWorkspacePage />);
+  await act(async () => host.querySelector<HTMLButtonElement>(".mentor-overview-team-footer button")!.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: "project", status: "ACTIONABLE" }));
+  expect(host.querySelector(".mentor-shell-sidebar")).not.toBeNull();
+});
+it("shows honest empty states and a route to earlier work when nothing needs action", async () => {
+  data.items = []; data.projects = []; data.projectOptions = [];
+  data.summary = { projects: 0, needsResponse: 0, overdue: 0, blocked: 0, manuscripts: 0, invitations: 0 };
+  data.meta.total = 0; data.projectMeta.total = 0;
+  await mount(<MentorWorkspacePage />);
+  expect(host.querySelector(".mentor-overview-alerts")).toBeNull();
+  expect(host.textContent).toContain("No requests waiting for you");
+  expect(host.textContent).toContain("No mentored projects found");
+  const history = [...host.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "View all statuses")!;
+  await act(async () => history.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining({ status: "ALL" }));
+});
+it("refreshes real dashboard data and hides stale private work if access fails", async () => {
+  await mount(<MentorWorkspacePage />);
+  mocks.read.mockRejectedValue(new Error("Access ended"));
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Refresh overview"]')!.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("Could not load this workspace");
+  expect(host.textContent).not.toContain("Actual pinned manuscript");
+  expect(host.textContent).not.toContain("Actual research team");
+});
+it("loads the first recent-project page when returning from a later project page", async () => {
+  data.projectMeta.totalPages = 2;
+  await mount(<MentorWorkspacePage />, "/mentor-workspace?view=projects");
+  const next = [...host.querySelectorAll<HTMLButtonElement>(".mentor-pagination button")].find(button => button.textContent === "Next")!;
+  await act(async () => next.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining({ projectPage: 2 }));
+  await act(async () => host.querySelector<HTMLButtonElement>('.mentor-shell-sidebar button[aria-label="Overview"]')!.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining({ projectPage: 1 }));
+});
+it("does not present a previous filtered queue as the overview while its own request is loading", async () => {
+  await mount(<MentorWorkspacePage />, "/mentor-workspace?view=work");
+  expect(host.querySelector(".mentor-shell-content")?.textContent).toContain("Actual pinned manuscript");
+  mocks.read.mockImplementation(() => new Promise(() => undefined));
+  await act(async () => host.querySelector<HTMLButtonElement>('.mentor-shell-sidebar button[aria-label="Overview"]')!.click());
+  expect(host.querySelector(".mentor-shell-content")?.textContent).not.toContain("Actual pinned manuscript");
+  expect(host.querySelector('.mentor-queue-loading[role="status"]')).not.toBeNull();
+});
+it.each([
+  ["incoming", "Existing support screen: true"],
+  ["discover", "Existing support screen: true"],
+  ["notifications", "Existing notification screen: true"],
+  ["project&projectId=project&tab=tasks", "Existing project screen: true"],
+  ["reviews", "Existing Review Center"],
+  ["templates", "Existing Review Templates"],
+])("renders %s within the persistent mentor shell", async (view, content) => {
+  await mount(<MentorWorkspacePage />, `/mentor-workspace?view=${view}`);
+  expect(host.querySelector('.mentor-shell-sidebar')).not.toBeNull();
+  expect(host.querySelector('.mentor-shell-content')?.textContent).toContain(content);
+  expect(host.querySelector('.mentor-global-header')).toBeNull();
+});
+it("keeps the same sidebar when opening invitations and notifications", async () => {
+  await mount(<MentorWorkspacePage />);
+  const sidebar = host.querySelector('.mentor-shell-sidebar');
+  await act(async () => host.querySelector<HTMLAnchorElement>('.mentor-shell-sidebar a[href="/mentor-workspace?view=incoming"]')!.click());
+  expect(host.querySelector('.mentor-shell-sidebar')).toBe(sidebar);
+  expect(host.querySelector('.mentor-shell-content')?.textContent).toContain('Existing support screen: true');
+  await act(async () => host.querySelector<HTMLAnchorElement>('.mentor-shell-sidebar a[href="/mentor-workspace?view=notifications"]')!.click());
+  expect(host.querySelector('.mentor-shell-sidebar')).toBe(sidebar);
+  expect(host.querySelector('.mentor-shell-content')?.textContent).toContain('Existing notification screen: true');
+});
+it("places shared mentor navigation beside the content with a compact toolbar and working collapse control", async () => {
+  await mount(<MentorWorkspacePage />);
+  const shell = host.querySelector(".mentor-workspace-shell")!;
+  expect(shell.querySelector(".mentor-shell-sidebar .app-single-sidebar")).not.toBeNull();
+  expect(shell.querySelector(".mentor-shell-main .mentor-shell-toolbar")).not.toBeNull();
+  expect(shell.querySelector('.mentor-toolbar-actions a[href="/home"][aria-label]')).not.toBeNull();
+  const toggle = host.querySelector<HTMLButtonElement>('button[aria-label="Collapse sidebar"]')!;
+  await act(async () => toggle.click());
+  expect(shell.classList.contains("mentor-shell-collapsed")).toBe(true);
+  expect(host.querySelector('button[aria-label="Work queue"]')).not.toBeNull();
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Expand sidebar"]')!.click());
+  expect(shell.classList.contains("mentor-shell-collapsed")).toBe(false);
+});
+it("opens accessible mobile navigation and closes it after selecting a mentor view", async () => {
+  await mount(<MentorWorkspacePage />);
+  const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Open navigation"]')!;
+  await act(async () => trigger.click());
+  const drawer = document.querySelector('[role="dialog"]')!;
+  expect(drawer).not.toBeNull();
+  expect(drawer.getAttribute("aria-labelledby")).toBeTruthy();
+  const projects = drawer.querySelector<HTMLButtonElement>('button[aria-label="Mentored projects"]')!;
+  await act(async () => projects.click());
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(host.querySelector('.mentor-shell-breadcrumb [aria-current="page"]')?.textContent).toBe("Mentored projects");
+  expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  expect(document.activeElement).toBe(trigger);
 });
 it("requires verification before fetching mentor work", async () => {
   mocks.profile.data.verificationStatuses.position = "PENDING";
@@ -130,7 +265,7 @@ it("explains blocked manuscript access on the queue and offers only the allowed 
   Object.assign(data.items[0]!, { kind: "TASK", status: "BLOCKED", blocked: true, accessIssue: "MANUSCRIPT_NOT_SHARED", canContactTeam: true, href: "/projects/project?tab=chat&channel=mentors", action: "RESPOND" });
   await mount(queue());
   expect(host.textContent).toContain("the team has not enabled access");
-  expect([...host.querySelectorAll('a[href="/projects/project?tab=chat&channel=mentors"]')].some(link => link.textContent === "Contact the team")).toBe(true);
+  expect([...host.querySelectorAll('a')].some(link => link.getAttribute('href') === mentorWorkspaceDestination('/projects/project?tab=chat&channel=mentors') && link.textContent === "Contact the team")).toBe(true);
   expect(host.querySelector('a[href^="/submissions/"]')).toBeNull();
 });
 it("keeps old task detail links useful with a sharing explanation and contact action", async () => {
@@ -162,9 +297,9 @@ it("renders interactive project cards, quick attention filters, KPI jumps, and t
   expect(host.textContent).toContain("Calm finished team");
   expect(host.textContent).toContain("1 waiting for you");
   expect(host.textContent).toContain("All caught up");
-  expect(host.querySelector('a[href="/projects/project?tab=chat&channel=mentors"]')).not.toBeNull();
+  expect([...host.querySelectorAll('a')].some(link => link.getAttribute('href') === mentorWorkspaceDestination('/projects/project?tab=chat&channel=mentors'))).toBe(true);
 
-  const needsAttentionBtn = [...host.querySelectorAll("button.mentor-filter-chip")].find(b => b.textContent?.includes("Needs response"))!;
+  const needsAttentionBtn = [...host.querySelectorAll<HTMLButtonElement>("button.mentor-filter-chip")].find(b => b.textContent?.includes("Needs response"))!;
   await act(async () => needsAttentionBtn.click());
   const filteredListText = host.querySelector(".mentor-project-list")?.textContent ?? "";
   expect(filteredListText).toContain("Actual research team");

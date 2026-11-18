@@ -31,7 +31,7 @@ export function inferContributionCategoryFromRoles(roles: readonly CreditRole[])
   return "EXECUTION_VALIDATION";
 }
 
-export type ContributionArtifactLink = WorkspaceLink | { kind: "TASK"; id: string };
+export type ContributionArtifactLink = WorkspaceLink | { kind: "TASK" | "SUBMISSION" | "SUBMISSION_REVISION" | "HUMAN_REVIEW" | "SYNTHESIS" | "RESEARCH_DECISION"; id: string };
 export interface ResolvedContributionArtifactRef {
   kind: ContributionArtifactLink["kind"];
   id: string;
@@ -65,6 +65,29 @@ export interface ContributionActivity {
 export interface ActivityResult {
   items: ContributionActivity[]; total: number; hasNext: boolean;
   days: { day: string; count: number }[]; members: WorkspacePerson[]; timeZone: string;
+}
+export type ContributionProvenance = "SYSTEM_RECORDED" | "USER_DECLARED" | "IMPORTED" | "INFERRED";
+export interface ResearchContributionRecord {
+  id: string; projectId: string; actor: WorkspacePerson; participantKind: "MEMBER" | "MENTOR";
+  type: string; category: ActivityCategory; description: string; createdAt: string;
+  provenance: ContributionProvenance; sourceType: string; sourceId: string;
+  manuscriptKeys: string[]; manuscriptVersionId: string | null; artifactVersion: number | null;
+  link: ContributionArtifactLink | null; suggestedRoles: CreditRole[]; declaredRoles: CreditRole[];
+  status: string; evidence: string;
+}
+export interface ResearchContributionProfile extends WorkspacePerson {
+  participantKind: "MEMBER" | "MENTOR"; recordCount: number; suggestedRoles: CreditRole[];
+}
+export interface ResearchContributionResult extends WorkspacePage<ResearchContributionRecord> {
+  profiles: ResearchContributionProfile[];
+  manuscripts: { key: string; title: string; kind: "DRAFT" | "SUBMISSION" }[];
+  currentActorId: string; mentorScoped: boolean;
+}
+export interface ContributionStatement {
+  scopeKey: string; statement: string | null; ready: boolean; pendingCount: number;
+  contributors: { userId: string; name: string; roles: CreditRole[] }[];
+  /** CRediT agreement never determines author eligibility or ordering. */
+  determinesAuthorship: false;
 }
 export interface AllocationRosterPerson extends WorkspacePerson { reasons: string[]; unavailable: boolean }
 export interface AllocationPeriodView {

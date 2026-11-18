@@ -34,7 +34,8 @@ export function OAuthCallbackPage() {
           setAuth({ user, tokens });
           queryClient.clear();
           queryClient.setQueryData(["current-user"], { user });
-          const requestedPath = consumeAuthReturnTo() ?? consumePostLogoutProjectPath(user.id);
+          const previousProject = consumePostLogoutProjectPath(user.id);
+          const requestedPath = consumeAuthReturnTo() ?? (user.academicRole === "LECTURER" ? undefined : previousProject);
           navigate(resolvePostAuthPath(user, requestedPath), { state: { from: requestedPath }, replace: true });
         })
         .catch(() => {

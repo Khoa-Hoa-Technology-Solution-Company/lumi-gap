@@ -21,6 +21,18 @@ export function useChatScroll(latestMessageId?: string) {
     else setHasNewMessages(true);
   }, [latestMessageId]);
 
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (followingRef.current) jumpToLatest();
+    });
+    observer.observe(container);
+    // Reference cards can resolve after the message arrives and change its height.
+    for (const child of container.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, [latestMessageId]);
+
   const onScroll = () => {
     const container = containerRef.current;
     if (!container) return;

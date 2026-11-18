@@ -16,6 +16,7 @@ export {
   EMAIL_VERIFICATION_PATH,
   ADMIN_LANDING_PATH,
   MEMBER_LANDING_PATH,
+  MENTOR_LANDING_PATH,
   resolvePostAuthPath,
 } from "./utils/post-auth-redirect";
 export {

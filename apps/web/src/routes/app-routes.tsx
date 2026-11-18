@@ -122,6 +122,7 @@ export function AppRoutes() {
 
         {/* Standalone Admin Section (No MainLayout header/footer) */}
         <Route element={<ProtectedRoute />}>
+          <Route path="/mentor-workspace" element={<MentorWorkspacePage />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminHomePage />} />
             <Route path="users" element={<AdminUsersPage />} />
@@ -215,7 +216,6 @@ export function AppRoutes() {
             <Route path="/research-gap/discover" element={<ResearchGapDiscoverPage />} />
             <Route path="/review-opportunities" element={<ReviewOpportunitiesPage />} />
             <Route path="/academic-support" element={<AcademicSupportPage />} />
-            <Route path="/mentor-workspace" element={<MentorWorkspacePage />} />
             <Route path="/academic-support/projects/:projectId" element={<MentorProjectPage />} />
             <Route path="/academic-support/projects/:projectId/screening/:roundId" element={<ScreeningAdjudicationPage />} />
             <Route path="/reviews" element={<ReviewDashboardPage />} />

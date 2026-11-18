@@ -3,22 +3,33 @@ import type { ProjectTeamChatEvent } from "@trend/shared-types";
 import { projectTeamChatEventHub } from "./project-team-chat.events.js";
 import { projectTeamChatService } from "./project-team-chat.service.js";
 import { assertLiveRequestSession } from "../../common/middleware/auth.js";
+import { projectChatReferences } from "./project-chat-references.service.js";
+import type { ProjectChatReference } from "@trend/shared-types";
+import type { ListProjectTeamChatQuery, SendProjectTeamChatMessageInput } from "./dto/project-team-chat.schema.js";
 
 export class ProjectTeamChatController {
   async sendMessage(req: Request, res: Response) {
     const projectId = req.params.id as string;
     const userId = req.user!.sub;
-    const { content, clientKey } = req.body as { content: string; clientKey?: string };
-    const message = await projectTeamChatService.sendMessage(projectId, userId, content, clientKey);
+    const { content, clientKey, replyToId, reference } = req.body as SendProjectTeamChatMessageInput;
+    const message = await projectTeamChatService.sendMessage(projectId, userId, content, clientKey, { replyToId, reference });
     res.status(201).json({ success: true, data: { message }, meta: null });
   }
 
   async listMessages(req: Request, res: Response) {
     const projectId = req.params.id as string;
     const userId = req.user!.sub;
-    const query = req.query as unknown as { limit: number; before?: string; beforeId?: string };
+    const query = req.query as unknown as ListProjectTeamChatQuery;
     const messages = await projectTeamChatService.listMessages(projectId, userId, query);
     res.json({ success: true, data: { messages }, meta: { count: messages.length } });
+  }
+
+  async references(req: Request, res: Response) {
+    const { kind, q, page } = req.query as unknown as { kind: ProjectChatReference["kind"]; q: string; page: number };
+    res.json({ success: true, data: await projectChatReferences.list(String(req.params.id), req.user!.sub, kind, q, page) });
+  }
+  async reference(req: Request, res: Response) {
+    res.json({ success: true, data: await projectChatReferences.resolve(String(req.params.id), req.user!.sub, req.query as unknown as ProjectChatReference) });
   }
 
   async markRead(req: Request, res: Response) {
@@ -46,7 +57,7 @@ export class ProjectTeamChatController {
     const projectId = req.params.id as string;
     const userId = req.user!.sub;
     const userRole = req.user!.role;
-    await projectTeamChatService.assertCanOpenEvents(projectId, userId, userRole);
+    const canonicalProjectId = await projectTeamChatService.assertCanOpenEvents(projectId, userId, userRole);
 
     req.socket.setTimeout(0);
     res.status(200);
@@ -67,7 +78,7 @@ export class ProjectTeamChatController {
       if (closed) return;
       closed = true; clearInterval(heartbeat); unsubscribe(); res.end();
     };
-    const unsubscribe = projectTeamChatEventHub.subscribe(projectId, (event) => {
+    const unsubscribe = projectTeamChatEventHub.subscribe(canonicalProjectId, (event) => {
       void assertLiveRequestSession(req).then(() => projectTeamChatService.assertCanOpenEvents(projectId, userId, userRole)).then(() => { if (!closed) writeSse(res, event); }).catch(cleanup);
     });
     const heartbeat = setInterval(() => {

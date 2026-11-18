@@ -21,10 +21,11 @@ import { WorkspaceTasksPanel } from "@/features/projects/components/workspace-ta
 import { WorkspaceDiscussionsPanel } from "@/features/projects/components/workspace-discussions";
 import { canLeaveWorkspace } from "@/features/projects/components/workspace-common";
 import { ProjectSectionContent } from "@/features/projects/components/project-section-content";
-import { ProjectHorizontalTabs } from "@/features/projects/components/project-horizontal-tabs";
 import { WorkspaceBreadcrumb } from "@/components/layout/workspace-breadcrumb";
 import "@/features/projects/project-workspace.css";
 import { ProjectPaperPickerDialog, type PaperPickerSource } from "@/features/projects/components/project-paper-picker-dialog";
+import { QuickChatTrigger, QuickChatPanel } from "@/features/projects/components/quick-chat-panel";
+import { useQuickChatStore } from "@/features/projects/stores/quick-chat-store";
 
 import { Archive, Loader2, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
@@ -67,6 +68,8 @@ export function ProjectDetailPage() {
   const [paperPickerOpen, setPaperPickerOpen] = useState(false);
   const [paperPickerSource, setPaperPickerSource] = useState<PaperPickerSource>("search");
   const [manuscriptDraft, setManuscriptDraft] = useState<ManuscriptCreationDraft>();
+  const isQuickChatOpen = useQuickChatStore((s) => s.isOpen && s.activeProjectId === project?._id);
+  const canAccessChat = Boolean(project && !project.isPublicSummary && project.accessRole);
 
   if (isLoading) {
     return (
@@ -111,13 +114,19 @@ export function ProjectDetailPage() {
   return (
     <div className="project-workspace">
       <div className="project-page-width project-detail-page">
-        <WorkspaceBreadcrumb
-          items={[
-            { label: t("Research workspace") || "Không gian nghiên cứu", href: "/projects" },
-            { label: project.title, href: `/projects/${project._id}?tab=overview` },
-            { label: t(projectSections.find(s => s.key === activeTab)?.label ?? "Overview"), active: true },
-          ]}
-        />
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <WorkspaceBreadcrumb
+            items={[
+              { label: t("Research workspace") || "Không gian nghiên cứu", href: "/projects" },
+              { label: project.title, href: `/projects/${project._id}?tab=overview` },
+              { label: t(projectSections.find(s => s.key === activeTab)?.label ?? "Overview"), active: true },
+            ]}
+            className="mb-0"
+          />
+          {canAccessChat && activeTab !== "chat" && (
+            <QuickChatTrigger projectId={project._id} />
+          )}
+        </div>
 
         {project.status === "ARCHIVED" ? (
           <p role="status" className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground mb-4">
@@ -135,13 +144,6 @@ export function ProjectDetailPage() {
           </div>
         ) : (
           <>
-            <ProjectHorizontalTabs
-              activeTab={activeTab}
-              onChange={setActiveTab}
-              paperCount={project.paperCount ?? project.papers?.length ?? 0}
-              memberCount={project.memberCount ?? project.members?.length ?? 0}
-            />
-
             {activeTab === "overview" && (
               <ProjectNextSteps
                 key={project._id}
@@ -153,84 +155,89 @@ export function ProjectDetailPage() {
                 onNavigate={(tab, settings) => setActiveTab(tab, settings)}
               />
             )}
-            <div className="project-workspace-shell">
-        <ProjectSectionContent activeTab={activeTab}>
-          {activeTab === "overview" && <section id="project-panel-overview" role="tabpanel" aria-labelledby="project-tab-overview"><WorkspaceOverviewPanel project={project} /></section>}
-          {activeTab === "manuscripts" && <section id="project-panel-manuscripts" role="tabpanel" aria-labelledby="project-tab-manuscripts"><ManuscriptsPanel projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole} draft={manuscriptDraft} onDraftConsumed={() => setManuscriptDraft(undefined)} /></section>}
-          {activeTab === "plan" && <section id="project-panel-plan" role="tabpanel" aria-labelledby="project-tab-plan"><WorkspacePlanPanel projectId={project._id} /></section>}
-          {activeTab === "tasks" && <section id="project-panel-tasks" role="tabpanel" aria-labelledby="project-tab-tasks"><WorkspaceTasksPanel projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole} /></section>}
-          {activeTab === "submissions" && <section id="project-panel-submissions" role="tabpanel" aria-labelledby="project-tab-submissions">
-            <Suspense fallback={<Skeleton className="h-48 w-full" />}><ProjectSubmissionsPanel projectId={project._id} projectTitle={project.title} readOnly={project.status === "ARCHIVED" || !project.accessRole} /></Suspense>
-          </section>}
-          {activeTab === "papers" && (
-            <section id="project-panel-papers" role="tabpanel" aria-labelledby="project-tab-papers">
-              <ResearchLiterature onAddPaper={() => { setPaperPickerSource("search"); setPaperPickerOpen(true); }} projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole}>
-              <ProjectLiteratureWorkspace
-                projectId={project._id}
-                papers={project.papers}
-                screeningMode={project.screeningMode}
-                readOnly={project.status === "ARCHIVED" || !project.accessRole}
-                onRequestAddPaper={(source = "search") => { setPaperPickerSource(source); setPaperPickerOpen(true); }}
-                onViewEvidence={() => { setAutoOpenGap(false); setActiveTab("gaps"); }}
-              />
-              </ResearchLiterature>
-            </section>
-          )}
-          {activeTab === "members" && (
-            <section id="project-panel-members" role="tabpanel" aria-labelledby="project-tab-members">
-              <ProjectTeamSettings key={project._id} project={project} />
-            </section>
-          )}
-          {activeTab === "support" && <div role="tabpanel" id="project-panel-support" aria-labelledby="project-tab-support"><MentorProjectPanel projectId={id!} /></div>}
-          {activeTab === "contributions" && (
-            <section id="project-panel-contributions" role="tabpanel" aria-labelledby="project-tab-contributions">
-              <ProjectContributionsWorkspace
-                projectId={project._id}
-                currentUserId={currentUser?.id ?? ""}
-                isOwner={project.accessRole === "OWNER"}
-                readOnly={project.status === "ARCHIVED"}
-              />
-            </section>
-          )}
-          {activeTab === "gaps" && (
-            <section id="project-panel-gaps" role="tabpanel" aria-labelledby="project-tab-gaps">
-              <ProjectResearchWorkspace projectId={project._id} readOnly={project.status === "ARCHIVED"}>
-              <GapsTab
-                projectId={project._id}
-                defaultTopic={project.title}
-                openOnInit={autoOpenGap}
-                onOpenChange={setAutoOpenGap}
-                onDraftProposal={project.status === "ARCHIVED" || !project.accessRole ? undefined : async (gap) => {
-                  if (!(await canLeaveWorkspace())) return;
-                  setManuscriptDraft({
-                    title: `${t("Research proposal")}: ${gap.title}`.slice(0, 160),
-                    description: (gap.suggestedResearchQuestion || gap.description || "").slice(0, 2000),
-                    documentType: "RESEARCH_PROPOSAL",
-                    template: "PROPOSAL",
-                    researchLink: { kind: "GAP", id: gap.id },
-                  });
-                  const params = new URLSearchParams(searchParams);
-                  params.set("tab", "manuscripts");
-                  params.delete("submission");
-                  params.delete("team");
-                  setSearchParams(params, { replace: true });
-                }}
-              />
-              </ProjectResearchWorkspace>
-            </section>
-          )}
-          {activeTab === "chat" && (
-            <section id="project-panel-chat" role="tabpanel" aria-labelledby="project-tab-chat">
-              <WorkspaceDiscussionsPanel projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole} owner={project.accessRole === "OWNER"} legacyChat={<ProjectDiscussionPanel
-                projectId={project._id}
-                paperCount={project.papers?.length || 0}
-                ownerId={project.ownerId}
-                onAddPapers={() => { if (project.status !== "ARCHIVED") { setPaperPickerSource("search"); setPaperPickerOpen(true); } }}
-              />} />
-            </section>
-          )}
-        </ProjectSectionContent>
-        </div>
+            <div className="project-workspace-layout">
+              <div className="project-workspace-shell">
+                <ProjectSectionContent activeTab={activeTab}>
+                  {activeTab === "overview" && <section id="project-panel-overview" role="tabpanel" aria-labelledby="project-tab-overview"><WorkspaceOverviewPanel project={project} /></section>}
+                  {activeTab === "manuscripts" && <section id="project-panel-manuscripts" role="tabpanel" aria-labelledby="project-tab-manuscripts"><ManuscriptsPanel projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole} draft={manuscriptDraft} onDraftConsumed={() => setManuscriptDraft(undefined)} /></section>}
+                  {activeTab === "plan" && <section id="project-panel-plan" role="tabpanel" aria-labelledby="project-tab-plan"><WorkspacePlanPanel projectId={project._id} /></section>}
+                  {activeTab === "tasks" && <section id="project-panel-tasks" role="tabpanel" aria-labelledby="project-tab-tasks"><WorkspaceTasksPanel projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole} /></section>}
+                  {activeTab === "submissions" && <section id="project-panel-submissions" role="tabpanel" aria-labelledby="project-tab-submissions">
+                    <Suspense fallback={<Skeleton className="h-48 w-full" />}><ProjectSubmissionsPanel projectId={project._id} projectTitle={project.title} readOnly={project.status === "ARCHIVED" || !project.accessRole} /></Suspense>
+                  </section>}
+                  {activeTab === "papers" && (
+                    <section id="project-panel-papers" role="tabpanel" aria-labelledby="project-tab-papers">
+                      <ResearchLiterature onAddPaper={() => { setPaperPickerSource("search"); setPaperPickerOpen(true); }} projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole}>
+                      <ProjectLiteratureWorkspace
+                        projectId={project._id}
+                        papers={project.papers}
+                        screeningMode={project.screeningMode}
+                        readOnly={project.status === "ARCHIVED" || !project.accessRole}
+                        onRequestAddPaper={(source = "search") => { setPaperPickerSource(source); setPaperPickerOpen(true); }}
+                        onViewEvidence={() => { setAutoOpenGap(false); setActiveTab("gaps"); }}
+                      />
+                      </ResearchLiterature>
+                    </section>
+                  )}
+                  {activeTab === "members" && (
+                    <section id="project-panel-members" role="tabpanel" aria-labelledby="project-tab-members">
+                      <ProjectTeamSettings key={project._id} project={project} />
+                    </section>
+                  )}
+                  {activeTab === "support" && <div role="tabpanel" id="project-panel-support" aria-labelledby="project-tab-support"><MentorProjectPanel projectId={id!} /></div>}
+                  {activeTab === "contributions" && (
+                    <section id="project-panel-contributions" role="tabpanel" aria-labelledby="project-tab-contributions">
+                      <ProjectContributionsWorkspace
+                        projectId={project._id}
+                        currentUserId={currentUser?.id ?? ""}
+                        isOwner={project.accessRole === "OWNER"}
+                        readOnly={project.status === "ARCHIVED"}
+                      />
+                    </section>
+                  )}
+                  {activeTab === "gaps" && (
+                    <section id="project-panel-gaps" role="tabpanel" aria-labelledby="project-tab-gaps">
+                      <ProjectResearchWorkspace projectId={project._id} readOnly={project.status === "ARCHIVED"}>
+                      <GapsTab
+                        projectId={project._id}
+                        defaultTopic={project.title}
+                        openOnInit={autoOpenGap}
+                        onOpenChange={setAutoOpenGap}
+                        onDraftProposal={project.status === "ARCHIVED" || !project.accessRole ? undefined : async (gap) => {
+                          if (!(await canLeaveWorkspace())) return;
+                          setManuscriptDraft({
+                            title: `${t("Research proposal")}: ${gap.title}`.slice(0, 160),
+                            description: (gap.suggestedResearchQuestion || gap.description || "").slice(0, 2000),
+                            documentType: "RESEARCH_PROPOSAL",
+                            template: "PROPOSAL",
+                            researchLink: { kind: "GAP", id: gap.id },
+                          });
+                          const params = new URLSearchParams(searchParams);
+                          params.set("tab", "manuscripts");
+                          params.delete("submission");
+                          params.delete("team");
+                          setSearchParams(params, { replace: true });
+                        }}
+                      />
+                      </ProjectResearchWorkspace>
+                    </section>
+                  )}
+                  {activeTab === "chat" && (
+                    <section id="project-panel-chat" role="tabpanel" aria-labelledby="project-tab-chat">
+                      <WorkspaceDiscussionsPanel projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole} owner={project.accessRole === "OWNER"} legacyChat={<ProjectDiscussionPanel
+                        projectId={project._id}
+                        paperCount={project.papers?.length || 0}
+                        ownerId={project.ownerId}
+                        onAddPapers={() => { if (project.status !== "ARCHIVED") { setPaperPickerSource("search"); setPaperPickerOpen(true); } }}
+                      />} />
+                    </section>
+                  )}
+                </ProjectSectionContent>
+              </div>
+              {canAccessChat && isQuickChatOpen && activeTab !== "chat" && (
+                <QuickChatPanel projectId={project._id} ownerId={project.ownerId} />
+              )}
+            </div>
         <ProjectPaperPickerDialog
           initialSource={paperPickerSource}
           readOnly={project.status === "ARCHIVED" || !project.accessRole}

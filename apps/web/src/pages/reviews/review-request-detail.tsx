@@ -1,5 +1,6 @@
+import { useReviewPageNavigation } from "@/features/reviews/hooks/use-review-page-navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Clock3, RotateCcw, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +17,10 @@ import { useAuthStore } from "@/stores/auth-store";
 const DEFAULT_REVIEW_WINDOW_DAYS = 30; // backend DEFAULT_REVIEW_WINDOW_DAYS, used when a request has no due date
 
 export function ReviewRequestDetailPage() {
-  const { requestId = "" } = useParams();
+  const { embedded, param, navigate, href } = useReviewPageNavigation();
+  const Container = embedded ? "section" : "main";
+  const requestId = param("requestId") ?? "";
   const {t}=useI18n();
-  const navigate = useNavigate();
   const currentUser = useAuthStore((state) => state.user);
   const query = useReviewRequest(requestId);
   const actions = useReviewRequestAction();
@@ -49,8 +51,8 @@ export function ReviewRequestDetailPage() {
     const guard = (event: BeforeUnloadEvent) => { if (responseDirty) { event.preventDefault(); event.returnValue = ""; } };
     window.addEventListener("beforeunload",guard);return () => window.removeEventListener("beforeunload",guard);
   }, [responseDirty]);
-  if (query.isLoading) return <main className="mx-auto max-w-5xl px-4 py-10"><div className="h-80 animate-pulse rounded-2xl bg-muted" /></main>;
-  if (!detail || query.error) return <main className="mx-auto max-w-3xl px-4 py-16"><div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">This review request is unavailable or you do not have access.</div></main>;
+  if (query.isLoading) return <Container className="mx-auto max-w-5xl px-4 py-10"><div className="h-80 animate-pulse rounded-2xl bg-muted" /></Container>;
+  if (!detail || query.error) return <Container className="mx-auto max-w-3xl px-4 py-16"><div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">This review request is unavailable or you do not have access.</div></Container>;
   const isRequester = currentUser?.id === detail.requester.id;
   const isReviewer = currentUser?.id === detail.reviewer.id;
   const canAccept = isReviewer && detail.status === "REQUESTED" && detail.assignment.status === "assigned";
@@ -100,8 +102,8 @@ export function ReviewRequestDetailPage() {
     finally { setSavingResponses(false); }
   }
 
-  return <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
-    <div className="flex items-center justify-between"><Link to="/reviews" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />Review Center</Link>{currentUser?.id === detail.reviewer.id && ["ACCEPTED","IN_REVIEW","RESUBMITTED"].includes(detail.status) ? <Button asChild><Link to={`/reviews/${detail.assignment.id}`}>{t("Open review workspace")}</Link></Button> : null}{canCancel ? <Button variant="ghost" className="text-red-600" onClick={() => setCancelOpen(true)}>Cancel request</Button> : null}</div>
+  return <Container className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
+    <div className="flex items-center justify-between"><Link to={href("/reviews")} className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />Review Center</Link>{currentUser?.id === detail.reviewer.id && ["ACCEPTED","IN_REVIEW","RESUBMITTED"].includes(detail.status) ? <Button asChild><Link to={href(`/reviews/${encodeURIComponent(detail.assignment.id)}`)}>{t("Open review workspace")}</Link></Button> : null}{canCancel ? <Button variant="ghost" className="text-red-600" onClick={() => setCancelOpen(true)}>Cancel request</Button> : null}</div>
     <header className="mt-5 border-b pb-6"><div className="flex flex-wrap items-center gap-2"><Badge>{detail.status.replaceAll("_", " ")}</Badge><Badge variant="outline">{detail.artifact.type?.replaceAll("_", " ") || "Research artifact"}</Badge><Badge variant="secondary">Revision {detail.artifact.revisionNumber}</Badge></div><h1 className="mt-4 text-2xl font-semibold">{detail.artifact.title}</h1><dl className="mt-4 grid gap-4 text-sm sm:grid-cols-3"><div><dt className="text-muted-foreground">Requested by</dt><dd className="mt-1 font-medium"><Link to={`/academics/${encodeURIComponent(detail.requester.id)}`} className="hover:underline">{detail.requester.fullName}</Link></dd></div><div><dt className="text-muted-foreground">Reviewer</dt><dd className="mt-1 font-medium"><Link to={`/academics/${encodeURIComponent(detail.reviewer.id)}`} className="hover:underline">{detail.reviewer.fullName}</Link></dd></div><div><dt className="text-muted-foreground">Due date</dt><dd className="mt-1 font-medium">{detail.dueAt ? new Date(detail.dueAt).toLocaleDateString() : "No due date"}</dd></div></dl>{detail.mentorRelationshipActive && detail.origin !== "MENTOR_GUIDANCE" && <p className="mt-3 text-sm text-muted-foreground">This reviewer also mentors this project. The formal review request is a separate agreement.</p>}{detail.message ? <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">{detail.message}</p> : null}{isRequester && acceptedNotOverdue ? <p className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/20 dark:text-blue-300">The reviewer has accepted this request, so it can no longer be cancelled. If the review is still not delivered after {deadline.toLocaleDateString()}, you can cancel it and invite another reviewer.</p> : null}</header>
 
     {canAccept && <section className="mt-6 rounded-xl border bg-card p-5" data-no-i18n><h2 className="font-semibold">{t("mentorWorkspace.reviewInvitationTitle")}</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">{t("mentorWorkspace.reviewInvitationHint")}</p><div className="mt-4 flex flex-wrap gap-3"><Button onClick={() => void respondToInvitation(true)} disabled={actions.accept.isPending || actions.decline.isPending}>{t("mentorWorkspace.acceptReview")}</Button><Button variant="outline" onClick={() => void respondToInvitation(false)} disabled={actions.accept.isPending || actions.decline.isPending}>{t("mentorWorkspace.declineReview")}</Button></div></section>}
@@ -114,7 +116,7 @@ export function ReviewRequestDetailPage() {
     {detail.status === "COMPLETED" ? <div className="mt-8 flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300"><CheckCircle2 className="h-5 w-5" /><span>{t("Internal review completed for this revision. This is not publication acceptance. Authorship, CRediT and submission declarations remain separate checks.")}{(detail.canRespond ?? isRequester) && <Link className="mt-2 block font-medium underline" to={`/projects/${detail.artifact.projectId}?tab=contributions&contributionTab=readiness`}>{t("Open internal submission checks")}</Link>}</span></div> : null}
 
     <Dialog open={cancelOpen} onOpenChange={setCancelOpen}><DialogContent><DialogHeader><DialogTitle>Cancel this review request?</DialogTitle><DialogDescription>The reviewer will lose access to the assigned review workspace. Existing submitted feedback is never deleted.</DialogDescription></DialogHeader><DialogFooter><Button variant="ghost" onClick={() => setCancelOpen(false)}>Keep request</Button><Button variant="destructive" onClick={async () => { try { await actions.cancel.mutateAsync(detail.id); toast.success("Review request cancelled"); navigate("/reviews"); } catch { toast.error("This request can no longer be cancelled"); } }}>Cancel request</Button></DialogFooter></DialogContent></Dialog>
-  </main>;
+  </Container>;
 }
 
 function Summary({ title, value }: { title: string; value: string }) { return <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{value}</p></div>; }

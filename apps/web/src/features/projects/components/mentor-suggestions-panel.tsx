@@ -31,8 +31,8 @@ function formatViDate(value?: string) {
   return new Date(value).toLocaleDateString("vi-VN");
 }
 
-function roleLabel(role?: "PRIMARY" | "SECONDARY") {
-  return role === "SECONDARY" ? "Cố vấn phụ" : "Cố vấn chính";
+function roleLabel(role?: "UNASSIGNED" | "PRIMARY" | "SECONDARY") {
+  return role === "PRIMARY" ? "Cố vấn chính" : role === "SECONDARY" ? "Cố vấn phụ" : "Cố vấn";
 }
 
 function toAvailableMentorStub(s: MentorSuggestion): AvailableMentor {
@@ -43,11 +43,12 @@ function toAvailableMentorStub(s: MentorSuggestion): AvailableMentor {
     positionTitle: s.mentorUser.positionTitle,
     institutionName: s.mentorUser.institutionName,
     academicRole: s.mentorUser.academicRole ?? "LECTURER",
-    verifiedLecturer: s.mentorUser.verifiedLecturer ?? true,
+    verifiedLecturer: s.mentorUser.verifiedLecturer ?? false,
     expertiseAreas: s.expertiseAreas ?? [],
     researchInterests: [],
     matchedTerms: [],
     sameInstitution: false,
+    // Only an eligible suggestion's enabled invitation action uses this adapter.
     acceptingMentorships: true,
   };
 }
@@ -119,10 +120,12 @@ export function OwnerMentorSuggestionsInbox({
   projectId,
   disabled = false,
   onOpenPlan,
+  onInvite,
 }: {
   projectId: string;
   disabled?: boolean;
   onOpenPlan: () => void;
+  onInvite?: (mentor: AvailableMentor) => void;
 }) {
   const { t } = useI18n();
   const userId = useAuthStore(s => s.user?.id);
@@ -154,7 +157,7 @@ export function OwnerMentorSuggestionsInbox({
   const items = suggestions.data?.items ?? [];
 
   if (suggestions.isLoading) return <Skeleton className="h-24 w-full rounded-2xl" />;
-  if (suggestions.isError || !suggestions.data) return null;
+  if (suggestions.isError || !suggestions.data) return <div role="alert" className="space-y-2 text-sm"><p>{t("supervisor.proposalsLoadError")}</p><Button size="sm" variant="outline" onClick={() => void suggestions.refetch()}>{t("Try again")}</Button></div>;
   if (totalCount === 0 && scope === "pending") return null;
 
   return (
@@ -275,6 +278,7 @@ export function OwnerMentorSuggestionsInbox({
                 )}
 
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  {item.requestId && <Link className="text-xs font-medium text-primary hover:underline" to={`/academic-support?view=outgoing&invitationProjectId=${encodeURIComponent(projectId)}&requestId=${encodeURIComponent(item.requestId)}`}>{t("supervisor.viewInvitation")}</Link>}
                   <Link
                     target="_blank"
                     rel="noopener noreferrer"
@@ -298,7 +302,7 @@ export function OwnerMentorSuggestionsInbox({
                         Bỏ qua
                       </Button>
 
-                      {item.inRecruitmentPlan ? (
+                      {onInvite ? <Button type="button" size="sm" disabled={disabled || item.hasPendingRequest || item.hasActiveRelationship || !item.acceptingMentorships} onClick={() => onInvite(toAvailableMentorStub(item))}>Mời hướng dẫn</Button> : item.inRecruitmentPlan ? (
                         <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={onOpenPlan}>
                           <Send className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                           Mở kế hoạch mời

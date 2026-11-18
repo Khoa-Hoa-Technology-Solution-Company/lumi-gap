@@ -257,6 +257,12 @@ export const reviewService = {
         await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: outcome.assignmentStatus, decision: input.overallAssessment?.toLowerCase(), reviewText: input.overallComment ?? input.keyConcerns, completedAt: outcome.requestStatus === "COMPLETED" ? now : null } });
         if (request) await tx.reviewRequest.update({ where: { id: request.id }, data: { status: outcome.requestStatus, completedAt: outcome.requestStatus === "COMPLETED" ? now : null } });
         await refreshSubmissionReviewStatus(tx, submission.id);
+        if (liveRequest?.origin === "MENTOR_GUIDANCE") await tx.projectActivity.upsert({
+          where: { projectId_idempotencyKey: { projectId: submission.projectId, idempotencyKey: `research:review:${saved.id}` } },
+          create: { projectId: submission.projectId, actorId: reviewer.id, type: "MENTOR_REVIEW_SUBMITTED", entityKind: "HUMAN_REVIEW", entityId: saved.id,
+            sourceModule: "REVIEW", idempotencyKey: `research:review:${saved.id}`, artifactVersion: roundNumber,
+            metadata: { submissionId: submission.id, revisionId, reviewId: saved.id, roundNumber }, createdAt: now }, update: {},
+        });
         if (liveRequest?.origin === "MENTOR_GUIDANCE") await tx.projectTask.updateMany({where:{projectId:submission.projectId,targetKind:"submission",targetId:submission.id,assigneeId:reviewer.id,title:{startsWith:"Cần góp ý bản thảo"},status:{not:"DONE"}},data:{status:"DONE",completedAt:now,completedById:reviewer.id}});
         if (liveRequest?.origin === "MENTOR_GUIDANCE" && outcome.requestStatus === "COMPLETED" && input.overallAssessment === "STRONG") {
           await tx.submission.updateMany({ where: { id: submission.id, currentRevisionId: revisionId, status: "completed" }, data: { status: "READY_TO_ADVANCE" } });
@@ -290,6 +296,8 @@ export const reviewService = {
     const review = reviews.find((item) => item.status === "DRAFT" && item.revisionId === pinnedRevisionId) ?? reviews.find((item) => item.revisionId === pinnedRevisionId);
     const templateVersion = request ? await hydrateReviewTemplateVersion(request.templateVersionId) : undefined;
     const submission = await prisma.submission.findUniqueOrThrow({ where: { id: assignment.submissionId } });
+    const project = await prisma.project.findUnique({ where: { id: submission.projectId }, select: { deletedAt: true } });
+    if (!project || project.deletedAt) throw AppError.notFound("Project not found");
     if (!request && assignment.anonymousCode.startsWith("mentor-")) await assertMentorReviewAccess(prisma, submission.projectId, reviewer.id, submission.id, assignment.id);
     const revision = pinnedRevisionId ? await prisma.submissionRevision.findFirst({ where: { id: pinnedRevisionId, submissionId: assignment.submissionId } }) : null;
     if (!revision || (request && (request.submissionId !== assignment.submissionId || request.projectId !== submission.projectId || assignment.artifactRevisionId !== request.artifactRevisionId))) throw AppError.conflict("Review assignment does not match the target artifact");

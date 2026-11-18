@@ -1,6 +1,8 @@
 import type { ISODateString } from "./common.js";
+import type { ManuscriptType } from "./manuscript-templates.js";
 
 export type SubmissionType =
+  | ManuscriptType
   | "RESEARCH_PROPOSAL"
   | "LITERATURE_REVIEW"
   | "RESEARCH_GAP"

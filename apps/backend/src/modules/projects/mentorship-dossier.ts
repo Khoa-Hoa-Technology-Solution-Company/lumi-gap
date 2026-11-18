@@ -18,8 +18,10 @@ import {
   type ProjectStatus,
 } from "@trend/shared-types";
 import { z } from "zod";
+import { createHash } from "node:crypto";
+import type { MentorInvitationContext } from "@trend/shared-types";
+import { hasMeaningfulResearchText } from "@trend/shared-types";
 import { validateMentorPermissions } from "./mentor-access.service.js";
-import { mentorshipPolicy } from "./mentorship-positions.js";
 import type { WorkspaceDb } from "./workspace-access.js";
 
 const trimmedString = (max: number) => z.string().trim().max(max);
@@ -35,6 +37,11 @@ export const dossierExpectationsSchema = z.object({
 }).strict();
 
 export const invitationDossierInputSchema = z.object({
+  presentation: z.literal("BRIEF").optional(),
+  researchField: trimmedString(120).optional(),
+  researchSummary: trimmedString(2000).optional(),
+  additionalMessage: trimmedString(1000).optional(),
+  sharingConfirmed: z.boolean().optional(),
   approvedObjective: trimmedString(500).optional(),
   keywords: stringArray(12, 50).optional(),
   shareRepresentativeProfile: z.boolean().optional(),
@@ -47,6 +54,19 @@ export const invitationDossierInputSchema = z.object({
   researchTools: stringArray(12, 80).optional(),
   expectations: dossierExpectationsSchema.optional(),
 }).strict();
+
+/** New outbound invitations require an intentionally approved, useful research brief. */
+export const officialInvitationDossierSchema = invitationDossierInputSchema.extend({
+  researchSummary: z.string().trim().max(2000).refine(hasMeaningfulResearchText, "Describe the research question or direction; avoid empty text and placeholders"),
+  sharingConfirmed: z.literal(true),
+  expectations: dossierExpectationsSchema.extend({ supportAreas: z.array(z.enum(["RESEARCH_DIRECTION", "LITERATURE_REVIEW", "RESEARCH_METHODOLOGY", "ACADEMIC_WRITING", "RESEARCH_GAP_VALIDATION", "EXPERIMENT_DESIGN", "DATA_ANALYSIS", "SOFTWARE_TECHNICAL_GUIDANCE"])).max(8).refine(items => new Set(items).size === items.length).default([]) }).optional(),
+}).strict().superRefine((input, context) => {
+  if (input.presentation !== "BRIEF") return;
+  const allowed = new Set(["presentation", "researchSummary", "sharingConfirmed", "expectations"]);
+  if (Object.keys(input).some(key => !allowed.has(key)) || input.expectations && Object.keys(input.expectations).some(key => key !== "supportAreas")) {
+    context.addIssue({ code: "custom", message: "A short invitation shares only the displayed introduction and optional support areas" });
+  }
+});
 
 const INTEGRITY_NOTICE =
   "Các kỹ năng, phương pháp, công cụ và kinh nghiệm do thành viên tự khai báo trừ khi được gắn nhãn xác minh đơn vị hoặc công bố công khai. Hệ thống không chấm điểm hay xếp hạng chất lượng nhóm.";
@@ -447,7 +467,7 @@ function buildAccessSummary(
       ? shares.slice(0, 8)
       : ["Chưa mở khóa tài nguyên nội bộ trước khi chấp nhận; các quyền và tài nguyên đã chọn chỉ kích hoạt sau khi Thầy/Cô đồng ý."],
     expiresAt: effectiveExpiresAt,
-    responseDeadline: expiresAtIso ?? `Trong ${mentorshipPolicy.expiryDays} ngày kể từ khi gửi`,
+    responseDeadline: expiresAtIso ?? "Không tự động hết hạn; nhóm có thể thu hồi lời mời",
     beforeAcceptNotice: BEFORE_ACCEPT_NOTICE,
     afterAcceptNotice: AFTER_ACCEPT_NOTICE,
   };
@@ -481,6 +501,26 @@ export interface DossierProjectSource {
   mentorshipExpertise: string[];
   mentorshipResearchAreas: string[];
   mentorshipNeeds: string | null;
+}
+
+export async function buildMentorInvitationContext(db: WorkspaceDb, project: DossierProjectSource, senderId: string): Promise<MentorInvitationContext> {
+  const [sender, members] = await Promise.all([
+    db.user.findUniqueOrThrow({ where: { id: senderId }, select: { fullName: true } }),
+    db.projectMember.count({ where: { projectId: project.id, status: "ACTIVE", userId: { not: project.ownerId } } }),
+  ]);
+  const fields = { title: project.title, researchField: project.researchField || undefined, researchAreas: cleanList(project.researchAreas), senderDisplayName: sender.fullName, memberCount: members + 1 };
+  return { ...fields, token: createHash("sha256").update(JSON.stringify(fields)).digest("hex") };
+}
+
+function briefDossier(project: DossierProjectSource, context: MentorInvitationContext, input: InvitationDossierInput, message: string, mentorRole: MentorRole, access?: MentorPolicyInput): InvitationDossier {
+  return {
+    version: 1, presentation: "BRIEF", senderDisplayName: context.senderDisplayName, generatedAt: new Date().toISOString(),
+    project: { id: project.id, title: context.title, abstract: input.researchSummary!.trim(), abstractApproved: true, researchField: context.researchField, researchAreas: context.researchAreas, keywords: [], stage: project.status as ProjectStatus, teamMemberCount: context.memberCount },
+    team: { teamMemberCount: context.memberCount, representative: null, sharedMembersCount: 0, sharedMembers: [], privacyRedactedCount: Math.max(0, context.memberCount - 1) },
+    competencies: buildCompetencies(null, [], { shareCompetencies: false }),
+    whyThisLecturer: { message: message.trim() }, expectations: { supportAreas: cleanList(input.expectations?.supportAreas) },
+    accessPreview: buildAccessSummary(mentorRole, access),
+  };
 }
 
 export async function buildDossierDefaults(db: WorkspaceDb, project: DossierProjectSource, viewerId: string) {
@@ -524,7 +564,8 @@ export async function buildInvitationDossier(
     expiresAt?: string;
   },
 ): Promise<InvitationDossier> {
-  const { project, representativeUserId, mentorUserId, viewerId, message, mentorRole = "PRIMARY", access, dossier } = params;
+  const { project, representativeUserId, mentorUserId, viewerId, message, mentorRole = "UNASSIGNED", access, dossier } = params;
+  if (dossier?.presentation === "BRIEF") return briefDossier(project, await buildMentorInvitationContext(db, project, representativeUserId), dossier, message, mentorRole, access);
   const { bundles, roleMap, teamMemberCount } = await loadTeamBundles(db, project.id, representativeUserId);
   const mentorBundles = await loadProfileBundles(db, [mentorUserId]);
   const mentorBundle = mentorBundles.get(mentorUserId);
@@ -551,10 +592,9 @@ export async function buildInvitationDossier(
     privacyRedactedCount = Math.max(0, teamMemberCount - 1);
   }
 
-  const approvedAbstract = (project.mentorshipSummary || project.publicSummary || "").trim();
+  const approvedAbstract = (dossier?.researchSummary ?? project.mentorshipSummary ?? project.publicSummary ?? "").trim();
   const researchAreas = cleanList([
     ...(project.mentorshipResearchAreas ?? []),
-    ...(project.researchAreas ?? []),
     ...(project.mentorshipExpertise ?? []),
   ], 10);
   const keywords = cleanList(
@@ -574,13 +614,14 @@ export async function buildInvitationDossier(
 
   return {
     version: 1,
+    additionalMessage: dossier?.additionalMessage?.trim() || undefined,
     generatedAt: new Date().toISOString(),
     project: {
       id: project.id,
       title: project.title,
       abstract: approvedAbstract,
       abstractApproved: Boolean(approvedAbstract),
-      researchField: project.researchField ?? undefined,
+      researchField: dossier?.researchField?.trim() || project.mentorshipResearchAreas[0] || undefined,
       researchAreas,
       keywords,
       stage: project.status as ProjectStatus,
@@ -654,6 +695,12 @@ export async function projectRequestDossiers(
 ): Promise<Map<string, InvitationDossier>> {
   const out = new Map<string, InvitationDossier>();
   const nonLegacy = requests.filter(r => {
+    const { frozenDossier } = extractSnapshotDossierConfig(r.invitationSnapshot);
+    if (frozenDossier?.presentation === "BRIEF") {
+      // The approved brief is immutable; never enrich it with today's profiles/team.
+      out.set(r.id, frozenDossier);
+      return false;
+    }
     const snap = r.invitationSnapshot && typeof r.invitationSnapshot === "object"
       ? (r.invitationSnapshot as Record<string, unknown>)
       : null;
@@ -720,7 +767,7 @@ export async function projectRequestDossiers(
     const mentorBundle = bundles.get(r.mentorUserId);
     const livePolicy = policyMap.get(r.id);
     const shareTitles = livePolicy ? shareTitlesByAccessId.get(livePolicy.id) : undefined;
-    const mentorRole: MentorRole = r.mentorRole === "SECONDARY" ? "SECONDARY" : "PRIMARY";
+    const mentorRole = r.mentorRole as MentorRole;
 
     const projectSection = frozenDossier?.project ?? {
       id: r.projectId,
@@ -741,6 +788,7 @@ export async function projectRequestDossiers(
 
     out.set(r.id, {
       version: 1,
+      additionalMessage: frozenDossier?.additionalMessage,
       generatedAt: frozenDossier?.generatedAt ?? r.createdAt.toISOString(),
       project: { ...projectSection, teamMemberCount },
       team: {

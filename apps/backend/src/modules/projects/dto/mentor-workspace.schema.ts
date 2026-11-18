@@ -7,7 +7,7 @@ export const mentorWorkspaceQuerySchema = z.object({
   q: z.string().trim().max(160).optional(),
   projectId: databaseIdSchema.optional(),
   kind: z.enum(["TASK", "MANUSCRIPT_REVIEW", "PROPOSAL_REVIEW", "MENTOR_QUESTION", "REVIEW"]).optional(),
-  status: z.enum(["ACTIONABLE", "ALL", "TODO", "IN_PROGRESS", "BLOCKED", "WAITING", "DONE"]).default("ACTIONABLE"),
+  status: z.enum(["ACTIONABLE", "OVERDUE", "ALL", "TODO", "IN_PROGRESS", "BLOCKED", "WAITING", "DONE"]).default("ACTIONABLE"),
   sort: z.enum(["priority", "deadline"]).default("priority"),
   projectPage: z.coerce.number().int().min(1).max(10000).default(1),
   projectSearch: z.string().trim().max(160).optional(),

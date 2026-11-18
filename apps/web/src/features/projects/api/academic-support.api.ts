@@ -1,6 +1,7 @@
 import { api } from "@/services/api-client";
 import type { MentorRole, MentorshipDraft, MentorshipAttachment, MentorPolicyInput, InvitationDossier, InvitationDossierInput, PreviewInvitationDossierRequest } from "@trend/shared-types";
 import type { MentorRecruitmentPlan, MentorPlanCommand } from "@trend/shared-types";
+import type { MentorRolesWorkspace } from "@trend/shared-types";
 import type { MentorRelationship, MentorSuggestionScope, MentorSuggestionsResponse, MentorshipRequest, MentorProjectPreview, MentorDiscoverySettings, MentorshipCollection, AcademicPageMeta, AvailableMentor, MentoringPreferences, ProjectMemberUserSummary } from "@trend/shared-types";
 export type MentorPreview = MentorProjectPreview;
 export type MentorshipItem = MentorshipRequest | MentorRelationship;
@@ -16,6 +17,9 @@ export interface MentorWorkspace {
   };
 }
 export const academicSupportApi = {
+  async roles(id: string): Promise<MentorRolesWorkspace> { return (await api.get(`/projects/${encodeURIComponent(id)}/mentorship-roles`)).data.data; },
+  async proposeRoles(id: string, input: { clientKey: string; assignments: Array<{ relationshipId: string; role: MentorRole }> }): Promise<MentorRolesWorkspace> { return (await api.post(`/projects/${encodeURIComponent(id)}/mentorship-roles`, input)).data.data; },
+  async respondRoles(id: string, proposalId: string, action: "ACCEPT" | "DECLINE" | "CANCEL"): Promise<MentorRolesWorkspace> { return (await api.post(`/projects/${encodeURIComponent(id)}/mentorship-roles/${encodeURIComponent(proposalId)}/respond`, { action })).data.data; },
   async plan(id: string): Promise<MentorRecruitmentPlan> { return (await api.get(`/projects/${encodeURIComponent(id)}/mentor-plan`)).data.data; },
   async changePlan(id: string, input: MentorPlanCommand): Promise<MentorRecruitmentPlan> { return (await api.post(`/projects/${encodeURIComponent(id)}/mentor-plan`, input)).data.data; },
   async mine(params: AcademicSearch = {}): Promise<MentorshipCollection> { return (await api.get("/projects/academic-support/mine", { params })).data.data; },

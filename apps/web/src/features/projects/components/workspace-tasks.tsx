@@ -1,10 +1,11 @@
 import { lazy, Suspense, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { SaveWorkspaceTask, WorkspaceLink, WorkspaceTask, WorkspaceTaskStatus } from "@trend/shared-types";
-import { ArrowLeft, Check, CheckCheck, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, CheckCheck, ChevronRight, MessagesSquare, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { useI18n } from "@/i18n";
+import { useQuickChatStore } from "../stores/quick-chat-store";
 import { workspaceApi } from "../api/workspace.api";
 import { useWorkspaceCommand, useWorkspaceResource } from "../hooks/use-workspace";
 import { canLeaveWorkspace, linkLabels, taskLabels, useUnsavedWorkspace, WorkspaceArtifactLink, WorkspaceArtifactPicker, WorkspaceComments, WorkspaceDate, WorkspaceEmpty, WorkspaceError, WorkspaceHeading, WorkspaceLoading, WorkspacePager, WorkspacePeoplePicker } from "./workspace-common";
@@ -46,6 +47,19 @@ function TaskDetail({ projectId, selected, readOnly, onClose, onSaved, onSelect,
   readOnly = readOnly || Boolean(task?.deletedAt);
   return <div className="task-drawer-body"><Button size="sm" variant="ghost" onClick={onClose}><ArrowLeft className="mr-2 h-4 w-4" />{t("Back to tasks")}</Button>
     {task?.deletedAt && <p className="coord-share-notice" role="status">{t("This task was deleted. Its history is retained.")}</p>}
+    {task && !readOnly && (
+      <Button
+        type="button"
+        variant="link"
+        className="coord-inline-link h-auto p-0 text-xs font-semibold text-primary"
+        onClick={() => {
+          useQuickChatStore.getState().openChat(projectId, { kind: "TASK", id: task.id });
+        }}
+      >
+        <MessagesSquare className="mr-1 h-3.5 w-3.5" />
+        {t("Trao đổi với nhóm")}
+      </Button>
+    )}
     <TaskEditor projectId={projectId} task={task} initialStatus={initialStatus} parentTaskId={parentTaskId} initialLink={initialLink} readOnly={readOnly} onRefresh={() => detail.refetch()} onSaved={onSaved} />
     {task && <><div className="task-provenance"><span>{t("Created by")} <strong>{task.creator.name}</strong> · <WorkspaceDate value={task.createdAt} /></span><span>{t("Updated")}: <WorkspaceDate value={task.updatedAt} /></span>{task.completedAt && <span>{t("Completed")}: <WorkspaceDate value={task.completedAt} />{task.completedBy ? ` · ${task.completedBy.name}` : ""}</span>}</div>
       <WorkspaceArtifactLink

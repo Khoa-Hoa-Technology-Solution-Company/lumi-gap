@@ -49,7 +49,7 @@ describe.skipIf(!isolated).sequential("two actual manuscript sessions in Chromiu
     await pageA.goto(`${origin}/projects/${project}?tab=manuscripts`);
     await pageA.getByRole("button", { name: "Create manuscript", exact: true }).click();
     await pageA.getByLabel("Manuscript title", { exact: true }).fill("Collaborative methodology manuscript");
-    await pageA.getByRole("button", { name: "Create and open editor", exact: true }).click();
+    await pageA.getByRole("button", { name: "Create and start writing", exact: true }).click();
     await uiExpect(pageA).toHaveURL(/\/manuscripts\/[a-f0-9-]+$/); id = pageA.url().split("/").pop()!;
     main = (await writing.detail(project, a.userId, id)).mainFileId!;
     await pageB.goto(url()); await saved(pageA); await saved(pageB);

@@ -7,7 +7,7 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { pdfStorageService } from "../../infrastructure/pdf-storage.service.js";
 import { auditService } from "../audit/audit.service.js";
-import { assertMentorReviewAccess, readableReviewAssignments } from "../reviews/mentor-review-access.js";
+import { assertMentorReviewAccess, acceptedMentorReviewPolicy, readableReviewAssignments, visibleMentorReviewAssignments } from "../reviews/mentor-review-access.js";
 import { researchLedgerService } from "../audit/research-ledger.service.js";
 import { assertPeerReviewer, lockReviewerAndSubmission, refreshSubmissionReviewStatus } from "../reviews/peer-review-access.js";
 import { reviewService } from "../reviews/review.service.js";
@@ -22,6 +22,8 @@ import { buildManuscriptText, MAX_MANUSCRIPT_CHARS } from "./pre-review-input.js
 import { aiJobsQueue } from "../../infrastructure/queue.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { lockProjectAccounts } from "../projects/project-transaction.js";
+import { mentorManuscriptService } from "./mentor-manuscript.service.js";
+import type { MentorManuscriptSendInput } from "@trend/shared-types";
 
 type UploadedPdf = { buffer: Buffer; originalname: string; size: number };
 /** Job name on the ai-jobs queue that runs one AI pre-review. */
@@ -294,6 +296,12 @@ async function syncRevisionWithMentorWorkflow(
 }
 
 export const submissionService = {
+  async mentorFeedbackContext(input: { projectId: string; manuscriptId?: string; submissionId?: string }, actor: string, role: UserRole) {
+    return mentorManuscriptService.context(input, actor, role, { user: resolveUser, project: getProjectForAccess, manage: canManageSubmission });
+  },
+  async sendMentorFeedback(input: MentorManuscriptSendInput, file: UploadedPdf | undefined, actor: string, role: UserRole) {
+    return mentorManuscriptService.send(input, file, actor, role, { user: resolveUser, project: getProjectForAccess, manage: canManageSubmission });
+  },
   async create(input: CreateSubmissionInput, file: UploadedPdf | undefined, actorInput: string, actorRole: UserRole) {
     const actor = await resolveUser(actorInput); const project = await getProjectForAccess(input.projectId, actor.id, actorRole);
     if (project.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
@@ -605,10 +613,13 @@ export const submissionService = {
   async listMyAssignments(reviewerInput: string) {
     const reviewer = await resolveUser(reviewerInput);
     const prisma = getPrisma();
-    const rows = await prisma.reviewerAssignment.findMany({ where: { reviewerId: reviewer.id, status: { not: "cancelled" } }, orderBy: { createdAt: "desc" } });
+    const rows = await visibleMentorReviewAssignments(
+      prisma,
+      await prisma.reviewerAssignment.findMany({ where: { reviewerId: reviewer.id, status: { not: "cancelled" } }, orderBy: { createdAt: "desc" } }),
+    );
     const submissions = await prisma.submission.findMany({ where: { id: { in: rows.map(row => row.submissionId) } }, select: { id: true, legacyMongoId: true, title: true, submissionType: true, projectId: true, status: true } });
     const map = new Map(submissions.map(row => [row.id, { ...row, id: publicDatabaseId(row), _id: publicDatabaseId(row) }]));
-    return rows.map(row => ({ ...row, id: publicDatabaseId(row), submissionId: map.get(row.submissionId) }));
+    return rows.filter(row => map.has(row.submissionId)).map(row => ({ ...row, id: publicDatabaseId(row), submissionId: map.get(row.submissionId) }));
   },
 
   async updateAssignment(submissionInput: string, assignmentInput: string, input: { status: "accepted" | "declined" | "completed" | "cancelled"; reviewText?: string }, actorInput: string, actorRole: UserRole) {
@@ -670,20 +681,35 @@ export const submissionService = {
   async listActiveMentors(projectInput: string, actorInput: string) {
     const actor = await resolveUser(actorInput);
     const project = await getProjectForAccess(projectInput, actor.id, "USER");
-    const relationships = await getPrisma().mentorRelationship.findMany({
+    const prisma = getPrisma();
+    const relationships = await prisma.mentorRelationship.findMany({
       where: { projectId: project.id, status: "ACTIVE" },
       orderBy: { createdAt: "asc" },
     });
-    const users = await getPrisma().user.findMany({
-      where: { id: { in: relationships.map((r) => r.mentorUserId) } },
+    let activeRelationships = relationships;
+    if (relationships.length && typeof prisma.mentorAccess?.findMany === "function") {
+      const validIds = new Set<string>();
+      for (const rel of relationships) {
+        try {
+          await acceptedMentorReviewPolicy(prisma, project.id, rel.mentorUserId);
+          validIds.add(rel.mentorUserId);
+        } catch {
+          // Exclude mentors whose access policy was revoked, expired, or unverified.
+        }
+      }
+      activeRelationships = relationships.filter((r) => validIds.has(r.mentorUserId));
+    }
+    const users = await prisma.user.findMany({
+      where: { id: { in: activeRelationships.map((r) => r.mentorUserId) } },
       select: { id: true, legacyMongoId: true, fullName: true, email: true, institution: true, avatarUrl: true },
     });
     const userMap = new Map(users.map((u) => [u.id, u]));
-    return relationships.flatMap((rel) => {
+    return activeRelationships.flatMap((rel) => {
       const u = userMap.get(rel.mentorUserId);
       if (!u) return [];
       return [{
         id: publicDatabaseId(u),
+        canonicalId: u.id,
         fullName: u.fullName,
         email: u.email,
         institution: u.institution,

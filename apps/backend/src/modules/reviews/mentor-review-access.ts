@@ -6,10 +6,15 @@ import { effectiveMentorAccess } from "../projects/mentor-access.service.js";
  * Batch the scope check so a queue does not issue one policy query per review. */
 export async function visibleMentorReviewAssignments(tx: Prisma.TransactionClient, assignments: ReviewerAssignment[]) {
   if (!assignments.length) return assignments;
-  const requests = await tx.reviewRequest.findMany({ where: { id: { in: assignments.flatMap(a => a.reviewRequestId ? [a.reviewRequestId] : []) } }, select: { id: true, origin: true } });
+  const submissions = await tx.submission.findMany({ where: { id: { in: [...new Set(assignments.map(a => a.submissionId))] } }, select: { id: true, projectId: true } });
+  const activeProjects = new Set((await tx.project.findMany({ where: { id: { in: [...new Set(submissions.map(s => s.projectId))] }, deletedAt: null }, select: { id: true } })).map(p => p.id));
+  const activeSubmissions = new Set(submissions.filter(s => activeProjects.has(s.projectId)).map(s => s.id));
+  const liveAssignments = assignments.filter(a => activeSubmissions.has(a.submissionId));
+  if (!liveAssignments.length) return [];
+  const requests = await tx.reviewRequest.findMany({ where: { id: { in: liveAssignments.flatMap(a => a.reviewRequestId ? [a.reviewRequestId] : []) } }, select: { id: true, origin: true } });
   const mentorRequests = new Set(requests.filter(r => r.origin === "MENTOR_GUIDANCE").map(r => r.id));
-  const scoped = assignments.filter(a => a.mentorAccessId || a.anonymousCode.startsWith("mentor-") || a.reviewRequestId && mentorRequests.has(a.reviewRequestId));
-  if (!scoped.length) return assignments;
+  const scoped = liveAssignments.filter(a => a.mentorAccessId || a.anonymousCode.startsWith("mentor-") || a.reviewRequestId && mentorRequests.has(a.reviewRequestId));
+  if (!scoped.length) return liveAssignments;
   const allowed = await tx.$queryRaw<{ id: string }[]>`SELECT DISTINCT assignment.id
     FROM reviewer_assignments assignment
     JOIN submissions submission ON submission.id=assignment.submission_id
@@ -26,7 +31,7 @@ export async function visibleMentorReviewAssignments(tx: Prisma.TransactionClien
       AND (assignment.mentor_access_id=access.id OR (assignment.mentor_access_id IS NULL AND 'SUBMISSIONS_VIEW'=ANY(access.permissions)
         AND EXISTS (SELECT 1 FROM mentor_resource_shares share WHERE share.access_id=access.id AND share.project_id=project.id AND share.kind='SUBMISSION' AND share.resource_id=submission.id AND share.revoked_at IS NULL)))`;
   const scopedIds = new Set(scoped.map(a => a.id)), allowedIds = new Set(allowed.map(a => a.id));
-  return assignments.filter(a => !scopedIds.has(a.id) || allowedIds.has(a.id));
+  return liveAssignments.filter(a => !scopedIds.has(a.id) || allowedIds.has(a.id));
 }
 
 /** Existing mentor consent, never project membership or broad manuscript access. */

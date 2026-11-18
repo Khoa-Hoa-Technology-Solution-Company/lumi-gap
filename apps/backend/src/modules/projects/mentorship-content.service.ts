@@ -97,7 +97,7 @@ export const mentorshipContentService = {
       if (input && (existing?.version ?? 0) !== input.expectedVersion) throw AppError.conflict("Your invitation draft changed in another tab. Reload it before saving");
       if (input) await invitationFiles(tx, context.projectId, context.userId, input.attachmentIds);
       const row = input ? await tx.mentorshipDraft.upsert({ where, create: { ...context, direction, message: input.message, mentorRole: input.mentorRole, attachmentIds: input.attachmentIds }, update: { message: input.message, mentorRole: input.mentorRole, attachmentIds: input.attachmentIds, version: { increment: 1 } } }) : existing;
-      return { message: row?.message ?? "", mentorRole: (row?.mentorRole ?? "PRIMARY") as MentorRole, version: row?.version ?? 0,
+      return { message: row?.message ?? "", mentorRole: (row?.mentorRole ?? "UNASSIGNED") as MentorRole, version: row?.version ?? 0,
         attachments: row ? await invitationFiles(tx, context.projectId, context.userId, row.attachmentIds) : [], updatedAt: row?.updatedAt.toISOString() };
     });
   },

@@ -32,14 +32,14 @@ export async function rankedCandidates(c: WorkspaceContext, round: ScreeningRoun
     screeningAdjudicators(c, round), c.tx.screeningAdjudicationInvitation.findMany({ where: { caseId: row.id } }),
     c.tx.mentorAccess.findMany({ where: { projectId: c.project.id, revokedAt: null }, select: { mentorUserId: true, requestId: true } }),
   ]);
-  const requests = await c.tx.mentorshipRequest.findMany({ where: { id: { in: accesses.map(a => a.requestId) }, status: "ACCEPTED", projectId: c.project.id }, select: { id: true, mentorRole: true } });
+  const relationships = await c.tx.mentorRelationship.findMany({ where: { sourceRequestId: { in: accesses.map(a => a.requestId) }, status: "ACTIVE", projectId: c.project.id }, select: { mentorUserId: true, mentorRole: true } });
   const tried = new Set(invitations.map(i => i.userId));
   const preferred = policy.preferredAdjudicatorId ?? (policy.authorizedAdjudicatorIds?.length === 1 ? policy.authorizedAdjudicatorIds[0] : undefined);
   // Proposing the paper is a declared conflict. Owner privileges never remove it.
   const candidates = pool.filter(p => !p.proposer && !tried.has(p.id)).map(p => {
-    const mentorRole = requests.find(r => accesses.some(a => a.mentorUserId === p.id && a.requestId === r.id))?.mentorRole;
+    const mentorRole = relationships.find(r => r.mentorUserId === p.id)?.mentorRole;
     const priority = p.id === preferred ? 1 : p.mentor ? mentorRole === "PRIMARY" ? 2 : 3 : p.id === c.project.ownerId ? 5 : 4;
-    return { ...p, priority, role: priority === 1 ? "PREDESIGNATED" : p.mentor ? mentorRole === "PRIMARY" ? "PRIMARY_MENTOR" : "SECONDARY_MENTOR" : p.id === c.project.ownerId ? "OWNER" : "MEMBER" };
+    return { ...p, priority, role: priority === 1 ? "PREDESIGNATED" : p.mentor ? mentorRole === "PRIMARY" ? "PRIMARY_MENTOR" : mentorRole === "SECONDARY" ? "SECONDARY_MENTOR" : "MENTOR" : p.id === c.project.ownerId ? "OWNER" : "MEMBER" };
   });
   const rank = Math.min(...candidates.map(p => p.priority));
   return candidates.filter(p => p.priority === rank).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));

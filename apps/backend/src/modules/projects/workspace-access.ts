@@ -65,6 +65,7 @@ export async function assertWorkspaceLink(context: WorkspaceContext, link: Works
   const { tx, project } = context;
   let valid = false;
   switch (link.kind) {
+    case "TEAM_MESSAGE": valid = Boolean(await tx.projectTeamMessage.findFirst({ where: { id: link.id, projectId: project.id, threadId: null, isDeleted: false } })); break;
     case "PAPER": valid = Boolean(await tx.projectPaper.findUnique({ where: { projectId_paperId: { projectId: project.id, paperId: link.id } } })); break;
     case "SCREENING": valid = Boolean(await tx.projectPaper.findFirst({ where: { id: link.id, projectId: project.id } })); break;
     case "GAP": valid = Boolean(await tx.researchGap.findFirst({ where: { id: link.id, projectId: project.id } })); break;

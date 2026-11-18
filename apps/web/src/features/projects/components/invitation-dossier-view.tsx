@@ -1,3 +1,4 @@
+import { MentorInvitationBrief } from "./mentor-invitation-brief";
 import { useState } from "react";
 import type {
   DossierCompetencyItem,
@@ -263,14 +264,18 @@ export function InvitationDossierView({
   legacySender,
   legacyMessage,
   attachments,
+  showAccessNotice = true,
 }: {
   dossier?: InvitationDossier;
   legacyProject?: MentorProjectPreview;
   legacySender?: MentorshipPerson;
   legacyMessage?: string;
   attachments?: MentorshipAttachment[];
+  showAccessNotice?: boolean;
 }) {
   const { t } = useI18n();
+
+  if (dossier?.presentation === "BRIEF") return <div className="space-y-5"><MentorInvitationBrief context={{ title: dossier.project.title, researchField: dossier.project.researchField, researchAreas: dossier.project.researchAreas, senderDisplayName: dossier.senderDisplayName ?? "", memberCount: dossier.team.teamMemberCount }} summary={dossier.project.abstract} message={dossier.whyThisLecturer.message} support={dossier.expectations.supportAreas} />{showAccessNotice && <div className="rounded-md border bg-muted/30 p-3 text-xs leading-5"><p className="font-medium">{t("supervisor.ifAccepted")}</p><p className="mt-1 text-muted-foreground">{t("supervisor.acceptedAccess")}</p></div>}</div>;
 
   if (!dossier) {
     return (
@@ -284,7 +289,7 @@ export function InvitationDossierView({
           </div>
         )}
         {Boolean(attachments?.length) && <InvitationAttachments attachments={attachments!} />}
-        <MentorInvitationAccessNotice />
+        {showAccessNotice && <MentorInvitationAccessNotice />}
       </div>
     );
   }
@@ -465,6 +470,7 @@ export function InvitationDossierView({
         </p>
       </section>
 
+      {dossier.additionalMessage && <section className="space-y-2 rounded-lg border p-4"><h3 className="text-sm font-semibold">Lời nhắn bổ sung</h3><ExpandableText text={dossier.additionalMessage} /></section>}
       {/* Section E — Mentorship Expectations */}
       <section className="space-y-3 rounded-lg border bg-card/60 p-4" aria-label="Nhu cầu và kỳ vọng hướng dẫn">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -540,14 +546,14 @@ export function InvitationDossierView({
       )}
 
       {/* Section F — Proposed Role & Access Permissions */}
-      <section className="space-y-3 rounded-lg border bg-muted/30 p-4" aria-label="Vai trò và quyền truy cập đề xuất">
+      {showAccessNotice && <section className="space-y-3 rounded-lg border bg-muted/30 p-4" aria-label="Vai trò và quyền truy cập đề xuất">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             <ShieldCheck size={14} className="text-primary" aria-hidden="true" />
             <span>F. Vai trò và quyền truy cập đề xuất</span>
           </div>
           <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-            {accessPreview.mentorRole === "SECONDARY" ? "Cố vấn phụ (Secondary)" : "Cố vấn chính (Primary)"}
+            {accessPreview.mentorRole === "UNASSIGNED" ? "Cố vấn (chưa phân vai)" : accessPreview.mentorRole === "SECONDARY" ? "Cố vấn phụ (Secondary)" : "Cố vấn chính (Primary)"}
           </span>
         </div>
 
@@ -596,7 +602,7 @@ export function InvitationDossierView({
           <p>{accessPreview.beforeAcceptNotice}</p>
           <p>{accessPreview.afterAcceptNotice}</p>
         </div>
-      </section>
+      </section>}
     </div>
   );
 }

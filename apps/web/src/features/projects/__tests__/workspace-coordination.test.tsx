@@ -254,6 +254,7 @@ it("hides archive write actions even on a direct new-task URL", async () => {
 });
 it("falls back to the task board when visiting view=milestones without milestone UI", async () => {
   await render(<WorkspaceTasksPanel projectId="p" readOnly={false} />, "/projects/p?tab=tasks&view=milestones");
+  await act(async () => { await vi.dynamicImportSettled(); });
   expect(container.querySelector(".task-section-nav")).toBeNull();
   expect(container.textContent).not.toContain("Milestones");
   expect(container.textContent).not.toContain("New milestone");

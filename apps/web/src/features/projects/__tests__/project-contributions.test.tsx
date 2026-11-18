@@ -18,6 +18,7 @@ import type { AllocationRevisionView, WorkContribution } from "@trend/shared-typ
 
 const mocks = vi.hoisted(() => ({
   activity: vi.fn(),
+  research: vi.fn(),
   decide: vi.fn(),
   submitDraft: vi.fn(),
   challenge: vi.fn(),
@@ -41,6 +42,7 @@ beforeEach(() => {
   document.body.append(container);
   root = createRoot(container);
   mocks.activity.mockResolvedValue({ items: [], total: 0, hasNext: false, days: [], members: [], timeZone: "UTC" });
+  mocks.research.mockResolvedValue({manuscripts:[]});
   mocks.work.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50, hasNext: false, currentActorId: "me" });
   mocks.periods.mockResolvedValue([]);
 });
@@ -203,7 +205,7 @@ describe("contribution UI governance", () => {
   it("shows persisted empty activity and requests selected-day details from the server", async () => {
     await render(<ContributionActivityPanel projectId="p" />);
     expect(container.textContent).toContain("Meaningful research actions will appear here as your team works.");
-    expect(container.textContent).toContain("Recorded activity does not automatically determine contribution percentages.");
+    expect(container.textContent).toContain("researchContribution.activityHint");
     const cell = container.querySelector<HTMLButtonElement>('[aria-label*="recorded activities"]');
     expect(cell).not.toBeNull();
     await act(async () => cell!.click());
@@ -389,10 +391,11 @@ describe("contribution UI governance", () => {
     expect(container.textContent).toContain("Research protocol & methodology");
   });
 
-  it("defaults ProjectContributionsWorkspace to Contribution allocation and updates live totals in AllocationEditor", async () => {
+  it("defaults the workspace to research activity while preserving historical allocation rendering", async () => {
     await render(<ProjectContributionsWorkspace projectId="p" currentUserId="me" isOwner={true} readOnly={false} />);
     const activeTab = container.querySelector('.contribution-tabs button[aria-current="page"]');
-    expect(activeTab?.textContent).toBe("Contribution allocation");
+    expect(activeTab?.textContent).toBe("researchContribution.activity");
+    expect(container.querySelector('.contribution-tabs')?.textContent).not.toContain("Contribution allocation");
 
     const period = revision().period;
     await render(

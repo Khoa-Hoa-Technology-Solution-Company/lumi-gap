@@ -122,8 +122,8 @@ async function gatherScopeState(
     acceptedSuggestions,
     writingReport,
     successfulCompilations,
-    proposals,
-    revisions,
+    projectProposals,
+    projectRevisions,
     mentorAccesses,
     mentorRelationships,
     openIntegrityCases,
@@ -132,16 +132,16 @@ async function gatherScopeState(
     tx.projectMember.findMany({ where: { projectId } }),
     tx.projectMembershipPeriod.findMany({ where: { projectId } }),
     tx.manuscriptFile.findMany({
-      where: { workspaceId: manuscriptId, deletedAt: null },
+      where: { workspaceId: manuscriptId, deletedAt: null, createdAt: { lte: snapshot.createdAt } },
       select: { id: true, createdById: true },
     }),
     tx.manuscriptUpdate.findMany({
-      where: { fileId: { in: (await tx.manuscriptFile.findMany({ where: { workspaceId: manuscriptId }, select: { id: true } })).map(f => f.id) } },
+      where: { fileId: { in: (await tx.manuscriptFile.findMany({ where: { workspaceId: manuscriptId }, select: { id: true } })).map(f => f.id) }, createdAt: { lte: snapshot.createdAt } },
       distinct: ["actorId"],
       select: { actorId: true },
     }),
     tx.manuscriptSuggestion.findMany({
-      where: { workspaceId: manuscriptId, status: "ACCEPTED" },
+      where: { workspaceId: manuscriptId, status: "ACCEPTED", resolvedAt: { lte: snapshot.createdAt } },
       select: { authorId: true },
     }),
     tx.manuscriptWritingReport.findUnique({ where: { snapshotId } }),
@@ -168,6 +168,16 @@ async function gatherScopeState(
     }),
   ]);
 
+  // Project-wide declarations and negotiated shares do not belong to every paper.
+  // Use explicit evidence links, including published revisions of this workspace.
+  const manuscriptSnapshots = await tx.manuscriptSnapshot.findMany({ where: { workspaceId: manuscriptId, projectId }, select: { id: true } });
+  const manuscriptRevisions = await tx.submissionRevision.findMany({ where: { manuscriptSnapshotId: { in: manuscriptSnapshots.map(s => s.id) } }, select: { id: true, submissionId: true } });
+  const manuscriptReviews = await tx.humanReview.findMany({ where: { revisionId: { in: manuscriptRevisions.map(r => r.id) }, status: "SUBMITTED" }, select: { id: true, reviewerId: true, overallComment: true } });
+  const targets = new Set([`MANUSCRIPT:${manuscriptId}`, ...manuscriptSnapshots.map(s => `MANUSCRIPT_SNAPSHOT:${s.id}`), ...manuscriptRevisions.flatMap(r => [`SUBMISSION:${r.submissionId}`, `SUBMISSION_REVISION:${r.id}`]), ...manuscriptReviews.map(r=>`HUMAN_REVIEW:${r.id}`)]);
+  const scopedRefs = (value: unknown) => Array.isArray(value) && value.some(ref => ref && typeof ref === "object" && targets.has(`${ref.kind}:${ref.id}`));
+  const proposals = projectProposals.filter(proposal => scopedRefs(proposal.evidenceRefs));
+  const revisions = projectRevisions.filter(revision => Array.isArray(revision.evidenceSummary) && revision.evidenceSummary.some(item => item && typeof item === "object" && "evidenceRefs" in item && scopedRefs(item.evidenceRefs)));
+
   const proposalIds = proposals.map(p => p.id);
   const participants = proposalIds.length
     ? await tx.contributionParticipant.findMany({ where: { proposalId: { in: proposalIds } } })
@@ -182,19 +192,14 @@ async function gatherScopeState(
     : [];
 
   const accessIds = mentorAccesses.map(a => a.id);
-  const [mentorAgreements, mentorFeedbacks] = accessIds.length
-    ? await Promise.all([
-        tx.mentorAgreement.findMany({
-          where: { accessId: { in: accessIds }, status: "ACCEPTED" },
-        }),
-        tx.mentorFeedback.findMany({
+  const mentorFeedbacks = accessIds.length
+    ? await tx.mentorFeedback.findMany({
           where: {
             accessId: { in: accessIds },
             status: { in: ["ACCEPTED", "RESOLVED"] },
           },
-        }),
-      ])
-    : [[], []];
+        })
+    : [];
 
   const decisions = latestCheck
     ? await tx.manuscriptAttributionDecision.findMany({
@@ -224,6 +229,9 @@ async function gatherScopeState(
   for (const f of files) addSource(f.createdById, "Manuscript file contributor");
   for (const u of updateActors) addSource(u.actorId, "LaTeX source revision");
   for (const s of acceptedSuggestions) addSource(s.authorId, "Accepted manuscript suggestion");
+  for (const review of manuscriptReviews) {
+    if ((review.overallComment?.trim().length ?? 0) >= 5) addSource(review.reviewerId, "Submitted review of a manuscript version");
+  }
 
   const reportContributors = (
     writingReport?.status === "COMPLETED" &&
@@ -263,16 +271,12 @@ async function gatherScopeState(
   }
 
   const accessMentorMap = new Map(mentorAccesses.map(a => [a.id, a.mentorUserId]));
-  for (const agreement of mentorAgreements) {
-    const mentorId = accessMentorMap.get(agreement.accessId);
-    if (mentorId) {
-      addSource(mentorId, "Accepted advisor CRediT agreement");
-      addRoles(mentorId, agreement.creditRoles);
-    }
-  }
+  // A mentorship/CRediT agreement is an intention, not evidence of work on this manuscript.
+  const feedbackShares = await tx.mentorResourceShare.findMany({ where: { id: { in: mentorFeedbacks.flatMap(f => f.shareId ? [f.shareId] : []) }, projectId }, select: { id: true, kind: true, resourceId: true } });
+  const scopedFeedbackShares = new Set(feedbackShares.filter(share => targets.has(`${share.kind}:${share.resourceId}`)).map(share => share.id));
   for (const fb of mentorFeedbacks) {
     const mentorId = accessMentorMap.get(fb.accessId);
-    if (mentorId && fb.authorId === mentorId && (fb.creditRoles.length > 0 || ["SUGGESTION", "REVIEW"].includes(fb.kind))) {
+    if (mentorId && fb.authorId === mentorId && fb.shareId && scopedFeedbackShares.has(fb.shareId) && fb.body.trim().length >= 20 && (fb.creditRoles.length > 0 || ["SUGGESTION", "REVIEW"].includes(fb.kind))) {
       addSource(mentorId, `Accepted advisor ${fb.kind.toLowerCase()}`);
       addRoles(mentorId, fb.creditRoles);
     }

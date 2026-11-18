@@ -18,6 +18,7 @@ describe("mentor workspace routes and filters", () => {
   it("bounds pagination and rejects invalid status, IDs, selectors and unknown flags", () => {
     for (const value of [{ page: 0 }, { pageSize: 1000 }, { status: "ACCEPTED" }, { item: "TASK:../../../private" }, { assigneeId: randomUUID() }, { projectId: "not-an-id" }]) expect(query.safeParse(value).success).toBe(false);
     expect(query.parse({ page: "2", pageSize: "10", status: "WAITING" })).toMatchObject({ page: 2, pageSize: 10, status: "WAITING" });
+    expect(query.parse({ status: "OVERDUE" }).status).toBe("OVERDUE");
   });
   it("targets an exact review request until it is being edited and keeps task and question routes distinct", () => {
     const row = { kind: "MANUSCRIPT_REVIEW" as const, sourceId: "request", projectId: "project", status: "TODO" as const, assignmentId: "assignment" };
@@ -195,6 +196,21 @@ describe.skipIf(!enabled).sequential("mentor workspace PostgreSQL projection and
     const late = await task(f, { title: "Past deadline", dueAt: new Date(Date.now() - 3600000) });
     expect((await read(f.actor)).items.map(i => i.sourceId)).toEqual([late.id, blocked.id, soon.id, r.request.id, normal.id]);
     expect((await read(f.actor, { sort: "deadline" })).items.slice(0, 3).map(i => i.sourceId)).toEqual([late.id, soon.id, blocked.id]);
+  });
+  it("filters overdue actionable work before pagination and excludes completed or undated work", async () => {
+    const f = await fixture(), other = await fixture(f.actor);
+    const late = await task(f, { dueAt: new Date(Date.now() - 3600000) });
+    await task(other, { dueAt: new Date(Date.now() - 7200000) });
+    await task(f, { status: "DONE", completedAt: new Date(), dueAt: new Date(Date.now() - 3600000) });
+    await task(f, { dueAt: new Date(Date.now() + 3600000) });
+    await task(f);
+    const all = await read(f.actor, { status: "OVERDUE", pageSize: 1 });
+    expect(all.meta).toMatchObject({ total: 2, totalPages: 2 });
+    expect(all.items).toHaveLength(1);
+    expect(all.items.every(item => item.needsAction && item.overdue)).toBe(true);
+    const scoped = await read(f.actor, { status: "OVERDUE", projectId: f.p.id });
+    expect(scoped.items.map(item => item.sourceId)).toEqual([late.id]);
+    expect(scoped.meta.total).toBe(scoped.summary.overdue);
   });
   it("submits immutable, version-bound mentor comments and notifies the team without granting readiness approval", async () => {
     const f = await fixture(), r = await review(f);

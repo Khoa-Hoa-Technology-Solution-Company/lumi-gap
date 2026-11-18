@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { IProject, ResearchStage, WorkspaceOverview } from "@trend/shared-types";
+import type { IProject, ResearchStage } from "@trend/shared-types";
 import {
   ArrowUpRight,
   UsersRound,
@@ -21,9 +21,6 @@ import {
   LockKeyhole,
   Clock3,
   Settings2,
-  Trophy,
-  Award,
-  Plus,
   Info,
   FileBarChart2,
 } from "lucide-react";
@@ -36,7 +33,7 @@ import { workspaceApi } from "../api/workspace.api";
 import { useWorkspaceCommand, useWorkspaceOverview } from "../hooks/use-workspace";
 import { ProjectTrendEvidence } from "@/features/trends/components/project-trend-evidence";
 import { approachLabels, formatRelativeActivity, projectSectionHref, stageLabels, taskLabels, WorkspaceDate, WorkspaceError, WorkspaceLoading } from "./workspace-common";
-import { getContributorInitials, LiteratureScreeningFunnel, ResearchStagePipeline } from "./workspace-overview-widgets";
+import { LiteratureScreeningFunnel, ResearchStagePipeline } from "./workspace-overview-widgets";
 
 export function WorkspaceStageSelector({ projectId }: { projectId: string }) {
   const { t } = useI18n();
@@ -138,30 +135,6 @@ const activityLabels: Record<string, string> = {
   MILESTONE_CREATED: "Created a milestone", MILESTONE_UPDATED: "Updated a milestone", DISCUSSION_CREATED: "Started a discussion", DISCUSSION_UPDATED: "Updated a discussion", DISCUSSION_RESOLVED: "Recorded a discussion conclusion", DISCUSSION_REOPENED: "Reopened a discussion", DISCUSSION_REPLY: "Replied to a discussion", DECISION_CREATED: "Recorded a research decision", DECISION_UPDATED: "Revised a research decision", WORKSPACE_COMMENT_ADDED: "Left a comment", MENTOR_PLAN_FEEDBACK: "Left mentor feedback", PROJECT_CREATED: "Created the project", PROJECT_UPDATED: "Updated project details", PAPER_ADDED: "Added a paper", PAPER_REMOVED: "Removed a paper", MEMBER_JOINED: "Joined the project", MEMBER_INVITED: "Invited a team member",
 };
 
-function getTopContributors(data: WorkspaceOverview) {
-  if (data.topContributors && data.topContributors.length > 0) {
-    return data.topContributors;
-  }
-  // Fallback: aggregate from activity items
-  const activityMap = new Map<string, { person: typeof data.members[0]; count: number }>();
-  for (const act of data.activity) {
-    if (!act.actor) continue;
-    const existing = activityMap.get(act.actor.id);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      activityMap.set(act.actor.id, { person: act.actor, count: 1 });
-    }
-  }
-  const list = Array.from(activityMap.values()).sort((a, b) => b.count - a.count);
-  const totalActs = list.reduce((sum, item) => sum + item.count, 0);
-  return list.slice(0, 5).map((item, index) => ({
-    person: item.person,
-    count: item.count,
-    percentage: totalActs > 0 ? Math.round((item.count / totalActs) * 100) : 0,
-    rank: index + 1,
-  }));
-}
 
 export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
   const { t, language } = useI18n();
@@ -176,7 +149,6 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
   if (!overview.data) return <WorkspaceError error={overview.error} retry={() => void overview.refetch()} />;
 
   const data = overview.data;
-  const topContributors = getTopContributors(data);
 
   const attention = [
     { count: data.attention.mentorFeedback, label: "Mentor feedback is waiting for a team response", tab: "plan" },
@@ -613,133 +585,10 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
           </section>
 
           {/* Card: Top Contributors / Bảng vinh danh đóng góp */}
-          <section className="bg-card rounded-2xl border border-border/80 p-6 shadow-sm relative overflow-hidden">
-            <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-amber-500/10 dark:bg-amber-400/5 pointer-events-none blur-2xl" />
-
-            <div className="flex items-center justify-between gap-2 mb-4">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                  <Trophy className="h-[18px] w-[18px]" />
-                </div>
-                <h3 className="font-bold text-base text-foreground whitespace-nowrap">{t("Top contributors")}</h3>
-              </div>
-              <Link
-                to={projectSectionHref(id, "contributions")}
-                className="text-sm font-semibold text-primary hover:underline shrink-0"
-              >
-                {t("View")}
-              </Link>
-            </div>
-
-            {topContributors.length > 0 ? (
-              <div className="space-y-3">
-                {topContributors.map((item, idx) => {
-                  const isCurrentUser = item.person.id === currentUserId;
-                  const isOwner = item.person.id === project.ownerId;
-                  const avatarRing = idx === 0
-                    ? "bg-amber-100 text-amber-800 ring-2 ring-amber-400 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-600"
-                    : idx === 1
-                      ? "bg-slate-100 text-slate-700 ring-2 ring-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-600"
-                      : idx === 2
-                        ? "bg-orange-100 text-orange-800 ring-2 ring-orange-300 dark:bg-orange-950 dark:text-orange-200 dark:ring-orange-700"
-                        : "bg-muted text-muted-foreground";
-                  const barColor = idx === 0
-                    ? "from-amber-400 via-amber-500 to-yellow-500"
-                    : idx === 1
-                      ? "from-slate-400 to-indigo-500"
-                      : idx === 2
-                        ? "from-orange-500 to-amber-600"
-                        : "from-primary/60 to-primary";
-
-                  return (
-                    <div
-                      key={item.person.id}
-                      className={`group p-3 rounded-xl border transition-all ${
-                        isCurrentUser
-                          ? "bg-amber-50/50 dark:bg-amber-950/20 border-amber-200/80 dark:border-amber-900/60 shadow-sm"
-                          : "bg-card/70 border-border/60 hover:border-border hover:bg-muted/30"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          {/* Initials Avatar + Rank badge */}
-                          <div className="relative shrink-0">
-                            <span className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold ${avatarRing}`}>
-                              {getContributorInitials(item.person.name)}
-                            </span>
-                            <span
-                              className="absolute -bottom-1 -right-1 h-4 min-w-[16px] px-1 rounded-full bg-background border border-border text-[10px] font-bold flex items-center justify-center text-foreground"
-                              aria-label={`#${idx + 1}`}
-                            >
-                              {idx + 1}
-                            </span>
-                          </div>
-
-                          {/* Member Name & Badges */}
-                          <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
-                            <span className="font-semibold text-sm text-foreground truncate">
-                              {item.person.name}
-                            </span>
-                            {isCurrentUser && (
-                              <Badge variant="secondary" className="bg-amber-200/80 dark:bg-amber-900/70 text-amber-800 dark:text-amber-200 text-[10px] px-1.5 py-0 border-0">
-                                {t("You")}
-                              </Badge>
-                            )}
-                            {isOwner && (
-                              <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 text-[10px] px-1.5 py-0 border-0">
-                                {t("Leader")}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Contribution metric */}
-                        <div className="text-right shrink-0">
-                          <span className="text-xs font-bold text-foreground tabular-nums">
-                            {item.count} <span className="text-[11px] font-normal text-muted-foreground">{t("activities")}</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Percentage progress bar */}
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 rounded-full bg-muted/60 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full bg-gradient-to-r ${barColor} transition-all duration-500`}
-                            style={{ width: `${Math.max(item.percentage, 8)}%` }}
-                          />
-                        </div>
-                        <span className="text-[11px] font-semibold text-muted-foreground w-8 text-right tabular-nums">
-                          {item.percentage}%
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Motivational Footnote */}
-                <div className="pt-2 text-[11.5px] text-muted-foreground/90 flex items-start gap-1.5 leading-relaxed border-t border-border/50">
-                  <Sparkles className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
-                  <span>{t("Every research action (screening, evidence extraction, manuscripts) is automatically recorded.")}</span>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-border/80 p-5 text-center bg-muted/20">
-                <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto mb-2.5">
-                  <Award className="h-5 w-5" />
-                </div>
-                <p className="text-sm font-semibold text-foreground">{t("No recorded contributions yet")}</p>
-                <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto leading-relaxed">
-                  {t("Be the first to add papers, screen literature, or complete tasks to lead the team board!")}
-                </p>
-                <Button asChild variant="outline" size="sm" className="mt-3.5 text-xs font-semibold rounded-lg">
-                  <Link to={projectSectionHref(id, "contributions", { contributionTab: "work" })}>
-                    <Plus className="mr-1 h-3.5 w-3.5" />
-                    {t("Record work contribution")}
-                  </Link>
-                </Button>
-              </div>
-            )}
+          <section className="rounded-xl border bg-card p-6">
+            <h3 className="font-semibold">{t("researchContribution.research")}</h3>
+            <p className="my-3 text-sm leading-6 text-muted-foreground">{t("researchContribution.evidenceHint")}</p>
+            <Button asChild variant="outline"><Link to={projectSectionHref(id, "contributions", { contributionTab: "work" })}>{t("researchContribution.evidenceRecords")}</Link></Button>
           </section>
 
           {/* Card: Recent Activity */}

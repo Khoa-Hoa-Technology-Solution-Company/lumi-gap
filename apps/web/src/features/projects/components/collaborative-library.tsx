@@ -1,6 +1,6 @@
 import { ScreeningStatus } from "./screening-common";
 import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { BookOpen, Plus, Search, ArrowRight, SlidersHorizontal, ArrowUpDown, X, Filter, RotateCcw, LayoutGrid, List } from "lucide-react";
 import type { ScreeningPaperRow, ScreeningBoard } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
@@ -412,6 +412,7 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
                 </div>
 
                 <div className="library-paper-header-right">
+                  {!readOnly && <Link className="text-xs text-muted-foreground hover:text-primary" to={`/projects/${projectId}?tab=chat&channel=team-chat&shareKind=PAPER&shareId=${p.paperId}`}>Chia sẻ với nhóm</Link>}
                   <ScreeningStatus className="library-selection-state" status={round?.status ?? "NOT_REVIEWED"} round={round} />
                 </div>
               </header>

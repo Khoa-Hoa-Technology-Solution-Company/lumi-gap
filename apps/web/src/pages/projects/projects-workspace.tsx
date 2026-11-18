@@ -113,7 +113,7 @@ function WorkspaceSidebar({
     }
   };
 
-  if (mentor && (unavailable || currentProject?.isPublicSummary)) return <div className="space-y-4 p-3" data-no-i18n><div className="border-b pb-4"><p className="break-words font-semibold">{mentor.title}</p><p className="mt-1 text-xs text-muted-foreground">Cố vấn dự án</p></div><MentorProjectNav /></div>;
+  if (mentor && (unavailable || currentProject?.isPublicSummary)) return <div className="space-y-4 p-3" data-no-i18n><div className="border-b pb-4"><p className="break-words font-semibold">{mentor.title}</p><p className="mt-1 text-xs text-muted-foreground">Cố vấn dự án</p></div><MentorProjectNav contributions={mentor.policies.some(p=>p.mentorId===mentor.viewerId&&p.policy.effective&&p.policy.permissions.includes("CONTRIBUTIONS_VIEW"))} /></div>;
 
   const canAccessMentor = Boolean(
     user?.academicRole === "LECTURER" ||
@@ -131,7 +131,7 @@ function WorkspaceSidebar({
       researchProjects={projects}
     >
       <details ref={detailsRef} className="coord-project-picker" open={directoryNeedsChoice || undefined} key={id ? "selected" : "directory"}>
-        <summary className="group">
+        <summary className="group" title={`${project?.title ?? t("Projects")} · ${t("Switch project")}`} aria-label={t("Switch project")}>
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 flex items-center justify-center text-white shrink-0 shadow-xs">
               <FolderOpen className="h-4.5 w-4.5" />
@@ -147,7 +147,7 @@ function WorkspaceSidebar({
           <ProjectsListPage compact />
         </div>
       </details>
-      {id && (project || loading) && <ProjectSectionNav activeTab={active} onChange={navigate} paperCount={project?.paperCount ?? 0} memberCount={project?.memberCount ?? 0} loading={loading} />}
+      {id && (project || loading) && <ProjectSectionNav activeTab={active} onChange={navigate} paperCount={project?.paperCount ?? 0} memberCount={project?.memberCount ?? 0} loading={loading} collapsed={collapsed} />}
     </AppSingleSidebar>
   );
 }

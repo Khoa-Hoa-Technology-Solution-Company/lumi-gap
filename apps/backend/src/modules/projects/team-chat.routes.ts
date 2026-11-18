@@ -8,6 +8,8 @@ import {
   ProjectTeamChatMessageParamsSchema,
   ProjectTeamChatParamsSchema,
   SendProjectTeamChatMessageSchema,
+  TeamChatReferenceSchema,
+  TeamChatReferencesQuerySchema,
 } from "./dto/project-team-chat.schema.js";
 import { projectTeamChatController } from "./project-team-chat.controller.js";
 
@@ -35,6 +37,19 @@ projectTeamChatRouter.post(
   validate(ProjectTeamChatParamsSchema, "params"),
   validate(SendProjectTeamChatMessageSchema),
   projectTeamChatController.sendMessage,
+);
+
+projectTeamChatRouter.get(
+  "/references",
+  validate(ProjectTeamChatParamsSchema, "params"),
+  validate(TeamChatReferencesQuerySchema, "query"),
+  projectTeamChatController.references,
+);
+projectTeamChatRouter.get(
+  "/reference",
+  validate(ProjectTeamChatParamsSchema, "params"),
+  validate(TeamChatReferenceSchema, "query"),
+  projectTeamChatController.reference,
 );
 
 projectTeamChatRouter.get(

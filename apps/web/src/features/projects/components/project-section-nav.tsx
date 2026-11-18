@@ -1,6 +1,7 @@
 import { useRef, type ComponentType, type KeyboardEvent } from "react";
 import { BookOpen, Compass, FileText, Send, MessageSquare, Users, Award, GraduationCap, LayoutDashboard, ListChecks, NotebookPen } from "lucide-react";
 import { useI18n } from "@/i18n";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export type ProjectTab = "overview" | "plan" | "tasks" | "papers" | "members" | "contributions" | "gaps" | "chat" | "support" | "submissions" | "manuscripts";
 
@@ -31,8 +32,8 @@ export function resolveProjectTab(value: string | null): ProjectTab {
 
 const groups = ["Workspace", "Research", "Collaboration", "Writing & review", "Team"];
 
-export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount, loading = false, allowedTabs }: {
-  activeTab: ProjectTab; onChange: (tab: ProjectTab) => void; paperCount: number; memberCount: number; loading?: boolean; allowedTabs?: readonly ProjectTab[];
+export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount, loading = false, allowedTabs, collapsed = false }: {
+  activeTab: ProjectTab; onChange: (tab: ProjectTab) => void; paperCount: number; memberCount: number; loading?: boolean; allowedTabs?: readonly ProjectTab[]; collapsed?: boolean;
 }) {
   const { t } = useI18n();
   const nav = useRef<HTMLElement>(null);
@@ -79,7 +80,7 @@ export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount
               const count = section.key === "papers" ? paperCount : section.key === "members" ? memberCount : undefined;
               const Icon = section.icon;
               const isSelected = activeTab === section.key;
-              return (
+              const button = (
                 <button
                   key={section.key}
                   type="button"
@@ -89,12 +90,13 @@ export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount
                   aria-selected={isSelected}
                   aria-current={isSelected ? "page" : undefined}
                   aria-controls={`project-panel-${section.key}`}
+                  aria-label={t(section.label)}
                   tabIndex={isSelected ? 0 : -1}
                   onKeyDown={e => keyDown(e, sections.indexOf(section))}
                   onClick={() => onChange(section.key)}
                 >
                   <Icon className={`h-[18px] w-[18px] shrink-0 transition-colors ${isSelected ? "text-primary" : section.iconColor}`} />
-                  <span className="font-medium">{t(section.label)}</span>
+                  <span className="coord-section-name font-medium">{t(section.label)}</span>
                   {count !== undefined && (
                     <small
                       className="ml-auto inline-flex shrink-0 items-center justify-center whitespace-nowrap font-mono text-[11.5px] font-bold tabular-nums"
@@ -105,6 +107,7 @@ export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount
                   )}
                 </button>
               );
+              return collapsed ? <Tooltip key={section.key}><TooltipTrigger asChild>{button}</TooltipTrigger><TooltipContent side="right">{t(section.label)}{count !== undefined ? ` (${count})` : ""}</TooltipContent></Tooltip> : button;
             })}
           </div>
         ))}

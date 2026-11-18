@@ -128,7 +128,17 @@ export interface ProjectInvitationPreview {
 }
 
 export type MentorshipRequestStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "CANCELLED" | "CANCELED_BY_PROJECT" | "EXPIRED" | "CLOSED_CAPACITY_REACHED";
-export type MentorRole = "PRIMARY" | "SECONDARY";
+export type MentorRole = "UNASSIGNED" | "PRIMARY" | "SECONDARY";
+export interface MentorRoleProposal {
+  id: string; status: "PENDING" | "CONFIRMED" | "DECLINED" | "CANCELLED" | "SUPERSEDED"; createdAt: string;
+  assignments: Array<{ relationshipId: string; mentorId: string; fullName: string; from: MentorRole; to: MentorRole }>;
+  confirmedBy: string[]; canConfirm: boolean; canCancel: boolean;
+}
+export interface MentorRolesWorkspace {
+  canPropose: boolean;
+  mentors: Array<{ relationshipId: string; mentorId: string; fullName: string; role: MentorRole }>;
+  proposals: MentorRoleProposal[];
+}
 export type MentorPlanCommand = { expectedVersion: number } & (
   { action: "add"; mentorUserId: string; mentorRole: MentorRole } |
   { action: "remove"; candidateId: string } |
@@ -268,6 +278,10 @@ export interface DossierAccessSummary {
 }
 
 export interface InvitationDossier {
+  /** Compact invitation; older full dossiers retain their original presentation. */
+  presentation?: "BRIEF";
+  senderDisplayName?: string;
+  additionalMessage?: string;
   version: 1;
   generatedAt: string;
   project: {
@@ -301,6 +315,11 @@ export interface InvitationDossier {
 }
 
 export interface InvitationDossierInput {
+  presentation?: "BRIEF";
+  researchField?: string;
+  researchSummary?: string;
+  additionalMessage?: string;
+  sharingConfirmed?: boolean;
   approvedObjective?: string;
   keywords?: string[];
   shareRepresentativeProfile?: boolean;
@@ -323,6 +342,9 @@ export interface PreviewInvitationDossierRequest {
 }
 
 export interface MentorDiscoverySettings extends MentorProjectPreview {
+  invitationContext?: MentorInvitationContext;
+  /** Owner-only composing defaults. Never part of the public proposal preview. */
+  invitationDefaults?: { summary: string; goal: string; keywords: string[]; researchField?: string };
   /** Opaque revision of the approved invitation brief, not an access credential. */
   previewToken?: string;
   /** Optimistic version for owner-only discovery edits; excluded from public opportunity DTOs. */
@@ -338,6 +360,15 @@ export interface MentorDiscoverySettings extends MentorProjectPreview {
     defaultExpectations: DossierExpectations;
   };
 }
+/** Owner-visible fields approved by the send action; token prevents stale context. */
+export interface MentorInvitationContext {
+  title: string;
+  researchField?: string;
+  researchAreas: string[];
+  senderDisplayName: string;
+  memberCount: number;
+  token: string;
+}
 export interface MentorshipInfoRequest {
   message: string;
   requestedAt: string;
@@ -347,6 +378,8 @@ export interface MentorshipActions {
   accept: boolean; decline: boolean; cancel: boolean; end: boolean; openProject: boolean; requestInfo?: boolean;
 }
 export interface MentorshipRequest {
+  /** Derived by the API from the authenticated account and current project ownership. */
+  viewer?: "SENDER" | "RECIPIENT" | "TEAM";
   /** Older invitations have no recoverable original snapshot. */
   legacyPreview?: boolean;
   reviewRequired?: boolean;
@@ -416,11 +449,13 @@ export interface MentorSuggestionsResponse {
 export interface MentorshipCollection {
   requests: MentorshipRequest[]; relationships: MentorRelationship[];
   counts: { pending: number; incoming: number; active: number };
-  policy: { maxActiveMentors: number; maxPendingRequests: number; maxPendingPerRole?: number; expiryDays?: number };
+  policy: { maxActiveMentors: number; maxPendingRequests: number | null; maxPendingPerRole?: number; expiryDays?: number | null };
   positions?: MentorPositions;
   requestMeta: AcademicPageMeta; relationshipMeta: AcademicPageMeta;
 }
 export interface AvailableMentor extends MentorshipPerson {
+  isDemo?: boolean;
+  mentorshipStatus?: "PENDING" | "ACTIVE";
   expertiseAreas: string[]; researchInterests: string[]; matchedTerms: string[];
   sameInstitution: boolean; acceptingMentorships: true;
 }
@@ -716,10 +751,22 @@ export interface ProjectTeamChatMessage {
   deletedBy?: ProjectTeamChatSender;
   deleteReason?: string;
   createdAt: string;
+  clientKey?: string;
+  replyTo?: { id: string; content: string; sender: ProjectTeamChatSender; isDeleted: boolean };
+  reference?: ProjectChatReference;
+}
+
+/** References never grant access; resolve their display metadata through the project API. */
+export interface ProjectChatReference { kind: "PAPER" | "TASK" | "MANUSCRIPT_SNAPSHOT" | "SUBMISSION_REVISION"; id: string }
+export interface ProjectChatReferenceCard extends ProjectChatReference {
+  title: string; subtitle?: string; status?: string; version?: number; href: string;
 }
 
 export interface SendProjectTeamChatMessageRequest {
   content: string;
+  clientKey?: string;
+  replyToId?: string;
+  reference?: ProjectChatReference;
 }
 
 export interface SendProjectTeamChatMessageResponse {

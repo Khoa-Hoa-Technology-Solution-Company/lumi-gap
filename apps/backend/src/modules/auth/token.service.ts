@@ -63,7 +63,7 @@ export const tokenService = {
       }) as jwt.JwtPayload;
       if (
         typeof claims.sub !== "string"
-        || !["USER", "ADMIN"].includes(claims.systemRole as string)
+        || !["USER", "ADMIN", "RESEARCH_USER", "SUPER_ADMIN"].includes(claims.systemRole as string)
         || typeof claims.sessionId !== "string"
       ) throw new Error("Malformed access token claims");
       return claims as unknown as AccessTokenClaims;

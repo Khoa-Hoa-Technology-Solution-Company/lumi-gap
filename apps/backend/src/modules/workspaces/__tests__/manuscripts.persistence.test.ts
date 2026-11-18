@@ -17,7 +17,7 @@ import { reviewService } from "../../reviews/review.service.js";
 import { manuscriptAttributionService } from "../manuscript-attribution.service.js";
 
 vi.mock("../../../infrastructure/queue.js", () => ({ notificationQueue: { add: vi.fn().mockResolvedValue({}) } }));
-const isolated = (process.env.MENTOR_ACCESS_INTEGRATION === "1" && /^postgres(?:ql)?:\/\/[^/]+@(127\.0\.0\.1|localhost):[0-9]+\/lumigap_mentor_access_v1_test(?:\?|$)/.test(process.env.DATABASE_URL ?? "")) || (process.env.NODE_ENV === "test" && process.env.MANUSCRIPT_COMPILER_INTEGRATION === "1" && /^postgres(?:ql)?:\/\/[^/]+@(127\.0\.0\.1|localhost):[0-9]+\/codex_mentorship_[a-f0-9]{12}_test(?:\?|$)/.test(process.env.DATABASE_URL ?? "")) || process.env.PROJECT_SLICE_TEST === "1" && process.env.DATABASE_URL?.includes("127.0.0.1:15439/lumigap_project_slice_test") && process.env.REDIS_URL === "redis://127.0.0.1:16389";
+const isolated = (process.env.MANUSCRIPT_TEMPLATE_INTEGRATION === "1" && /^\/codex_manuscript_templates_[a-f0-9]{12}_test$/.test(new URL(process.env.DATABASE_URL ?? "postgres://localhost/unused").pathname)) || (process.env.MENTOR_ACCESS_INTEGRATION === "1" && /^postgres(?:ql)?:\/\/[^/]+@(127\.0\.0\.1|localhost):[0-9]+\/lumigap_mentor_access_v1_test(?:\?|$)/.test(process.env.DATABASE_URL ?? "")) || (process.env.NODE_ENV === "test" && process.env.MANUSCRIPT_COMPILER_INTEGRATION === "1" && /^postgres(?:ql)?:\/\/[^/]+@(127\.0\.0\.1|localhost):[0-9]+\/codex_mentorship_[a-f0-9]{12}_test(?:\?|$)/.test(process.env.DATABASE_URL ?? "")) || process.env.PROJECT_SLICE_TEST === "1" && process.env.DATABASE_URL?.includes("127.0.0.1:15439/lumigap_project_slice_test") && process.env.REDIS_URL === "redis://127.0.0.1:16389";
 describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", () => {
   const db = getPrisma(); let owner: string, member: string, outsider: string, mentor: string, reviewer: string;
   async function actor(name: string, lecturer = false) {
@@ -242,7 +242,7 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
     expect(detail.files.map(file => file.path)).toEqual(expect.arrayContaining(sources.map(source => source.path)));
   });
   it("creates multiple canonical manuscripts, preserves legacy workspace uniqueness and retries", async () => {
-    const d = await draft(), input = { title: "Second manuscript", description: "", documentType: "THESIS" as const, template: "REPORT" as const, clientKey: crypto.randomUUID() };
+    const d = await draft(), input = { title: "Second manuscript", description: "", documentType: "THESIS" as const, template: "THESIS" as const, clientKey: crypto.randomUUID() };
     const second = await writing.create(d.project, member, input); expect((await writing.list(d.project, owner))).toHaveLength(2);
     expect((await writing.list(d.project, owner)).every(row => row.latestFeedback === null)).toBe(true);
     expect((await writing.create(d.project, member, input)).id).toBe(second.id);
@@ -414,7 +414,7 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
     const v2 = await writing.snapshot(d.project, owner, d.id, { label: "Submission v2", clientKey: crypto.randomUUID(), minimumSequences: {} });
     await expect(writing.viewSnapshot(d.project, reviewer, d.id, v2.id)).rejects.toMatchObject({ statusCode: 404 });
     await expect(writing.detail(d.project, reviewer, d.id)).rejects.toMatchObject({ statusCode: 404 });
-    const review = await reviewService.saveReview(request.assignment.id, reviewer, { overallAssessment: "STRONG", responses: [{ criterionKey: "method", performanceLevelId: template.activeVersion!.criteria[0]!.levels[0]!.id, comment: "Sampling is clear" }], requiredRevisions: [] }, true);
+    const review = await reviewService.saveReview(request.assignment.id, reviewer, { overallAssessment: "STRONG", overallComment: "The sealed manuscript explains its sampling method clearly.", responses: [{ criterionKey: "method", performanceLevelId: template.activeVersion!.criteria[0]!.levels[0]!.id, comment: "Sampling is clear" }], requiredRevisions: [] }, true);
     expect(review.review.revisionId).toBe(sealed.revisionId);
     expect((await db.submissionRevision.findUniqueOrThrow({ where: { id: sealed.revisionId } })).contentSnapshot).not.toContain("live source changed");
   });

@@ -24,10 +24,16 @@ export function SupportAreasChecklist({
   selected,
   onToggle,
   disabled,
+  labels,
+  moreLabel,
+  groupLabel,
 }: {
   selected: string[];
   onToggle: (area: string) => void;
   disabled?: boolean;
+  labels?: Partial<Record<ResearchSupportType, string>>;
+  moreLabel?: string;
+  groupLabel?: string;
 }) {
   const [showAll, setShowAll] = useState(false);
   const primaryOptions = SUPPORT_AREA_OPTIONS.filter(opt => opt.primary);
@@ -38,7 +44,7 @@ export function SupportAreasChecklist({
 
   return (
     <div className="space-y-2">
-      <div className="space-y-1.5" role="group" aria-label="Loại hỗ trợ mong muốn">
+      <div className="space-y-1.5" role="group" aria-label={groupLabel ?? "Loại hỗ trợ mong muốn"}>
         {visible.map(opt => {
           const active = selected.includes(opt.value);
           return (
@@ -64,7 +70,7 @@ export function SupportAreasChecklist({
               >
                 {active && <Check size={11} strokeWidth={3} />}
               </span>
-              <span>{opt.label}</span>
+              <span>{labels?.[opt.value] ?? opt.label}</span>
             </button>
           );
         })}
@@ -75,7 +81,7 @@ export function SupportAreasChecklist({
           className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
           onClick={() => setShowAll(true)}
         >
-          <span>Thêm lựa chọn hỗ trợ khác ({extraOptions.length})</span>
+          <span>{moreLabel ?? "Thêm lựa chọn hỗ trợ khác"} ({extraOptions.length})</span>
           <ChevronDown size={13} aria-hidden="true" />
         </button>
       )}

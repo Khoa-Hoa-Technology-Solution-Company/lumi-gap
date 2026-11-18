@@ -3,6 +3,7 @@ import { isAdminSystemRole, type User } from "@trend/shared-types";
 import { requiresAcademicProfile } from "./academic-profile";
 
 export const MEMBER_LANDING_PATH = "/home";
+export const MENTOR_LANDING_PATH = "/mentor-workspace";
 export const ADMIN_LANDING_PATH = "/admin";
 export const ACADEMIC_ONBOARDING_PATH = "/onboarding/academic-profile";
 export const EMAIL_VERIFICATION_PATH = "/verify-email";
@@ -38,5 +39,6 @@ export function resolvePostAuthPath(user: User, requestedPath?: string): string 
     }
   }
 
-  return isAdminSystemRole(user.systemRole) ? ADMIN_LANDING_PATH : MEMBER_LANDING_PATH;
+  if (isAdminSystemRole(user.systemRole)) return ADMIN_LANDING_PATH;
+  return user.academicRole === "LECTURER" ? MENTOR_LANDING_PATH : MEMBER_LANDING_PATH;
 }

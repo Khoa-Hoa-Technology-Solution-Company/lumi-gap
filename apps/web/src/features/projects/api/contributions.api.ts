@@ -1,9 +1,12 @@
-import type { ActivityResult, AllocationDraftInput, AllocationPeriodInput, AllocationPeriodView, AllocationRevisionView, ContributionInput, ContributionPage, PersonalContributionHistoryExport, ProjectAdvisorContributionSummary, WorkContribution } from "@trend/shared-types";
+import type { ActivityResult, AllocationDraftInput, AllocationPeriodInput, AllocationPeriodView, AllocationRevisionView, ContributionInput, ContributionPage, PersonalContributionHistoryExport, ProjectAdvisorContributionSummary, WorkContribution, ResearchContributionResult, ContributionStatement, ContributionArtifactLink } from "@trend/shared-types";
 import { api as apiClient } from "@/services/api-client";
 const path = (id: string, resource: string) => `/projects/${encodeURIComponent(id)}/contributions/${resource}`;
 async function get<T>(id: string, resource: string, params?: Record<string, unknown>) { return (await apiClient.get<{ data: T }>(path(id, resource), { params })).data.data; }
 async function write<T>(id: string, resource: string, data: unknown, edit = false) { return (await apiClient[edit ? "patch" : "post"]<{ data: T }>(path(id, resource), data)).data.data; }
 export const contributionsApi = {
+  research: (id: string, query: Record<string, unknown>) => get<ResearchContributionResult>(id, "research", query),
+  statement: (id: string, scopeKey: string) => get<ContributionStatement>(id, "manuscript-statement", { scopeKey }),
+  artifact: (id: string, link: ContributionArtifactLink) => get<{ href?: string; title?: string; content?: string }>(id, "research-artifact", { ...link }),
   activity: (id: string, query: Record<string, unknown>) => get<ActivityResult>(id, "activity", query),
   work: (id: string, query: Record<string, unknown>) => get<ContributionPage>(id, "work", query),
   detail: (id: string, recordId: string) => get<WorkContribution>(id, `work/${recordId}`),

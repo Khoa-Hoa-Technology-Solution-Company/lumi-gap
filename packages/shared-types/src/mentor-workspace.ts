@@ -4,7 +4,7 @@ export type MentorWorkStatus = "TODO" | "IN_PROGRESS" | "BLOCKED" | "WAITING" | 
 export type MentorWorkPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export interface MentorWorkQuery {
   page?: number; pageSize?: number; q?: string; projectId?: string; kind?: MentorWorkKind | "REVIEW";
-  status?: MentorWorkStatus | "ACTIONABLE" | "ALL"; sort?: "priority" | "deadline";
+  status?: MentorWorkStatus | "ACTIONABLE" | "OVERDUE" | "ALL"; sort?: "priority" | "deadline";
   projectPage?: number; projectSearch?: string; item?: string;
 }
 export interface MentorWorkItem {

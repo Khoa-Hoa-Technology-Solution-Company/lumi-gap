@@ -19,10 +19,8 @@ export interface ManuscriptPdfImport {
   };
 }
 
-export const MANUSCRIPT_TYPES = ["RESEARCH_PAPER", "RESEARCH_PROPOSAL", "THESIS", "TECHNICAL_REPORT"] as const;
-export type ManuscriptType = typeof MANUSCRIPT_TYPES[number];
-export const MANUSCRIPT_TEMPLATES = ["ARTICLE", "PROPOSAL", "REPORT", "IEEE_CONFERENCE", "PRESENTATION", "THESIS", "ELSEVIER", "SPRINGER", "APS", "BLANK"] as const;
-export type ManuscriptTemplate = typeof MANUSCRIPT_TEMPLATES[number];
+import type { ManuscriptType, ManuscriptTemplate, ManuscriptTemplateMetadata } from "./manuscript-templates.js";
+export * from "./manuscript-templates.js";
 export interface ManuscriptSourceVersionLink { projectId: string; manuscriptId: string; snapshotId: string; }
 export type ManuscriptFileKind = "TEXT" | "ASSET" | "FOLDER";
 export interface ManuscriptFile {
@@ -61,6 +59,8 @@ export interface ManuscriptGovernanceSummary {
 }
 export interface ManuscriptSummary {
   id: string; projectId: string; title: string; description: string; documentType: ManuscriptType;
+  documentTypeLabel?: string | null;
+  templateMetadata?: ManuscriptTemplateMetadata | null;
   template: ManuscriptTemplate; version: number; mainFileId: string | null; archived: boolean;
   archivedAt?: string | null;
   deletedAt?: string | null;
@@ -92,13 +92,14 @@ export interface ManuscriptCompilationState {
 }
 export interface CreateManuscript {
   title: string; documentType: ManuscriptType; template: ManuscriptTemplate; description: string;
+  documentTypeLabel?: string;
   clientKey: string; researchLink?: { kind: "QUESTION" | "GAP"; id: string } | null;
 }
 export interface SnapshotFile {
   id: string; path: string; kind: ManuscriptFileKind; sequence: number; checksum: string | null;
   text?: string; sizeBytes: number; mimeType: string | null;
 }
-export interface ManuscriptManifest { title: string; documentType: ManuscriptType; mainFileId: string; files: SnapshotFile[]; }
+export interface ManuscriptManifest { title: string; documentType: ManuscriptType; documentTypeLabel?: string | null; templateMetadata?: ManuscriptTemplateMetadata | null; mainFileId: string; files: SnapshotFile[]; }
 export interface CreateManuscriptSnapshot {
   label: string; clientKey: string; minimumSequences: Record<string, number>;
   /** Reuse an identical saved source version when compiling repeatedly. */

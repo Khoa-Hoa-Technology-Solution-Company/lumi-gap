@@ -7,6 +7,7 @@ import { SubmissionListPage } from "@/pages/submissions/submission-list";
 import { SubmissionNewPage } from "@/pages/submissions/submission-new";
 import { SubmissionDetailPage } from "@/pages/submissions/submission-detail";
 import { ProjectSubmissionsPanel } from "../components/project-submissions-panel";
+vi.mock("@/features/submissions/components/mentor-manuscript-dialog", () => ({ MentorManuscriptDialog: (props: {open:boolean; projectId:string; onSent:(result:unknown)=>void}) => props.open ? <div data-send-project={props.projectId}><button onClick={() => props.onSent({submissionId:"new-paper"})}>Send fixture</button></div> : null }));
 const createVersion = vi.hoisted(() => vi.fn());
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), detail: vi.fn(), projects: vi.fn(), project: vi.fn(), create: vi.fn(), historyQuery: vi.fn(), preReviews: vi.fn(), addRevision: vi.fn(), activeMentors: vi.fn(), user: { systemRole: "USER", emailVerifiedAt: "2026-10-01" }, history: { canManage: true, canRequestReview: true, canRunAiPreReview: true, currentRevisionNumber: 2, reviewRequests: [] as Array<{ id: string; reviewerName: string; status: string; revisionNumber: number; dueAt: string | null; canView: boolean }>, revisions: [] } }));
@@ -25,6 +26,17 @@ vi.mock("@/features/reviews/components/submit-review-dialog", () => ({ SubmitRev
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 let root: Root, container: HTMLDivElement;
+async function chooseFile(file = new File(["PDF"], "paper.pdf", { type: "application/pdf" })) {
+  const input = container.querySelector('input[type="file"]')!;
+  Object.defineProperty(input, "files", { value: [file], configurable: true });
+  await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+  return file;
+}
+async function changeInput(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  const prototype = input.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value);
+  await act(async () => input.dispatchEvent(new Event("input", { bubbles: true })));
+}
 function Location() { return <output>{useLocation().pathname}{useLocation().search}</output>; }
 async function render(node: ReactNode, path = "/projects/project-a?tab=submissions") {
   await act(async () => root.render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}<Location /></MemoryRouter>));
@@ -56,56 +68,6 @@ it("keeps manuscript links in the project despite an internal UUID in the respon
   await render(<SubmissionListPage projectId="legacy-id" />);
   expect(container.querySelector('a[href*="submission=paper"]')?.getAttribute("href")).toBe("/projects/legacy-id?tab=submissions&submission=paper");
 });
-it("fixes the project on creation and submits its ID, then opens the new detail in context", async () => {
-  await render(<SubmissionNewPage projectId="project-a" projectTitle="Current research" />);
-  expect(mocks.projects).toHaveBeenCalledWith({ enabled: false });
-  expect(container.textContent).toContain("Current research");
-  expect(container.querySelector<HTMLInputElement>('input:not([type="file"])')?.value).toBe("Current research");
-  expect(container.querySelector('details')?.open).toBe(false);
-  expect(container.querySelector('textarea')?.parentElement?.hidden).toBe(true);
-  const file = new File(["PDF"], "paper.pdf", { type: "application/pdf" });
-  const input = container.querySelector('input[type="file"]')!;
-  Object.defineProperty(input, "files", { value: [file] });
-  await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
-  await act(async () => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ projectId: "project-a", title: "Current research", researchField: "Education" }), file }));
-  expect(container.querySelector("output")?.textContent).toBe("/projects/project-a?tab=submissions&submission=new-paper");
-});
-
-async function chooseFile(file = new File(["PDF"], "paper.pdf", { type: "application/pdf" })) {
-  const input = container.querySelector('input[type="file"]')!;
-  Object.defineProperty(input, "files", { value: [file], configurable: true });
-  await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
-  return file;
-}
-async function submitForm() {
-  await act(async () => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-}
-async function toggleIntroduction() {
-  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-controls]')!.click());
-}
-async function changeInput(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
-  const prototype = input.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-  Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value);
-  await act(async () => input.dispatchEvent(new Event("input", { bubbles: true })));
-}
-
-it("uses the PDF as research context instead of requiring separate scientific claim fields", async () => {
-  await render(<SubmissionNewPage projectId="project-a" projectTitle="Current research" />);
-  expect(container.querySelectorAll('textarea')).toHaveLength(1);
-  expect(container.querySelector('textarea')?.parentElement?.hidden).toBe(true);
-  expect(container.querySelector('summary')?.textContent).toContain("Research paper · Education");
-  expect(container.querySelector('[role="toolbar"]')).toBeNull();
-  expect(container.textContent).not.toContain("Research goal");
-  expect(container.textContent).not.toContain("Expected reviewer workload");
-  await chooseFile();
-  await submitForm();
-  const input = mocks.create.mock.calls[0]![0].input;
-  expect(input.researchGoal).toBeUndefined();
-  expect(input.methodology).toBeUndefined();
-  expect(input.expectedReviewWorkload).toBeUndefined();
-});
-
 it("does not show empty research detail cards for a PDF-only submission", async () => {
   await render(<SubmissionDetailPage submissionId="manuscript" projectId="project-a" />);
   expect(container.textContent).not.toContain("Not specified");
@@ -190,97 +152,6 @@ it("preserves structured research details on older submissions", async () => {
   expect(container.textContent).not.toContain("Not specified");
 });
 
-it("saves the introduction as formatted content and displays it as a document on detail", async () => {
-  const introduction = "## Research overview\n\nA **team** study.\n\n- Review evidence\n- Discuss findings";
-  await render(<SubmissionNewPage projectId="project-a" />);
-  await toggleIntroduction();
-  await changeInput(container.querySelector<HTMLTextAreaElement>('textarea')!, introduction);
-  await chooseFile();
-  await submitForm();
-  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ abstract: introduction }) }));
-  mocks.detail.mockReturnValue({ data: { _id: "manuscript", title: "Project paper", status: "submitted", researchQuestions: [], abstract: introduction } });
-  await render(<SubmissionDetailPage submissionId="manuscript" projectId="project-a" />);
-  expect([...container.querySelectorAll('h2')].some(heading => heading.textContent === "Research overview")).toBe(true);
-  expect(container.querySelector('strong')?.textContent).toBe("team");
-  expect(container.textContent).not.toContain("## Research overview");
-});
-
-it("retains the edited title, summary and PDF after a failure and prevents simultaneous submissions", async () => {
-  mocks.create.mockRejectedValueOnce(new Error("network"));
-  await render(<SubmissionNewPage projectId="project-a" projectTitle="Current research" />);
-  await changeInput(container.querySelector<HTMLInputElement>('input:not([type="file"])')!, "My manuscript title");
-  await toggleIntroduction();
-  await changeInput(container.querySelector<HTMLTextAreaElement>('textarea')!, "A short summary");
-  const file = await chooseFile();
-  await submitForm();
-  expect(container.querySelector('[role="alert"]')?.textContent).toContain("retained");
-  expect(container.querySelector<HTMLInputElement>('input:not([type="file"])')?.value).toBe("My manuscript title");
-  expect(container.querySelector('textarea')?.value).toBe("A short summary");
-  await toggleIntroduction();
-  expect(container.querySelector('textarea')?.parentElement?.hidden).toBe(true);
-  await toggleIntroduction();
-  expect(container.querySelector('textarea')?.value).toBe("A short summary");
-  expect(container.textContent).toContain("paper.pdf");
-  let finish!: (value: unknown) => void;
-  mocks.create.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-  await act(async () => {
-    const form = container.querySelector('form')!;
-    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-  });
-  expect(mocks.create).toHaveBeenCalledTimes(2);
-  expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({ file, input: expect.objectContaining({ title: "My manuscript title", abstract: "A short summary" }) }));
-  await act(async () => finish({ submission: { _id: "new-paper" } }));
-});
-
-it("rejects empty, oversized and non-PDF files before calling the API", async () => {
-  await render(<SubmissionNewPage projectId="project-a" projectTitle="Current research" />);
-  const huge = new File(["PDF"], "large.pdf", { type: "application/pdf" });
-  Object.defineProperty(huge, "size", { value: 10 * 1024 * 1024 + 1 });
-  for (const file of [new File([], "empty.pdf", { type: "application/pdf" }), huge, new File(["text"], "paper.txt", { type: "text/plain" })]) {
-    await chooseFile(file);
-    await submitForm();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("10 MB");
-  }
-  expect(mocks.create).not.toHaveBeenCalled();
-});
-
-it("lets the author edit or clear automatic defaults without a background refresh overwriting them", async () => {
-  await render(<SubmissionNewPage projectId="project-a" />);
-  const title = container.querySelector<HTMLInputElement>('input:not([type="file"])')!;
-  await changeInput(title, "An edited title");
-  mocks.project.mockReturnValue({ data: { title: "Changed project", researchField: "Medicine" } });
-  await render(<SubmissionNewPage projectId="project-a" />);
-  expect(title.value).toBe("An edited title");
-  await changeInput(title, "");
-  expect(title.value).toBe("");
-  await chooseFile();
-  await submitForm();
-  expect(mocks.create).not.toHaveBeenCalled();
-});
-
-it("blocks submission until a lecturer is chosen when the project has active mentors", async () => {
-  mocks.activeMentors.mockReturnValue({
-    data: [{ id: "mentor-1", fullName: "TS. Nguyễn Văn A", mentorRole: "PRIMARY" }],
-    isLoading: false,
-  });
-  await render(<SubmissionNewPage projectId="project-a" projectTitle="Current research" />);
-  await chooseFile();
-  const submitButton = container.querySelector<HTMLButtonElement>('button[type="submit"]')!;
-  expect(submitButton.disabled).toBe(true);
-  await submitForm();
-  expect(mocks.create).not.toHaveBeenCalled();
-  expect(container.querySelector('[role="alert"]')?.textContent).toContain("Vui lòng chọn giảng viên hướng dẫn");
-
-  const select = container.querySelector<HTMLSelectElement>('select[aria-label="Giảng viên hướng dẫn nhận bản thảo"]')!;
-  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(select, "mentor-1");
-  await act(async () => select.dispatchEvent(new Event("change", { bubbles: true })));
-  expect(submitButton.disabled).toBe(false);
-  await submitForm();
-  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
-    input: expect.objectContaining({ projectId: "project-a", mentorId: "mentor-1" }),
-  }));
-});
 it("uses the selected submission ID instead of the project's route ID and returns to its list", async () => {
   await render(<SubmissionDetailPage submissionId="manuscript" projectId="project-a" />);
   expect(mocks.detail).toHaveBeenCalledWith("manuscript", "project-a");
@@ -372,4 +243,11 @@ it("refreshes both the request progress and the submission status", async () => 
   await act(async () => refresh.click());
   expect(historyRefresh).toHaveBeenCalledOnce();
   expect(detailRefresh).toHaveBeenCalledOnce();
+});
+
+it("opens the short mentor dialog within the project and returns to its submitted version", async () => {
+  await render(<SubmissionNewPage projectId="project-a" projectTitle="Current research" />);
+  expect(container.querySelector('[data-send-project]')?.getAttribute('data-send-project')).toBe('project-a');
+  await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Send fixture')!.click());
+  expect(container.querySelector('output')?.textContent).toBe('/projects/project-a?tab=submissions&submission=new-paper');
 });

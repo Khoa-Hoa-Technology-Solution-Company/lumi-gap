@@ -322,25 +322,15 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
         }
       }
       if (draft.mentorMode !== "LATER" && draft.selectedMentor) {
-        const message = draft.mentorNote?.trim()
-          || `${t("Supervisor invitation for project")} "${project.title}" (${resolvedField})`;
-        try {
-          await academicSupportApi.request(
-            project._id,
-            draft.selectedMentor.id,
-            message,
-            crypto.randomUUID(),
-            { mentorRole: "PRIMARY", attachmentIds: [] },
-          );
-        } catch {
-          toast.warning(t("Project created, but the supervisor invitation could not be sent. You can send it in Academic Support."));
-        }
+        try { sessionStorage.setItem(`lumigap-supervisor-invite:${userId}:${project._id}:${draft.selectedMentor.id}`, JSON.stringify({ summary: draft.description.trim().slice(0, 2000), reason: draft.mentorNote?.trim() || "", support: [], additional: "", period: "", role: "PRIMARY" })); } catch { /* The form can still load defaults from the created project. */ }
       }
+      // Create the private project first, then open the same reviewed invitation form as Support.
+      // A selected lecturer is not a sent invitation and never receives an automatic template.
       try { sessionStorage.removeItem(storageKey); } catch { /* Optional storage. */ }
       toast.success(t("Project created successfully"));
       onClose();
-      const targetUrl = (draft.mentorMode === "FIND" || draft.mentorMode === "INVITE") && !draft.selectedMentor
-        ? `/projects/${encodeURIComponent(project._id)}?tab=support`
+      const targetUrl = draft.mentorMode !== "LATER"
+        ? `/projects/${encodeURIComponent(project._id)}?tab=support${draft.selectedMentor ? `&inviteMentor=${encodeURIComponent(draft.selectedMentor.id)}` : ""}`
         : `/projects/${encodeURIComponent(project._id)}?tab=papers&welcome=1`;
       navigate(targetUrl);
     } catch (failure) {
@@ -360,7 +350,7 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
   const mentorSummaryLabel = draft.mentorMode === "LATER"
     ? t("None yet")
     : draft.selectedMentor
-    ? `${draft.selectedMentor.fullName || draft.selectedMentor.id} (${t("Pending invitation")})`
+    ? `${draft.selectedMentor.fullName || draft.selectedMentor.id} (${t("Selected")})`
     : draft.mentorMode === "FIND"
     ? t("Find a matching supervisor")
     : t("I already have a supervisor to invite");

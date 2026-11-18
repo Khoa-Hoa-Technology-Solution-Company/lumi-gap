@@ -29,7 +29,7 @@ model MentorshipDraft {
   projectId     String   @map("project_id") @db.Uuid
   userId        String   @map("user_id") @db.Uuid
   direction     String   @db.VarChar(32)
-  mentorRole    String   @default("PRIMARY") @map("mentor_role") @db.VarChar(16)
+  mentorRole    String   @default("UNASSIGNED") @map("mentor_role") @db.VarChar(16)
   message       String   @default("")
   attachmentIds String[] @default([]) @map("attachment_ids") @db.Uuid
   version       Int      @default(1)

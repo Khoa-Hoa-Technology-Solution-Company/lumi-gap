@@ -1,17 +1,26 @@
 import { z } from "zod";
-import { MANUSCRIPT_TYPES, MANUSCRIPT_TEMPLATES } from "@trend/shared-types";
+import { MANUSCRIPT_TYPES, MANUSCRIPT_TEMPLATES, isManuscriptTemplateCompatible } from "@trend/shared-types";
 import { databaseIdSchema } from "../../../common/validation/database-id.js";
 export const manuscriptParams = z.object({ projectId: databaseIdSchema, id: z.string().uuid().optional(), fileId: z.string().uuid().optional(), snapshotId: z.string().uuid().optional(), compilationId: z.string().uuid().optional() });
 export const compileSchema = z.object({ engine: z.enum(["pdflatex", "xelatex", "lualatex"]).optional(), texLiveVersion: z.enum(["2022", "2025"]).optional() }).strict();
 export const compilerSettingsSchema = z.object({ engine: z.enum(["pdflatex", "xelatex", "lualatex"]), texLiveVersion: z.enum(["2022", "2025"]), expectedRevision: z.number().int().positive() }).strict();
 export const importManuscriptSchema = z.object({ title: z.string().trim().min(2).max(160), mainFile: z.string().max(240).default(""), clientKey: z.string().uuid() }).strict();
-export const createManuscriptSchema = z.object({ title: z.string().trim().min(2).max(160), description: z.string().trim().max(2000).default(""), documentType: z.enum(MANUSCRIPT_TYPES), template: z.enum(MANUSCRIPT_TEMPLATES), clientKey: z.string().uuid(), researchLink: z.object({ kind: z.enum(["QUESTION", "GAP"]), id: z.string().uuid() }).nullable().optional() }).strict();
+export const createManuscriptSchema = z.object({
+  title: z.string().trim().transform(value => value.replace(/\s+/g, " ")).pipe(z.string().min(2).max(160)),
+  description: z.string().trim().max(2000).default(""),
+  documentType: z.enum(MANUSCRIPT_TYPES), template: z.enum(MANUSCRIPT_TEMPLATES),
+  documentTypeLabel: z.preprocess(value => typeof value === "string" && !value.trim() ? undefined : value, z.string().trim().min(1).max(80).optional()),
+  clientKey: z.string().uuid(), researchLink: z.object({ kind: z.enum(["QUESTION", "GAP"]), id: z.string().uuid() }).nullable().optional(),
+}).strict().superRefine((input, context) => {
+  if (!isManuscriptTemplateCompatible(input.documentType, input.template)) context.addIssue({ code: "custom", path: ["template"], message: "Choose a template compatible with this document type." });
+  if (input.documentType !== "OTHER" && input.documentTypeLabel) context.addIssue({ code: "custom", path: ["documentTypeLabel"], message: "A custom document type name is only available for Other." });
+});
 export const createFileSchema = z.object({ path: z.string().min(1).max(240), kind: z.enum(["TEXT", "FOLDER"]), content: z.string().max(500000).default(""), clientKey: z.string().uuid() }).strict();
 export const changeFileSchema = z.object({ expectedVersion: z.number().int().positive(), path: z.string().min(1).max(240).optional(), delete: z.literal(true).optional(), main: z.literal(true).optional() }).strict().refine(value => [value.path, value.delete, value.main].filter(v => v !== undefined).length === 1, "Choose exactly one file operation");
 export const snapshotSchema = z.object({ label: z.string().trim().min(1).max(160), clientKey: z.string().uuid(), minimumSequences: z.record(z.string().uuid(), z.number().int().nonnegative()).refine(value => Object.keys(value).length <= 200).default({}), reuseUnchanged: z.boolean().optional(), writingEvidence: z.boolean().optional() }).strict();
 const relativePosition = z.object({ type: z.object({ client: z.number().int().nonnegative(), clock: z.number().int().nonnegative() }).nullable().optional(), tname: z.literal("source").nullable().optional(), item: z.object({ client: z.number().int().nonnegative(), clock: z.number().int().nonnegative() }).nullable().optional(), assoc: z.number().int().optional() }).strict();
 export const commentSchema = z.object({ body: z.string().trim().min(1).max(5000), clientKey: z.string().uuid(), fileId: z.string().uuid().optional(), snapshotId: z.string().uuid().optional(), mentorRelationshipId: z.string().uuid().optional(), quote: z.string().max(1000).optional(), start: relativePosition.optional(), end: relativePosition.optional() }).strict();
-export const snapshotQuery = z.object({ snapshotId: z.string().uuid().optional() });
+export const snapshotQuery = z.object({ snapshotId: z.string().uuid().optional(), compilationId: z.string().uuid().optional() });
 export const writingReportSchema = z.object({ snapshotId: z.string().uuid() }).strict();
 export const writingReportPageSchema = z.object({ page: z.coerce.number().int().min(1).max(10000).default(1) }).strict();
 export const manuscriptLifecycleActionSchema = z.object({ expectedVersion: z.number().int().min(1), reason: z.string().trim().min(1).max(500).optional() }).strict();

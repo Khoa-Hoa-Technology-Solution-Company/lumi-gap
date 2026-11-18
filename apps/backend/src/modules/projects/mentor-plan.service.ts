@@ -28,8 +28,6 @@ export async function prepareMentorCandidate(tx: Db, projectId: string, ownerId:
   const plan = await ensureMentorPlan(tx, projectId, ownerId);
   if (expectedVersion !== undefined && plan.version !== expectedVersion) throw AppError.conflict("Kế hoạch đã thay đổi. Tải lại trước khi gửi");
   if (plan.closedRoles.includes(role)) throw AppError.conflict("Vai trò đã dừng tuyển. Chủ dự án cần mở đợt mời mới");
-  if (role === "SECONDARY" && !plan.parallelInvitations && !await tx.mentorRelationship.count({ where: { projectId, mentorRole: "PRIMARY", status: "ACTIVE" } }))
-    throw AppError.conflict("Bật mời song song hoặc chờ Mentor chính chấp nhận trước khi mời Mentor phụ");
   let candidate = candidateId ? await tx.mentorCandidate.findFirst({ where: { id: candidateId, planId: plan.id } }) :
     await tx.mentorCandidate.findFirst({ where: { planId: plan.id, mentorUserId: mentorId, status: { not: "REMOVED" } } });
   if (candidateId && !candidate) throw AppError.notFound("Ứng viên không thuộc kế hoạch hiện tại");
@@ -38,9 +36,9 @@ export async function prepareMentorCandidate(tx: Db, projectId: string, ownerId:
     const last = await tx.mentorCandidate.aggregate({ where: { planId: plan.id, mentorRole: role }, _max: { priority: true } });
     candidate = await tx.mentorCandidate.create({ data: { planId: plan.id, mentorUserId: mentorId, mentorRole: role, priority: (last._max.priority ?? 0) + 1 } });
   }
-  if (candidate.status !== "PLANNED" || candidate.mentorUserId !== mentorId || candidate.mentorRole !== role) throw AppError.conflict("Ứng viên hoặc vai trò đã thay đổi. Không thể gửi lời mời này");
+  if (candidate.status !== "PLANNED" || candidate.mentorUserId !== mentorId || (role !== "UNASSIGNED" && candidate.mentorRole !== role)) throw AppError.conflict("Ứng viên hoặc vai trò đã thay đổi. Không thể gửi lời mời này");
   const first = await tx.mentorCandidate.findFirst({ where: { planId: plan.id, mentorRole: role, status: "PLANNED" }, orderBy: [{ priority: "asc" }, { id: "asc" }] });
-  if (first?.id !== candidate.id) throw AppError.conflict("Cần mời ứng viên đứng trước hoặc điều chỉnh thứ tự kế hoạch");
+  if (role !== "UNASSIGNED" && first?.id !== candidate.id) throw AppError.conflict("Cần mời ứng viên đứng trước hoặc điều chỉnh thứ tự kế hoạch");
   return candidate;
 }
 
@@ -71,8 +69,7 @@ export const mentorPlanService = {
         candidates: candidates.map(c => { const u = people.find(u => u.id === c.mentorUserId)!, request = requests.find(r => r.candidateId === c.id);
           const role = c.mentorRole as MentorRole;
           const first = candidates.find(other => other.mentorRole === role && other.status === "PLANNED");
-          const ready = c.status === "PLANNED" && !unavailable.has(c.id) && first?.id === c.id && positions[role].status === "VACANT" && !plan?.closedRoles.includes(role) &&
-            (role === "PRIMARY" || plan?.parallelInvitations || positions.PRIMARY.status === "ASSIGNED");
+          const ready = c.status === "PLANNED" && !unavailable.has(c.id) && first?.id === c.id && !pending.some(r => r.mentorUserId === c.mentorUserId);
           return { id: c.id, mentorUserId: publicDatabaseId(u), fullName: u.fullName, mentorRole: role, priority: c.priority,
             status: request?.status ?? (unavailable.has(c.id) ? "INELIGIBLE" : ready ? "READY" : "PLANNED"), unavailableReason: unavailable.has(c.id) ? "Giảng viên hiện không đủ điều kiện nhận hướng dẫn. Hãy kiểm tra hồ sơ, đổi thứ tự hoặc bỏ khỏi kế hoạch." : undefined, requestId: request?.id, canSend: Boolean(ready && !["ARCHIVED", "COMPLETED"].includes(live.status)) };
         }) };

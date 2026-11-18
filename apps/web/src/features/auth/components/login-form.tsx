@@ -58,9 +58,10 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
     login.mutate(values, {
       onSuccess: (data) => {
         const previousLocation = (location.state as LocationState | null)?.from;
+        const previousProject = consumePostLogoutProjectPath(data.user.id);
         const requestedPath = previousLocation
           ? `${previousLocation.pathname}${previousLocation.search ?? ""}${previousLocation.hash ?? ""}`
-          : redirectTo ?? consumePostLogoutProjectPath(data.user.id);
+          : redirectTo ?? (data.user.academicRole === "LECTURER" ? undefined : previousProject);
         const target = resolvePostAuthPath(data.user, requestedPath);
         navigate(target, { state: { from: requestedPath }, replace: true });
       },

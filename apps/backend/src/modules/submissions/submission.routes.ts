@@ -8,6 +8,7 @@ import { validate } from "../../common/middleware/validate.js";
 import { objectIdSchema } from "../../common/validation/database-id.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { submissionService } from "./submission.service.js";
+import { mentorManuscriptContextSchema, mentorManuscriptSendSchema } from "./dto/mentor-manuscript.schema.js";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 
 const submissionParamsSchema = z.object({ id: objectIdSchema });
@@ -104,7 +105,7 @@ function uploadedPdf(req: Request) {
 
 function parseArrayFields(body: Record<string, unknown>) {
   const copy = { ...body };
-  for (const key of ["authorIds", "declaredConflictUserIds", "researchQuestions", "keywords"] as const) {
+  for (const key of ["authorIds", "declaredConflictUserIds", "researchQuestions", "keywords", "responses"] as const) {
     if (typeof copy[key] === "string") {
       try {
         copy[key] = JSON.parse(copy[key] as string);
@@ -133,6 +134,15 @@ submissionRouter.get("/reviewer-assignments/me", deprecatedForReviewRequests, re
 
 submissionRouter.get("/active-mentors", validate(z.object({ projectId: objectIdSchema }), "query"), async (req, res) => {
   res.json({ success: true, data: await submissionService.listActiveMentors(String(req.query.projectId), req.user!.sub) });
+});
+
+submissionRouter.get("/mentor-feedback/context", validate(mentorManuscriptContextSchema, "query"), async (req, res) => {
+  res.json({ success: true, data: await submissionService.mentorFeedbackContext(mentorManuscriptContextSchema.parse(req.query), req.user!.sub, req.user!.role) });
+});
+submissionRouter.post("/mentor-feedback", requirePermission("submission:create"), createRateLimiter("submissions:mentor-feedback", { windowMs: 60_000, limit: 10 }), uploadSinglePdf, async (req, res) => {
+  const input = mentorManuscriptSendSchema.parse(parseArrayFields(req.body));
+  const file = optionalUploadedPdf(req);
+  res.status(201).json({ success: true, data: await submissionService.sendMentorFeedback(input, file, req.user!.sub, req.user!.role) });
 });
 
 submissionRouter.get("/", validate(projectScopeSchema, "query"), async (req, res) => {

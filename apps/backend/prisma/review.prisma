@@ -3,6 +3,7 @@ model Submission {
   legacyMongoId          String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
   projectId              String   @map("project_id") @db.Uuid
   sourceReportId         String?  @unique @map("source_report_id") @db.Uuid
+  sourceManuscriptId     String?  @unique @map("source_manuscript_id") @db.Uuid
   createdById            String   @map("created_by_id") @db.Uuid
   title                  String   @db.VarChar(300)
   abstractText           String?  @map("abstract_text")
@@ -69,6 +70,7 @@ model SubmissionRevision {
   updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([submissionId, revisionNumber])
+  @@index([manuscriptSnapshotId])
   @@index([uploadedById])
   @@map("submission_revisions")
 }

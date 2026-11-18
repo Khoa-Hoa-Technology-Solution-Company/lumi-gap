@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ArrowUpRight, AlertCircle, Search } from "lucide-react";
 import type { MentorWorkItem, MentorWorkQuery, MentorWorkspaceData } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import "../mentor-workspace.css";
+import { mentorWorkspaceDestination } from "../utils/mentor-workspace-navigation";
 
 export const mentorKindKeys = { TASK: "task", MANUSCRIPT_REVIEW: "manuscriptReview", PROPOSAL_REVIEW: "proposalReview", MENTOR_QUESTION: "mentorQuestion" } as const;
 
@@ -18,6 +19,8 @@ export function MentorQueueLoading() {
 
 export function MentorWorkRows({ items, groupBy = "none" }: { items: MentorWorkItem[]; groupBy?: "none" | "project" | "status" }) {
   const { t, language } = useI18n();
+  const { pathname } = useLocation();
+  const href = (path: string) => pathname === "/mentor-workspace" ? mentorWorkspaceDestination(path) : path;
   const groups = new Map<string, MentorWorkItem[]>();
   for (const item of items) {
     const key = groupBy === "project" ? item.projectId : groupBy === "status" ? item.status : "all";
@@ -30,12 +33,12 @@ export function MentorWorkRows({ items, groupBy = "none" }: { items: MentorWorkI
         {item.overdue && <Badge variant="destructive">{t("mentorWorkspace.overdue")}</Badge>}
         {item.blocked && <Badge variant="destructive">{t("mentorWorkspace.blocked")}</Badge>}
       </div>
-      <div className="mentor-row-main"><div className="mentor-row-copy"><Link className="mentor-row-title" to={item.href}>{item.title}</Link><p><Link to={`/projects/${item.projectId}?tab=tasks`}>{item.projectTitle}</Link><span aria-hidden="true"> · </span>{item.sender}</p></div>
+      <div className="mentor-row-main"><div className="mentor-row-copy"><Link className="mentor-row-title" to={href(item.href)}>{item.title}</Link><p><Link to={href(`/projects/${encodeURIComponent(item.projectId)}?tab=tasks`)}>{item.projectTitle}</Link><span aria-hidden="true"> · </span>{item.sender}</p></div>
         <Badge variant="secondary">{t(`mentorWorkspace.status.${item.status}`)}</Badge>
       </div>
       {item.accessIssue && <p className="mt-2 max-w-prose text-sm leading-6 text-muted-foreground">{t("mentorWorkspace.manuscriptNotShared")}</p>}
       <div className="mentor-row-footer"><div><span className="mentor-priority-pill" data-priority={item.priority}>{t(`mentorWorkspace.priority.${item.priority}`)}</span>{item.dueAt ? <time className={item.overdue ? "mentor-overdue" : undefined} dateTime={item.dueAt}>{t("mentorWorkspace.due")} {new Date(item.dueAt).toLocaleString(language, { dateStyle: "medium", timeStyle: "short" })}</time> : <span>{t("mentorWorkspace.noDeadline")}</span>}</div>
-        <Button asChild size="sm" variant={item.needsAction ? "default" : "outline"}><Link to={item.href}>{t(item.accessIssue && item.canContactTeam ? "mentorWorkspace.contactTeam" : item.kind === "TASK" && item.href.startsWith("/submissions/") ? "mentorWorkspace.openManuscript" : `mentorWorkspace.action.${item.action}`)}<ArrowUpRight size={14} aria-hidden="true" /></Link></Button>
+        <Button asChild size="sm" variant={item.needsAction ? "default" : "outline"}><Link to={href(item.href)}>{t(item.accessIssue && item.canContactTeam ? "mentorWorkspace.contactTeam" : item.kind === "TASK" && item.href.startsWith("/submissions/") ? "mentorWorkspace.openManuscript" : `mentorWorkspace.action.${item.action}`)}<ArrowUpRight size={14} aria-hidden="true" /></Link></Button>
       </div>
     </li>)}</ul>
   </section>)}</div>;
@@ -53,8 +56,8 @@ export function MentorWorkQueue({ data, query, onChange, loading, fetching, erro
     <div className="mentor-queue-controls">
       <label className="mentor-search"><Search size={16} aria-hidden="true" /><Input type="search" aria-label={t("mentorWorkspace.searchWork")} placeholder={t("mentorWorkspace.searchWork")} value={query.q ?? ""} maxLength={160} onChange={e => update({ q: e.target.value })} /></label>
       {!projectOnly && <select aria-label={t("mentorWorkspace.projectFilter")} value={query.projectId ?? ""} onChange={e => update({ projectId: e.target.value || undefined })}><option value="">{t("mentorWorkspace.allProjects")}</option>{!error && data?.projectOptions.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select>}
-      <select aria-label={t("mentorWorkspace.kindFilter")} value={query.kind ?? ""} onChange={e => update({ kind: (e.target.value || undefined) as MentorWorkQuery["kind"] })}><option value="">{t("mentorWorkspace.allKinds")}</option>{Object.entries(mentorKindKeys).map(([value, key]) => <option key={value} value={value}>{t(`mentorWorkspace.${key}`)}</option>)}</select>
-      <select aria-label={t("mentorWorkspace.statusFilter")} value={query.status ?? "ACTIONABLE"} onChange={e => update({ status: e.target.value as MentorWorkQuery["status"] })}>{["ACTIONABLE", "ALL", "TODO", "IN_PROGRESS", "BLOCKED", "WAITING", "DONE"].map(s => <option key={s} value={s}>{t(`mentorWorkspace.status.${s}`)}</option>)}</select>
+      <select aria-label={t("mentorWorkspace.kindFilter")} value={query.kind ?? ""} onChange={e => update({ kind: (e.target.value || undefined) as MentorWorkQuery["kind"] })}><option value="">{t("mentorWorkspace.allKinds")}</option><option value="REVIEW">{t("mentorWorkspace.reviewKinds")}</option>{Object.entries(mentorKindKeys).map(([value, key]) => <option key={value} value={value}>{t(`mentorWorkspace.${key}`)}</option>)}</select>
+      <select aria-label={t("mentorWorkspace.statusFilter")} value={query.status ?? "ACTIONABLE"} onChange={e => update({ status: e.target.value as MentorWorkQuery["status"] })}>{["ACTIONABLE", "OVERDUE", "ALL", "TODO", "IN_PROGRESS", "BLOCKED", "WAITING", "DONE"].map(s => <option key={s} value={s}>{t(`mentorWorkspace.status.${s}`)}</option>)}</select>
       {hasActiveFilter ? <Button type="button" variant="ghost" size="sm" onClick={() => onChange({ page: 1, status: "ACTIONABLE", sort: query.sort ?? "priority" })}>{t("mentorWorkspace.clearFilters")}</Button> : null}
     </div>
     <div className="mentor-queue-toolbar"><p role="status" aria-live="polite">{error ? "" : loading ? t("mentorWorkspace.loading") : data ? t("mentorWorkspace.resultCount", { count: data.meta.total }) : ""}{fetching && !loading ? ` · ${t("mentorWorkspace.updating")}` : ""}</p><div>

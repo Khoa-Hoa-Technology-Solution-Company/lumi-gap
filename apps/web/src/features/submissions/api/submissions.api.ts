@@ -1,4 +1,4 @@
-import type { StructuredSubmissionInput, SubmissionStatus, SubmissionType, SubmissionHistory } from "@trend/shared-types";
+import type { StructuredSubmissionInput, SubmissionStatus, SubmissionType, SubmissionHistory, MentorManuscriptContext, MentorManuscriptSendInput, MentorManuscriptSendResult } from "@trend/shared-types";
 import { API_ROUTES } from "@/constants";
 import { api } from "@/services/api-client";
 
@@ -7,6 +7,7 @@ const readOptions = (signal?: AbortSignal) => ({ signal, timeout: 20_000 });
 
 export interface ActiveMentorOption {
   id: string;
+  canonicalId?: string;
   fullName: string;
   email: string;
   institution?: string;
@@ -23,6 +24,7 @@ export interface MentorFeedbackPayload {
 }
 export interface SubmissionSummary {
   _id: string;
+  sourceManuscriptId?: string | null;
   projectId: string;
   title: string;
   abstract?: string;
@@ -76,6 +78,13 @@ export interface AiPreReview {
 }
 
 export const submissionsApi = {
+  async mentorFeedbackContext(input: { projectId: string; manuscriptId?: string; submissionId?: string }): Promise<MentorManuscriptContext> { return (await api.get("/submissions/mentor-feedback/context", { params: input, timeout: 20000 })).data.data; },
+  async sendMentorFeedback(input: MentorManuscriptSendInput, file?: File): Promise<MentorManuscriptSendResult> {
+    const body = new FormData();
+    for (const [key, value] of Object.entries(input)) if (value !== undefined) body.append(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
+    if (file) body.append("pdf", file);
+    return (await api.post("/submissions/mentor-feedback", body, { timeout: 60000 })).data.data;
+  },
   async prepareMentorReview(id: string): Promise<{ assignmentId: string; requestId: string }> { return (await api.post(`/submissions/${encodeURIComponent(id)}/mentor-review`, {})).data.data; },
   async history(id: string, signal?: AbortSignal): Promise<SubmissionHistory> { return (await api.get(API_ROUTES.submissions.history(id), readOptions(signal))).data.data; },
   async createVersion(id: string, input: { content?: string; sourceRevisionId?: string; expectedRevisionNumber: number; summary: string }): Promise<void> { await api.post(API_ROUTES.submissions.versions(id), input); },

@@ -55,6 +55,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\apps\backend\scripts\local
 `-AiReview` and `-Compiler` can be combined, but use more RAM. The compiler
 continues running inside its existing security sandbox; Windows MiKTeX is not
 used to compile uploaded manuscripts. Its HTTP ports are bound to loopback only.
+The local Compose overlay uses a small HTTP relay on ports 8020/8025 because
+Docker does not publish ports from an internal-only network. The two TeX services
+remain exclusively on `manuscript-isolated`; only the relay joins both networks.
+It forwards only fixed compiler paths and preserves the internal authentication
+header. The launcher checks both compiler health endpoints before starting the API.
 Optional services require existing local images; the launcher never builds them.
 `worker:sync`, bulk ingestion, and the full worker suite do not start by default.
 Backend and web watch their source automatically. Shared types use the existing
@@ -63,6 +68,14 @@ shared source, or start with `-WatchSharedTypes` while working on that package.
 
 Avoid `pnpm dev`, `pnpm dev:local`, or full `docker compose up` while this mode
 is running: those commands can start the full stack or duplicate workers.
+
+If PDF preview says the server cannot compile, the default lightweight mode was
+started without `-Compiler`. Stop local mode, then start with `-Compiler` using
+the command above. On this machine, **LumiGap - Bat local va PDF** on the Desktop
+starts this configuration. **LumiGap - Bat local nhe** keeps the minimal mode.
+After switching modes, reload an already-open manuscript page so it retrieves
+the updated compiler availability. Saving source alone does not create a PDF;
+use the editor's compile action. No AI reviewer or ingestion worker is needed.
 
 ## Dependencies and existing data
 

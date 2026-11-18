@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MentorSuggestion } from "@trend/shared-types";
+import { supervisorInvitationVi } from "@/i18n/locales/supervisor-invitation";
 import { SuggestMentorDialog } from "../suggest-mentor-dialog";
 import { MemberMentorSuggestionsList, OwnerMentorSuggestionsInbox } from "../mentor-suggestions-panel";
 
@@ -24,10 +25,10 @@ vi.mock("@/features/projects/components/mentoring-preferences", () => ({
   mentorshipError: (err: any) => err?.response?.data?.error?.message ?? "Request failed",
 }));
 vi.mock("@/stores/auth-store", () => ({
-  useAuthStore: (selector: any) => selector({ user: { id: "user-1" } }),
+  useAuthStore: Object.assign((selector: any) => selector({ user: { id: "user-1" } }), { getState: () => ({ user: { id: "user-1" } }) }),
 }));
 vi.mock("@/i18n", () => ({
-  useI18n: () => ({ language: "vi", t: (key: string) => key }),
+  useI18n: () => ({ language: "vi", t: (key: string) => (supervisorInvitationVi as Record<string, string>)[key] ?? ({"Send suggestion":"Gửi đề xuất", "View profile":"Xem hồ sơ"} as Record<string,string>)[key] ?? key }),
 }));
 vi.mock("sonner", () => ({ toast: { success: mocks.toastSuccess } }));
 
@@ -92,7 +93,7 @@ afterEach(async () => {
 });
 
 describe("Student mentor suggestion workflow UI", () => {
-  it("renders redesigned SuggestMentorDialog sections A-D, validates whitespace/counter, preserves text on error, and submits cleanly", async () => {
+  it("renders the shared lecturer card and one reason field, validates whitespace, preserves text on error, and submits cleanly", async () => {
     const onClose = vi.fn();
     const onSubmitted = vi.fn();
     mocks.suggest
@@ -116,18 +117,14 @@ describe("Student mentor suggestion workflow UI", () => {
     await tick();
 
     const dialogText = document.body.textContent ?? "";
-    expect(dialogText).toContain("Đề xuất cố vấn · TS. Trần Văn B");
-    expect(dialogText).toContain("Giảng viên chưa nhận được lời mời hay thông báo ở bước này");
+    expect(dialogText).toContain("Đề xuất giảng viên"); expect(dialogText).toContain("TS. Trần Văn B");
+    expect(dialogText).toContain("Giảng viên chưa nhận được lời mời.");
     expect(dialogText).toContain("Phân tích LLM trong giáo dục đại học");
-    expect(dialogText).toContain("AI in Education");
-    expect(dialogText).toContain("Vì sao giảng viên này có thể phù hợp?");
-    expect(dialogText).toContain("Đây là gợi ý đối chiếu từ hồ sơ công khai, không phải cam kết giảng viên sẽ nhận hướng dẫn.");
-    expect(dialogText).toContain("0/1000");
 
     const profileLink = document.querySelector<HTMLAnchorElement>('a[href="/academics/lect-1"]');
-    expect(profileLink?.textContent).toContain("Xem hồ sơ giảng viên");
+    expect(profileLink?.textContent).toContain("Xem hồ sơ"); expect(document.querySelectorAll("textarea")).toHaveLength(1);
 
-    const submitBtn = findButton("Gửi đề xuất cho chủ dự án")!;
+    const submitBtn = findButton("Gửi đề xuất")!;
     expect(submitBtn.disabled).toBe(true);
 
     const textarea = document.querySelector<HTMLTextAreaElement>("textarea")!;
@@ -137,7 +134,6 @@ describe("Student mentor suggestion workflow UI", () => {
 
     const reason = "  Thầy có kinh nghiệm đánh giá NLP phù hợp với thiết kế thực nghiệm của nhóm  ";
     await act(async () => setTextarea(textarea, reason));
-    expect(document.body.textContent).toContain(`${reason.length}/1000`);
     expect(submitBtn.disabled).toBe(false);
 
     // Recoverable failure keeps user's text intact
@@ -285,7 +281,7 @@ describe("Student mentor suggestion workflow UI", () => {
       action: "add",
       expectedVersion: 1,
       mentorUserId: "lect-1",
-      mentorRole: "PRIMARY",
+      mentorRole: "UNASSIGNED",
     });
 
     // Dismiss flow with optional note

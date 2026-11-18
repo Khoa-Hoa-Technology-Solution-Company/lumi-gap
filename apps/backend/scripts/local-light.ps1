@@ -150,7 +150,7 @@ try {
 
     $services = @('postgres', 'redis')
     if ($AiReview) { $services += 'ai-reviewer' }
-    if ($Compiler) { $services += @('manuscript-compiler', 'manuscript-compiler-2025') }
+    if ($Compiler) { $services += @('manuscript-compiler', 'manuscript-compiler-2025', 'manuscript-compiler-local-relay') }
     $running = Invoke-Docker @('ps', '--filter', 'label=com.docker.compose.project=lumi-gap', '--format', '{{json .}}')
     foreach ($line in $running) {
         $container = $line | ConvertFrom-Json
@@ -162,6 +162,10 @@ try {
     $files = $composeFiles
     if ($Compiler) { $files += @('-f', (Join-Path $repo 'apps/backend/compiler/compose.yml'), '-f', (Join-Path $PSScriptRoot 'local-light.compose.yml')) }
     Invoke-Docker (@('compose') + $files + @('up', '-d', '--no-deps', '--no-build', '--pull', 'never') + $services) | Out-Null
+    if ($Compiler) {
+        Wait-Http 'http://127.0.0.1:8020/health'
+        Wait-Http 'http://127.0.0.1:8025/health'
+    }
 
     foreach ($port in @(4000, 8080)) {
         $listener = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue

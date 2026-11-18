@@ -1,0 +1,32 @@
+.supervisor-invitation-sheet { display: flex; flex-direction: column; width: min(100%, 520px) !important; max-width: 520px !important; overflow: hidden; padding: 0; gap: 0; }
+.supervisor-invitation-sheet > header { flex: none; padding: 1.4rem 3rem 1.1rem 1.5rem; border-bottom: 1px solid hsl(var(--border)); }
+.supervisor-invitation-sheet > form { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.supervisor-invitation-body { flex: 1; min-height: 0; overflow-y: auto; padding: 1.25rem 1.5rem; display: grid; gap: 1.4rem; align-content: start; }
+.supervisor-invitation-body fieldset { display: grid; gap: 1.25rem; min-width: 0; }
+.supervisor-invitation-body label:not(.supervisor-consent) { display: grid; gap: .45rem; font-size: .875rem; font-weight: 500; }
+.supervisor-invitation-body textarea, .supervisor-invitation-body select, .supervisor-invitation-body input[type=date] { width: 100%; min-width: 0; border: 1px solid hsl(var(--border)); border-radius: .5rem; background: hsl(var(--background)); padding: .65rem .75rem; font-size: .875rem; line-height: 1.6; font-weight: 400; }
+.supervisor-invitation-body textarea { resize: vertical; }
+.supervisor-context { border: 1px solid hsl(var(--border)); border-radius: .6rem; padding: .9rem; display: grid; gap: .8rem; }
+.supervisor-context .supervisor-recipient { padding-bottom: .8rem; }
+.supervisor-invitation-body small { font-weight: 400; font-size: .75rem; color: hsl(var(--muted-foreground)); line-height: 1.6; }
+.supervisor-invitation-body :focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.supervisor-recipient { padding-bottom: 1.1rem; border-bottom: 1px solid hsl(var(--border)); min-width: 0; }
+.supervisor-recipient > div:first-child { display: flex; align-items: flex-start; gap: .75rem; }
+.supervisor-recipient img { width: 42px; height: 42px; object-fit: cover; border-radius: 50%; }
+.supervisor-avatar { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: 50%; background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); font-size: .875rem; }
+.supervisor-recipient strong { overflow-wrap: anywhere; }
+.supervisor-recipient small { font-size: .75rem; color: hsl(var(--muted-foreground)); }
+.supervisor-brief dd { margin-inline-start: 0; }
+.supervisor-recipient p, .supervisor-project-brief p { font-size: .8125rem; color: hsl(var(--muted-foreground)); margin-block: .25rem; overflow-wrap: anywhere; }
+.supervisor-recipient-actions { display: flex; gap: 1.2rem; margin-top: .6rem; font-size: .75rem; color: hsl(var(--primary)); }
+.supervisor-recipient-actions a:hover, .supervisor-recipient-actions button:hover { text-decoration: underline; }
+.supervisor-project-brief strong { font-size: .9375rem; overflow-wrap: anywhere; }
+.supervisor-field-label { font-size: .875rem; font-weight: 500; margin-bottom: .65rem; }
+.supervisor-field-error { font-size: .75rem; color: hsl(var(--destructive)); font-weight: 400; }
+.supervisor-invitation-sheet footer { flex: none; display: flex; justify-content: flex-end; gap: .6rem; border-top: 1px solid hsl(var(--border)); padding: .9rem 1.5rem; padding-bottom: max(.9rem, env(safe-area-inset-bottom)); background: hsl(var(--background)); }
+@media (max-width: 640px) {
+  .supervisor-invitation-sheet { width: 100% !important; max-width: 100vw !important; height: 100dvh !important; max-height: 100dvh !important; border-radius: 0 !important; }
+  .supervisor-invitation-body { padding: 1rem; }
+  .supervisor-invitation-body textarea { font-size: 16px; }
+  .supervisor-invitation-sheet > header { padding-left: 1rem; }
+}

@@ -36,7 +36,9 @@ export async function mentorshipNotification(tx: Prisma.TransactionClient, input
     const eventKey = input.eventSuffix
       ? `${input.event}:${input.recordId}:${input.eventSuffix}:${userId}`
       : `${input.event}:${input.recordId}:${userId}`;
-    const defaultMessage = `${actor.fullName} · ${input.projectTitle}. ${vi ? "Mở Hỗ trợ học thuật để xem cập nhật." : "Open Academic Support to view the update."}`;
+    const defaultMessage = input.event === "MENTORSHIP_REQUEST_RECEIVED"
+      ? (vi ? `Bạn có lời mời hướng dẫn dự án ${input.projectTitle} từ ${actor.fullName}.` : `You have a supervision invitation for ${input.projectTitle} from ${actor.fullName}.`)
+      : `${actor.fullName} · ${input.projectTitle}. ${vi ? "Mở Hỗ trợ học thuật để xem cập nhật." : "Open Academic Support to view the update."}`;
     await notificationService.create({ userId, type: input.event, title: labels[input.event][vi ? 1 : 0],
       message: input.customMessage ? (vi ? input.customMessage.vi : input.customMessage.en) : defaultMessage,
       targetKind: "project", targetId: input.projectId, eventKey,

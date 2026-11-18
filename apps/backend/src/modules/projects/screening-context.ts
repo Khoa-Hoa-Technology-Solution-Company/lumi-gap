@@ -150,7 +150,9 @@ export async function reconcileExpiredDiscussions(c: WorkspaceContext) {
         data: {
           projectId: c.project.id,
           roundId: r.id,
-          actorId: "00000000-0000-0000-0000-000000000000",
+          // Keep the triggering account valid for the audit FK. actorType
+          // records that the deadline, rather than a reviewer, made the decision.
+          actorId: c.actorId,
           type: "ROUND_CLOSED_UNRESOLVED",
           details: {
             actorType: "SYSTEM",

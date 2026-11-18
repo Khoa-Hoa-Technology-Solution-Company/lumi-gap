@@ -47,6 +47,14 @@ describe("manuscript HTTP project identifiers", () => {
     mocks.ticket.mockReturnValue("signed-ticket");
   });
   const call = (project: string, path = "", body?: unknown) => fetch(`${origin}/projects/${project}/manuscripts${path}`, { method: body ? "POST" : "GET", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  it("accepts Other documents and rejects unknown document types", async () => {
+    const input = { title: "Other document", description: "", documentType: "OTHER", template: "BLANK", clientKey: crypto.randomUUID() };
+    expect((await call(legacy, "", input)).status).toBe(201);
+    expect(mocks.create).toHaveBeenCalledWith(canonical, actor, input);
+    mocks.create.mockClear();
+    expect((await call(legacy, "", { ...input, documentType: "UNKNOWN" })).status).toBe(400);
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
   it("validates comment cursors and preserves snapshot and account scope", async () => {
     const cursor = crypto.randomUUID(), snapshot = crypto.randomUUID();
     for (const query of ["cursor=invalid", "snapshotId=invalid", `cursor=${cursor}&actorId=${actor}`]) expect((await call(legacy, `/${manuscript}/comment-pages?${query}`)).status).toBe(400);

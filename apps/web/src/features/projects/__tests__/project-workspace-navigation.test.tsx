@@ -179,6 +179,25 @@ it("uses fresh project detail for the selected sidebar title and counts while th
   expect(container.querySelector("#project-tab-members small")?.textContent).toBe("3");
 });
 
+it("keeps project navigation functional when collapsed and restores the project switcher on expansion", async () => {
+  await render("/projects/shared?tab=submissions");
+  await act(async () => container.querySelector<HTMLButtonElement>(".sidebar-collapse-button")!.click());
+  expect(container.querySelector('.app-single-sidebar')?.getAttribute('data-collapsed')).toBe('true');
+  expect(container.querySelectorAll('.coord-nav-tabs [role="tab"]')).toHaveLength(11);
+  const papers = container.querySelector<HTMLButtonElement>('#project-tab-papers')!;
+  expect(papers.getAttribute('aria-label')).toBe('Literature');
+  expect(papers.querySelector('svg')).not.toBeNull();
+  await act(async () => papers.click());
+  expect(container.querySelector('output')?.textContent).toBe('/projects/shared?tab=papers');
+  await act(async () => papers.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown', bubbles:true})));
+  expect(document.activeElement?.id).toBe('project-tab-gaps');
+  expect(container.querySelector('output')?.textContent).toBe('/projects/shared?tab=gaps');
+  expect(container.querySelector('.coord-project-picker summary')?.getAttribute('aria-label')).toBe('Switch project');
+  await act(async () => container.querySelector<HTMLButtonElement>('.sidebar-collapse-button')!.click());
+  expect(container.querySelector('.app-single-sidebar')?.getAttribute('data-collapsed')).toBe('false');
+  expect(container.querySelector('.coord-project-picker')).not.toBeNull();
+});
+
 it("does not offer private sections when a fresh detail is a public summary despite an old library row", async () => {
   mocks.project.mockReturnValue({ data: { ...shared, accessRole: undefined, isPublicSummary: true }, isLoading: false });
   await render("/projects/shared");

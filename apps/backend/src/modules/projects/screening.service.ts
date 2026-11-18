@@ -963,6 +963,9 @@ export const screeningService = {
 
   async workspaceSummary(project: string, actor: string): Promise<ScreeningWorkspaceSummary> {
     return withWorkspace(project, actor, {}, async c => {
+      // Reconcile deadlines before computing cards and counts, so this response
+      // agrees with the task ledger on the very first read after expiry.
+      await reconcileScreeningObligations(c);
       const now = new Date();
       const liveReviewers = new Set((await screeningPeople(c)).map(p => p.id));
       const effectiveSlot = (a: { active: boolean; submittedAt: Date | null; dueAt: Date | null; reviewerId: string }) =>
@@ -1328,7 +1331,8 @@ export const screeningService = {
             publicationYear: paper?.publicationYear ?? null, journalName: paper?.journalName ?? null,
             phase: r.phase as ScreeningPhase, myDecision,
             submittedAt: review.submittedAt.toISOString(),
-            groupStatus: r.status === "WAITING_FULLTEXT" ? "WAITING_FULLTEXT"
+            groupStatus: r.status === "CLOSED_UNRESOLVED" ? "CLOSED_UNRESOLVED"
+              : r.status === "WAITING_FULLTEXT" ? "WAITING_FULLTEXT"
               : finalDecision === "INCLUDED" && r.phase === "TITLE_ABSTRACT" && automaticFullTextStage(roundSettings(r.settings)) ? "ADVANCE_TO_FULLTEXT"
               : finalDecision === "INCLUDE" || finalDecision === "INCLUDED" ? "INCLUDED"
               : finalDecision === "EXCLUDE" || finalDecision === "EXCLUDED" ? "EXCLUDED"
@@ -1389,7 +1393,6 @@ export const screeningService = {
         pendingInformation.push({ paperId: r.paperId, roundId: r.id, title: paper.title, kind: r.status === "WAITING_FULLTEXT" ? "FULLTEXT" : "INFORMATION", reason: view.resolution?.reason ?? "Bổ sung nguồn toàn văn rồi mở vòng đánh giá độc lập tiếp theo." });
       }
       const acceptedPapers = await acceptedScreeningPapers(c);
-      await reconcileScreeningObligations(c);
       const [automaticTasks, automaticDoneTotal] = await Promise.all([
         screeningObligationDtos(c, { maxDone: 5 }),
         c.tx.screeningObligation.count({ where: { projectId: c.project.id, assigneeId: c.actorId, status: "DONE" } }),

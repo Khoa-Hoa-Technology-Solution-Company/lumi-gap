@@ -25,6 +25,7 @@ import { projectTeamChatRouter } from "./team-chat.routes.js";
 import { projectWorkspaceRouter } from "./project-workspace.routes.js";
 import { projectResearchRouter } from "./project-research.routes.js";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
+import { mentorRolesService, proposeMentorRolesSchema, respondMentorRolesSchema } from "./mentor-roles.service.js";
 import { env } from "../../config/env.js";
 import { projectMentorshipService } from "./project-mentorship.service.js";
 import { mentorPlanService } from "./mentor-plan.service.js";
@@ -159,6 +160,9 @@ projectRouter.post(
 );
 projectRouter.get("/:id/mentorships", validate(paramIdSchema, "params"), validate(academicSearchSchema, "query"), projectMentorshipController.list);
 projectRouter.get("/:id/mentorships/:relationshipId", validate(mentorshipParamsSchema, "params"), projectMentorshipController.detail);
+projectRouter.get("/:id/mentorship-roles", validate(paramIdSchema, "params"), async (req, res) => { res.set("Cache-Control", "private, no-store").json({ success: true, data: await mentorRolesService.read(String(req.params.id), req.user!.sub) }); });
+projectRouter.post("/:id/mentorship-roles", academicRequestLimiter, validate(paramIdSchema, "params"), validate(proposeMentorRolesSchema), async (req, res) => { res.status(201).json({ success: true, data: await mentorRolesService.propose(String(req.params.id), req.user!.sub, req.body) }); });
+projectRouter.post("/:id/mentorship-roles/:proposalId/respond", academicRequestLimiter, validate(paramIdSchema.extend({ proposalId: z.string().uuid() }), "params"), validate(respondMentorRolesSchema), async (req, res) => { res.json({ success: true, data: await mentorRolesService.respond(String(req.params.id), req.user!.sub, String(req.params.proposalId), req.body.action) }); });
 projectRouter.get("/:id/mentor-suggestions", validate(paramIdSchema, "params"), validate(mentorSuggestionsQuerySchema, "query"), async (req, res) => {
   res.json({ success: true, data: await projectMentorshipService.suggestions(String(req.params.id), req.user!.sub, mentorSuggestionsQuerySchema.parse(req.query)) });
 });

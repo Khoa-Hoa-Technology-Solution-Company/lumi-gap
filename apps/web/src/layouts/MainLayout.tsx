@@ -26,6 +26,7 @@ import { formatCompactNumber, formatNumber } from "@/utils";
 import { LanguageSwitcher, useI18n } from "@/i18n";
 import { isAdminSystemRole } from "@trend/shared-types";
 import { storePostLogoutProjectPath } from "@/features/projects/utils/project-workspace-navigation";
+import { mentorWorkspaceDestination } from "@/features/projects/utils/mentor-workspace-navigation";
 import "./app-header.css";
 
 const NotificationMenu = lazy(() => import("@/features/notifications/components/notification-menu"));
@@ -226,8 +227,9 @@ export function MainLayout() {
   const activeUser = currentUserData?.user ?? user;
   const visibleNavGroups = navGroups.map(group => ({
     ...group,
-    items: group.items.map(item => item.to === "/academic-support" && activeUser?.academicRole === "LECTURER"
-      ? { ...item, to: "/mentor-workspace", label: "mentorWorkspace.title" } : item),
+    items: group.items.filter(item => item.to !== "/academic-support" || activeUser?.academicRole !== "LECTURER")
+      .map(item => activeUser?.academicRole === "LECTURER" && ["/reviews", "/review-templates"].includes(item.to)
+        ? { ...item, to: mentorWorkspaceDestination(item.to) } : item),
   }));
   const { data: balanceData } = useCreditBalance({ enabled: isAuthed && !currentUserQuery.isFetching && !!currentUserData?.user });
   const credits = balanceData?.credits ?? activeUser?.credits;
@@ -250,6 +252,16 @@ export function MainLayout() {
     const destination = resolvePostAuthPath(currentUserData.user, currentPath);
     if (destination !== currentPath) {
       return <Navigate to={destination} state={{ from: currentPath }} replace />;
+    }
+    // Existing bookmarks and notification URLs enter the same mentor shell as
+    // its sidebar links. The destination page still checks assignment access.
+    if (currentUserData.user.academicRole === "LECTURER" && /^\/(reviews|review-requests|review-templates)(\/|$)/.test(location.pathname)) {
+      const mentorPath = mentorWorkspaceDestination(location.pathname.replace(/\/$/, ""));
+      if (mentorPath.startsWith("/mentor-workspace?")) {
+        const search = new URLSearchParams(location.search);
+        new URLSearchParams(mentorPath.split("?")[1]).forEach((value, key) => search.set(key, value));
+        return <Navigate to={`/mentor-workspace?${search}${location.hash}`} replace />;
+      }
     }
   }
 
@@ -462,9 +474,9 @@ function UserMenu({ bookmarkCount, credits }: { bookmarkCount: number; credits?:
           <User className="mr-2 h-4 w-4" />
           {t("Profile")}
         </DropdownMenuItem>
-        {data?.user.academicRole === "LECTURER" && (
-          <DropdownMenuItem onSelect={() => navigate("/academic-support")}>
-            <GraduationCap className="mr-2 h-4 w-4" />{t("Lecturer workspace")}
+        {(data?.user?.academicRole === "LECTURER" || isAdminSystemRole(systemRole)) && (
+          <DropdownMenuItem onSelect={() => navigate("/mentor-workspace")}>
+            <GraduationCap className="mr-2 h-4 w-4" />{t("mentorWorkspace.title")}
           </DropdownMenuItem>
         )}
         <DropdownMenuItem onSelect={() => navigate("/settings/security")}>
@@ -484,12 +496,6 @@ function UserMenu({ bookmarkCount, credits }: { bookmarkCount: number; credits?:
           <Trophy className="mr-2 h-4 w-4" />
           {t("Rankings")}
         </DropdownMenuItem>
-        {(activeUser?.academicRole === "LECTURER" || isAdminSystemRole(systemRole)) && (
-          <DropdownMenuItem onSelect={() => navigate("/mentor-workspace")}>
-            <GraduationCap className="mr-2 h-4 w-4" />
-            {t("mentorWorkspace.title")}
-          </DropdownMenuItem>
-        )}
         {isAdminSystemRole(systemRole) && (
           <>
             <DropdownMenuSeparator />

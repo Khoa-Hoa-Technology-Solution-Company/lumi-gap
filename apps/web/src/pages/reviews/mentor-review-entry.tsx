@@ -1,5 +1,6 @@
+import { useReviewPageNavigation } from "@/features/reviews/hooks/use-review-page-navigation";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { submissionsApi } from "@/features/submissions";
 import { Button } from "@/components/ui/button";
@@ -7,8 +8,10 @@ import { useI18n } from "@/i18n";
 
 /** Converts only a retained, sender-assigned legacy delivery via the existing API. */
 export function MentorReviewEntryPage() {
-  const { submissionId = "" } = useParams();
-  const navigate = useNavigate(), client = useQueryClient(), { t } = useI18n();
+  const { embedded, param, navigate } = useReviewPageNavigation();
+  const Container = embedded ? "section" : "main";
+  const submissionId = param("submissionId") ?? "";
+  const client = useQueryClient(), { t } = useI18n();
   const preparation = useRef<{ id: string; promise: ReturnType<typeof submissionsApi.prepareMentorReview> }>();
   const [error, setError] = useState(false), [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -21,9 +24,9 @@ export function MentorReviewEntryPage() {
     }).catch(() => { if (active) setError(true); });
     return () => { active = false; };
   }, [submissionId, navigate, client, attempt]);
-  return <main className="mx-auto max-w-3xl space-y-4 px-4 py-10" data-no-i18n>
+  return <Container className="mx-auto max-w-3xl space-y-4 px-4 py-10" data-no-i18n>
     <Link to="/mentor-workspace?view=work" className="text-sm text-primary underline">{t("mentorWorkspace.backGlobal")}</Link>
     {error ? <div role="alert"><p>{t("mentorWorkspace.reviewEntryError")}</p><Button className="mt-3" variant="outline" onClick={() => { preparation.current = undefined; setAttempt(n => n + 1); }}>{t("Try again")}</Button></div>
       : <p role="status">{t("mentorWorkspace.preparingReview")}</p>}
-  </main>;
+  </Container>;
 }

@@ -3,7 +3,8 @@ import { z } from "zod";
 import { databaseIdSchema } from "../../common/validation/database-id.js";
 import { projectMentorshipService } from "./project-mentorship.service.js";
 import { mentorPolicySchema } from "./dto/mentor-access.schema.js";
-import { invitationDossierInputSchema } from "./mentorship-dossier.js";
+import { invitationDossierInputSchema, officialInvitationDossierSchema } from "./mentorship-dossier.js";
+import { hasMeaningfulResearchText } from "@trend/shared-types";
 
 export const mentorshipParamsSchema = z.object({
   id: databaseIdSchema,
@@ -13,7 +14,7 @@ export const mentorshipParamsSchema = z.object({
 const requestBody = z.object({
   mentorUserId: databaseIdSchema,
   message: z.string().trim().max(1000).default(""),
-  mentorRole: z.enum(["PRIMARY", "SECONDARY"]).default("PRIMARY"),
+  mentorRole: z.enum(["UNASSIGNED", "PRIMARY", "SECONDARY"]).default("UNASSIGNED"),
   attachmentIds: z.array(z.string().uuid()).max(5).refine(ids => new Set(ids).size === ids.length).default([]),
   idempotencyKey: z.string().uuid().optional(),
   access: mentorPolicySchema.optional(),
@@ -23,11 +24,11 @@ const requestBody = z.object({
   dossier: invitationDossierInputSchema.optional(),
 }).strict();
 const hasContent = (input: { message: string; attachmentIds: string[] }) => Boolean(input.message || input.attachmentIds.length);
-export const requestMentorshipSchema = requestBody.refine(hasContent, "Add a message or an attachment to your invitation");
+export const requestMentorshipSchema = requestBody.extend({ message: z.string().trim().max(1000).refine(hasMeaningfulResearchText, "Describe your invitation and the guidance you need"), dossier: officialInvitationDossierSchema }).strict();
 export const previewDossierSchema = z.object({
   mentorUserId: databaseIdSchema,
   message: z.string().trim().max(1000).default(""),
-  mentorRole: z.enum(["PRIMARY", "SECONDARY"]).default("PRIMARY"),
+  mentorRole: z.enum(["UNASSIGNED", "PRIMARY", "SECONDARY"]).default("UNASSIGNED"),
   access: mentorPolicySchema.optional(),
   dossier: invitationDossierInputSchema.optional(),
 }).strict();
