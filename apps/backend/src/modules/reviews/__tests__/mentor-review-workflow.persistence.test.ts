@@ -96,6 +96,11 @@ describe.skipIf(!enabled).sequential("scoped mentor delivery and revision workfl
     expect((await read()).items[0]).toMatchObject({ kind: "MANUSCRIPT_REVIEW", version: 1, href: `/review-requests/${request}` });
     expect((await fetch(`${base}/submissions/${submission}`, { headers: headers(mentor) })).status).toBe(403);
     expect(await db.notification.count({ where: { userId: mentor, targetUuid: request, type: "REVIEW_REQUESTED" } })).toBe(1);
+    const timeline = await submissions.history(submission, owner, "user");
+    expect(timeline.sourceManuscriptWritable).toBe(false);
+    expect(timeline.versions[0]).toMatchObject({ id: v1, originalFileName: "study.pdf", hasPdf: true });
+    expect(timeline.reviewRequests[0]).toMatchObject({ id: request, revisionId: v1, revisionNumber: 1, origin: "MENTOR_GUIDANCE", reviewerId: mentor, status: "REQUESTED", canView: true });
+    expect(timeline.reviewRequests[0]!.createdAt).toBeTruthy();
   });
   it("opens the assigned PDF through authenticated endpoints and refuses other reviewers, edits, and guessed versions", async () => {
     expect((await fetch(`${base}/review-requests/${request}/accept`, { method: "POST", headers: headers(mentor) })).status).toBe(204);
@@ -168,6 +173,11 @@ describe.skipIf(!enabled).sequential("scoped mentor delivery and revision workfl
     const workspace = await reviews.getReview(assignment, mentor); expect(workspace.artifactRevision!.id).toBe(v2); expect(workspace.artifactContent).toContain("predeclared criteria");
     expect(workspace.comparisonVersions.map(v => v.id)).toEqual([v1, v2]);
     expect((await requests.detail(request, mentor)).reviews[0]!.id).toBe(firstReview);
+    const history = await submissions.history(submission, owner, "user");
+    expect(history.reviewRequests.find(row => row.id === request)).toMatchObject({ revisionId: v2, revisionNumber: 2, status: "RESUBMITTED" });
+    const oldReview = history.versions.find(row => row.id === v1)!.reviews.find(row => row.id === firstReview)!;
+    expect(oldReview.requestId).toBe(request);
+    expect(oldReview.requiredRevisions.find(row => row.id === revisionItem)!.responses[0]).toMatchObject({ submissionRevisionId: v2, responseText: "Comparison group criteria are now recorded in Methods." });
     expect((await read()).items[0]).toMatchObject({ version: 2, kind: "MANUSCRIPT_REVIEW" });
     await requests.resolveRevisionItem(request, revisionItem, "ACCEPTED", mentor, v2);
     await reviews.saveReview(assignment, mentor, await input("STRONG"), true);
@@ -200,6 +210,12 @@ describe.skipIf(!enabled).sequential("scoped mentor delivery and revision workfl
     const assigned = await db.reviewerAssignment.findFirstOrThrow({ where: { submissionId: sent.submission.id, reviewerId: mentor } });
     await requests.accept(assigned.reviewRequestId!, mentor);
     const workspace = await reviews.getReview(assigned.id, mentor);
+    // Legacy snapshot-only deliveries have no live-source association. The
+    // canonical mentor-send workflow persists this association explicitly.
+    expect((await submissions.history(sent.submission.id, owner, "user")).sourceManuscriptWritable).toBe(false);
+    await db.submission.update({ where: { id: sent.submission.id }, data: { sourceManuscriptId: sourceWorkspace } });
+    expect((await submissions.history(sent.submission.id, owner, "user")).sourceManuscriptWritable).toBe(true);
+    expect((await submissions.history(sent.submission.id, mentor, "user")).sourceManuscriptWritable).toBe(false);
     if (process.env.MENTOR_REVIEW_QA_OUTPUT) {
       await mkdir(dirname(process.env.MENTOR_REVIEW_QA_OUTPUT), { recursive: true });
       await writeFile(process.env.MENTOR_REVIEW_QA_OUTPUT, JSON.stringify(workspace));

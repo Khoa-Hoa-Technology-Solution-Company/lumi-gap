@@ -1,3 +1,4 @@
+import { submissionDetailEn } from "./submission-detail";
 import { registrationEn } from "./registration";
 import { mentorWorkspaceEn } from "./mentor-workspace";
 import { scientificReviewEn } from "./scientific-review";
@@ -1859,5 +1860,6 @@ export const en = {
   ...mentorJourneyEn,
   ...creditAttributionEn,
   ...submissionWorkflowStrings,
+  ...submissionDetailEn,
 } as const;
 import { creditAttributionEn } from "./credit-attribution";
