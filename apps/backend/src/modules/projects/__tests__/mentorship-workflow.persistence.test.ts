@@ -161,12 +161,24 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     expect(suggestions.items[0].suggestedBy._id).toBe(member);
     const notifications = await db.notification.findMany({ where: { targetUuid: project } });
     expect(notifications.map(n => n.userId)).toEqual([owner]); expect(notifications[0].emailStatus).toBe("SKIPPED");
+    expect(notifications[0].message).toContain("suggested");
+    const planUpdated = await (await import("../mentor-plan.service.js")).mentorPlanService.change(project, owner, { action: "add", expectedVersion: 0, mentorUserId: mentor, mentorRole: "PRIMARY" });
+    expect(planUpdated.candidates[0].mentorUserId).toBe(mentor);
+    expect(await db.mentorSuggestion.findFirst({ where: { projectId: project } })).toMatchObject({ status: "PENDING" });
+    expect(await db.notification.count({ where: { targetUuid: project, userId: mentor } })).toBe(0);
+    expect(await db.notification.count({ where: { targetUuid: project, userId: member, type: "MENTORSHIP_SUGGESTION_PLANNED" } })).toBe(1);
+    const ownerAllBeforeInvite = await service.suggestions(project, owner, { scope: "all" });
+    expect(ownerAllBeforeInvite.items[0]).toMatchObject({ inRecruitmentPlan: true, plannedRole: "PRIMARY" });
     await expect(service.suggestions(project, mentor)).rejects.toMatchObject({ statusCode: 403 });
     await expect(service.workspace(project, mentor)).rejects.toMatchObject({ statusCode: 403 });
     const request = await invite();
     expect(await db.mentorSuggestion.findFirst({ where: { projectId: project } })).toMatchObject({ status: "INVITED", requestId: request.id, resolvedBy: owner });
+    expect(await db.notification.count({ where: { targetUuid: project, userId: member, type: "MENTORSHIP_SUGGESTION_INVITED" } })).toBe(1);
     expect((await service.suggestions(project, member)).items).toEqual([]);
+    const memberHistoryAfterInvite = await service.suggestions(project, member, { scope: "mine" });
+    expect(memberHistoryAfterInvite.items[0]).toMatchObject({ status: "INVITED", requestId: request.id, requestStatus: "PENDING" });
     await service.accept(project, request.id, mentor);
+    expect((await service.suggestions(project, member, { scope: "mine" })).items[0]).toMatchObject({ status: "INVITED", requestStatus: "ACCEPTED", hasActiveRelationship: true });
     expect((await access.workspace(project, mentor)).policies[0].policy.effective).toBe(true);
     expect(await db.projectMember.count({ where: { projectId: project, userId: mentor } })).toBe(0);
   });
@@ -177,8 +189,11 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     await expect(service.suggest(project, member, { mentorUserId: mentor, message: "Recommend" })).rejects.toMatchObject({ statusCode: 409 });
     const suggestion = await service.suggest(project, member, { mentorUserId: second, message: "Recommend methods lecturer" });
     await expect(service.dismissSuggestion(project, suggestion.id, member)).rejects.toMatchObject({ statusCode: 403 });
-    await service.dismissSuggestion(project, suggestion.id, owner); await service.dismissSuggestion(project, suggestion.id, owner);
+    await service.dismissSuggestion(project, suggestion.id, owner, "Preferred another focus area"); await service.dismissSuggestion(project, suggestion.id, owner);
     expect((await service.suggestions(project, owner)).items).toEqual([]);
+    expect((await service.suggestions(project, member, { scope: "mine" })).items[0]).toMatchObject({ status: "DISMISSED", dismissReason: "Preferred another focus area" });
+    expect(await db.notification.count({ where: { targetUuid: project, userId: member, type: "MENTORSHIP_SUGGESTION_DISMISSED" } })).toBe(1);
+    expect(await db.notification.count({ where: { targetUuid: project, userId: second } })).toBe(0);
     await db.projectMember.update({ where: { projectId_userId: { projectId: project, userId: member } }, data: { status: "REMOVED" } });
     for (const action of [() => service.mentors(project, member), () => service.suggestions(project, member), () => service.suggest(project, member, { mentorUserId: second, message: "Recommend" })]) await expect(action()).rejects.toMatchObject({ statusCode: 403 });
   });
@@ -244,7 +259,8 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     const relationship = await db.mentorRelationship.findFirstOrThrow({ where: { sourceRequestId: request.id } });
     expect(relationship.status).toBe("ACTIVE"); expect(await db.mentorRelationship.count({ where: { projectId: project } })).toBe(1);
     expect(await db.projectMember.count({ where: { projectId: project, userId: mentor } })).toBe(0);
-    expect(await db.notification.count({ where: { targetUuid: project, type: "MENTORSHIP_REQUEST_ACCEPTED" } })).toBe(1);
+    const acceptedNotifications = await db.notification.findMany({ where: { targetUuid: project, type: "MENTORSHIP_REQUEST_ACCEPTED" }, select: { userId: true } });
+    expect(acceptedNotifications.map(row => row.userId).sort()).toEqual([owner, member].sort());
   });
   it("simultaneous owner invitation and applicant interest create at most one formal consent record", async () => {
     await seeking();
@@ -256,51 +272,40 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     expect(await db.projectMember.count({ where: { projectId: project, userId: mentor } })).toBe(0);
     expect(await db.notification.count({ where: { targetUuid: project, type: "MENTORSHIP_REQUEST_RECEIVED" } })).toBe(1);
   });
-  it("reserves the role before consent and accepts a valid invitation idempotently", async () => {
+  it("keeps pending invitations independent and accepts one request idempotently", async () => {
     const a = await invite();
-    await expect(invite(second)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await invite(second)).status).toBe("PENDING");
     await Promise.all([service.accept(project, a.id, mentor), service.accept(project, a.id, mentor)]);
     expect(await db.mentorRelationship.count({ where: { projectId: project, status: "ACTIVE" } })).toBe(1);
     expect(await db.mentorshipRequest.count({ where: { projectId: project, status: "CLOSED_CAPACITY_REACHED" } })).toBe(0);
   });
-  it("enforces bounded pending invitations and required message schemas", async () => {
+  it("allows multiple pending invitations while enforcing message schemas", async () => {
     for (let i = 0; i < mentorshipPolicy.maxPendingPerRole; i++) {
       const id = i === 0 ? mentor : await user("LECTURER", true); await service.preferences(id, { acceptingMentorships: true }); await invite(id);
     }
-    await expect(invite(second)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await invite(second)).status).toBe("PENDING");
     expect(requestMentorshipSchema.safeParse({ mentorUserId: mentor, message: " " }).success).toBe(false);
     expect(requestMentorshipSchema.safeParse({ mentorUserId: mentor, message: "Help", status: "ACCEPTED" }).success).toBe(false);
   });
-  it("assigns primary before secondary, preserves separate roles and reopens only the ended position", async () => {
-    expect((await service.list(project, owner)).positions?.SECONDARY.status).toBe("VACANT");
-    await expect(service.request(project, owner, { mentorUserId: second, mentorRole: "SECONDARY", message: "Complementary methods" })).rejects.toMatchObject({ statusCode: 409 });
-    const first = await invite(); await service.accept(project, first.id, mentor);
-    expect((await service.list(project, owner)).positions?.SECONDARY.status).toBe("VACANT");
+  it("preserves explicit historical named roles without requiring primary-first and keeps new replacement invitations unassigned", async () => {
     const secondary = await service.request(project, owner, { mentorUserId: second, mentorRole: "SECONDARY", message: "Complementary methods" });
-    await service.accept(project, secondary.id, second);
+    const first = await service.request(project, owner, { mentorUserId: mentor, mentorRole: "PRIMARY", message: "Guide our evaluation methods" });
+    await service.accept(project, secondary.id, second); await service.accept(project, first.id, mentor);
     const list = await service.list(project, owner);
     expect(list.relationships.map(r => r.mentorRole).sort()).toEqual(["PRIMARY", "SECONDARY"]);
     expect(list.counts.active).toBe(2); expect(list.policy.maxActiveMentors).toBe(2);
-    expect(await db.projectMember.count({ where: { projectId: project, userId: { in: [mentor, second] } } })).toBe(0);
     const primary = list.relationships.find(r => r.mentorRole === "PRIMARY")!;
     await expect(service.end(project, primary.id, member)).rejects.toMatchObject({ statusCode: 403 });
     await service.end(project, primary.id, owner, "Replacing mentor");
-    expect((await service.list(project, owner)).positions?.PRIMARY.status).toBe("VACANT");
-    expect((await db.mentorRelationship.findUniqueOrThrow({ where: { id: list.relationships.find(r => r.mentorRole === "SECONDARY")!.id } })).mentorRole).toBe("SECONDARY");
-    expect(await canAccessProjectAsMentor(project, mentor)).toBe(false);
-    expect(await canAccessProjectAsMentor(project, second)).toBe(true);
+    expect(await canAccessProjectAsMentor(project, mentor)).toBe(false); expect(await canAccessProjectAsMentor(project, second)).toBe(true);
     const replacement = await user("LECTURER", true); await service.preferences(replacement, { acceptingMentorships: true });
-    await expect(invite(replacement)).rejects.toMatchObject({ statusCode: 409 });
-    const plan = await mentorPlanService.read(project, owner);
-    await mentorPlanService.change(project, owner, { action: "restart", expectedVersion: plan.version });
-    const request = await invite(replacement); await service.accept(project, request.id, replacement);
-    expect((await service.list(project, owner)).positions?.PRIMARY.status).toBe("ASSIGNED");
+    const request = await invite(replacement); expect(request.mentorRole).toBe("UNASSIGNED"); await service.accept(project, request.id, replacement);
     expect(await db.mentorRelationship.count({ where: { projectId: project } })).toBe(3);
   });
-  it("keeps a valid secondary reservation when the primary leaves", async () => {
+  it("keeps a historical secondary invitation valid when another mentor leaves", async () => {
     const first = await invite(); await service.accept(project, first.id, mentor);
     const secondary = await service.request(project, owner, { mentorUserId: second, mentorRole: "SECONDARY", message: "Methods guidance" });
-    const primary = (await service.list(project, owner)).relationships.find(r => r.mentorRole === "PRIMARY")!;
+    const primary = (await service.list(project, owner)).relationships.find(r => r.mentorUser._id === mentor)!;
     await service.end(project, primary.id, mentor, "Unavailable");
     expect((await service.list(project, owner)).positions?.SECONDARY.status).toBe("INVITING");
     await service.accept(project, secondary.id, second);
@@ -318,14 +323,14 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
   it("database guards prevent bypassing role uniqueness and matching accepted consent", async () => {
     const invalid = await db.mentorshipRequest.create({ data: { projectId: project, mentorUserId: second, requestedBy: owner, mentorRole: "PRIMARY", status: "ACCEPTED" } });
     await expect(db.mentorRelationship.create({ data: { projectId: project, mentorUserId: second, sourceRequestId: invalid.id, mentorRole: "SECONDARY" } })).rejects.toThrow();
-    const first = await invite(); await service.accept(project, first.id, mentor);
-    const duplicate = await db.mentorshipRequest.create({ data: { projectId: project, mentorUserId: second, requestedBy: owner, status: "ACCEPTED" } });
-    await expect(db.mentorRelationship.create({ data: { projectId: project, mentorUserId: second, sourceRequestId: duplicate.id } })).rejects.toThrow();
+    const first = await service.request(project, owner, { mentorUserId: mentor, mentorRole: "PRIMARY", message: "Guide research methods" }); await service.accept(project, first.id, mentor);
+    const duplicate = await db.mentorshipRequest.create({ data: { projectId: project, mentorUserId: second, requestedBy: owner, mentorRole: "PRIMARY", status: "ACCEPTED" } });
+    await expect(db.mentorRelationship.create({ data: { projectId: project, mentorUserId: second, sourceRequestId: duplicate.id, mentorRole: "PRIMARY" } })).rejects.toThrow();
     expect(await db.mentorRelationship.count({ where: { projectId: project, status: "ACTIVE" } })).toBe(1);
   });
-  it("uses six-day requests, preserves explicit owner cancellation and expiry history", async () => {
+  it("leaves new invitations without an expiry and preserves cancellation and explicit historical expiry", async () => {
     const request = await invite();
-    expect(new Date(request.expiresAt!).getTime() - new Date(request.createdAt).getTime()).toBeCloseTo(6 * 86400000, -3);
+    expect(request.expiresAt).toBeUndefined();
     const cancelled = await service.cancel(project, request.id, owner);
     expect(cancelled.status).toBe("CANCELED_BY_PROJECT");
     const other = await invite(second);
@@ -389,7 +394,7 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     await expect(content.upload(project, member, "PROJECT_TO_LECTURER", pdfFile())).rejects.toMatchObject({ statusCode: 403 });
     expect(await db.mentorshipRequest.count({ where: { projectId: project } })).toBe(0);
   });
-  it("validates real image/document bytes and allows a file-only invitation with exact retry semantics", async () => {
+  it("validates real image/document bytes and sends an approved brief with attachments and exact retry semantics", async () => {
     await expect(content.upload(project, owner, "PROJECT_TO_LECTURER", { ...pdfFile(), buffer: Buffer.from("not a PDF") })).rejects.toMatchObject({ statusCode: 400 });
     await expect(content.upload(project, owner, "PROJECT_TO_LECTURER", { ...pdfFile(), mimetype: "image/png" })).rejects.toMatchObject({ statusCode: 400 });
     await expect(content.upload(project, owner, "PROJECT_TO_LECTURER", { ...pdfFile(), mimetype: "image/svg+xml" })).rejects.toMatchObject({ statusCode: 400 });
@@ -397,7 +402,7 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     const image = await content.upload(project, owner, "PROJECT_TO_LECTURER", { buffer: png, mimetype: "image/png", originalname: "diagram.png" });
     const docx = await content.upload(project, owner, "PROJECT_TO_LECTURER", { buffer: Buffer.from(zipSync({ "[Content_Types].xml": strToU8("<Types/>"), "word/document.xml": strToU8("<document/>") })), mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", originalname: "proposal.docx" });
     expect(docx.mimeType).toContain("wordprocessingml");
-    const key = crypto.randomUUID(), input = { mentorUserId: mentor, message: "", attachmentIds: [image.id], idempotencyKey: key };
+    const key = crypto.randomUUID(), input = { mentorUserId: mentor, message: "Please guide our evaluation methodology", dossier: { researchSummary: "Our team studies reproducible evaluation methods and seeks guidance on documented baselines for the planned controlled research experiment.", sharingConfirmed: true, expectations: { supportAreas: ["RESEARCH_METHODOLOGY"] } }, attachmentIds: [image.id], idempotencyKey: key };
     expect(requestMentorshipSchema.safeParse(input).success).toBe(true);
     const request = await service.request(project, owner, input);
     expect((await service.request(project, owner, input)).id).toBe(request.id);
@@ -575,7 +580,8 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     const request = await invite(mentor, crypto.randomUUID()); const accepted = await service.accept(project, request.id, mentor);
     expect(accepted.status).toBe("ACCEPTED"); expect((await db.notification.findFirstOrThrow({ where: { targetUuid: project } })).dispatchedAt).toBeNull();
     vi.mocked(notificationQueue.add).mockResolvedValue({} as never); await service.accept(project, request.id, mentor);
-    expect(await db.notification.count({ where: { targetUuid: project } })).toBe(2);
+    expect(await db.notification.count({ where: { targetUuid: project } })).toBe(3);
+    for (const recipient of [owner, member]) expect(await db.notification.count({ where: { targetUuid: project, userId: recipient, type: "MENTORSHIP_REQUEST_ACCEPTED" } })).toBe(1);
     expect(await db.notification.count({ where: { targetUuid: project, dispatchedAt: null } })).toBe(0);
   });
   it("an outbox scan failure does not report committed consent as failed and is recoverable on retry", async () => {
@@ -642,10 +648,10 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     const ended = buildMentorshipMail({ event: "MENTORSHIP_ENDED", projectId: project, projectTitle: "Team", actorName: "Owner" }, "Mentor", "en", "https://lumigap.example");
     expect(ended.text).toContain("/academic-support?view=history");
   });
-  it("preserves mentorship consent and relationship history by requiring archive instead of deletion", async () => {
+  it("preserves mentorship consent and relationship history when the project is moved to trash", async () => {
     const request = await invite(); await service.accept(project, request.id, mentor);
-    await expect(projectService.deleteProject(project, owner)).rejects.toMatchObject({ statusCode: 409 });
-    await projectService.archiveProject(project, owner);
+    expect(await projectService.deleteProject(project, owner)).toMatchObject({ softDeleted: true, retentionDays: 30 });
+    expect(await canAccessProjectAsMentor(project, mentor)).toBe(false);
     expect(await db.mentorRelationship.count({ where: { projectId: project } })).toBe(1); expect(await db.mentorshipRequest.count({ where: { projectId: project } })).toBe(1);
   });
 });

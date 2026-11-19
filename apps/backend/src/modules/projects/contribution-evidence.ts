@@ -23,6 +23,11 @@ export async function contributionEvidenceManifest(tx: WorkspaceDb, projectId: s
       case "QUESTION": { const plan = await tx.researchPlan.findUnique({ where: { projectId } }); source = Array.isArray(plan?.questions) ? plan.questions.find(question => question && typeof question === "object" && !Array.isArray(question) && question.id === ref.id) : null; break; }
       case "REVIEW_REQUEST": source = await tx.reviewRequest.findFirst({ where: { id: ref.id, projectId } }); break;
       case "TREND": source = await tx.projectTrendSnapshot.findFirst({ where: { id: ref.id, projectId } }); break;
+      case "SUBMISSION": source = await tx.submission.findFirst({ where: { id: ref.id, projectId } }); break;
+      case "SUBMISSION_REVISION": { const row = await tx.submissionRevision.findUnique({ where: { id: ref.id } }); source = row && await tx.submission.count({ where: { id: row.submissionId, projectId } }) ? row : null; break; }
+      case "HUMAN_REVIEW": { const row = await tx.humanReview.findFirst({ where: { id: ref.id, status: "SUBMITTED" } }); source = row && await tx.submission.count({ where: { id: row.submissionId, projectId } }) ? row : null; break; }
+      case "SYNTHESIS": source = await tx.projectWorkspaceRevision.findFirst({ where: { id: ref.id, projectId, entityKind: "SYNTHESIS" } }); break;
+      case "RESEARCH_DECISION": source = await tx.projectDecision.findFirst({ where: { id: ref.id, projectId } }); break;
       default: throw AppError.badRequest("Unsupported contribution evidence reference");
     }
     return { kind: ref.kind, id: ref.id, digest: createHash("sha256").update(JSON.stringify(source ?? null)).digest("hex") };

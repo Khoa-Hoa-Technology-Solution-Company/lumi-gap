@@ -59,7 +59,11 @@ export function submissionTypeBadge(type?: string) {
     RESEARCH_GAP: "Research Gap",
     METHODOLOGY: "Phương pháp nghiên cứu",
     THESIS_CHAPTER: "Chương nghiên cứu",
-    RESEARCH_PAPER: "Bản thảo hoàn chỉnh",
+    RESEARCH_PAPER: "Bài báo nghiên cứu",
+    TECHNICAL_REPORT: "Báo cáo nghiên cứu",
+    THESIS: "Khóa luận, luận văn",
+    PRESENTATION: "Trình chiếu",
+    OTHER: "Tài liệu khác",
     THESIS_DRAFT: "Bản thảo luận văn",
     SOFTWARE_RESEARCH_PROJECT: "Dự án phần mềm",
   };
@@ -85,7 +89,7 @@ export function SubmissionListPage({ projectId, readOnly = false }: { projectId?
           <Button asChild className="shrink-0 self-start shadow-sm">
             <Link to={newPath}>
               <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              {t("New submission")}
+              {t("Send manuscript for feedback")}
             </Link>
           </Button>
         )}
@@ -149,7 +153,7 @@ export function SubmissionListPage({ projectId, readOnly = false }: { projectId?
             <Button asChild className="mt-6" size="sm">
               <Link to={newPath}>
                 <FilePlus2 className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                {t("New submission")}
+                {t("Send manuscript for feedback")}
               </Link>
             </Button>
           )}

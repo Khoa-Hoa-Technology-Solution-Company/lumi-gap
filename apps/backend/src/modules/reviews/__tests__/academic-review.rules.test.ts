@@ -17,7 +17,7 @@ describe("academic review lifecycle rules", () => {
     expect(reviewOutcome("MAJOR_REVISION", 0)).toEqual({ requestStatus: "REVISION_REQUESTED", submissionStatus: "revision_requested", assignmentStatus: "accepted" });
     expect(reviewOutcome("STRONG", 1).requestStatus).toBe("REVISION_REQUESTED");
     expect(reviewOutcome("STRONG", 0).requestStatus).toBe("COMPLETED");
-    expect(reviewOutcome("NOT_READY", 0).requestStatus).toBe("COMPLETED");
+    expect(reviewOutcome("NOT_READY", 0).requestStatus).toBe("REVISION_REQUESTED");
   });
 
   it("limits cancellation and resubmission to their explicit lifecycle states", () => {

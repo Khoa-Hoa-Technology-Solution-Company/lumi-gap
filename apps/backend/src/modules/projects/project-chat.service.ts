@@ -155,7 +155,7 @@ export class ProjectChatService {
   private async assertCanAccess(projectIdInput: string, userIdInput: string) {
     const prisma = getPrisma();
     const [project, user] = await Promise.all([prisma.project.findFirst({ where: idWhere(projectIdInput) }), prisma.user.findFirst({ where: idWhere(userIdInput) })]);
-    if (!project) throw AppError.notFound("Project not found");
+    if (!project || Boolean(project.deletedAt)) throw AppError.notFound("Project not found");
     if (!user) throw AppError.notFound("User not found");
     if (!user.isActive || user.accountStatus !== "ACTIVE") throw AppError.unauthorized();
     if (project.ownerId !== user.id) { const member = await prisma.projectMember.findFirst({ where: { projectId: project.id, userId: user.id, status: "ACTIVE" } }); if (!member) throw AppError.forbidden("Access denied to this project"); }

@@ -8,6 +8,7 @@ import type {
   ResubmitReviewRequestInput,
 } from "@trend/shared-types";
 import { reviewsApi } from "../api/reviews.api";
+import { useAuthStore } from "@/stores/auth-store";
 
 export function useReviewAvailability() { return useQuery({ queryKey: ["review-availability"], queryFn: reviewsApi.availability, retry: false }); }
 export function useUpdateReviewAvailability() {
@@ -24,14 +25,18 @@ export function useDeclareReviewConflict() {
   return useMutation({ mutationFn: ({ submissionId, reason }: { submissionId: string; reason: string }) => reviewsApi.declareConflict(submissionId, reason), onSuccess: () => client.invalidateQueries({ queryKey: ["review-opportunities"] }) });
 }
 export function useMyReviews() { return useQuery({ queryKey: ["reviews"], queryFn: reviewsApi.listAssignments, retry: false }); }
-export function useReviewWorkspace(assignmentId: string) { return useQuery({ queryKey: ["reviews", assignmentId], queryFn: () => reviewsApi.detail(assignmentId), enabled: Boolean(assignmentId), retry: false }); }
+export function useReviewWorkspace(assignmentId: string) {
+  const actor = useAuthStore(state => state.user?.id);
+  return useQuery({ queryKey: ["reviews", assignmentId, actor], queryFn: () => reviewsApi.detail(assignmentId), enabled: Boolean(assignmentId && actor), retry: false });
+}
 export function useSaveReview(assignmentId: string) {
   const client = useQueryClient();
-  return useMutation({ mutationFn: (input: AcademicReviewInput) => reviewsApi.save(assignmentId, input), onSuccess: (data) => client.setQueryData(["reviews", assignmentId], (current: unknown) => ({ ...(current as object), ...data })) });
+  const actor = useAuthStore(state => state.user?.id);
+  return useMutation({ mutationFn: (input: AcademicReviewInput) => reviewsApi.save(assignmentId, input), onSuccess: (data) => { client.setQueryData(["reviews", assignmentId, actor], (current: unknown) => ({ ...(current as object), ...data })); void client.invalidateQueries({ queryKey: ["mentor-workspace"] }); } });
 }
 export function useSubmitReview(assignmentId: string) {
   const client = useQueryClient();
-  return useMutation({ mutationFn: (input: AcademicReviewInput) => reviewsApi.submit(assignmentId, input), onSuccess: () => { client.invalidateQueries({ queryKey: ["review-center"] }); client.invalidateQueries({ queryKey: ["reviews", assignmentId] }); client.invalidateQueries({ queryKey: ["submissions"] }); client.invalidateQueries({ queryKey: ["review-requests"] }); } });
+  return useMutation({ mutationFn: (input: AcademicReviewInput) => reviewsApi.submit(assignmentId, input), onSuccess: () => { client.invalidateQueries({ queryKey: ["review-center"] }); client.invalidateQueries({ queryKey: ["reviews", assignmentId] }); client.invalidateQueries({ queryKey: ["submissions"] }); client.invalidateQueries({ queryKey: ["review-requests"] }); client.invalidateQueries({ queryKey: ["workspace-tasks"] }); client.invalidateQueries({ queryKey: ["mentor-access"] }); client.invalidateQueries({ queryKey: ["mentor-workspace"] }); } });
 }
 
 export function useReviewTemplates() { return useQuery({ queryKey: ["review-templates"], queryFn: reviewsApi.templates }); }
@@ -58,16 +63,17 @@ export function useArchiveReviewTemplate() {
 }
 
 export function useReviewCenter() { return useQuery({ queryKey: ["review-center"], queryFn: reviewsApi.center, retry: false }); }
-export function useReviewRequest(requestId?: string) { return useQuery({ queryKey: ["review-requests", requestId], queryFn: () => reviewsApi.requestDetail(requestId!), enabled: Boolean(requestId), retry: false }); }
+export function useReviewRequest(requestId?: string) { return useQuery({ queryKey: ["review-requests", requestId], queryFn: () => reviewsApi.requestDetail(requestId!), enabled: Boolean(requestId), retry: false, refetchInterval: query => query.state.data && !["COMPLETED","DECLINED","CANCELLED","EXPIRED"].includes(query.state.data.status) ? 15000 : false }); }
 export function useReviewerCandidates(query = "", scope: { reportId?: string; submissionId?: string } = {}) { return useQuery({ queryKey: ["review-reviewers", query, scope.reportId ?? null, scope.submissionId ?? null], queryFn: () => reviewsApi.reviewerCandidates(query || undefined, scope), staleTime: 30_000 }); }
 export function useCreateReviewRequest() {
   const client = useQueryClient();
-  return useMutation({ mutationFn: (input: CreateReviewRequestInput) => reviewsApi.createRequest(input), onSuccess: () => Promise.all([client.invalidateQueries({ queryKey: ["review-center"] }), client.invalidateQueries({ queryKey: ["reports"] }), client.invalidateQueries({ queryKey: ["submissions"] }), client.invalidateQueries({ queryKey: ["review-opportunities"] })]) });
+  return useMutation({ mutationFn: (input: CreateReviewRequestInput) => reviewsApi.createRequest(input), onSuccess: () => Promise.all([client.invalidateQueries({ queryKey: ["mentor-workspace"] }), client.invalidateQueries({ queryKey: ["workspace-tasks"] }), client.invalidateQueries({ queryKey: ["review-center"] }), client.invalidateQueries({ queryKey: ["reports"] }), client.invalidateQueries({ queryKey: ["submissions"] }), client.invalidateQueries({ queryKey: ["review-opportunities"] })]) });
 }
 export function useReviewRequestAction() {
   const client = useQueryClient();
   // Request status drives the detail page and the project artifact status, so refresh all three.
   const refresh = () => Promise.all([
+    client.invalidateQueries({ queryKey: ["mentor-workspace"] }),
     client.invalidateQueries({ queryKey: ["review-center"] }),
     client.invalidateQueries({ queryKey: ["review-requests"] }),
     client.invalidateQueries({ queryKey: ["reports"] }),

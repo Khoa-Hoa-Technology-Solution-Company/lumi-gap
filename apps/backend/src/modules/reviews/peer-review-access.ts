@@ -5,6 +5,7 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { capabilityService } from "../authorization/capability.service.js";
 import { eligiblePeerReviewer, submissionReviewStatus } from "./academic-review.rules.js";
 import { reviewCapacityIssue } from "./review.rules.js";
+import { acceptedMentorReviewPolicy } from "./mentor-review-access.js";
 
 export async function assertPeerReviewer(input: string) {
   const parsed = parseDatabaseId(input);
@@ -38,7 +39,7 @@ export async function assertReviewerInTransaction(tx: Prisma.TransactionClient, 
   return profile!;
 }
 
-export async function assertReviewAdmission(tx: Prisma.TransactionClient, submissionId: string, reviewerId: string, options: { excludeAssignmentId?: string; requireAvailable?: boolean } = {}) {
+export async function assertReviewAdmission(tx: Prisma.TransactionClient, submissionId: string, reviewerId: string, options: { excludeAssignmentId?: string; requireAvailable?: boolean; mentorGuidance?: boolean } = {}) {
   await assertReviewerInTransaction(tx, reviewerId);
   const submission = await tx.submission.findUniqueOrThrow({ where: { id: submissionId } });
   await tx.$queryRaw`SELECT id FROM projects WHERE id = ${submission.projectId}::uuid FOR UPDATE`;
@@ -52,11 +53,13 @@ export async function assertReviewAdmission(tx: Prisma.TransactionClient, submis
     tx.academicProfile.findUnique({ where: { userId: reviewerId } }),
     tx.reviewerAssignment.count({ where: { reviewerId, status: { in: ["assigned", "accepted"] }, ...(options.excludeAssignmentId ? { id: { not: options.excludeAssignmentId } } : {}) } }),
   ]);
-  if (project.status === "ARCHIVED" || ["withdrawn", "accepted", "rejected"].includes(submission.status)) throw AppError.conflict("This research no longer accepts reviews");
+  if (["ARCHIVED", "COMPLETED"].includes(project.status) || Boolean(project.deletedAt) || ["withdrawn", "accepted", "rejected"].includes(submission.status)) throw AppError.conflict("This research no longer accepts reviews");
+  if (!options.mentorGuidance && await tx.mentorRelationship.findFirst({ where: { projectId: submission.projectId, mentorUserId: reviewerId, status: "ACTIVE" } })) throw AppError.conflict("Use the assigned mentor guidance workflow for an active project mentor");
   if (submission.createdById === reviewerId || author || declared || project.ownerId === reviewerId || member || (conflict && ["DECLARED", "SYSTEM_DETECTED", "BLOCKED"].includes(conflict.status))) {
     throw AppError.conflict("Authors, project contributors and reviewers with a declared conflict cannot review this research");
   }
   if (duplicate) throw AppError.conflict("This reviewer already has an active assignment for this research");
+  if (options.mentorGuidance) await acceptedMentorReviewPolicy(tx, submission.projectId, reviewerId);
   if (profile?.positionStatus !== "VERIFIED" || !eligiblePeerReviewer(profile?.academicRole, profile?.roleVerificationStatus)) throw AppError.forbidden("Lecturer position verification is required");
   const availability = profile?.reviewAvailability as { enabled?: boolean; maximumActiveReviews?: number; temporarilyUnavailableUntil?: string } | null;
   const issue = reviewCapacityIssue({ availableForReview: options.requireAvailable ? availability?.enabled === true : true,
@@ -79,7 +82,8 @@ export async function refreshSubmissionReviewStatus(tx: Prisma.TransactionClient
 
 export async function defaultPeerReviewTemplate(tx: Prisma.TransactionClient, submissionType: string | null) {
   const templates = await tx.reviewTemplate.findMany({ where: { source: "SYSTEM", status: "PUBLISHED", active: true, activeVersionId: { not: null } }, orderBy: { createdAt: "asc" } });
-  const template = templates.find((item) => item.artifactType === submissionType || item.submissionType === submissionType)
+  const template = templates.find((item) => item.name.startsWith("LumiGap Scientific Manuscript Review Rubric v1.0") && (item.artifactType === submissionType || item.submissionType === submissionType))
+    ?? templates.find((item) => item.artifactType === submissionType || item.submissionType === submissionType)
     ?? templates.find((item) => !item.artifactType && !item.submissionType)
     ?? ([null, "THESIS_DRAFT", "SOFTWARE_RESEARCH_PROJECT"].includes(submissionType) ? templates.find((item) => item.submissionType === "RESEARCH_PAPER") : undefined);
   const version = template?.activeVersionId ? await tx.reviewTemplateVersion.findUnique({ where: { id: template.activeVersionId } }) : null;

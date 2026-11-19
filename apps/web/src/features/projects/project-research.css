@@ -1,4 +1,4 @@
-.research-workflow { color: hsl(var(--foreground)); }
+.research-workflow { color: hsl(var(--foreground)); min-width: 0; max-width: 100%; }
 .research-views {
   display: inline-flex;
   gap: 8px;

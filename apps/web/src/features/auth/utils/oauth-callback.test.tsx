@@ -7,6 +7,7 @@ import type { User } from "@trend/shared-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OAuthCallbackPage } from "@/pages/oauth-callback";
 import { storeAuthReturnTo } from "./auth-return";
+import { storePostLogoutProjectPath } from "@/features/projects/utils/project-workspace-navigation";
 
 const mocks = vi.hoisted(() => ({ exchange: vi.fn(), setAuth: vi.fn(), toastError: vi.fn() }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (selector: (state: unknown) => unknown) => selector({ setAuth: mocks.setAuth }) }));
@@ -30,6 +31,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.clearAllMocks();
   sessionStorage.clear();
+  localStorage.clear();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   container = document.createElement("div");
   document.body.append(container);
@@ -46,6 +48,8 @@ async function renderCallback() {
         <Routes>
           <Route path="/auth/oauth-callback" element={<OAuthCallbackPage />} />
           <Route path="/home" element={<p>Member home</p>} />
+          <Route path="/mentor-workspace" element={<p>Mentor workspace</p>} />
+          <Route path="/invitations/example" element={<p>Project invitation</p>} />
           <Route path="/admin" element={<p>Admin workspace</p>} />
           <Route path="/onboarding/academic-profile" element={<p>Academic onboarding</p>} />
         </Routes>
@@ -55,6 +59,22 @@ async function renderCallback() {
 }
 
 describe("Google OAuth callback after an account reset", () => {
+  it("lands lecturers in their workspace instead of a previously signed-out project", async () => {
+    const lecturer = { ...member, academicRole: "LECTURER" as const };
+    storePostLogoutProjectPath(lecturer.id, "/projects/previous?tab=tasks");
+    mocks.exchange.mockResolvedValue({ user: lecturer, tokens });
+    await renderCallback();
+    expect(container.textContent).toBe("Mentor workspace");
+    expect(localStorage.getItem(`lumigap.postLogoutProject:${lecturer.id}`)).toBeNull();
+  });
+
+  it("keeps explicit invitations for lecturers after OAuth", async () => {
+    storeAuthReturnTo("/invitations/example");
+    mocks.exchange.mockResolvedValue({ user: { ...member, academicRole: "LECTURER" }, tokens });
+    await renderCallback();
+    expect(container.textContent).toBe("Project invitation");
+  });
+
   it("replaces the previous user's cached data and rejects a stale admin return URL", async () => {
     client.setQueryData(["current-user"], { user: { ...member, id: "previous-admin", systemRole: "ADMIN" } });
     client.setQueryData(["projects"], [{ id: "previous-user-private-project" }]);

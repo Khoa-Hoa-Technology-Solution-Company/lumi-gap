@@ -1,6 +1,8 @@
 import type { ScreeningAutomaticTask, ScreeningClassification, ScreeningEvaluationStatus, ScreeningPersonalEvaluation, ScreeningWorkspaceSummary, ScreeningWorkPaper } from "@trend/shared-types";
 import { screeningStatusTone, screeningClassificationLabels } from "./screening-status";
 
+export const completedReviewsLabel = "Đã đánh giá";
+
 export const evaluationStatusLabels: Record<ScreeningEvaluationStatus, string> = {
   CONSENSUS_REQUIRED: "Cần thảo luận", CONSENSUS_IN_PROGRESS: "Đang thảo luận",
   WAITING_FULLTEXT: "Chờ toàn văn", ADVANCE_TO_FULLTEXT: "Qua vòng tiêu đề / tóm tắt",
@@ -110,6 +112,15 @@ export function groupPersonalEvaluations(evaluations: ScreeningPersonalEvaluatio
     papers.set(item.paperId, rounds);
   }
   return [...papers.values()];
+}
+/** Filter after grouping: an earlier final round cannot hide a newer unresolved ballot. */
+export function completedEvaluationGroups(summary: ScreeningWorkspaceSummary) {
+  return groupPersonalEvaluations(personalEvaluations(summary)).filter(([latest]) => {
+    if (!latest || latest.invalidated || !matchesEvaluationHistory(latest, "DECIDED")) return false;
+    const paper = workPaperFor(summary, latest);
+    if (paper.status && !["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(paper.status)) return false;
+    return !paper.invalidated && (latest.groupStatus !== "INCLUDED" || (paper.acceptedForAnalysis ?? latest.acceptedForAnalysis) !== false);
+  });
 }
 export type ScreeningCardPaper = Pick<ScreeningWorkPaper, "paperId" | "roundId" | "title"> & Partial<ScreeningWorkPaper> & { classification?: ScreeningClassification | null; caseStatus?: string | null };
 export function workPaperFor(summary: ScreeningWorkspaceSummary, item: ScreeningCardPaper): ScreeningCardPaper {

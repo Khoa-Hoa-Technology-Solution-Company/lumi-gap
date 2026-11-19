@@ -20,7 +20,7 @@ async function mount(add = false) {
 beforeEach(() => {
   vi.resetAllMocks(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   data = { id: "plan", version: 3, parallelInvitations: false, autoSend: false, closedRoles: [], currentMentors: [], currentInvitations: [], canManage: true,
-    positions: { PRIMARY: { role: "PRIMARY", status: "VACANT", pendingRequests: 0 }, SECONDARY: { role: "SECONDARY", status: "VACANT", pendingRequests: 0 } },
+    positions: { UNASSIGNED: { role: "UNASSIGNED", status: "VACANT", pendingRequests: 0 }, PRIMARY: { role: "PRIMARY", status: "VACANT", pendingRequests: 0 }, SECONDARY: { role: "SECONDARY", status: "VACANT", pendingRequests: 0 } },
     candidates: [{ id: "first", mentorUserId: "an", fullName: "Giảng viên An", mentorRole: "PRIMARY", priority: 1, status: "READY", canSend: true }, { id: "backup", mentorUserId: "binh", fullName: "Giảng viên Bình", mentorRole: "PRIMARY", priority: 2, status: "PLANNED", canSend: false }] };
   api.plan.mockImplementation(async () => data); api.changePlan.mockImplementation(async () => data);
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
@@ -34,10 +34,9 @@ it("distinguishes ready/backup candidates and only opens preview for the next ca
   await act(async () => button("Xem trước và gửi lời mời").click());
   expect(onSend).toHaveBeenCalledWith(data.candidates[0], 3); expect(api.changePlan).not.toHaveBeenCalled();
 });
-it("saves explicit parallel invitation mode using the current server version", async () => {
-  await mount(); const input = host.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-  expect(input.checked).toBe(false); await act(async () => input.click()); await tick();
-  expect(api.changePlan).toHaveBeenCalledWith("project", { action: "configure", expectedVersion: 3, parallelInvitations: true });
+it("does not require a parallel mode or primary assignment for new invitations", async () => {
+  await mount(); expect(host.querySelector('input[type="checkbox"]')).toBeNull();
+  expect(host.textContent).toContain("Lời mời mới độc lập");
 });
 it("reorders only planned candidates and sends the requested direction", async () => {
   await mount(); await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Ưu tiên Giảng viên Bình"]')!.click()); await tick();
@@ -58,23 +57,18 @@ it("requires a separate confirmation to start a new campaign", async () => {
   await act(async () => button("Mở đợt mới").click()); await tick();
   expect(api.changePlan).toHaveBeenCalledWith("project", { action: "restart", expectedVersion: 3 });
 });
-it("keeps candidate role/input on server conflicts and offers a retry", async () => {
+it("keeps the candidate on server conflicts without requiring a role", async () => {
   api.changePlan.mockRejectedValue({ response: { data: { error: { message: "Kế hoạch đã thay đổi" } } } });
-  await mount(true); const select = document.querySelector("select")!;
-  await act(async () => { select.value = "SECONDARY"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+  await mount(true); expect(document.querySelector("select")).toBeNull();
   await act(async () => button("Thêm vào kế hoạch").click()); await tick();
-  expect(api.changePlan).toHaveBeenCalledWith("project", { action: "add", mentorUserId: "lecturer", mentorRole: "SECONDARY", expectedVersion: 3 });
-  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Kế hoạch đã thay đổi"); expect(select.value).toBe("SECONDARY"); expect(onClose).not.toHaveBeenCalled();
+  expect(api.changePlan).toHaveBeenCalledWith("project", { action: "add", mentorUserId: "lecturer", mentorRole: "UNASSIGNED", expectedVersion: 3 });
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Kế hoạch đã thay đổi"); expect(onClose).not.toHaveBeenCalled();
 });
 it("disables mutations on read-only projects", async () => {
   data.canManage = false; await mount();
   expect(button("Mở đợt mời mới").disabled).toBe(true); expect(button("Xem trước và gửi lời mời").disabled).toBe(true);
 });
-it("requires choosing an open role when the primary role has already been assigned", async () => {
+it("can save a candidate without choosing a role even when the historical primary is assigned", async () => {
   data.positions.PRIMARY.status = "ASSIGNED"; await mount(true);
-  expect(button("Thêm vào kế hoạch").disabled).toBe(true);
-  const select = document.querySelector("select")!;
-  expect(select.options[0]!.disabled).toBe(true);
-  await act(async () => { select.value = "SECONDARY"; select.dispatchEvent(new Event("change", { bubbles: true })); });
-  expect(button("Thêm vào kế hoạch").disabled).toBe(false);
+  expect(document.querySelector("select")).toBeNull(); expect(button("Thêm vào kế hoạch").disabled).toBe(false);
 });

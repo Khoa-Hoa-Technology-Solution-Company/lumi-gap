@@ -18,6 +18,7 @@ vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, va
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (selector: (state: { user: { id: string } }) => unknown) => selector({ user: { id: "me" } }) }));
 vi.mock("../hooks/use-projects", () => ({
   useProjects: mocks.projects,
+  useTrashedProjects: () => ({ data: [], isLoading: false, isError: false, isFetching: false, refetch: vi.fn() }),
   useCreateProject: () => ({ mutateAsync: mocks.create, isPending: false }),
   useMyProjectInvitations: () => ({ data: mocks.invitations, refetch: mocks.refetchInvitations }),
   useRespondToProjectInvitation: () => ({ mutateAsync: mocks.respond }),
@@ -160,11 +161,22 @@ it("retains creation details on failure and opens the newly created project afte
   await render("/projects?create=1&sort=NAME");
   await fill("#project-create-title", "  Education study  ");
   await fill("#project-create-description", "  Compare the evidence  ");
+  await fill("#project-create-keywords", "Education, Evidence");
+  await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(document.body.textContent).toContain("Step 2/2");
   await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   expect(document.querySelector('[role="alert"]')?.textContent).toContain("safely recover the same project");
-  expect(document.querySelector<HTMLInputElement>("#project-create-title")?.value).toBe("  Education study  ");
   await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-  expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Education study", description: "Compare the evidence", researchAreas: [], researchApproach: "UNDECIDED", visibility: "PRIVATE", idempotencyKey: expect.any(String) }));
+  expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({
+    title: "Education study",
+    description: "Compare the evidence",
+    researchField: "Artificial Intelligence",
+    researchAreas: ["Artificial Intelligence", "Education", "Evidence"],
+    keywords: ["Education", "Evidence"],
+    researchApproach: "EXPLORATORY",
+    visibility: "PRIVATE",
+    idempotencyKey: expect.any(String),
+  }));
   expect(mocks.create.mock.calls[0]![0].idempotencyKey).toBe(mocks.create.mock.calls[1]![0].idempotencyKey);
   expect(container.querySelector("output")?.textContent).toBe("/projects/new-project?tab=papers&welcome=1");
 });

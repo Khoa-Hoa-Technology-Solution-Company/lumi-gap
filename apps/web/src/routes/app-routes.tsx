@@ -81,6 +81,8 @@ const CommunityDetailPage = lazy(() => import("@/pages/communities/community-det
 const CommunityNewPage = lazy(() => import("@/pages/communities/community-new").then((m) => ({ default: m.CommunityNewPage })));
 const CommunityManagePage = lazy(() => import("@/pages/communities/community-manage").then((m) => ({ default: m.CommunityManagePage })));
 const AcademicSupportPage = lazy(() => import("@/pages/academics/academic-support").then(m => ({ default: m.AcademicSupportPage })));
+const MentorWorkspacePage = lazy(() => import("@/pages/academics/mentor-workspace").then(m => ({ default: m.MentorWorkspacePage })));
+const MentorReviewEntryPage = lazy(() => import("@/pages/reviews/mentor-review-entry").then(m => ({ default: m.MentorReviewEntryPage })));
 const ScreeningAdjudicationPage = lazy(() => import("@/features/projects/components/screening-adjudication"));
 const MentorProjectPage = lazy(() => import("@/pages/academics/mentor-project").then(m => ({ default: m.MentorProjectPage })));
 const LecturerDirectoryPage = lazy(() => import("@/pages/academics/lecturer-directory").then((m) => ({ default: m.LecturerDirectoryPage })));
@@ -115,6 +117,7 @@ export function AppRoutes() {
 
         {/* Standalone Admin Section (No MainLayout header/footer) */}
         <Route element={<ProtectedRoute />}>
+          <Route path="/mentor-workspace" element={<MentorWorkspacePage />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminHomePage />} />
             <Route path="users" element={<AdminUsersPage />} />
@@ -214,6 +217,7 @@ export function AppRoutes() {
             <Route path="/academic-support/projects/:projectId/screening/:roundId" element={<ScreeningAdjudicationPage />} />
             <Route path="/reviews" element={<ReviewDashboardPage />} />
             <Route path="/reviews/:assignmentId" element={<ReviewWorkspacePage />} />
+            <Route path="/reviews/mentor-entry/:submissionId" element={<MentorReviewEntryPage />} />
             <Route path="/review-requests/:requestId" element={<ReviewRequestDetailPage />} />
             <Route path="/review-templates" element={<ReviewTemplatesPage />} />
             <Route path="/review-templates/new" element={<ReviewTemplateBuilderPage />} />

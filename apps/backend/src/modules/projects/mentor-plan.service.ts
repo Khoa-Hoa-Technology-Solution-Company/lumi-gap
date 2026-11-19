@@ -5,6 +5,7 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { assertAcceptingNewMentorships } from "./academic-relationship-access.js";
 import { mentorPositions } from "./mentorship-positions.js";
+import { dispatchMentorshipNotifications, mentorshipNotification } from "./mentorship-notifications.js";
 
 type Db = Prisma.TransactionClient;
 function key(input: string) {
@@ -27,8 +28,6 @@ export async function prepareMentorCandidate(tx: Db, projectId: string, ownerId:
   const plan = await ensureMentorPlan(tx, projectId, ownerId);
   if (expectedVersion !== undefined && plan.version !== expectedVersion) throw AppError.conflict("Kế hoạch đã thay đổi. Tải lại trước khi gửi");
   if (plan.closedRoles.includes(role)) throw AppError.conflict("Vai trò đã dừng tuyển. Chủ dự án cần mở đợt mời mới");
-  if (role === "SECONDARY" && !plan.parallelInvitations && !await tx.mentorRelationship.count({ where: { projectId, mentorRole: "PRIMARY", status: "ACTIVE" } }))
-    throw AppError.conflict("Bật mời song song hoặc chờ Mentor chính chấp nhận trước khi mời Mentor phụ");
   let candidate = candidateId ? await tx.mentorCandidate.findFirst({ where: { id: candidateId, planId: plan.id } }) :
     await tx.mentorCandidate.findFirst({ where: { planId: plan.id, mentorUserId: mentorId, status: { not: "REMOVED" } } });
   if (candidateId && !candidate) throw AppError.notFound("Ứng viên không thuộc kế hoạch hiện tại");
@@ -37,16 +36,16 @@ export async function prepareMentorCandidate(tx: Db, projectId: string, ownerId:
     const last = await tx.mentorCandidate.aggregate({ where: { planId: plan.id, mentorRole: role }, _max: { priority: true } });
     candidate = await tx.mentorCandidate.create({ data: { planId: plan.id, mentorUserId: mentorId, mentorRole: role, priority: (last._max.priority ?? 0) + 1 } });
   }
-  if (candidate.status !== "PLANNED" || candidate.mentorUserId !== mentorId || candidate.mentorRole !== role) throw AppError.conflict("Ứng viên hoặc vai trò đã thay đổi. Không thể gửi lời mời này");
+  if (candidate.status !== "PLANNED" || candidate.mentorUserId !== mentorId || (role !== "UNASSIGNED" && candidate.mentorRole !== role)) throw AppError.conflict("Ứng viên hoặc vai trò đã thay đổi. Không thể gửi lời mời này");
   const first = await tx.mentorCandidate.findFirst({ where: { planId: plan.id, mentorRole: role, status: "PLANNED" }, orderBy: [{ priority: "asc" }, { id: "asc" }] });
-  if (first?.id !== candidate.id) throw AppError.conflict("Cần mời ứng viên đứng trước hoặc điều chỉnh thứ tự kế hoạch");
+  if (role !== "UNASSIGNED" && first?.id !== candidate.id) throw AppError.conflict("Cần mời ứng viên đứng trước hoặc điều chỉnh thứ tự kế hoạch");
   return candidate;
 }
 
 export const mentorPlanService = {
   async read(projectInput: string, actorInput: string): Promise<MentorRecruitmentPlan> {
     const db = getPrisma(), [p, actor] = await Promise.all([db.project.findUnique({ where: key(projectInput) }), db.user.findUnique({ where: key(actorInput) })]);
-    if (!p || !actor?.isActive || actor.accountStatus !== "ACTIVE" || !actor.emailVerifiedAt || p.ownerId !== actor.id) throw AppError.forbidden("Chỉ chủ dự án được xem kế hoạch ứng viên riêng tư");
+    if (!p || Boolean(p.deletedAt) || !actor?.isActive || actor.accountStatus !== "ACTIVE" || !actor.emailVerifiedAt || p.ownerId !== actor.id) throw AppError.forbidden("Chỉ chủ dự án được xem kế hoạch ứng viên riêng tư");
     return db.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM projects WHERE id=${p.id}::uuid FOR SHARE`;
       const live = await tx.project.findUniqueOrThrow({ where: { id: p.id } });
@@ -70,8 +69,7 @@ export const mentorPlanService = {
         candidates: candidates.map(c => { const u = people.find(u => u.id === c.mentorUserId)!, request = requests.find(r => r.candidateId === c.id);
           const role = c.mentorRole as MentorRole;
           const first = candidates.find(other => other.mentorRole === role && other.status === "PLANNED");
-          const ready = c.status === "PLANNED" && !unavailable.has(c.id) && first?.id === c.id && positions[role].status === "VACANT" && !plan?.closedRoles.includes(role) &&
-            (role === "PRIMARY" || plan?.parallelInvitations || positions.PRIMARY.status === "ASSIGNED");
+          const ready = c.status === "PLANNED" && !unavailable.has(c.id) && first?.id === c.id && !pending.some(r => r.mentorUserId === c.mentorUserId);
           return { id: c.id, mentorUserId: publicDatabaseId(u), fullName: u.fullName, mentorRole: role, priority: c.priority,
             status: request?.status ?? (unavailable.has(c.id) ? "INELIGIBLE" : ready ? "READY" : "PLANNED"), unavailableReason: unavailable.has(c.id) ? "Giảng viên hiện không đủ điều kiện nhận hướng dẫn. Hãy kiểm tra hồ sơ, đổi thứ tự hoặc bỏ khỏi kế hoạch." : undefined, requestId: request?.id, canSend: Boolean(ready && !["ARCHIVED", "COMPLETED"].includes(live.status)) };
         }) };
@@ -79,7 +77,8 @@ export const mentorPlanService = {
   },
   async change(projectInput: string, actorInput: string, input: MentorPlanCommand) {
     const db = getPrisma(), [p, actor, lecturer] = await Promise.all([db.project.findUnique({ where: key(projectInput) }), db.user.findUnique({ where: key(actorInput) }), input.action === "add" ? db.user.findUnique({ where: key(input.mentorUserId) }) : null]);
-    if (!p || !actor) throw AppError.forbidden();
+    if (!p || Boolean(p.deletedAt) || !actor) throw AppError.forbidden();
+    let shouldDispatchNotifications = false;
     await db.$transaction(async tx => {
       const ids = [...new Set([actor.id, ...(lecturer ? [lecturer.id] : [])])].sort();
       await tx.$queryRaw`SELECT id FROM users WHERE id IN (${Prisma.join(ids.map(id => Prisma.sql`${id}::uuid`))}) ORDER BY id FOR NO KEY UPDATE`;
@@ -106,6 +105,24 @@ export const mentorPlanService = {
         if (await tx.mentorshipRequest.count({ where: { projectId: p.id, mentorUserId: lecturer.id, status: "PENDING" } })) throw AppError.conflict("Giảng viên đã nhận lời mời đang chờ");
         const last = await tx.mentorCandidate.aggregate({ where: { planId: plan.id, mentorRole: input.mentorRole }, _max: { priority: true } });
         await tx.mentorCandidate.create({ data: { planId: plan.id, mentorUserId: lecturer.id, mentorRole: input.mentorRole, priority: (last._max.priority ?? 0) + 1 } });
+        const pendingSuggestions = await tx.mentorSuggestion.findMany({ where: { projectId: p.id, mentorUserId: lecturer.id, status: "PENDING" }, select: { id: true, suggestedBy: true } });
+        for (const s of pendingSuggestions) {
+          if (s.suggestedBy !== actor.id) {
+            await mentorshipNotification(tx, {
+              event: "MENTORSHIP_SUGGESTION_PLANNED",
+              recordId: s.id,
+              projectId: p.id,
+              projectTitle: live.title,
+              actorId: actor.id,
+              recipients: [s.suggestedBy],
+              customMessage: {
+                vi: `Chủ dự án đã thêm ${lecturer.fullName} (từ đề xuất của bạn) vào kế hoạch mời của dự án ${live.title}. Giảng viên chưa nhận được lời mời chính thức.`,
+                en: `The project owner added ${lecturer.fullName} (from your suggestion) to the recruitment plan for ${live.title}. No invitation has been sent to the lecturer yet.`,
+              },
+            });
+            shouldDispatchNotifications = true;
+          }
+        }
       } else {
         const candidate = await tx.mentorCandidate.findFirst({ where: { id: input.candidateId, planId: plan.id, status: "PLANNED" } });
         if (!candidate) throw AppError.conflict("Chỉ có thể sửa ứng viên chưa gửi lời mời");
@@ -121,6 +138,7 @@ export const mentorPlanService = {
       if (input.action !== "restart") await tx.mentorInvitationPlan.update({ where: { id: plan.id }, data: { version: { increment: 1 } } });
       await tx.projectActivity.create({ data: { projectId: p.id, actorId: actor.id, type: "MENTOR_PLAN_UPDATED", metadata: { action: input.action, planId: plan.id } } });
     }, { maxWait: 10_000, timeout: 15_000 });
+    if (shouldDispatchNotifications) await dispatchMentorshipNotifications();
     return this.read(projectInput, actorInput);
   },
 };

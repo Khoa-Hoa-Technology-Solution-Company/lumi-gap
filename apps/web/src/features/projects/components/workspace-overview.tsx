@@ -1,9 +1,7 @@
-import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import type { IProject, ResearchStage, WorkspaceOverview } from "@trend/shared-types";
+import type { IProject, ResearchStage } from "@trend/shared-types";
 import {
   ArrowUpRight,
-  Flag,
   UsersRound,
   GraduationCap,
   Compass,
@@ -23,17 +21,19 @@ import {
   LockKeyhole,
   Clock3,
   Settings2,
-  Trophy,
-  Award,
-  Plus,
+  Info,
+  FileBarChart2,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/i18n";
 import { workspaceApi } from "../api/workspace.api";
 import { useWorkspaceCommand, useWorkspaceOverview } from "../hooks/use-workspace";
 import { ProjectTrendEvidence } from "@/features/trends/components/project-trend-evidence";
 import { approachLabels, formatRelativeActivity, projectSectionHref, stageLabels, taskLabels, WorkspaceDate, WorkspaceError, WorkspaceLoading } from "./workspace-common";
+import { LiteratureScreeningFunnel, ResearchStagePipeline } from "./workspace-overview-widgets";
 
 export function WorkspaceStageSelector({ projectId }: { projectId: string }) {
   const { t } = useI18n();
@@ -55,7 +55,7 @@ export function WorkspaceStageSelector({ projectId }: { projectId: string }) {
           value={project.researchStage ?? ""}
           disabled={update.isPending}
           onChange={e => update.mutate((e.target.value || null) as ResearchStage | null)}
-          className="h-7 rounded-lg border border-border/80 bg-background/90 px-2 py-0 text-xs font-semibold text-foreground shadow-xs focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer hover:border-primary/40 transition-colors"
+          className="h-7 rounded-lg border border-border/80 bg-background/90 px-2 py-0 text-xs font-semibold text-foreground shadow-sm focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer hover:border-primary/40 transition-colors"
         >
           <option value="">{t("Not set")}</option>
           {Object.entries(stageLabels).map(([key, value]) => <option key={key} value={key}>{t(value)}</option>)}
@@ -94,7 +94,7 @@ export function WorkspaceStage({ projectId, compact }: { projectId: string; comp
             value={project.researchStage ?? ""}
             disabled={update.isPending}
             onChange={e => update.mutate((e.target.value || null) as ResearchStage | null)}
-            className="h-9 rounded-lg border border-border/80 bg-background px-3 py-1.5 text-sm font-semibold text-foreground shadow-xs focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer hover:border-primary/40 transition-colors"
+            className="h-9 rounded-lg border border-border/80 bg-background px-3 py-1.5 text-sm font-semibold text-foreground shadow-sm focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer hover:border-primary/40 transition-colors"
           >
             <option value="">{t("Not set")}</option>
             {Object.entries(stageLabels).map(([key, value]) => <option key={key} value={key}>{t(value)}</option>)}
@@ -109,14 +109,14 @@ export function WorkspaceStage({ projectId, compact }: { projectId: string; comp
       <div className="flex items-center gap-2 sm:gap-3 ml-auto text-sm font-medium">
         <Link
           to={projectSectionHref(projectId, "members")}
-          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-border/70 bg-card hover:bg-accent/60 hover:text-foreground text-muted-foreground transition-all shadow-xs"
+          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-border/70 bg-card hover:bg-accent/60 hover:text-foreground text-muted-foreground transition-all shadow-sm"
         >
           <UsersRound size={15} className="text-blue-500" aria-hidden="true" />
           <span>{t("Team")} · <strong className="text-foreground font-semibold">{memberCount}</strong></span>
         </Link>
         <Link
           to={projectSectionHref(projectId, "support")}
-          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-border/70 bg-card hover:bg-accent/60 hover:text-foreground text-muted-foreground transition-all shadow-xs"
+          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-border/70 bg-card hover:bg-accent/60 hover:text-foreground text-muted-foreground transition-all shadow-sm"
         >
           <GraduationCap size={16} className="text-purple-500" aria-hidden="true" />
           <span>{t("Mentors")} · <strong className="text-foreground font-semibold">{mentors.length}</strong></span>
@@ -135,42 +135,20 @@ const activityLabels: Record<string, string> = {
   MILESTONE_CREATED: "Created a milestone", MILESTONE_UPDATED: "Updated a milestone", DISCUSSION_CREATED: "Started a discussion", DISCUSSION_UPDATED: "Updated a discussion", DISCUSSION_RESOLVED: "Recorded a discussion conclusion", DISCUSSION_REOPENED: "Reopened a discussion", DISCUSSION_REPLY: "Replied to a discussion", DECISION_CREATED: "Recorded a research decision", DECISION_UPDATED: "Revised a research decision", WORKSPACE_COMMENT_ADDED: "Left a comment", MENTOR_PLAN_FEEDBACK: "Left mentor feedback", PROJECT_CREATED: "Created the project", PROJECT_UPDATED: "Updated project details", PAPER_ADDED: "Added a paper", PAPER_REMOVED: "Removed a paper", MEMBER_JOINED: "Joined the project", MEMBER_INVITED: "Invited a team member",
 };
 
-function getTopContributors(data: WorkspaceOverview) {
-  if (data.topContributors && data.topContributors.length > 0) {
-    return data.topContributors;
-  }
-  // Fallback: aggregate from activity items
-  const activityMap = new Map<string, { person: typeof data.members[0]; count: number }>();
-  for (const act of data.activity) {
-    if (!act.actor) continue;
-    const existing = activityMap.get(act.actor.id);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      activityMap.set(act.actor.id, { person: act.actor, count: 1 });
-    }
-  }
-  const list = Array.from(activityMap.values()).sort((a, b) => b.count - a.count);
-  const totalActs = list.reduce((sum, item) => sum + item.count, 0);
-  return list.slice(0, 5).map((item, index) => ({
-    person: item.person,
-    count: item.count,
-    percentage: totalActs > 0 ? Math.round((item.count / totalActs) * 100) : 0,
-    rank: index + 1,
-  }));
-}
 
 export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
   const { t, language } = useI18n();
   const currentUserId = useAuthStore(state => state.user?.id);
   const id = project._id;
   const overview = useWorkspaceOverview(id);
+  const updateStage = useWorkspaceCommand(id, (stage: ResearchStage | null) =>
+    workspaceApi.stage(id, { stage, expectedVersion: overview.data!.project.version }),
+  );
 
   if (overview.isLoading) return <WorkspaceLoading />;
   if (!overview.data) return <WorkspaceError error={overview.error} retry={() => void overview.refetch()} />;
 
   const data = overview.data;
-  const topContributors = getTopContributors(data);
 
   const attention = [
     { count: data.attention.mentorFeedback, label: "Mentor feedback is waiting for a team response", tab: "plan" },
@@ -200,7 +178,7 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
       color: "amber",
       href: projectSectionHref(id, "papers", { view: "screening" }),
       alert: data.progress.pendingScreening > 0,
-      badge: data.progress.pendingScreening > 0 ? "Awaiting screening" : undefined,
+      badge: data.progress.pendingScreening > 0 ? "Needs screening" : undefined,
     },
     {
       key: "included",
@@ -245,99 +223,116 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
   ];
 
   return (
-    <div className="coord-overview space-y-7" data-no-i18n>
-      {/* Overview Page Header */}
-      <div className="bg-card rounded-2xl border border-border/80 p-5 sm:p-6 shadow-xs relative overflow-hidden">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-          <div className="space-y-2 min-w-0">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground leading-tight">
-                {project.title}
-              </h1>
-              <span className="project-status-tag" data-status={project.status}>
-                {t({ ACTIVE: "Active", PLANNING: "Planning", ON_HOLD: "On hold", COMPLETED: "Completed", ARCHIVED: "Archived" }[project.status])}
-              </span>
-              {project.researchField ? (
-                <span className="project-detail-scope">
-                  <Compass className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  <span>{project.researchField}</span>
+    <TooltipProvider delayDuration={200}>
+      <div className="coord-overview space-y-7" data-no-i18n>
+        {/* Overview Page Header */}
+        <div className="bg-card rounded-2xl border border-border/80 p-5 sm:p-6 shadow-sm relative overflow-hidden">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+            <div className="space-y-2 min-w-0">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground leading-tight">
+                  {project.title}
+                </h1>
+                <span className="project-status-tag" data-status={project.status}>
+                  {t({ ACTIVE: "Active", PLANNING: "Planning", ON_HOLD: "On hold", COMPLETED: "Completed", ARCHIVED: "Archived" }[project.status])}
                 </span>
-              ) : null}
+                {project.researchField ? (
+                  <span className="project-detail-scope">
+                    <Compass className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span>{project.researchField}</span>
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="flex items-center gap-3.5 text-xs font-medium text-muted-foreground flex-wrap pt-0.5">
+                <span className="inline-flex items-center gap-1.5">
+                  {["PUBLIC", "PUBLIC_SUMMARY"].includes(project.visibility) ? (
+                    <Globe2 className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
+                  ) : project.visibility === "INVITE_ONLY" ? (
+                    <UsersRound className="h-3.5 w-3.5 text-blue-500" aria-hidden="true" />
+                  ) : (
+                    <LockKeyhole className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" />
+                  )}
+                  {t(project.visibility === "PRIVATE" ? "Private" : project.visibility === "INVITE_ONLY" ? "Invite only" : "Public summary")}
+                </span>
+                <span>•</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock3 className="h-3.5 w-3.5 text-muted-foreground/70" aria-hidden="true" />
+                  {t("Updated {{time}}", { time: formatRelativeActivity(project.updatedAt, language, t) })}
+                </span>
+                {project.accessRole ? (
+                  <>
+                    <span>•</span>
+                    <Link
+                      to={projectSectionHref(id, "members", { team: "settings" })}
+                      className="inline-flex items-center gap-1.5 hover:text-primary transition-colors font-semibold"
+                    >
+                      <Settings2 className="h-3.5 w-3.5" />
+                      <span>{t("Project settings")}</span>
+                    </Link>
+                  </>
+                ) : null}
+              </div>
             </div>
 
-            <div className="flex items-center gap-3.5 text-xs font-medium text-muted-foreground flex-wrap pt-0.5">
-              <span className="inline-flex items-center gap-1.5">
-                {["PUBLIC", "PUBLIC_SUMMARY"].includes(project.visibility) ? (
-                  <Globe2 className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
-                ) : project.visibility === "INVITE_ONLY" ? (
-                  <UsersRound className="h-3.5 w-3.5 text-blue-500" aria-hidden="true" />
-                ) : (
-                  <LockKeyhole className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" />
-                )}
-                {t(project.visibility === "PRIVATE" ? "Private" : project.visibility === "INVITE_ONLY" ? "Invite only" : "Public summary")}
-              </span>
-              <span>•</span>
-              <span className="inline-flex items-center gap-1.5">
-                <Clock3 className="h-3.5 w-3.5 text-muted-foreground/70" aria-hidden="true" />
-                {t("Updated {{time}}", { time: formatRelativeActivity(project.updatedAt, language, t) })}
-              </span>
-              {project.accessRole ? (
-                <>
-                  <span>•</span>
-                  <Link
-                    to={projectSectionHref(id, "members", { team: "settings" })}
-                    className="inline-flex items-center gap-1.5 hover:text-primary transition-colors font-semibold"
-                  >
-                    <Settings2 className="h-3.5 w-3.5" />
-                    <span>{t("Project settings")}</span>
-                  </Link>
-                </>
-              ) : null}
+            <div className="flex items-center gap-3 flex-wrap lg:self-center shrink-0">
+              <WorkspaceStageSelector projectId={id} />
+              <Button asChild size="default" className="project-primary-action h-9 px-4 text-xs font-semibold shadow-sm">
+                <Link to={projectSectionHref(id, "plan")}>
+                  {t(data.plan.problem ? "About project" : "Describe your research")}
+                  <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" />
+                </Link>
+              </Button>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 flex-wrap lg:self-center shrink-0">
-            <WorkspaceStageSelector projectId={id} />
-            <Button asChild size="default" className="project-primary-action h-9 px-4 text-xs font-semibold shadow-xs">
-              <Link to={projectSectionHref(id, "plan")}>
-                {t(data.plan.problem ? "About project" : "Describe your research")}
-                <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </div>
+          <ResearchStagePipeline
+            stage={data.project.researchStage}
+            canManage={data.capabilities.manageProject}
+            pending={updateStage.isPending}
+            onSelect={stage => updateStage.mutate(stage)}
+          />
+          {updateStage.isError ? <WorkspaceError error={updateStage.error} retry={() => void overview.refetch()} /> : null}
         </div>
-      </div>
 
-      {/* Main Grid: Left Column (8 cols) and Right Column (4 cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
-        {/* Left Column (8 cols) */}
-        <div className="lg:col-span-8 space-y-7">
-          {/* Card 1: Research Direction */}
-          <section className="bg-card rounded-2xl border border-border/80 p-6 sm:p-7 shadow-xs relative overflow-hidden">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                  <Compass className="h-5 w-5" />
+        {/* Main Grid: Left Column (8 cols) and Right Column (4 cols) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
+          {/* Left Column (8 cols) */}
+          <div className="lg:col-span-8 space-y-7">
+            {/* Card 1: Research Direction */}
+            <section className="bg-card rounded-2xl border border-border/80 p-6 sm:p-7 shadow-sm relative overflow-hidden">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                    <Compass className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-foreground leading-snug">{t("Research direction")}</h3>
+                    <span className="text-sm text-muted-foreground">{t("Core focus & framing")}</span>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-lg text-foreground leading-snug">{t("Research direction")}</h3>
-                  <span className="text-sm text-muted-foreground">{t("Core focus & framing")}</span>
-                </div>
+                <Link to={projectSectionHref(id, "plan")} className="text-sm font-semibold text-primary hover:underline inline-flex items-center gap-1">
+                  {t("Edit plan")}<ArrowUpRight className="h-3.5 w-3.5" />
+                </Link>
               </div>
-              <Link to={projectSectionHref(id, "plan")} className="text-sm font-semibold text-primary hover:underline inline-flex items-center gap-1">
-                {t("Edit plan")}<ArrowUpRight className="h-3.5 w-3.5" />
-              </Link>
-            </div>
 
-            {data.plan.problem || project.description ? (
-              <div className="bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-transparent dark:from-blue-950/30 dark:via-indigo-950/20 border-l-4 border-blue-600 rounded-r-xl p-4 sm:p-5 text-base text-foreground/90 font-medium leading-relaxed mb-5">
-                {data.plan.problem || project.description}
-              </div>
-            ) : (
-              <p className="text-base text-muted-foreground italic py-2">
-                {t("Start with a question or a problem. You can refine the plan as your research develops.")}
-              </p>
-            )}
+              {data.plan.problem || project.description ? (
+                <div className="bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-transparent dark:from-blue-950/30 dark:via-indigo-950/20 border-l-4 border-blue-600 rounded-r-xl p-4 sm:p-5 text-base text-foreground/90 font-medium leading-relaxed mb-5">
+                  {data.plan.problem || project.description}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-4 sm:p-5 mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {t("Start with a question or a problem. You can refine the plan as your research develops.")}
+                  </p>
+                  <Button asChild variant="outline" size="sm" className="shrink-0 font-semibold rounded-lg">
+                    <Link to={projectSectionHref(id, "plan")}>
+                      {t("Describe your research")}
+                      <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                </div>
+              )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/60">
               <div className="flex items-center gap-2.5 text-sm">
@@ -373,67 +368,85 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
 
           <ProjectTrendEvidence projectId={id} currentUserId={currentUserId} ownerId={project.ownerId} />
 
-          {/* Card 2: Research Progress KPI Metrics Dashboard */}
-          <section className="bg-card rounded-2xl border border-border/80 p-6 sm:p-7 shadow-xs">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                  <TrendingUp className="h-5 w-5" />
+            {/* Card 2: Research Progress KPI Metrics Dashboard */}
+            <section className="bg-card rounded-2xl border border-border/80 p-6 sm:p-7 shadow-sm">
+              <div className="flex items-center justify-between mb-5 gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                    <TrendingUp className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-foreground leading-snug">{t("Research progress")}</h3>
+                    <span className="text-sm text-muted-foreground">{t("Saved workspace deliverables")}</span>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-lg text-foreground leading-snug">{t("Research progress")}</h3>
-                  <span className="text-sm text-muted-foreground">{t("Saved workspace deliverables")}</span>
-                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t("Notes on workspace metrics")}
+                      className="h-7 w-7 rounded-full border border-border/70 bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center transition-colors shrink-0"
+                    >
+                      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs leading-relaxed">
+                    {t("Counts reflect saved work. They do not indicate academic approval or research quality.")}
+                  </TooltipContent>
+                </Tooltip>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {kpiItems.map((kpi) => {
-                const Icon = kpi.icon;
-                return (
-                  <Link
-                    key={kpi.key}
-                    to={kpi.href}
-                    className={`group relative rounded-xl border p-4 sm:p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
-                      kpi.alert
-                        ? "border-amber-300 bg-gradient-to-br from-amber-50/60 via-amber-50/20 to-card dark:from-amber-950/30 dark:border-amber-800"
-                        : "border-border/80 bg-gradient-to-br from-muted/30 to-card hover:border-primary/40"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2.5">
-                      <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${
-                        kpi.color === "blue" ? "bg-blue-100 dark:bg-blue-950 text-blue-600" :
-                        kpi.color === "amber" ? "bg-amber-100 dark:bg-amber-950 text-amber-600" :
-                        kpi.color === "emerald" ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-600" :
-                        kpi.color === "violet" ? "bg-violet-100 dark:bg-violet-950 text-violet-600" :
-                        kpi.color === "rose" ? "bg-rose-100 dark:bg-rose-950 text-rose-600" :
-                        "bg-sky-100 dark:bg-sky-950 text-sky-600"
-                      }`}>
-                        <Icon className="h-5 w-5" />
+              <LiteratureScreeningFunnel
+                projectId={id}
+                papers={data.progress.papers}
+                pendingScreening={data.progress.pendingScreening}
+                included={data.progress.included}
+              />
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {kpiItems.map((kpi) => {
+                  const Icon = kpi.icon;
+                  return (
+                    <Link
+                      key={kpi.key}
+                      to={kpi.href}
+                      className={`group relative rounded-xl border p-4 sm:p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                        kpi.alert
+                          ? "border-amber-300 bg-gradient-to-br from-amber-50/60 via-amber-50/20 to-card dark:from-amber-950/30 dark:border-amber-800"
+                          : "border-border/80 bg-gradient-to-br from-muted/30 to-card hover:border-primary/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2.5">
+                        <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${
+                          kpi.color === "blue" ? "bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400" :
+                          kpi.color === "amber" ? "bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400" :
+                          kpi.color === "emerald" ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400" :
+                          kpi.color === "violet" ? "bg-violet-100 dark:bg-violet-950 text-violet-600 dark:text-violet-400" :
+                          kpi.color === "rose" ? "bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400" :
+                          "bg-sky-100 dark:bg-sky-950 text-sky-600 dark:text-sky-400"
+                        }`}>
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
-                      <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                    <div className="text-3xl font-black font-mono tracking-tight text-foreground">{kpi.count}</div>
-                    <div className="text-sm font-bold text-foreground mt-1 truncate">{t(kpi.label)}</div>
-                    {kpi.badge ? (
-                      <span className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-bold bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                        {t(kpi.badge)}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground truncate block mt-1">{t(kpi.sublabel)}</span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-            <p className="mt-5 text-xs text-muted-foreground italic border-t border-border/50 pt-3">
-              {t("Counts reflect saved work. They do not indicate academic approval or research quality.")}
-            </p>
-          </section>
+                      <div className="text-3xl font-black font-mono tracking-tight text-foreground tabular-nums">{kpi.count}</div>
+                      <div className="text-sm font-bold text-foreground mt-1 truncate">{t(kpi.label)}</div>
+                      {kpi.badge ? (
+                        <span className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                          {t(kpi.badge)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground truncate block mt-1">{t(kpi.sublabel)}</span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
 
-          {/* Card 3: Continue Working */}
-          <section className="bg-card rounded-2xl border border-border/80 p-6 sm:p-7 shadow-xs">
+            {/* Card 3: Continue Working */}
+            <section className="bg-card rounded-2xl border border-border/80 p-6 sm:p-7 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="h-9 w-9 rounded-xl bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
@@ -492,8 +505,24 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
                         to={item.kind === "REPORT" ? `/reports/${encodeURIComponent(item.id)}` : `/projects/${encodeURIComponent(id)}/manuscripts/${encodeURIComponent(item.id)}`}
                         className="group flex items-center justify-between gap-3 p-3 rounded-xl border border-border/60 hover:border-primary/40 hover:bg-muted/40 transition-all text-sm"
                       >
-                        <span className="font-semibold text-foreground group-hover:text-primary truncate">{item.title}</span>
-                        <WorkspaceDate value={item.updatedAt} />
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            item.kind === "REPORT"
+                              ? "bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400"
+                              : "bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400"
+                          }`}>
+                            {item.kind === "REPORT" ? <FileBarChart2 className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                          </span>
+                          <div className="min-w-0">
+                            <span className="block font-semibold text-foreground group-hover:text-primary truncate">{item.title}</span>
+                            <Badge variant="secondary" className="mt-0.5 text-[10px] px-1.5 py-0 font-semibold">
+                              {t(item.kind === "REPORT" ? "Report" : "Manuscript")}
+                            </Badge>
+                          </div>
+                        </div>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          <WorkspaceDate value={item.updatedAt} />
+                        </span>
                       </Link>
                     </li>
                   ))}
@@ -506,7 +535,7 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
         {/* Right Column (4 cols) */}
         <div className="lg:col-span-4 space-y-7">
           {/* Card: Needs Attention */}
-          <section className={`rounded-2xl border p-6 shadow-xs transition-colors ${
+          <section className={`rounded-2xl border p-6 shadow-sm transition-colors ${
             attention.length > 0
               ? "bg-gradient-to-br from-amber-50/80 to-card dark:from-amber-950/20 border-amber-200/80 dark:border-amber-900/60"
               : "bg-card border-border/80"
@@ -514,11 +543,11 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
             <div className="flex items-center gap-2.5 mb-3.5">
               {attention.length > 0 ? (
                 <div className="h-8 w-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                  <AlertTriangle className="h-4.5 w-4.5" />
+                  <AlertTriangle className="h-[18px] w-[18px]" />
                 </div>
               ) : (
                 <div className="h-8 w-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="h-4.5 w-4.5" />
+                  <CheckCircle2 className="h-[18px] w-[18px]" />
                 </div>
               )}
               <h3 className="font-bold text-base text-foreground">{t("Needs attention")}</h3>
@@ -556,165 +585,14 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
           </section>
 
           {/* Card: Top Contributors / Bảng vinh danh đóng góp */}
-          <section className="bg-card rounded-2xl border border-border/80 p-6 shadow-xs relative overflow-hidden">
-            <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-amber-500/10 dark:bg-amber-400/5 pointer-events-none blur-2xl" />
-
-            <div className="flex items-center justify-between gap-2 mb-4">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                  <Trophy className="h-4.5 w-4.5" />
-                </div>
-                <h3 className="font-bold text-base text-foreground whitespace-nowrap">{t("Top contributors")}</h3>
-              </div>
-              <Link
-                to={projectSectionHref(id, "contributions")}
-                className="text-sm font-semibold text-primary hover:underline shrink-0"
-              >
-                {t("View")}
-              </Link>
-            </div>
-
-            {topContributors.length > 0 ? (
-              <div className="space-y-3">
-                {topContributors.map((item, idx) => {
-                  const isCurrentUser = item.person.id === currentUserId;
-                  const isOwner = item.person.id === project.ownerId;
-                  const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : null;
-                  const rankClass = idx === 0
-                    ? "bg-gradient-to-br from-amber-400 to-amber-600 text-white font-black shadow-xs ring-2 ring-amber-300 dark:ring-amber-700"
-                    : idx === 1
-                    ? "bg-slate-400 text-white font-bold"
-                    : idx === 2
-                    ? "bg-amber-700 text-white font-bold"
-                    : "bg-muted text-muted-foreground font-semibold";
-                  const barColor = idx === 0
-                    ? "from-amber-400 via-amber-500 to-yellow-500"
-                    : idx === 1
-                    ? "from-slate-400 to-indigo-500"
-                    : idx === 2
-                    ? "from-amber-600 to-amber-700"
-                    : "from-primary/60 to-primary";
-
-                  return (
-                    <div
-                      key={item.person.id}
-                      className={`group p-3 rounded-xl border transition-all ${
-                        isCurrentUser
-                          ? "bg-amber-50/50 dark:bg-amber-950/20 border-amber-200/80 dark:border-amber-900/60 shadow-2xs"
-                          : "bg-card/70 border-border/60 hover:border-border hover:bg-muted/30"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          {/* Rank indicator */}
-                          <span
-                            className={`h-5 w-5 rounded-full flex items-center justify-center text-[11px] shrink-0 ${rankClass}`}
-                            title={`Hạng ${idx + 1}`}
-                          >
-                            {medal || idx + 1}
-                          </span>
-
-                          {/* Member Name & Badges */}
-                          <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
-                            <span className="font-semibold text-sm text-foreground truncate">
-                              {item.person.name}
-                            </span>
-                            {isCurrentUser && (
-                              <span className="px-1.5 py-0.2 rounded-md bg-amber-200/80 dark:bg-amber-900/70 text-amber-800 dark:text-amber-200 text-[10px] font-bold">
-                                {t("You")}
-                              </span>
-                            )}
-                            {isOwner && (
-                              <span className="px-1.5 py-0.2 rounded-md bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 text-[10px] font-semibold">
-                                {t("Leader")}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Contribution metric */}
-                        <div className="text-right shrink-0">
-                          <span className="text-xs font-bold text-foreground">
-                            {item.count} <span className="text-[11px] font-normal text-muted-foreground">{t("activities")}</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Percentage progress bar */}
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 rounded-full bg-muted/60 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full bg-gradient-to-r ${barColor} transition-all duration-500`}
-                            style={{ width: `${Math.max(item.percentage, 8)}%` }}
-                          />
-                        </div>
-                        <span className="text-[11px] font-semibold text-muted-foreground w-8 text-right tabular-nums">
-                          {item.percentage}%
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Motivational Footnote */}
-                <div className="pt-2 text-[11.5px] text-muted-foreground/90 flex items-start gap-1.5 leading-relaxed border-t border-border/50">
-                  <Sparkles className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
-                  <span>{t("Every research action (screening, evidence extraction, manuscripts) is automatically recorded.")}</span>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-border/80 p-5 text-center bg-muted/20">
-                <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto mb-2.5">
-                  <Award className="h-5 w-5" />
-                </div>
-                <p className="text-sm font-semibold text-foreground">{t("No recorded contributions yet")}</p>
-                <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto leading-relaxed">
-                  {t("Be the first to add papers, screen literature, or complete tasks to lead the team board!")}
-                </p>
-                <Button asChild variant="outline" size="sm" className="mt-3.5 text-xs font-semibold rounded-lg">
-                  <Link to={projectSectionHref(id, "contributions", { contributionTab: "work" })}>
-                    <Plus className="mr-1 h-3.5 w-3.5" />
-                    {t("Record work contribution")}
-                  </Link>
-                </Button>
-              </div>
-            )}
-          </section>
-
-          {/* Card: Next Milestone */}
-          <section className="bg-card rounded-2xl border border-border/80 p-6 shadow-xs">
-            <div className="flex items-center justify-between mb-3.5">
-              <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-lg bg-violet-100 dark:bg-violet-950/60 text-violet-600 flex items-center justify-center shrink-0">
-                  <Flag className="h-4 w-4" />
-                </div>
-                <h3 className="font-bold text-base text-foreground">{t("Next milestone")}</h3>
-              </div>
-              <Link to={projectSectionHref(id, "tasks", { view: "milestones" })} className="text-sm font-semibold text-primary hover:underline">
-                {t("View")}
-              </Link>
-            </div>
-
-            {data.nextMilestone ? (
-              <div className="bg-gradient-to-br from-violet-50/50 to-card dark:from-violet-950/20 border border-violet-200/60 dark:border-violet-900/40 rounded-xl p-4">
-                <strong className="block text-base font-semibold text-foreground">{data.nextMilestone.title}</strong>
-                {data.nextMilestone.description && (
-                  <p className="text-sm text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">{data.nextMilestone.description}</p>
-                )}
-                <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-violet-700 dark:text-violet-300">
-                  <Clock className="h-3.5 w-3.5" />
-                  <WorkspaceDate value={data.nextMilestone.dueAt} />
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {t("Set a meaningful target, such as reviewing the first set of papers.")}
-              </p>
-            )}
+          <section className="rounded-xl border bg-card p-6">
+            <h3 className="font-semibold">{t("researchContribution.research")}</h3>
+            <p className="my-3 text-sm leading-6 text-muted-foreground">{t("researchContribution.evidenceHint")}</p>
+            <Button asChild variant="outline"><Link to={projectSectionHref(id, "contributions", { contributionTab: "work" })}>{t("researchContribution.evidenceRecords")}</Link></Button>
           </section>
 
           {/* Card: Recent Activity */}
-          <section className="bg-card rounded-2xl border border-border/80 p-6 shadow-xs">
+          <section className="bg-card rounded-2xl border border-border/80 p-6 shadow-sm">
             <div className="flex items-center gap-2.5 mb-3.5">
               <div className="h-8 w-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center shrink-0">
                 <Clock className="h-4 w-4" />
@@ -726,12 +604,18 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
               <ol className="relative border-l border-border/80 ml-3 space-y-4 my-2">
                 {data.activity.slice(0, 6).map(event => {
                   const isPaper = event.type.startsWith("PAPER_");
-                  const isTask = event.type.startsWith("TASK_");
-                  const isPlan = event.type.startsWith("PLAN_");
-                  const dotColor = isPaper ? "bg-blue-500" : isTask ? "bg-emerald-500" : isPlan ? "bg-violet-500" : "bg-amber-500";
+                  const isTask = event.type.startsWith("TASK_") || event.type.startsWith("MILESTONE_");
+                  const isPlan = event.type.startsWith("PLAN_") || event.type.startsWith("RESEARCH_STAGE");
+                  const badgeBg = isPaper
+                    ? "bg-blue-500 ring-blue-100 dark:ring-blue-950"
+                    : isTask
+                      ? "bg-emerald-500 ring-emerald-100 dark:ring-emerald-950"
+                      : isPlan
+                        ? "bg-violet-500 ring-violet-100 dark:ring-violet-950"
+                        : "bg-amber-500 ring-amber-100 dark:ring-amber-950";
                   return (
                     <li key={event.id} className="ml-4 relative">
-                      <span className={`absolute -left-[23px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-background ${dotColor}`} />
+                      <span className={`absolute -left-[22px] top-1.5 h-2.5 w-2.5 rounded-full ring-4 ${badgeBg}`} />
                       <p className="text-sm leading-normal">
                         <strong className="font-semibold text-foreground">{event.actor?.name ?? t("Research team")}</strong> ·{" "}
                         <span className="text-muted-foreground">{t(activityLabels[event.type] ?? "Updated research work")}</span>
@@ -751,6 +635,7 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
           </section>
         </div>
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }

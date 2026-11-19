@@ -5,8 +5,10 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { CreateProjectForm } from "@/features/projects/components/create-project-form";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useProjects, useMyProjectInvitations, useRespondToProjectInvitation } from "@/features/projects/hooks/use-projects";
-import { ArrowDownWideNarrow, CalendarClock, FolderOpen, FolderPlus, MailOpen, Plus, Search, SlidersHorizontal, UserPlus, X } from "lucide-react";
+import { useProjects, useMyProjectInvitations, useRespondToProjectInvitation, useTrashedProjects } from "@/features/projects/hooks/use-projects";
+import { ProjectTrashView } from "@/features/projects/components/project-trash-view";
+import { Link } from "react-router-dom";
+import { ArrowDownWideNarrow, CalendarClock, FolderOpen, FolderPlus, MailOpen, Plus, Search, SlidersHorizontal, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import type { IncomingProjectInvitation } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
@@ -102,7 +104,8 @@ function ProjectInvitationRow({
   );
 }
 
-export function ProjectsListPage({ compact = false, invitationsOnly = false }: { compact?: boolean; invitationsOnly?: boolean }) {
+export function ProjectsListPage({ compact = false, invitationsOnly = false, trashOnly = false }: { compact?: boolean; invitationsOnly?: boolean; trashOnly?: boolean }) {
+  const { data: trashedProjects = [] } = useTrashedProjects({ enabled: !invitationsOnly });
   const { data: projects, isLoading, isError, isFetching, refetch } = useProjects();
   const mentoring = useMentoredProjects(!invitationsOnly);
   const mentoredProjects = mentoring.error ? [] : (mentoring.data ?? []).filter(item => !projects?.some(project => project._id === item.projectId));
@@ -194,6 +197,7 @@ export function ProjectsListPage({ compact = false, invitationsOnly = false }: {
     </InvitationContainer>
   ) : null;
 
+  if (trashOnly) return <ProjectTrashView />;
   if (invitationsOnly) return <div className="projects-page project-page-width project-directory-page" data-no-i18n>
     <header className="project-directory-heading"><h1 className="text-2xl font-semibold">{t("Project invitations")}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{t("Opening a notification does not accept an invitation. Review the recipient email and accept to join.")}</p>
@@ -212,17 +216,30 @@ export function ProjectsListPage({ compact = false, invitationsOnly = false }: {
             <div className="project-directory-heading-title">{compact ? <h2>{t("Projects")}</h2> : <h1>{t("Your projects")}</h1>}{!isLoading && !isError && projects ? <span>{number.format(projects.length + mentoredProjects.length)}</span> : null}</div>
             {!compact ? <p>{t("Review your research projects and pick up where you left off.")}</p> : null}
           </div>
-          <Dialog open={isDialogOpen} onOpenChange={next => { if (!createBusy) setIsDialogOpen(next); }}>
+          <div className="flex flex-wrap items-center gap-2">
+            {!compact ? (
+              <Button variant="outline" asChild className="gap-2">
+                <Link to="/projects?view=trash">
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  <span>{t("Trash")}</span>
+                  {trashedProjects.length > 0 ? (
+                    <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium">{number.format(trashedProjects.length)}</span>
+                  ) : null}
+                </Link>
+              </Button>
+            ) : null}
+            <Dialog open={isDialogOpen} onOpenChange={next => { if (!createBusy) setIsDialogOpen(next); }}>
             <DialogTrigger asChild>
               <Button variant={compact ? "outline" : "default"} className={compact ? "project-switcher-create" : "project-primary-action h-11 px-5 text-base"} aria-label={t("New project")} title={compact ? t("New project") : undefined}>
                 {compact ? <Plus className="h-4 w-4" aria-hidden="true" /> : <FolderPlus className="h-4 w-4" aria-hidden="true" />}
                 <span>{t(compact ? "Create" : "New project")}</span>
               </Button>
             </DialogTrigger>
-            <DialogContent className="project-directory-create max-h-[90dvh] overflow-y-auto sm:max-w-[550px]" onInteractOutside={event => { if (createBusy) event.preventDefault(); }} onEscapeKeyDown={event => { if (createBusy) event.preventDefault(); }}>
+            <DialogContent className="project-directory-create max-h-[90dvh] overflow-y-auto sm:max-w-[620px]" onInteractOutside={event => { if (createBusy) event.preventDefault(); }} onEscapeKeyDown={event => { if (createBusy) event.preventDefault(); }}>
               <CreateProjectForm onClose={() => setIsDialogOpen(false)} onBusyChange={setCreateBusy} />
             </DialogContent>
           </Dialog>
+          </div>
         </div>
       </header>
 

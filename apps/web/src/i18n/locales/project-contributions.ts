@@ -1,4 +1,10 @@
+import { supervisorInvitationEn, supervisorInvitationVi } from "./supervisor-invitation";
+import { researchChatEn, researchChatVi } from "./research-chat";
+import { researchContributionEn, researchContributionVi } from "./research-contribution";
 export const contributionsVi = {
+  ...researchContributionVi,
+  ...researchChatVi,
+  ...supervisorInvitationVi,
   "Select a day to filter the activity list.": "Chọn một ngày để xem các hoạt động trong ngày đó.",
   "Recorded activities": "Hoạt động được ghi nhận", "Active days": "Ngày có hoạt động", "Vietnam": "Việt Nam",
   "Review team activity, document work and agree on contribution shares.": "Theo dõi hoạt động, ghi nhận công việc và thống nhất tỷ lệ đóng góp trong nhóm.",
@@ -312,4 +318,4 @@ export const contributionsVi = {
   "và dùng kênh trao đổi riêng.": "và dùng kênh trao đổi riêng.",
   "Về danh sách nhóm đang cố vấn": "Về danh sách nhóm đang cố vấn",
 } as const;
-export const contributionsEn = Object.fromEntries(Object.keys(contributionsVi).map(key => [key, key])) as { [K in keyof typeof contributionsVi]: K };
+export const contributionsEn = { ...Object.fromEntries(Object.keys(contributionsVi).map(key => [key, key])), ...researchContributionEn, ...researchChatEn, ...supervisorInvitationEn } as Record<keyof typeof contributionsVi,string>;

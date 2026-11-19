@@ -79,6 +79,7 @@ export interface ScreeningPersonalEvaluation {
 
 export interface ScreeningWorkspaceSummary {
   automaticTasks?: ScreeningAutomaticTask[];
+  automaticDoneTotal?: number;
   readOnly?: boolean;
   pendingInformation?: Array<{ paperId: string; roundId: string; title: string; reason: string; kind: "FULLTEXT" | "INFORMATION" }>;
   workPapers?: ScreeningWorkPaper[];
@@ -345,9 +346,23 @@ export interface ScreeningPaperRow {
 export interface ScreeningClaimResult { paperId: string; roundId: string; assignmentId: string; dueAt: string | null }
 export type ScreeningClaimNextResult = ScreeningClaimResult | { paperId: null; roundId: null; dueAt: null };
 export interface ScreeningBoard extends WorkspacePage<ScreeningPaperRow> {
-  /** Counts across the viewer's eligible queue, independent of search and slot filters. */
   queueSummary?: { available: number; unclaimed: number; lastSlot: number; awaitingSecondReview: number };
-  adjudicatorOptions?: Array<WorkspacePerson & { mentor: boolean }>; librarySummary?: { selected: number; attention: number; discussion: number }; tags?: string[]; filters: { proposers: WorkspacePerson[]; reviewers: WorkspacePerson[] }; progress: { total: number; reviewed: number; finalized: number; legacy: number }; canManage: boolean; people: WorkspacePerson[]; settings: ScreeningSettings; myProgress: { assigned: number; completed: number; pending: number; overdue: number };
+  adjudicatorOptions?: Array<WorkspacePerson & { mentor: boolean }>;
+  librarySummary?: {
+    selected: number;
+    attention: number;
+    discussion: number;
+    background?: number;
+    excluded?: number;
+    unresolved?: number;
+  };
+  tags?: string[];
+  filters: { proposers: WorkspacePerson[]; reviewers: WorkspacePerson[] };
+  progress: { total: number; reviewed: number; finalized: number; legacy: number };
+  canManage: boolean;
+  people: WorkspacePerson[];
+  settings: ScreeningSettings;
+  myProgress: { assigned: number; completed: number; pending: number; overdue: number };
 }
 export interface ScreeningMetrics {
   reviewedPapers: number; finalizedPapers: number; legacyPapers: number;

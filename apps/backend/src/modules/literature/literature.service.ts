@@ -13,7 +13,7 @@ function whereId(value: string) {
   return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value };
 }
 async function resolveUser(value: string) { const row = await getPrisma().user.findUnique({ where: whereId(value), select: { id: true } }); if (!row) throw AppError.notFound("User not found"); return row.id; }
-async function resolveProject(value: string) { const row = await getPrisma().project.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("Project not found"); return row; }
+async function resolveProject(value: string) { const row = await getPrisma().project.findUnique({ where: whereId(value) }); if (!row || Boolean(row.deletedAt)) throw AppError.notFound("Project not found"); return row; }
 async function resolvePaper(value: string) { const row = await getPrisma().paper.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("Paper not found in the LumiGap corpus"); return row; }
 
 async function canAccessProject(projectId: string, userId: string) { return Boolean(await currentProjectMembership(projectId, userId)); }
@@ -47,7 +47,7 @@ export const literatureService = {
   async list(userIdInput: string) {
     const userId = await resolveUser(userIdInput);
     const memberships = await getPrisma().projectMember.findMany({ where: { userId, status: "ACTIVE" }, select: { projectId: true } });
-    const ownedProjects = await getPrisma().project.findMany({ where: { ownerId: userId }, select: { id: true } });
+    const ownedProjects = await getPrisma().project.findMany({ where: { ownerId: userId, deletedAt: null }, select: { id: true } });
     const projectIds = [...new Set([...memberships.map((row) => row.projectId), ...ownedProjects.map((row) => row.id)])];
     const corpora = await getPrisma().literatureCorpus.findMany({ where: { OR: [{ ownerId: userId, projectId: null }, { projectId: { in: projectIds } }] }, orderBy: { updatedAt: "desc" } });
     const counts = await getPrisma().corpusPaper.groupBy({ by: ["corpusId"], where: { corpusId: { in: corpora.map((row) => row.id) } }, _count: { _all: true } });

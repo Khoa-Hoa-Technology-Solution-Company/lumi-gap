@@ -1,8 +1,8 @@
 import { ScreeningStatus } from "./screening-common";
-import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { BookOpen, Plus, Search, ArrowRight, SlidersHorizontal, ArrowUpDown, X, Filter, RotateCcw, LayoutGrid, List } from "lucide-react";
-import type { ScreeningPaperRow } from "@trend/shared-types";
+import type { ScreeningPaperRow, ScreeningBoard } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -40,7 +40,14 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
   const [notesPaper, setNotesPaper] = useState<ScreeningPaperRow | null>(null);
   const query = { q, pageSize: 12, sort, filter: "ALL" as const, ...(status ? { status } : {}), ...(proposer ? { proposerId: proposer } : {}), ...(reviewer ? { reviewerId: reviewer } : {}), ...(tag ? { tag } : {}) };
   const data = useResearchResource(projectId, ["library", q, status, proposer, reviewer, tag, sort, page], () => screeningApi.board(projectId, { ...query, page }), true, () => !readOnly, 15000);
-  const board = data.data, focusId = params.get("source"), local = board?.items.find(p => p.paperId === focusId);
+  const latestBoardRef = useRef<ScreeningBoard | null>(null);
+  if (data.data) {
+    latestBoardRef.current = data.data;
+  }
+  const board = data.data ?? latestBoardRef.current;
+  const progress = board?.progress;
+  const summary = board?.librarySummary;
+  const focusId = params.get("source"), local = board?.items.find(p => p.paperId === focusId);
   const focus = useResearchResource(projectId, ["library-source", focusId], () => screeningApi.board(projectId, { source: focusId!, page: 1, pageSize: 1 }), Boolean(focusId && board && !local));
   const focused = local ?? focus.data?.items[0];
   const position = board?.items.findIndex(p => p.paperId === focusId) ?? -1;
@@ -212,8 +219,8 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
             onClick={resetFilters}
           >
             <span>Tất cả</span>
-            {board?.progress.total !== undefined && (
-              <span className="library-pill-count">{board.progress.total}</span>
+            {progress?.total !== undefined && (
+              <span className="library-pill-count">{progress.total}</span>
             )}
           </button>
           <button
@@ -222,8 +229,8 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
             onClick={() => change(() => setStatus(isPillIncluded ? "" : "INCLUDED"))}
           >
             <span>Đã chọn</span>
-            {board?.librarySummary?.selected !== undefined && (
-              <span className="library-pill-count">{board.librarySummary.selected}</span>
+            {summary?.selected !== undefined && (
+              <span className="library-pill-count">{summary.selected}</span>
             )}
           </button>
           <button
@@ -232,10 +239,10 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
             onClick={() => change(() => setStatus(isPillInReview ? "" : "IN_REVIEW"))}
           >
             <span>Đang sàng lọc</span>
-            {board ? (
-              <span className="library-pill-count">
-                {board.librarySummary?.attention ?? board.progress.total - board.progress.finalized}
-              </span>
+            {summary?.attention !== undefined ? (
+              <span className="library-pill-count">{summary.attention}</span>
+            ) : progress ? (
+              <span className="library-pill-count">{progress.total - progress.finalized}</span>
             ) : null}
           </button>
           <button
@@ -244,6 +251,11 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
             onClick={() => change(() => setStatus(isPillBackground ? "" : "BACKGROUND"))}
           >
             <span>Tài liệu nền</span>
+            {summary?.background !== undefined ? (
+              <span className="library-pill-count">{summary.background}</span>
+            ) : progress?.legacy ? (
+              <span className="library-pill-count">{progress.legacy}</span>
+            ) : null}
           </button>
           <button
             type="button"
@@ -251,22 +263,32 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
             onClick={() => change(() => setStatus(isPillExcluded ? "" : "EXCLUDED"))}
           >
             <span>Đã loại</span>
+            {summary?.excluded !== undefined && (
+              <span className="library-pill-count">{summary.excluded}</span>
+            )}
           </button>
-          <button
-            type="button"
-            className={`library-pill pill-unresolved ${isPillClosedUnresolved ? "active" : ""}`}
-            onClick={() => change(() => setStatus(isPillClosedUnresolved ? "" : "CLOSED_UNRESOLVED"))}
-          >
-            <span>Không đồng thuận</span>
-          </button>
-          {Boolean(board?.librarySummary?.discussion) && (
+          {(Boolean(summary?.discussion) || isPillDisagreement) && (
             <button
               type="button"
               className={`library-pill pill-needs-resolution ${isPillDisagreement ? "active" : ""}`}
               onClick={() => change(() => setStatus(isPillDisagreement ? "" : "NEEDS_RESOLUTION"))}
             >
               <span>Có bất đồng</span>
-              <span className="library-pill-count">{board?.librarySummary?.discussion}</span>
+              {summary?.discussion !== undefined && (
+                <span className="library-pill-count">{summary.discussion}</span>
+              )}
+            </button>
+          )}
+          {(Boolean(summary?.unresolved) || isPillClosedUnresolved) && (
+            <button
+              type="button"
+              className={`library-pill pill-unresolved ${isPillClosedUnresolved ? "active" : ""}`}
+              onClick={() => change(() => setStatus(isPillClosedUnresolved ? "" : "CLOSED_UNRESOLVED"))}
+            >
+              <span>Không đồng thuận</span>
+              {summary?.unresolved !== undefined && (
+                <span className="library-pill-count">{summary.unresolved}</span>
+              )}
             </button>
           )}
         </div>
@@ -346,8 +368,18 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
         </div>
       </div>
     </div>
-    {data.isLoading ? <WorkspaceLoading /> : data.isError ? <ScreeningError error={data.error} retry={() => void data.refetch()} /> : board && <>
-      {board.progress.legacy > 0 && <p className="library-legacy">Có {board.progress.legacy} bài mang phân loại từ quy trình cũ. Nhóm vẫn đọc được tài liệu; phân loại cũ không được tính là đánh giá hoặc quyết định chọn mới.</p>}
+    {!board && data.isLoading ? <WorkspaceLoading /> : data.isError ? <ScreeningError error={data.error} retry={() => void data.refetch()} /> : board && <div className={`library-content-container ${data.isFetching ? "is-fetching" : ""}`}>
+      {data.isFetching && (
+        <div className="library-fetching-bar" aria-hidden="true">
+          <div className="library-fetching-bar-indicator" />
+        </div>
+      )}
+      {board.progress.legacy > 0 && (
+        <div className="library-legacy-alert">
+          <BookOpen size={14} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+          <p>Có {board.progress.legacy} bài mang phân loại từ quy trình cũ. Nhóm vẫn đọc được tài liệu; phân loại cũ không được tính là đánh giá hoặc quyết định chọn mới.</p>
+        </div>
+      )}
       {!board.items.length && <div className="library-empty"><BookOpen size={24} /><h3>{board.progress.total ? "Không có bài khớp bộ lọc" : "Bắt đầu từ những bài nhóm đang đọc"}</h3><p>{board.progress.total ? "Thử đổi từ khóa hoặc bộ lọc để tìm lại tài liệu." : "Thêm từ kho bài, OpenAlex, DOI, BibTeX hoặc PDF riêng của dự án."}</p>{!readOnly && !board.progress.total && <Button size="sm" onClick={onAdd}><Plus size={14} />Thêm bài đầu tiên</Button>}</div>}
       <div className={`library-list ${viewMode === "grid" ? "is-grid" : "is-list"}`}>
         {board.items.map(p => {
@@ -380,6 +412,7 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
                 </div>
 
                 <div className="library-paper-header-right">
+                  {!readOnly && <Link className="text-xs text-muted-foreground hover:text-primary" to={`/projects/${projectId}?tab=chat&channel=team-chat&shareKind=PAPER&shareId=${p.paperId}`}>Chia sẻ với nhóm</Link>}
                   <ScreeningStatus className="library-selection-state" status={round?.status ?? "NOT_REVIEWED"} round={round} />
                 </div>
               </header>
@@ -456,7 +489,7 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
         })}
       </div>
       {board && board.total > 0 && <ScreeningPager page={page} total={board.total} hasNext={board.hasNext} onPage={setPage} />}
-    </>}
+    </div>}
     {selected.size > 0 && !readOnly && <div className="library-selection-bar" role="region" aria-label="Bộ bài đang chọn"><span><strong>{selected.size}/10</strong> bài trong bộ phân tích</span><Button variant="ghost" size="sm" onClick={() => setSelected(new Map())}>Bỏ chọn</Button><Button disabled={selected.size < 2} onClick={() => setMakingSet(true)}>Đưa vào phân tích<ArrowRight size={14} /></Button><small>Cần 2–10 bài. Có thể tạo bộ nháp trước khi chốt.</small></div>}
     {focusId && <Dialog open onOpenChange={v => { if (!v) open(null); }}><DialogContent closeLabel="Đóng" className="screening-workspace library-paper-dialog" data-no-i18n onOpenAutoFocus={e => e.preventDefault()}>
       <div className="library-dialog-header">

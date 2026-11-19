@@ -47,9 +47,8 @@ const data = vi.hoisted(() => ({ lastProvider: null as any, userId: "", canWrite
 const file = (id: string, path: string, kind: ManuscriptFile["kind"] = "TEXT"): ManuscriptFile => ({ id, path, kind, version: 1, sequence: 0, sizeBytes: 0, mimeType: null, checksum: null, updatedAt: "2026-10-19" });
 vi.mock("../github-connection.api", () => ({ githubConnectionApi: { status: async () => ({ configured: false, connected: false }) } }));
 vi.mock("../manuscripts.api", () => ({ manuscriptsApi: {
-  remote: async () => null,
-  remoteHistory: async () => [],
-  detail: async () => { if (data.detailFailed) throw new Error("Network interrupted"); return { id: "draft", title: "Team research paper", files: [{ id: "main", path: "main.tex", kind: "TEXT", version: 1 }, { id: "intro", path: "sections/introduction.tex", kind: "TEXT", version: 1 }, ...data.extraFiles].filter(file => !data.removedFiles.includes(file.id)), collaborators: [], compiler: { available: data.available, reason: "READY" }, version: 2, mainFileId: "main", canWrite: data.canWrite }; },
+  remote: async () => null, remoteHistory: async () => [],
+  detail: async () => { if (data.detailFailed) throw new Error("Network interrupted"); return { id: "draft", title: "Team research paper", files: [{ id: "main", path: "main.tex", kind: "TEXT", version: 1 }, { id: "intro", path: "sections/introduction.tex", kind: "TEXT", version: 1 }, ...data.extraFiles].filter(file => !data.removedFiles.includes(file.id)), collaborators: [], compiler: { available: data.available, reason: "READY" }, version: 2, mainFileId: "main", canWrite: data.canWrite, canManageGithub: data.canWrite }; },
   changeFile: data.changeFile,
   compilations: async () => data.state, compile: data.compile, snapshot: data.snapshot,
   assist: data.assist, aiRun: data.aiRun,
@@ -213,6 +212,7 @@ it("uses only the immutable source for the outline after opening a saved version
   data.viewSnapshot.mockResolvedValue({ ...version, manifest: { title: "Team research paper", documentType: "RESEARCH_PAPER", mainFileId: "main", files: [{ ...file("main", "main.tex"), text: "\\section{Archived introduction}" }] } });
   const host = await render(workspace());
   await act(async () => button(host, "Version history").click());
+  expect([...host.querySelectorAll<HTMLAnchorElement>("a")].find(node => node.textContent === "Share with team")?.getAttribute("href")).toBe("/projects/project?tab=chat&channel=team-chat&shareKind=MANUSCRIPT_SNAPSHOT&shareId=saved");
   await act(async () => [...host.querySelectorAll<HTMLAnchorElement>("a")].find(node => node.textContent?.includes("View version"))!.click());
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
   expect(host.querySelector(".writing-outline")?.textContent).toContain("Archived introduction");
@@ -518,7 +518,7 @@ it("opens a dedicated GitHub panel after OAuth and allows returning to PDF", asy
   expect(button(host, "Toggle information panel").textContent).toContain("GitHub");
   expect(host.querySelector("#writing-github-tabpanel")?.hasAttribute("hidden")).toBe(false);
   expect(host.querySelector('[role="dialog"]')).toBeNull();
-  expect(host.textContent).toContain("GitHub synchronization");
+  expect(host.querySelector("#writing-github-tabpanel .writing-github-steps")).not.toBeNull();
   await act(async () => host.querySelector<HTMLButtonElement>("#writing-preview-tab")!.click());
   expect(github.getAttribute("aria-selected")).toBe("false");
   expect(host.querySelector("#writing-preview-tabpanel")).not.toBeNull();

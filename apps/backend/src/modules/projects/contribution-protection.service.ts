@@ -39,7 +39,7 @@ export const contributionProtectionService = {
       db.project.findUnique({ where: workspaceId(projectInput) }),
       db.user.findUnique({ where: workspaceId(actorInput) }),
     ]);
-    if (!projectRow || !actorRow) throw AppError.notFound("Contribution history not found");
+    if (!projectRow || Boolean(projectRow.deletedAt) || !actorRow) throw AppError.notFound("Contribution history not found");
 
     return db.$transaction(async tx => {
       await lockProjectAccounts(tx, [actorRow.id], projectRow.id);
@@ -74,6 +74,13 @@ export const contributionProtectionService = {
         ]);
 
       const proposalIds = allProjectProposals.map(p => p.id);
+      const historicalParticipantRecords = proposalIds.length ? await tx.projectContributionHistory.findMany({where:{proposalId:{in:proposalIds}},select:{proposalId:true,snapshot:true},orderBy:{createdAt:"desc"}}) : [];
+      const historicalRoles = new Map<string,CreditRole[]>();
+      for(const record of historicalParticipantRecords) {
+        const snapshot=record.snapshot as {participants?:{userId:string;roles?:CreditRole[]}[]};
+        const participant=snapshot.participants?.find(person=>person.userId===actorRow.id);
+        if(participant && !historicalRoles.has(record.proposalId)) historicalRoles.set(record.proposalId,participant.roles??[]);
+      }
       const [myParticipantRows, allParticipantRows, allReviewRows] = proposalIds.length
         ? await Promise.all([
             tx.contributionParticipant.findMany({
@@ -110,6 +117,7 @@ export const contributionProtectionService = {
         Boolean(membership) ||
         periods.length > 0 ||
         myParticipantRows.length > 0 ||
+        historicalRoles.size > 0 ||
         allProjectProposals.some(p => p.contributorId === actorRow.id || p.proposedById === actorRow.id) ||
         myShares.length > 0 ||
         mentorAccesses.length > 0 ||
@@ -135,6 +143,7 @@ export const contributionProtectionService = {
       const myProposals = allProjectProposals.filter(
         p =>
           myParticipantByProposal.has(p.id) ||
+          historicalRoles.has(p.id) ||
           p.contributorId === actorRow.id ||
           (p.proposedById === actorRow.id && p.source === "LEGACY"),
       );
@@ -143,7 +152,7 @@ export const contributionProtectionService = {
         const myPart = myParticipantByProposal.get(row.id);
         const participants = allParticipantRows.filter(p => p.proposalId === row.id);
         const reviews = allReviewRows.filter(r => r.proposalId === row.id && r.version === row.version);
-        const myRoles = (myPart?.roles.length ? myPart.roles : row.roles) as CreditRole[];
+        const myRoles = (myPart?.roles.length ? myPart.roles : historicalRoles.get(row.id) ?? row.roles) as CreditRole[];
         return {
           id: row.id,
           title: row.title || row.description.slice(0, 120),
@@ -294,7 +303,7 @@ export const contributionProtectionService = {
       db.project.findUnique({ where: workspaceId(projectInput) }),
       db.user.findUnique({ where: workspaceId(actorInput) }),
     ]);
-    if (!projectRow || !actorRow) throw AppError.notFound("Project not found");
+    if (!projectRow || Boolean(projectRow.deletedAt) || !actorRow) throw AppError.notFound("Project not found");
 
     return db.$transaction(async tx => {
       await lockProjectAccounts(tx, [actorRow.id], projectRow.id);

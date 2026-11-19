@@ -4,10 +4,15 @@ import { contributionActivityService as activity } from "./contribution-activity
 import { workContributionsService as work } from "./work-contributions.service.js";
 import { allocationService as allocation } from "./allocation.service.js";
 import { contributionProtectionService as protection } from "./contribution-protection.service.js";
+import { researchContributions, manuscriptContributionStatement, researchContributionArtifact } from "./research-contribution-projection.js";
+import type { researchContributionsQuerySchema } from "./dto/project-contributions.schema.js";
 import type { activitySchema, contributionsPageSchema } from "./dto/project-contributions.schema.js";
 const id = (req: Request) => String(req.params.id), item = (req: Request) => String(req.params.itemId), actor = (req: Request) => req.user!.sub;
 const send = (res: Response, data: unknown, status = 200) => res.status(status).json({ success: true, data });
 export const projectContributionsController = {
+  research: async (req: Request, res: Response) => send(res, await researchContributions(id(req), actor(req), req.query as unknown as z.infer<typeof researchContributionsQuerySchema>)),
+  statement: async (req: Request, res: Response) => send(res, await manuscriptContributionStatement(id(req), actor(req), String(req.query.scopeKey))),
+  artifact: async (req: Request, res: Response) => send(res, await researchContributionArtifact(id(req), actor(req), String(req.query.kind), String(req.query.id))),
   overview: async (req: Request, res: Response) => send(res, await work.overview(id(req), actor(req))),
   people: async (req: Request, res: Response) => send(res, await work.people(id(req), actor(req))),
   activity: async (req: Request, res: Response) => send(res, await activity.list(id(req), actor(req), req.query as unknown as z.infer<typeof activitySchema>)),

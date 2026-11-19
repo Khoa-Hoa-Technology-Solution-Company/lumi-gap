@@ -3,6 +3,7 @@ import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { pdfStorageService } from "../../../infrastructure/pdf-storage.service.js";
 import { aiReviewerClient, type AiPreReviewResponse } from "../../papers/ai-reviewer.client.js";
+import { manuscriptAttributionService as attribution } from "../../workspaces/manuscript-attribution.service.js";
 import { manuscriptService as writing } from "../../workspaces/manuscript.service.js";
 import { submissionService as submissions } from "../submission.service.js";
 
@@ -11,7 +12,9 @@ vi.mock("../../../infrastructure/pdf-storage.service.js", () => ({ pdfStorageSer
 vi.mock("../../papers/ai-reviewer.client.js", () => ({ aiReviewerClient: { preReview: vi.fn() } }));
 vi.mock("../../retrieval/retriever.js", () => ({ retrieve: vi.fn().mockResolvedValue([]) }));
 const aiResponse: AiPreReviewResponse = { status: "completed", provider: "fixture", model: "fixture", analysis: { summary: "Fixture analysis", goal_alignment: { assessment: "Aligned", evidence_ids: [] }, rq_coverage: [], unsupported_claims: [], citation_issues: [], contribution_comparison: "Fixture comparison", review_focus_areas: [], limitations: [] } };
-const isolated = process.env.NODE_ENV === "test" && process.env.PROJECT_SLICE_TEST === "1" && process.env.DATABASE_URL?.includes("127.0.0.1:15439/lumigap_project_slice_test") && process.env.REDIS_URL === "redis://127.0.0.1:16389";
+const mentorDatabase = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : null;
+const mentorIsolated = process.env.NODE_ENV === "test" && process.env.MENTOR_REVIEW_INTEGRATION === "1" && Boolean(mentorDatabase && ["localhost","127.0.0.1","[::1]"].includes(mentorDatabase.hostname) && /^\/lumigap_mentor_review_test(?:_[a-z0-9]+)?$/.test(mentorDatabase.pathname));
+const isolated = mentorIsolated || process.env.NODE_ENV === "test" && process.env.PROJECT_SLICE_TEST === "1" && process.env.DATABASE_URL?.includes("127.0.0.1:15439/lumigap_project_slice_test") && process.env.REDIS_URL === "redis://127.0.0.1:16389";
 
 describe.skipIf(!isolated).sequential("project submission boundaries in disposable PostgreSQL", () => {
   const db = getPrisma(); let owner: string, member: string, reviewer: string;
@@ -111,6 +114,9 @@ describe.skipIf(!isolated).sequential("project submission boundaries in disposab
     const project = await createProjectFixture({ data: { ownerId: owner, title: "LaTeX submission integration", status: "ACTIVE" } });
     const manuscript = await writing.create(project.id, owner, { title: "Sealed LaTeX methods", documentType: "RESEARCH_PAPER", template: "ARTICLE", description: "", clientKey: crypto.randomUUID() });
     const snapshot = await writing.snapshot(project.id, owner, manuscript.id, { label: "Review source", clientKey: crypto.randomUUID(), minimumSequences: {} });
+    const ownerRecord=await db.user.findUniqueOrThrow({where:{id:owner}});
+    const declaration=await attribution.saveAttributionCheck(project.id,owner,manuscript.id,snapshot.id,{proposedAuthors:[{userId:owner,order:1,displayName:ownerRecord.fullName,email:ownerRecord.email,affiliation:"Fixture institution",corresponding:true,creditRoles:["CONCEPTUALIZATION"]}],acknowledgements:[],omittedContributors:[]});
+    await attribution.decideAttributionCheck(project.id,owner,manuscript.id,declaration.checkId!,{decision:"CONFIRM",note:"I approve this exact source snapshot and attribution for internal submission."});
     const published = await writing.publish(project.id, owner, manuscript.id, snapshot.id, [owner]);
     const original = await db.submissionRevision.findUniqueOrThrow({ where: { id: published.revisionId } });
     return { published, original, snapshot };

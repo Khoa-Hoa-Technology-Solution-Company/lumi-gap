@@ -29,12 +29,15 @@ import { projectTeamChatRouter } from "./team-chat.routes.js";
 import { projectWorkspaceRouter } from "./project-workspace.routes.js";
 import { projectResearchRouter } from "./project-research.routes.js";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
+import { mentorRolesService, proposeMentorRolesSchema, respondMentorRolesSchema } from "./mentor-roles.service.js";
 import { env } from "../../config/env.js";
 import { projectMentorshipService } from "./project-mentorship.service.js";
 import { mentorPlanService } from "./mentor-plan.service.js";
 import { mentorPlanCommandSchema } from "./dto/mentor-plan.schema.js";
 import { mentorshipContentRouter } from "./mentorship-content.routes.js";
 import { mentorAccessRouter } from "./mentor-access.routes.js";
+import { getMentorWorkspace } from "./mentor-workspace.controller.js";
+import { mentorWorkspaceQuerySchema } from "./dto/mentor-workspace.schema.js";
 import { scientificIntegrityRouter } from "./scientific-integrity.routes.js";
 import {
   contributionProposalParamsSchema,
@@ -44,8 +47,10 @@ import {
 } from "./project-contribution.controller.js";
 import {
   mentorshipParamsSchema, academicSearchSchema, mentorshipOfferSchema, suggestMentorSchema,
+  mentorSuggestionsQuerySchema, dismissMentorSuggestionSchema,
   projectMentorshipController,
-  requestMentorshipSchema,
+  previewDossierSchema,
+  requestMentorshipInfoSchema, requestMentorshipSchema,
   respondMentorshipSchema,
 } from "./project-mentorship.controller.js";
 
@@ -78,6 +83,7 @@ const paramInvitationIdSchema = paramIdSchema.extend({
 
 projectRouter.get("/invitation-tokens/:token", optionalAuth, validate(invitationTokenParamsSchema, "params"), projectController.getInvitationByToken);
 const academicRequestLimiter = createRateLimiter("projects:academicRequestLimiter", { windowMs: 60 * 60 * 1000, limit: env.ACADEMIC_RELATIONSHIP_REQUEST_LIMIT, keyGenerator: req => req.user!.sub, standardHeaders: true, legacyHeaders: false });
+const dossierPreviewLimiter = createRateLimiter("projects:mentorshipDossierPreview", { windowMs: 15 * 60 * 1000, limit: 60, keyGenerator: req => req.user!.sub, standardHeaders: true, legacyHeaders: false });
 const contextQuerySchema = z.object({ section: z.enum(["papers", "gaps", "reports", "evidence", "members"]).optional(), page: z.coerce.number().int().min(1).max(100000).default(1), pageSize: z.coerce.number().int().min(1).max(30).default(10) }).strict();
 projectRouter.get("/academic-support/applications", requireAuth, requireResearchWorkflow, validate(applicationPageSchema, "query"), async (req, res) => { res.setHeader("Cache-Control", "private, no-store"); res.json({ success: true, data: await mentorshipApplicationsService.mine(req.user!.sub, req.query) }); });
 projectRouter.get("/academic-support/preferences", requireAuth, requireResearchWorkflow, async (req, res) => {
@@ -87,13 +93,18 @@ projectRouter.patch("/academic-support/preferences", requireAuth, requireResearc
   validate(z.object({ acceptingMentorships: z.boolean().optional(), emailEnabled: z.boolean().optional(), locale: z.enum(["en", "vi"]).optional() }).strict()), async (req, res) => {
     res.json({ success: true, data: await projectMentorshipService.preferences(req.user!.sub, req.body) });
   });
+projectRouter.get("/academic-support/workspace", requireAuth, requireResearchWorkflow, validate(mentorWorkspaceQuerySchema, "query"), getMentorWorkspace);
 projectRouter.get("/academic-support/mine", requireAuth, requireResearchWorkflow, validate(academicSearchSchema, "query"), async (req, res) => {
   res.json({ success: true, data: await projectMentorshipService.mine(req.user!.sub, academicSearchSchema.parse(req.query)) });
+});
+projectRouter.get("/academic-support/available-mentors", requireAuth, requireResearchWorkflow, validate(academicSearchSchema, "query"), async (req, res) => {
+  res.json({ success: true, data: await projectMentorshipService.availableMentors(req.user!.sub, academicSearchSchema.parse(req.query)) });
 });
 projectRouter.get("/academic-support/opportunities", requireAuth, requireResearchWorkflow, validate(academicSearchSchema, "query"), async (req, res) => {
   res.json({ success: true, data: await projectMentorshipService.discovery(req.user!.sub, academicSearchSchema.parse(req.query)) });
 });
 projectRouter.use("/academic-support/content", mentorshipContentRouter);
+projectRouter.get("/trash", requireAuth, requireResearchWorkflow, projectController.listTrash);
 projectRouter.get("/:id", optionalAuth, validate(paramIdSchema, "params"), projectController.getProjectById);
 projectRouter.use(requireAuth, requireResearchWorkflow);
 projectRouter.use("/:id/mentorship-applications", mentorshipApplicationsRouter);
@@ -106,6 +117,7 @@ projectRouter.post("/invitation-tokens/:token/accept", validate(invitationTokenP
 projectRouter.post("/invitation-tokens/:token/decline", validate(invitationTokenParamsSchema, "params"), projectController.declineInvitationByToken);
 projectRouter.put("/:id", validate(paramIdSchema, "params"), validate(updateProjectSchema, "body"), projectController.updateProject);
 projectRouter.delete("/:id", validate(paramIdSchema, "params"), projectController.deleteProject);
+projectRouter.delete("/:id/permanent", projectWriteLimiter, validate(paramIdSchema, "params"), projectController.permanentDeleteProject);
 projectRouter.post("/:id/archive", validate(paramIdSchema, "params"), projectController.archiveProject);
 projectRouter.post("/:id/restore", validate(paramIdSchema, "params"), projectController.restoreProject);
 projectRouter.get("/:id/team", validate(paramIdSchema, "params"), validate(teamQuerySchema, "query"), projectController.team);
@@ -145,16 +157,26 @@ projectRouter.post("/:id/mentor-plan", academicRequestLimiter, validate(paramIdS
   res.setHeader("Cache-Control", "private, no-store");
   res.json({ success: true, data: await mentorPlanService.change(String(req.params.id), req.user!.sub, req.body) });
 });
+projectRouter.post(
+  "/:id/mentorships/dossier-preview",
+  dossierPreviewLimiter,
+  validate(paramIdSchema, "params"),
+  validate(previewDossierSchema, "body"),
+  projectMentorshipController.previewDossier,
+);
 projectRouter.get("/:id/mentorships", validate(paramIdSchema, "params"), validate(academicSearchSchema, "query"), projectMentorshipController.list);
 projectRouter.get("/:id/mentorships/:relationshipId", validate(mentorshipParamsSchema, "params"), projectMentorshipController.detail);
-projectRouter.get("/:id/mentor-suggestions", validate(paramIdSchema, "params"), validate(academicSearchSchema, "query"), async (req, res) => {
-  res.json({ success: true, data: await projectMentorshipService.suggestions(String(req.params.id), req.user!.sub, academicSearchSchema.parse(req.query)) });
+projectRouter.get("/:id/mentorship-roles", validate(paramIdSchema, "params"), async (req, res) => { res.set("Cache-Control", "private, no-store").json({ success: true, data: await mentorRolesService.read(String(req.params.id), req.user!.sub) }); });
+projectRouter.post("/:id/mentorship-roles", academicRequestLimiter, validate(paramIdSchema, "params"), validate(proposeMentorRolesSchema), async (req, res) => { res.status(201).json({ success: true, data: await mentorRolesService.propose(String(req.params.id), req.user!.sub, req.body) }); });
+projectRouter.post("/:id/mentorship-roles/:proposalId/respond", academicRequestLimiter, validate(paramIdSchema.extend({ proposalId: z.string().uuid() }), "params"), validate(respondMentorRolesSchema), async (req, res) => { res.json({ success: true, data: await mentorRolesService.respond(String(req.params.id), req.user!.sub, String(req.params.proposalId), req.body.action) }); });
+projectRouter.get("/:id/mentor-suggestions", validate(paramIdSchema, "params"), validate(mentorSuggestionsQuerySchema, "query"), async (req, res) => {
+  res.json({ success: true, data: await projectMentorshipService.suggestions(String(req.params.id), req.user!.sub, mentorSuggestionsQuerySchema.parse(req.query)) });
 });
 projectRouter.post("/:id/mentor-suggestions", academicRequestLimiter, validate(paramIdSchema, "params"), validate(suggestMentorSchema), async (req, res) => {
   res.status(201).json({ success: true, data: await projectMentorshipService.suggest(String(req.params.id), req.user!.sub, req.body) });
 });
-projectRouter.post("/:id/mentor-suggestions/:suggestionId/dismiss", validate(paramIdSchema.extend({ suggestionId: z.string().uuid() }), "params"), validate(z.object({}).strict()), async (req, res) => {
-  res.json({ success: true, data: await projectMentorshipService.dismissSuggestion(String(req.params.id), String(req.params.suggestionId), req.user!.sub) });
+projectRouter.post("/:id/mentor-suggestions/:suggestionId/dismiss", validate(paramIdSchema.extend({ suggestionId: z.string().uuid() }), "params"), validate(dismissMentorSuggestionSchema), async (req, res) => {
+  res.json({ success: true, data: await projectMentorshipService.dismissSuggestion(String(req.params.id), String(req.params.suggestionId), req.user!.sub, req.body.reason) });
 });
 projectRouter.get("/:id/available-mentors/:mentorId/evidence", validate(z.object({ id: databaseIdSchema, mentorId: databaseIdSchema }), "params"), projectMentorshipController.mentorEvidence);
 projectRouter.get("/:id/available-mentors", validate(paramIdSchema, "params"), validate(academicSearchSchema, "query"), async (req, res) => {
@@ -190,7 +212,7 @@ projectRouter.post(
   projectMentorshipController.decline,
 );
 projectRouter.post(
-  "/:id/mentorships/:relationshipId/end",
+  "/:id/mentorships/:relationshipId/request-info", academicRequestLimiter, validate(mentorshipParamsSchema, "params"), validate(requestMentorshipInfoSchema, "body"), projectMentorshipController.requestInfo); projectRouter.post( "/:id/mentorships/:relationshipId/end",
   validate(mentorshipParamsSchema, "params"),
   validate(respondMentorshipSchema, "body"),
   projectMentorshipController.end,

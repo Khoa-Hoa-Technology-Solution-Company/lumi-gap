@@ -175,6 +175,8 @@ export const authMailService = {
     return deliver({ to: email, event: "affiliation_status", subject: "Your LumiGap affiliation verification status", text: `Your affiliation request has been updated. Sign in to view its status and review message: ${url.toString()}` });
   },
   sendEmailVerification(email: string, token: string) {
+    // Disabled delivery must not build a security link or require a public origin.
+    if (env.EMAIL_DELIVERY_MODE === "disabled") return Promise.resolve(false);
     const url = new URL("/verify-email", webOrigin());
     url.searchParams.set("token", token);
     return deliver({

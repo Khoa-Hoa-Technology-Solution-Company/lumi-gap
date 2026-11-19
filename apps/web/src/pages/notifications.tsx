@@ -7,6 +7,8 @@ import type { NotificationItem } from "@trend/shared-types";
 import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
 import { isAdminSystemRole } from "@trend/shared-types";
+import { mentorWorkspaceDestination } from "@/features/projects/utils/mentor-workspace-navigation";
+import { useI18n } from "@/i18n";
 
 function formatTime(dateStr: string) {
   try {
@@ -26,7 +28,9 @@ function formatTime(dateStr: string) {
   }
 }
 
-export function NotificationsPage() {
+export function NotificationsPage({ embedded = false }: { embedded?: boolean }) {
+  const Container = embedded ? "section" : "main";
+  const { t } = useI18n();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminSystemRole(user?.systemRole);
@@ -49,7 +53,7 @@ export function NotificationsPage() {
   const handleNotificationClick = (notification: NotificationItem) => {
     if (!notification.isRead && notification.type !== "SCREENING_DISCUSSION_MESSAGE") markReadMutation.mutate(notification.id);
     const destination = getNotificationDestination(notification, isAdmin);
-    if (destination) navigate(destination);
+    if (destination) navigate(embedded ? mentorWorkspaceDestination(destination) : destination);
   };
 
   if (isLoading) {
@@ -74,14 +78,14 @@ export function NotificationsPage() {
   const systemCount = allItems.filter((n) => !n.type.startsWith("submission") && !n.isRead).length;
 
   return (
-    <main className="container py-8 max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
+    <Container className={embedded ? "mentor-embedded-notifications" : "container py-8 max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8"}>
       <div className="flex flex-col md:flex-row gap-8">
         
         {/* Left Sidebar */}
-        <aside className="w-full md:w-64 shrink-0 flex flex-col justify-between h-[calc(100vh-8rem)] sticky top-24">
+        <aside className={embedded ? "mentor-notification-filters" : "w-full md:w-64 shrink-0 flex flex-col justify-between h-[calc(100vh-8rem)] sticky top-24"}>
           <div>
             <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-6 px-4">
-              Notifications
+              {t("Notifications")}
             </h1>
             
             <nav className="space-y-1">
@@ -95,7 +99,7 @@ export function NotificationsPage() {
               >
                 <div className="flex items-center gap-3">
                   <Bell className="w-4 h-4 shrink-0" />
-                  All
+                  {t("All")}
                 </div>
                 {unreadCount > 0 && (
                   <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -116,7 +120,7 @@ export function NotificationsPage() {
               >
                 <div className="flex items-center gap-3">
                   <FileText className="w-4 h-4 shrink-0" />
-                  Paper Alerts
+                  {t("Paper Alerts")}
                 </div>
                 {paperAlertsCount > 0 && (
                   <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -137,7 +141,7 @@ export function NotificationsPage() {
               >
                 <div className="flex items-center gap-3">
                   <Sparkles className="w-4 h-4 shrink-0" />
-                  System
+                  {t("System")}
                 </div>
                 {systemCount > 0 && (
                   <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -161,7 +165,7 @@ export function NotificationsPage() {
         <div className="flex-1 min-w-0">
           
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Recent Activity</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t("Recent Activity")}</h2>
             {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllRead}
@@ -235,7 +239,7 @@ export function NotificationsPage() {
           )}
         </div>
       </div>
-    </main>
+    </Container>
   );
 }
 

@@ -1,3 +1,6 @@
+import { registrationVi } from "./registration";
+import { mentorWorkspaceVi } from "./mentor-workspace";
+import { scientificReviewVi } from "./scientific-review";
 import { mentorJourneyVi } from "./mentor-journey";
 import { academicConnectionsVi } from "./academic-connections";
 import { screeningQueueVi } from "./screening-queue";
@@ -41,7 +44,9 @@ import { adminCatalogVi } from "./admin-catalog";
 import { personalizationViStrings } from "./personalization";
 
 export const vi: Record<keyof typeof en, string> = {
+  ...registrationVi,
   ...en,
+  ...mentorWorkspaceVi,
   ...personalizationViStrings,
   ...qualityEvaluationVi,
   ...adminCatalogVi,
@@ -337,6 +342,7 @@ export const vi: Record<keyof typeof en, string> = {
   ...mentorApplicantsVi,
   ...manuscriptIntegrityVi,
   ...academicSupportVi,
+  ...scientificReviewVi,
   ...academicProfileStrings.vi,
   ...gapEvidenceWorkflowViStrings,
   ...gapClosureViStrings,

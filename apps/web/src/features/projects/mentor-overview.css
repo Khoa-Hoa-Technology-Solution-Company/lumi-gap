@@ -1,0 +1,80 @@
+/* Work-first overview, using the workspace's existing semantic theme tokens. */
+.mentor-overview { min-width: 0; }
+.mentor-overview-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+.mentor-overview-kicker { margin: 0 0 8px; color: hsl(var(--muted-foreground)); font-size: .7rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.mentor-overview-header h1 { margin: 0; font-size: 1.875rem; line-height: 1.25; font-weight: 700; letter-spacing: -.035em; }
+.mentor-overview-intro { margin: 8px 0 0; max-width: 65ch; color: hsl(var(--muted-foreground)); font-size: .875rem; line-height: 1.6; }
+.mentor-overview-sync { display: flex; align-items: center; gap: 10px; flex-shrink: 0; color: hsl(var(--muted-foreground)); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.mentor-overview-statistics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 32px; padding: 6px 0; border-block: 1px solid hsl(var(--border)); }
+.mentor-overview-statistics > :is(a, button) { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 62px; padding: 12px 16px; text-align: left; border-radius: 6px; color: hsl(var(--muted-foreground)); font-size: .8rem; }
+.mentor-overview-statistics > :is(a, button) + :is(a, button) { border-left: 1px solid hsl(var(--border)); }
+.mentor-overview-statistics span { flex: 1; }
+.mentor-overview-statistics strong { color: hsl(var(--foreground)); font-size: 1.25rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.mentor-overview-statistics > :is(a, button) > svg:last-child { width: 12px; }
+.mentor-overview :is(a, button):focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
+.mentor-overview-statistics > :is(a, button):hover { background: hsl(var(--muted) / .6); color: hsl(var(--foreground)); }
+.mentor-overview-alerts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: -12px; margin-bottom: 24px; }
+.mentor-overview-alerts button { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid hsl(var(--destructive) / .25); border-radius: 6px; background: hsl(var(--destructive) / .04); color: hsl(var(--destructive)); font-size: .8rem; text-align: left; }
+.mentor-overview-alerts button:hover { background: hsl(var(--destructive) / .09); }
+.mentor-overview-columns { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(290px, 1fr); gap: 32px; align-items: start; }
+.mentor-overview-section-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.mentor-overview h2 { margin: 0; font-size: 1.0625rem; line-height: 1.4; font-weight: 650; letter-spacing: -.015em; }
+.mentor-overview-section-heading p { margin: 5px 0 0; color: hsl(var(--muted-foreground)); font-size: .775rem; line-height: 1.55; }
+.mentor-overview-section-heading > button { flex-shrink: 0; margin-top: -4px; }
+.mentor-overview-priorities { min-width: 0; }
+.mentor-overview-priorities .mentor-work-list { gap: 0; padding: 0 20px; border: 1px solid hsl(var(--border)); border-radius: 10px; background: hsl(var(--card)); }
+.mentor-overview-priorities .mentor-work-row { padding: 20px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.mentor-overview-priorities .mentor-work-row + .mentor-work-row { border-top: 1px solid hsl(var(--border)); }
+.mentor-overview-priorities .mentor-row-title { font-size: .9375rem; line-height: 1.5; }
+.mentor-overview-priorities .mentor-row-main { align-items: start; }
+.mentor-overview-priorities .mentor-row-footer { border: 0; margin-top: 16px; padding-top: 0; gap: 12px; }
+.mentor-overview-priorities .mentor-row-footer > div { flex-wrap: wrap; row-gap: 6px; }
+.mentor-overview-priorities .mentor-row-context { margin-bottom: 10px; }
+.mentor-overview-priorities .mentor-row-copy p { margin-top: 5px; }
+.mentor-overview-list-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; color: hsl(var(--muted-foreground)); font-size: .75rem; }
+.mentor-overview-teams { min-width: 0; }
+.mentor-overview-team-list { list-style: none; margin: 0; padding: 0; }
+.mentor-overview-team-list > li { padding: 18px 0; border-top: 1px solid hsl(var(--border)); }
+.mentor-overview-team-heading { display: flex; flex-wrap: wrap; align-items: start; gap: 8px; margin-bottom: 12px; }
+.mentor-overview-team-heading > a { display: flex; align-items: start; gap: 8px; width: 100%; color: hsl(var(--foreground)); font-size: .875rem; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
+.mentor-overview-team-heading > a svg { margin-left: auto; margin-top: 3px; flex-shrink: 0; color: hsl(var(--muted-foreground)); }
+.mentor-overview-team-heading > a:hover { color: hsl(var(--primary)); }
+.mentor-overview-team-heading > div { font-weight: 500; }
+.mentor-overview-team-list p { display: flex; align-items: start; gap: 7px; margin: 5px 0; color: hsl(var(--muted-foreground)); font-size: .75rem; line-height: 1.6; overflow-wrap: anywhere; }
+.mentor-overview-team-list p svg { flex-shrink: 0; margin-top: 2px; }
+.mentor-overview-team-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; font-size: .7rem; color: hsl(var(--muted-foreground)); }
+.mentor-overview-team-footer button { display: flex; align-items: center; gap: 5px; color: hsl(var(--primary)); font-weight: 600; min-height: 28px; }
+.mentor-overview-team-footer button:hover { text-decoration: underline; }
+.mentor-overview-all-teams { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding-top: 8px; border-top: 1px solid hsl(var(--border)); color: hsl(var(--primary)); font-size: .8rem; font-weight: 600; }
+.mentor-overview-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 28px 20px; border: 1px dashed hsl(var(--border)); border-radius: 10px; color: hsl(var(--muted-foreground)); }
+.mentor-overview-empty h3 { margin: 0; color: hsl(var(--foreground)); font-size: .9375rem; font-weight: 600; }
+.mentor-overview-empty p { margin: 0 0 4px; max-width: 50ch; font-size: .8125rem; line-height: 1.65; }
+.mentor-overview-resources { margin-top: 36px; padding-top: 24px; border-top: 1px solid hsl(var(--border)); }
+.mentor-overview-resources > div { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 8px; }
+.mentor-overview-resources a { display: flex; align-items: center; gap: 12px; padding: 14px 8px; border-radius: 6px; color: hsl(var(--muted-foreground)); }
+.mentor-overview-resources a:hover { background: hsl(var(--muted) / .5); }
+.mentor-overview-resources a > span { flex: 1; min-width: 0; }
+.mentor-overview-resources strong { display: block; color: hsl(var(--foreground)); font-size: .825rem; font-weight: 600; }
+.mentor-overview-resources small { display: block; margin-top: 4px; font-size: .75rem; line-height: 1.6; }
+.mentor-overview-resources a > svg { flex-shrink: 0; }
+@media (max-width: 1279px) {
+  .mentor-overview-columns { grid-template-columns: minmax(0, 1.4fr) minmax(260px, 1fr); gap: 24px; }
+  .mentor-overview-statistics > :is(a, button) { padding-inline: 10px; gap: 8px; }
+  .mentor-overview-statistics > :is(a, button) > svg:last-child { display: none; }
+}
+@media (max-width: 767px) {
+  .mentor-overview-header { align-items: start; flex-direction: column; gap: 16px; margin-bottom: 20px; }
+  .mentor-overview-header h1 { font-size: 1.5rem; }
+  .mentor-overview-sync { width: 100%; justify-content: space-between; }
+  .mentor-overview-statistics { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 24px; }
+  .mentor-overview-statistics > :is(a, button) { min-height: 58px; }
+  .mentor-overview-statistics > :is(a, button):nth-child(3) { border-left: 0; }
+  .mentor-overview-statistics > :is(a, button):nth-child(n+3) { border-top: 1px solid hsl(var(--border)); }
+  .mentor-overview-columns { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .mentor-overview-priorities .mentor-work-list { padding-inline: 16px; }
+  .mentor-overview-priorities .mentor-row-main { flex-wrap: wrap; }
+  .mentor-overview-priorities .mentor-row-footer { align-items: start; }
+  .mentor-overview-resources { margin-top: 28px; }
+  .mentor-overview-resources > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .mentor-overview :is(.mentor-overview-sync button, .mentor-row-footer a, .mentor-overview-team-footer button) { min-height: 44px; }
+}

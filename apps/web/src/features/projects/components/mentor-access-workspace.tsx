@@ -31,7 +31,7 @@ export function MentorPolicySummary({ policy }: { policy?: MentorAccessPolicy })
 function AccessError({ error }: { error: unknown }) { if (!error) return null; const message = isAxiosError(error) ? error.response?.data?.error?.message : null; return <p role="alert" className="mentor-access-error">{typeof message === "string" && /[À-ỹĐđ]/.test(message) ? message : "Chưa thể thực hiện. Bản nháp vẫn được giữ, vui lòng thử lại."}</p>; }
 function useAccessCommand(projectId: string) {
   const cache = useQueryClient(), busy = useRef(false), attempt = useRef<{ text: string; key: string }>();
-  const mutation = useMutation({ mutationFn: (run: () => Promise<unknown>) => run(), onSuccess: async () => { await Promise.all([cache.invalidateQueries({ queryKey: ["mentor-access"] }), cache.invalidateQueries({ queryKey: ["academic-support"] })]); } });
+  const mutation = useMutation({ mutationFn: (run: () => Promise<unknown>) => run(), onSuccess: async () => { await Promise.all([cache.invalidateQueries({ queryKey: ["mentor-access"] }), cache.invalidateQueries({ queryKey: ["academic-support"] }), cache.invalidateQueries({ queryKey: ["mentor-workspace"] })]); } });
   const run = async (body: unknown, execute: (key: string) => Promise<unknown>) => { if (busy.current) return false; const text = JSON.stringify([projectId, body]); if (attempt.current?.text !== text) attempt.current = { text, key: crypto.randomUUID() }; busy.current = true; try { await mutation.mutateAsync(() => execute(attempt.current!.key)); attempt.current = undefined; return true; } catch { return false; } finally { busy.current = false; } };
   return { ...mutation, run };
 }

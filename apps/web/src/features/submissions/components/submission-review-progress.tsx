@@ -16,7 +16,7 @@ export function SubmissionReviewProgress({ history, onRefresh, refreshing }: { h
   const requests = history.reviewRequests ?? [];
   return <section className="mt-6 rounded-lg border border-border bg-card p-5" data-no-i18n>
     <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">{t("Review requests")}</h2>{onRefresh ? <Button size="sm" variant="outline" onClick={onRefresh} disabled={refreshing}>{t("Refresh review status")}</Button> : null}</div>
-    <p className="mt-1 text-sm leading-6 text-muted-foreground">{t("Saving a submission does not send it to a reviewer. The project owner sends review requests.")}</p>
+    {!requests.length && <p className="mt-1 text-sm leading-6 text-muted-foreground">{t("Saving a submission does not send it to a reviewer. The project owner sends review requests.")}</p>}
     {requests.length ? <ul className="mt-4 divide-y divide-border">{requests.map(request => <li key={request.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="break-words font-medium">{request.reviewerName}</span><Badge variant="secondary">{t(statusLabels[request.status] ?? request.status)}</Badge></div>
         <p className="mt-1 text-xs text-muted-foreground">{t("Revision")} {request.revisionNumber}{request.dueAt ? ` · ${t("Due date")}: ${new Date(request.dueAt).toLocaleDateString(language)}` : ""}</p>

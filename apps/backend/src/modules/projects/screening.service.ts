@@ -143,7 +143,12 @@ export const screeningService = {
       }
 
       const assignments = await effectiveAssignments(c, row.id);
-      if (!roundSettings(row.settings).screeningMode && assignments.some(a => a.id !== assignment.id && a.submittedAt)) {
+      const roundConf = roundSettings(row.settings);
+      const isTeamScreening = roundConf.workflowKind === "TEAM_SCREENING" || roundConf.resolutionPolicy === "CONSENSUS";
+      if (isTeamScreening && assignments.length >= 2 && assignments.every(a => Boolean(a.submittedAt))) {
+        throw AppError.forbidden("Quy trình Đánh giá nhóm (TEAM_SCREENING) sử dụng đề xuất và xác nhận kết luận chung sau thảo luận, không chỉnh sửa phiếu cá nhân.");
+      }
+      if (!roundConf.screeningMode && assignments.some(a => a.id !== assignment.id && a.submittedAt)) {
         const current = await c.tx.screeningReview.findUniqueOrThrow({
           where: { assignmentId_revision: { assignmentId: assignment.id, revision: assignment.revision } },
         });
@@ -494,11 +499,22 @@ export const screeningService = {
         for (const r of rounds) classified.set(r.paperId, ["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(r.status) && !r.legacyNeedsAudit ? "RESOLVED" : ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS", "NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(r.status) ? await screeningClassification(c, r) : null);
       }
       // Shared legacy labels are evidence of a past classification, never of a completed protocol.
-      const state = (l: typeof allLinks[number]) => roundByPaper.get(l.paperId)?.status ?? "NOT_REVIEWED";
+      const state = (l: typeof allLinks[number]) => {
+        const round = roundByPaper.get(l.paperId);
+        if (round) return round.status;
+        if (l.screeningStatus === "BACKGROUND") return "BACKGROUND";
+        return "NOT_REVIEWED";
+      };
       const matchIds = matches ? new Set(matches.map(p => p.id)) : null, filteredIds = paperIds ? new Set(paperIds) : null;
       const ids = allLinks.filter(l => (!filteredIds || filteredIds.has(l.paperId) || Boolean(query.source && query.filter !== "QUEUE")) && (!query.source || source?.id === l.paperId) && (!matchIds || matchIds.has(l.paperId) || l.tags.some(t => t.toLocaleLowerCase().includes(query.q.toLocaleLowerCase())) || l.notes?.toLocaleLowerCase().includes(query.q.toLocaleLowerCase())) && (!query.tag || l.tags.includes(query.tag)) && (!query.proposerId || l.addedById === query.proposerId) && (!query.status || (classified.size ? classified.get(l.paperId) === query.status : state(l) === query.status)) && (!query.reviewerId || reviewerRounds.has(roundByPaper.get(l.paperId)?.id ?? ""))).map(l => l.paperId);
       const reviewed = new Set(allAssignments.filter(a => a.submittedAt).map(a => a.roundId));
-      const progress = { total: allLinks.length, reviewed: reviewed.size, finalized: allLinks.filter(l => !roundByPaper.get(l.paperId)?.legacyNeedsAudit && ["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(state(l))).length, legacy: allLinks.filter(l => roundByPaper.get(l.paperId)?.legacyNeedsAudit || !roundByPaper.has(l.paperId) && l.screeningStatus !== "UNDECIDED").length };
+      const finalizedRounds = rounds.filter(r => !r.legacyNeedsAudit && ["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(r.status));
+      const progress = {
+        total: allLinks.length,
+        reviewed: reviewed.size,
+        finalized: finalizedRounds.length,
+        legacy: allLinks.filter(l => roundByPaper.get(l.paperId)?.legacyNeedsAudit || (!roundByPaper.has(l.paperId) && l.screeningStatus !== "UNDECIDED")).length,
+      };
       const queueOrder = query.filter === "QUEUE" ? new Map((paperIds ?? []).map((id, i) => [id, i])) : null;
       if (queueOrder) ids.sort((a, b) => queueOrder.get(a)! - queueOrder.get(b)!);
       const sortPapers = !queueOrder && (query.sort === "title" || query.sort === "year") ? await c.tx.paper.findMany({ where: { id: { in: ids } }, orderBy: query.sort === "title" ? [{ title: "asc" }, { id: "asc" }] : [{ publicationYear: "desc" }, { id: "asc" }], select: { id: true } }) : null;
@@ -523,7 +539,24 @@ export const screeningService = {
       if (sortedPage) links.sort((a, b) => sortedPage.indexOf(a.paperId) - sortedPage.indexOf(b.paperId));
       const reviewedProposals = await reviewedProposalPapers(c, links.map(l => l.paperId));
       const items = await Promise.all(links.map(async l => { const paper = papers.find(p => p.id === l.paperId)!, round = pageRounds.find(r => r.paperId === l.paperId); return { tags: l.tags, notes: l.notes, importSource: l.importSource, proposer: l.addedById ? { id: l.addedById, name: proposers.find(p => p.id === l.addedById)?.fullName || "Thành viên" } : null, proposedAt: l.createdAt.toISOString(), proposalReason: l.proposalReason, updatedAt: l.updatedAt.toISOString(), canEditProposal: l.addedById === c.actorId && !["ARCHIVED", "COMPLETED"].includes(c.project.status) && !reviewedProposals.has(l.paperId), paperId: l.paperId, title: paper.title, abstractText: paper.abstractText, doi: paper.doi, publicationYear: paper.publicationYear, journalName: paper.journalName, paperKind: paper.paperKind, authors: authors.filter(a => a.paperId === l.paperId).map(a => a.displayName), paperLink: paper.paperLink ?? paper.openAccessUrl, fullTextAvailable: Boolean(paper.openAccessUrl || paper.pdfPath || files.some(f => f.paperId === l.paperId)), citationCount: paper.citationCount, openAccessStatus: paper.openAccessStatus, keywords: keywords.filter(k => k.paperId === l.paperId).map(k => k.keywordName), legacyStatus: l.screeningStatus, legacyProvenance: !round && (legacy.some(r => r.paperId === l.paperId && meaningfulLegacyScreening(r.snapshot)) || ["INCLUDED", "EXCLUDED"].includes(l.screeningStatus)), round: round ? await roundView(c, round) : null }; }));
-      return { ...(queueSummary ? { queueSummary } : {}), ...(c.role === "OWNER" ? { adjudicatorOptions: await screeningAdjudicatorPool(c) } : {}), librarySummary: { selected: rounds.filter(r => r.status === "INCLUDED").length, attention: allLinks.length - progress.finalized, discussion: rounds.filter(r => ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS", "NEEDS_RESOLUTION", "ADJUDICATING"].includes(r.status)).length }, tags: [...new Set(allLinks.flatMap(l => l.tags))].sort(), filters, progress, items, page: query.page, pageSize: query.pageSize, total, hasNext: query.page*query.pageSize<total, people, settings, myProgress, canManage: c.role === "OWNER" && !["ARCHIVED", "COMPLETED"].includes(c.project.status) };
+      const backgroundCount = allLinks.filter(l => {
+        const r = roundByPaper.get(l.paperId);
+        return r ? r.status === "BACKGROUND" : l.screeningStatus === "BACKGROUND";
+      }).length;
+      const excludedCount = rounds.filter(r => r.status === "EXCLUDED").length;
+      const unresolvedCount = rounds.filter(r => r.status === "CLOSED_UNRESOLVED").length;
+      const discussionCount = rounds.filter(r => ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS", "NEEDS_RESOLUTION", "ADJUDICATING"].includes(r.status)).length;
+      const selectedCount = rounds.filter(r => r.status === "INCLUDED").length;
+      const attentionCount = allLinks.length - progress.finalized;
+      const librarySummary = {
+        selected: selectedCount,
+        attention: attentionCount,
+        discussion: discussionCount,
+        background: backgroundCount,
+        excluded: excludedCount,
+        unresolved: unresolvedCount,
+      };
+      return { ...(queueSummary ? { queueSummary } : {}), ...(c.role === "OWNER" ? { adjudicatorOptions: await screeningAdjudicatorPool(c) } : {}), librarySummary, tags: [...new Set(allLinks.flatMap(l => l.tags))].sort(), filters, progress, items, page: query.page, pageSize: query.pageSize, total, hasNext: query.page*query.pageSize<total, people, settings, myProgress, canManage: c.role === "OWNER" && !["ARCHIVED", "COMPLETED"].includes(c.project.status) };
     });
   },
   async history(project: string, actor: string, roundId: string, page = 1, kind: "ALL" | "DISCUSSION" | "HISTORY" = "ALL") {
@@ -908,6 +941,9 @@ export const screeningService = {
   async workspaceSummary(project: string, actor: string): Promise<ScreeningWorkspaceSummary> {
     return withWorkspace(project, actor, {}, async c => {
       await maintainProjectConsensus(c);
+      // Reconcile deadlines before computing cards and counts, so this response
+      // agrees with the task ledger on the very first read after expiry.
+      await reconcileScreeningObligations(c);
       const now = new Date();
       const liveReviewers = new Set((await screeningPeople(c)).map(p => p.id));
       const effectiveSlot = (a: { active: boolean; submittedAt: Date | null; dueAt: Date | null; reviewerId: string }) =>
@@ -1275,7 +1311,8 @@ export const screeningService = {
             publicationYear: paper?.publicationYear ?? null, journalName: paper?.journalName ?? null,
             phase: r.phase as ScreeningPhase, myDecision,
             submittedAt: review.submittedAt.toISOString(),
-            groupStatus: r.status === "WAITING_FULLTEXT" ? "WAITING_FULLTEXT"
+            groupStatus: r.status === "CLOSED_UNRESOLVED" ? "CLOSED_UNRESOLVED"
+              : r.status === "WAITING_FULLTEXT" ? "WAITING_FULLTEXT"
               : finalDecision === "INCLUDED" && r.phase === "TITLE_ABSTRACT" && automaticFullTextStage(roundSettings(r.settings)) ? "ADVANCE_TO_FULLTEXT"
               : finalDecision === "INCLUDE" || finalDecision === "INCLUDED" ? "INCLUDED"
               : finalDecision === "EXCLUDE" || finalDecision === "EXCLUDED" ? "EXCLUDED"
@@ -1337,11 +1374,14 @@ export const screeningService = {
         pendingInformation.push({ paperId: r.paperId, roundId: r.id, title: paper.title, kind: r.status === "WAITING_FULLTEXT" ? "FULLTEXT" : "INFORMATION", reason: view.resolution?.reason ?? "Bổ sung nguồn toàn văn rồi mở vòng đánh giá độc lập tiếp theo." });
       }
       const acceptedPapers = await acceptedScreeningPapers(c);
-      await reconcileScreeningObligations(c);
-      const automaticTasks = await screeningObligationDtos(c);
+      const [automaticTasks, automaticDoneTotal] = await Promise.all([
+        screeningObligationDtos(c, { maxDone: 5 }),
+        c.tx.screeningObligation.count({ where: { projectId: c.project.id, assigneeId: c.actorId, status: "DONE" } }),
+      ]);
       const workPapers = await screeningWorkPapers(c, [...myActiveClaims, ...pendingConsensus, ...pendingDiscussions, ...pendingAdjudications, ...myEvaluations, ...acceptedPapers, ...pendingInformation].map(item => item.roundId));
       return {
         automaticTasks,
+        automaticDoneTotal,
         readOnly: ["ARCHIVED", "COMPLETED"].includes(c.project.status),
         workPapers, pendingInformation,
         pendingDiscussions, expiredClaims, completedPersonalReviews,

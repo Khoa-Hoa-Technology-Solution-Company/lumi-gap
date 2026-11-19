@@ -56,6 +56,16 @@ async function openMenu(container: HTMLElement) {
 }
 
 describe("notification navigation", () => {
+  it("opens mentorship invitations within the mentor shell without losing the request selector", async () => {
+    const original = { ...notification };
+    Object.assign(notification, { type: "MENTORSHIP_REQUEST_RECEIVED", targetKind: "project", targetId: "project", mentorshipRequestId: "request" });
+    const view = await mount(<NotificationsPage embedded />, "/mentor-workspace?view=notifications");
+    try {
+      expect(view.container.querySelector('.mentor-embedded-notifications')).not.toBeNull();
+      await act(async () => [...view.container.querySelectorAll('button')].find(item => item.textContent?.includes(notification.title))!.click());
+      expect(view.container.querySelector('[data-location]')?.textContent).toBe('/mentor-workspace?view=incoming&invitationProjectId=project&requestId=request');
+    } finally { Object.assign(notification, original); delete notification.mentorshipRequestId; await view.close(); }
+  });
   it("opens a reviewer message without marking it read before the conversation loads", async () => {
     const item = { ...notification, type: "SCREENING_DISCUSSION_MESSAGE", targetKind: "project" as const, targetId: "project", paperId: "paper", screeningRoundId: "round" };
     const view = await mount(<NotificationMenu notifications={[item]} isLoading={false} unreadCount={1} isAdmin={false} />);

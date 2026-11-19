@@ -36,12 +36,14 @@ export async function workspaceHistory(context: WorkspaceContext, entityKind: st
 type TaskQuery = Partial<z.infer<typeof taskQuerySchema>> & Page;
 const taskStatuses: WorkspaceTaskStatus[] = ["TODO", "IN_PROGRESS", "BLOCKED", "DONE"];
 function taskWhere(context: WorkspaceContext, query: TaskQuery): Prisma.ProjectTaskWhereInput {
-  return { projectId: context.project.id, deletedAt: null,
+  return {
+    projectId: context.project.id, deletedAt: null,
     ...(query.q ? { title: { contains: query.q, mode: "insensitive" } } : {}),
     ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}),
     ...(query.milestoneId ? { milestoneId: query.milestoneId } : {}), ...(query.parentTaskId ? { parentTaskId: query.parentTaskId } : {}),
     ...(query.mine === "1" ? { assigneeId: context.actorId } : query.unassigned === "1" ? { assigneeId: null } : query.assigneeId ? { assigneeId: query.assigneeId } : {}),
     ...(query.overdue === "1" ? { AND: [{ status: { not: "DONE" } }, { dueAt: { lt: new Date(new Date().toISOString().slice(0, 10)) } }] } : {}),
+    ...(query.completedSince ? { completedAt: { gte: new Date(query.completedSince) } } : {}),
   };
 }
 export async function taskDtos(context: WorkspaceContext, rows: ProjectTask[]): Promise<WorkspaceTask[]> {
@@ -53,7 +55,15 @@ export async function taskDtos(context: WorkspaceContext, rows: ProjectTask[]): 
 }
 async function taskPage(context: WorkspaceContext, query: TaskQuery) {
   const where = taskWhere(context, query);
-  const order: Prisma.ProjectTaskOrderByWithRelationInput[] = query.sort === "due" ? [{ dueAt: { sort: "asc", nulls: "last" } }] : query.sort === "priority" ? [{ priority: "desc" }] : query.sort === "title" ? [{ title: "asc" }] : query.sort === "updated" ? [{ updatedAt: "desc" }] : [{ sortOrder: "asc" }];
+  const order: Prisma.ProjectTaskOrderByWithRelationInput[] =
+    query.sort === "due" ? [{ dueAt: { sort: "asc", nulls: "last" } }]
+      : query.sort === "priority" ? [{ priority: "desc" }]
+        : query.sort === "title" ? [{ title: "asc" }]
+          : query.sort === "updated" ? [{ updatedAt: "desc" }]
+            : query.sort === "completed" ? [{ completedAt: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }, { id: "desc" }]
+              : query.sort === "completed_asc" ? [{ completedAt: { sort: "asc", nulls: "first" } }, { updatedAt: "asc" }, { id: "asc" }]
+                : query.status === "DONE" && query.sort === "manual" ? [{ completedAt: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }, { id: "desc" }]
+                  : [{ sortOrder: "asc" }];
   const [rows, total] = await Promise.all([context.tx.projectTask.findMany({ where, ...paging(query), orderBy: [...order, { id: "asc" }] }), context.tx.projectTask.count({ where })]);
   return pageOf(await taskDtos(context, rows), total, query);
 }
@@ -93,7 +103,12 @@ export const projectTasksService = {
   async board(projectId: string, actorId: string, query: z.infer<typeof taskBoardQuerySchema>): Promise<WorkspaceTaskBoard> {
     return withWorkspace(projectId, actorId, {}, async context => {
       const pages = [query.todoPage, query.progressPage, query.blockedPage, query.donePage];
-      const columns = await Promise.all(taskStatuses.map((status, index) => taskPage(context, { ...query, status, page: pages[index]! })));
+      const columns = await Promise.all(taskStatuses.map((status, index) => {
+        // Bound the DONE column query to 5 items on the Kanban preview to avoid overfetching
+        // while preserving the true total completed count.
+        const pageSize = status === "DONE" ? Math.min(query.pageSize, 5) : query.pageSize;
+        return taskPage(context, { ...query, status, page: pages[index]!, pageSize });
+      }));
       return { boardVersion: context.project.taskBoardVersion, columns: Object.fromEntries(taskStatuses.map((status, i) => [status, columns[i]])) as WorkspaceTaskBoard["columns"] };
     });
   },
@@ -153,7 +168,7 @@ export const projectTasksService = {
       // Insert before the authoritative target. Gaps are harmless and preserve stable order.
       const sortOrder = before ? before.sortOrder : (end._max.sortOrder ?? -1) + 1;
       await context.tx.projectTask.updateMany({ where: { projectId: context.project.id, status: input.status, deletedAt: null, id: { not: id }, sortOrder: { gte: sortOrder } }, data: { sortOrder: { increment: 1 } } });
-      const row = await context.tx.projectTask.update({ where: { id }, data: { status: input.status, sortOrder, blockedReason: input.status === "BLOCKED" ? input.blockedReason.trim() : "", completedAt: input.status === "DONE" ? previous.completedAt ?? new Date() : null, completedById: input.status === "DONE" ? previous.status === "DONE" ? previous.completedById : context.actorId : null, version: { increment: 1 } } });
+      const row = await context.tx.projectTask.update({ where: { id }, data: { status: input.status, sortOrder, blockedReason: input.status === "BLOCKED" ? input.blockedReason.trim() : "", completedAt: input.status === "DONE" ? previous.status === "DONE" ? previous.completedAt : new Date() : null, completedById: input.status === "DONE" ? previous.status === "DONE" ? previous.completedById : context.actorId : null, version: { increment: 1 } } });
       await taskRevision(context, row, previous);
       await taskChangeEvents(context, row, previous);
       await workspaceEvent(context, "TASK_REORDERED", "TASK", id, { ...input }, key);
