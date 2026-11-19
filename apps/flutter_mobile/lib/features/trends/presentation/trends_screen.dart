@@ -21,10 +21,12 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen>
   late TabController _tabController;
 
   // Active Scope Parameters
-  int _yearFrom = 2020;
-  int _yearTo = 2026;
+  // Default: the 15-year window the verdicts are calibrated on.
+  int _yearFrom = defaultTrendYears().from;
+  int _yearTo = defaultTrendYears().to;
   int _minPapers = 1;
-  final String _sortBy = 'momentum';
+  // Verdict order (rising first), the only ranking besides total papers.
+  final String _sortBy = 'trend';
   TrendScopeFilters _scopeFilters = const TrendScopeFilters();
 
   String? _aiTabInitialTopic;
@@ -103,8 +105,8 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen>
               params: currentParams,
               onChanged: (newParams) {
                 setState(() {
-                  _yearFrom = newParams.yearFrom ?? 2020;
-                  _yearTo = newParams.yearTo ?? 2026;
+                  _yearFrom = newParams.yearFrom ?? defaultTrendYears().from;
+                  _yearTo = newParams.yearTo ?? defaultTrendYears().to;
                   _minPapers = newParams.minPapers ?? 1;
                   _scopeFilters = newParams.scopeFilters;
                 });

@@ -1,6 +1,9 @@
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart'
-    show YearlyCount;
+    show TrendVerdict, YearlyCount;
+
+export 'package:flutter_mobile/features/trends/data/trends_api.dart'
+    show TrendVerdict;
 
 // Hand-written, forgiving parsers for GET /home/overview and /home/research
 // (shapes: packages/shared-types/src/home.ts). Unknown fields are ignored,
@@ -417,25 +420,6 @@ class HomeRecentPaper {
 }
 
 /// GET /home/overview (public; guests get the same trends and papers).
-/// Trend verdict from the API (`classification.verdict`, Mann-Kendall test on
-/// the yearly share, same wording as the web). Unknown or missing values are
-/// `insufficient`: we never invent a direction the API did not conclude.
-enum TrendVerdict {
-  rising,
-  declining,
-  stable,
-  insufficient;
-
-  static TrendVerdict parse(Object? raw) {
-    if (raw is String) {
-      for (final v in values) {
-        if (v.name == raw) return v;
-      }
-    }
-    return TrendVerdict.insufficient;
-  }
-}
-
 class HomeTrendTopic {
   const HomeTrendTopic({
     required this.topic,

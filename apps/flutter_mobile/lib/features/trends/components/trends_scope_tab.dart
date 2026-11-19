@@ -30,8 +30,8 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
 
   final List<String> _selectedKinds = [];
   final List<String> _selectedOA = [];
-  final List<String> _selectedDomains = [];
-  final List<String> _selectedFields = [];
+  // Trends cover the Information Technology scope only, so the taxonomy filter
+  // narrows by subfield; domain and field filters are not offered (as on the web).
   final List<String> _selectedSubfields = [];
 
   @override
@@ -61,14 +61,6 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
       ..clear()
       ..addAll(widget.params.scopeFilters.openAccessStatuses);
 
-    _selectedDomains
-      ..clear()
-      ..addAll(widget.params.scopeFilters.domainIds);
-
-    _selectedFields
-      ..clear()
-      ..addAll(widget.params.scopeFilters.fieldIds);
-
     _selectedSubfields
       ..clear()
       ..addAll(widget.params.scopeFilters.subfieldIds);
@@ -78,8 +70,6 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
     final newFilters = TrendScopeFilters(
       paperKinds: _selectedKinds,
       openAccessStatuses: _selectedOA,
-      domainIds: _selectedDomains,
-      fieldIds: _selectedFields,
       subfieldIds: _selectedSubfields,
     );
 
@@ -108,13 +98,11 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
 
   void _clearAll() {
     setState(() {
-      _yearFrom = 2020;
-      _yearTo = 2026;
+      _yearFrom = defaultTrendYears().from;
+      _yearTo = defaultTrendYears().to;
       _minPapers = 1;
       _selectedKinds.clear();
       _selectedOA.clear();
-      _selectedDomains.clear();
-      _selectedFields.clear();
       _selectedSubfields.clear();
     });
     _updateParams();
@@ -123,8 +111,6 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
   String _scopeSearchQuery() {
     final labels = [
       ..._selectedSubfields,
-      ..._selectedFields,
-      ..._selectedDomains,
       ..._selectedKinds,
       ..._selectedOA,
     ].where((value) => value.trim().isNotEmpty).toList();
@@ -134,8 +120,6 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
   Map<String, String> _scopeQueryParameters({String? q}) {
     return {
       if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
-      if (_selectedDomains.isNotEmpty) 'domainIds': _selectedDomains.join(','),
-      if (_selectedFields.isNotEmpty) 'fieldIds': _selectedFields.join(','),
       if (_selectedSubfields.isNotEmpty)
         'subfieldIds': _selectedSubfields.join(','),
       if (_selectedKinds.isNotEmpty) 'paperKinds': _selectedKinds.join(','),
@@ -143,6 +127,27 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
       if (_yearFrom != null) 'yearFrom': _yearFrom.toString(),
       if (_yearTo != null) 'yearTo': _yearTo.toString(),
     };
+  }
+
+  /// Names of the selected subfields (their ids when the facet list lacks them).
+  List<String> _subfieldNames() {
+    final buckets = widget.overview.facets?.subfields ?? const <TrendFacetBucket>[];
+    return [
+      for (final id in _selectedSubfields)
+        buckets.where((b) => b.id == id).map((b) => b.name).firstOrNull ?? id,
+    ];
+  }
+
+  /// Years offered by the range pickers: 30 years back from now, plus the
+  /// selected years if they fall outside (a dropdown must contain its value).
+  List<int> _yearOptions() {
+    final now = DateTime.now().year;
+    return {
+      for (var y = now - 30; y <= now; y++) y,
+      ?_yearFrom,
+      ?_yearTo,
+    }.toList()
+      ..sort();
   }
 
   String _routeWithQuery(String path, Map<String, String> queryParameters) {
@@ -254,12 +259,10 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                     color: Color(0xFF06B6D4),
                   ),
                 ),
-                if (_selectedDomains.isNotEmpty ||
-                    _selectedFields.isNotEmpty ||
-                    _selectedSubfields.isNotEmpty) ...[
+                if (_selectedSubfields.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
-                    context.t('Taxonomy path: {{path}}', {'path': [_selectedDomains.join(', '), if (_selectedFields.isNotEmpty) _selectedFields.join(', '), if (_selectedSubfields.isNotEmpty) _selectedSubfields.join(', ')].join(' ➔ ')}),
+                    context.t('Taxonomy path: {{path}}', {'path': [context.t('Information Technology scope'), _subfieldNames().join(', ')].join(' ➔ ')}),
                     style: const TextStyle(
                       fontSize: 11,
                       color: Color(0xFF94A3B8),
@@ -305,7 +308,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                items: List.generate(10, (index) => 2018 + index)
+                items: _yearOptions()
                     .map(
                       (y) =>
                           DropdownMenuItem(value: y, child: Text(y.toString())),
@@ -331,7 +334,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                items: List.generate(10, (index) => 2018 + index)
+                items: _yearOptions()
                     .map(
                       (y) =>
                           DropdownMenuItem(value: y, child: Text(y.toString())),
@@ -349,18 +352,6 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
 
         if (facets != null) ...[
           // Taxonomy selectors
-          _buildMultiSelectChips(
-            title: context.t('Taxonomy Domains'),
-            buckets: facets.domains,
-            selectedList: _selectedDomains,
-            isDark: isDark,
-          ),
-          _buildMultiSelectChips(
-            title: context.t('Taxonomy Fields'),
-            buckets: facets.fields,
-            selectedList: _selectedFields,
-            isDark: isDark,
-          ),
           _buildMultiSelectChips(
             title: context.t('Taxonomy Subfields'),
             buckets: facets.subfields,

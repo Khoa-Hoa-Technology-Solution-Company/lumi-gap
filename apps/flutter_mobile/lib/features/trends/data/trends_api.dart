@@ -18,6 +18,106 @@ final FutureProviderFamily<PublicationTrend, String> trendTopicProvider = Future
   return ref.watch(trendsApiProvider).topic(topic);
 });
 
+/// Length of the default trend window, in years (FULL_WINDOW_YEARS in the
+/// backend's trend.verdict.ts): the overview reads yearTo - 15 .. yearTo.
+const trendWindowYears = 15;
+
+/// Default year range of the trends screen: the last 15 years up to now.
+({int from, int to}) defaultTrendYears([DateTime? now]) {
+  final to = (now ?? DateTime.now()).year;
+  return (from: to - trendWindowYears, to: to);
+}
+
+/// Trend verdict from the API (`classification.verdict`): Mann-Kendall test on
+/// the topic's yearly share of the Information Technology scope, same wording
+/// as the web. Unknown or missing values are `insufficient`: we never invent a
+/// direction the API did not conclude.
+enum TrendVerdict {
+  rising('rising'),
+  saturated('saturated'),
+  pastPeak('past_peak'),
+  declining('declining'),
+  stable('stable'),
+  insufficient('insufficient');
+
+  const TrendVerdict(this.apiName);
+
+  /// The value the API sends (`past_peak`, not `pastPeak`).
+  final String apiName;
+
+  static TrendVerdict parse(Object? raw) {
+    if (raw is String) {
+      for (final v in values) {
+        if (v.apiName == raw) return v;
+      }
+    }
+    return TrendVerdict.insufficient;
+  }
+}
+
+/// The single trend conclusion of a topic (packages/shared-types TrendClassification).
+/// Only the fields the app shows are kept.
+class TrendClassification {
+  const TrendClassification({
+    required this.verdict,
+    this.confidence,
+    this.yearsUsed = 0,
+    this.totalPapers = 0,
+    this.pValue,
+    this.qValue,
+    this.senSlope,
+    this.relativeChangePct,
+    this.recentRelativeChangePct,
+    this.peakRatio,
+  });
+
+  /// Null when [json] is not an object: the topic then has no conclusion.
+  static TrendClassification? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    final mk = json['mannKendall'];
+    return TrendClassification(
+      verdict: TrendVerdict.parse(json['verdict']),
+      confidence: json['confidence'] is String ? json['confidence'] as String : null,
+      yearsUsed: (json['yearsUsed'] as num?)?.toInt() ?? 0,
+      totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
+      pValue: mk is Map<String, dynamic> ? (mk['pValue'] as num?)?.toDouble() : null,
+      qValue: (json['qValue'] as num?)?.toDouble(),
+      senSlope: (json['senSlope'] as num?)?.toDouble(),
+      relativeChangePct: (json['relativeChangePct'] as num?)?.toDouble(),
+      recentRelativeChangePct: (json['recentRelativeChangePct'] as num?)?.toDouble(),
+      peakRatio: (json['peakRatio'] as num?)?.toDouble(),
+    );
+  }
+
+  final TrendVerdict verdict;
+
+  /// `high` or `medium`; only for rising, saturated, past_peak and declining.
+  final String? confidence;
+  final int yearsUsed;
+  final int totalPapers;
+  final double? pValue;
+
+  /// Benjamini-Hochberg q-value; only in the overview list.
+  final double? qValue;
+
+  /// Sen's slope of the share, percentage points per year.
+  final double? senSlope;
+
+  /// Sen's slope / median share x 100, % per year, over the whole window.
+  final double? relativeChangePct;
+
+  /// The same over the recent 5 years.
+  final double? recentRelativeChangePct;
+
+  /// Median share of the last 3 years / highest share of the window, 0..1.
+  final double? peakRatio;
+
+  /// The change figure shown next to the verdict, as on the web: the recent
+  /// change for saturated and past-peak topics, the whole window otherwise.
+  double? get headlineChangePct =>
+      verdict == TrendVerdict.saturated || verdict == TrendVerdict.pastPeak ? recentRelativeChangePct : relativeChangePct;
+}
+
 @immutable
 class TrendsOverviewParams {
   const TrendsOverviewParams({
@@ -194,6 +294,9 @@ class TrendsOverview {
     this.lastCompleteYear,
     this.totalPapersInWindow = 0,
     this.uniqueTopicsInScope = 0,
+    this.testedTopicCount = 0,
+    this.verdictCounts = const {},
+    this.scopeVersion,
     this.computedAt,
   });
 
@@ -228,6 +331,9 @@ class TrendsOverview {
       lastCompleteYear: (json['lastCompleteYear'] as num?)?.toInt(),
       totalPapersInWindow: (json['totalPapersInWindow'] as num?)?.toInt() ?? 0,
       uniqueTopicsInScope: (json['uniqueTopicsInScope'] as num?)?.toInt() ?? 0,
+      testedTopicCount: (json['testedTopicCount'] as num?)?.toInt() ?? 0,
+      verdictCounts: _verdictCounts(json['verdictCounts']),
+      scopeVersion: json['scopeVersion']?.toString(),
       computedAt: json['computedAt']?.toString(),
     );
   }
@@ -244,42 +350,49 @@ class TrendsOverview {
   final int? lastCompleteYear;
   final int totalPapersInWindow;
   final int uniqueTopicsInScope;
+
+  /// Topics whose trend was tested (every topic of the scope, not only the listed ones).
+  final int testedTopicCount;
+
+  /// How many tested topics got each verdict.
+  final Map<TrendVerdict, int> verdictCounts;
+
+  /// Version of the IT scope the verdicts were computed against (e.g. `it-v1`).
+  final String? scopeVersion;
   final String? computedAt;
 }
 
 class TrendingTopic {
   const TrendingTopic({
     required this.topic,
-    required this.momentum,
-    required this.growthRatePct,
     required this.totalPapers,
     required this.yearlyBreakdown,
     this.taxonomy,
-    this.cagr3yPct,
+    this.classification,
   });
 
   factory TrendingTopic.fromJson(Map<String, dynamic> json) {
     return TrendingTopic(
       topic: (json['topic'] ?? json['topicName'] ?? trNow('Unknown topic')).toString(),
-      momentum: (json['momentum'] as num?)?.toDouble() ?? 0,
-      growthRatePct: (json['growthRatePct'] as num?)?.toDouble() ?? 0,
       totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
       yearlyBreakdown: (json['yearlyBreakdown'] as List<dynamic>? ?? [])
           .whereType<Map<String, dynamic>>()
           .map(YearlyCount.fromJson)
           .toList(),
       taxonomy: json['taxonomy'] is Map<String, dynamic> ? TrendTopicTaxonomy.fromJson(json['taxonomy'] as Map<String, dynamic>) : null,
-      cagr3yPct: (json['cagr3yPct'] as num?)?.toDouble(),
+      classification: TrendClassification.fromJson(json['classification']),
     );
   }
 
   final String topic;
-  final double momentum;
-  final double growthRatePct;
   final int totalPapers;
   final List<YearlyCount> yearlyBreakdown;
   final TrendTopicTaxonomy? taxonomy;
-  final double? cagr3yPct;
+
+  /// The trend conclusion; null for compare items and topic candidates, which the API does not test.
+  final TrendClassification? classification;
+
+  TrendVerdict get verdict => classification?.verdict ?? TrendVerdict.insufficient;
 }
 
 class YearlyCount {
@@ -326,8 +439,7 @@ class PublicationTrend {
     this.facets,
     this.taxonomy,
     this.totalPapers = 0,
-    this.growthRatePct = 0,
-    this.momentum = 0,
+    this.classification,
     this.lastCompleteYear,
     this.topJournals = const [],
     this.topAuthors = const [],
@@ -350,8 +462,9 @@ class PublicationTrend {
       facets: json['facets'] is Map<String, dynamic> ? TrendFacets.fromJson(json['facets'] as Map<String, dynamic>) : null,
       taxonomy: json['taxonomy'] is Map<String, dynamic> ? TrendTopicTaxonomy.fromJson(json['taxonomy'] as Map<String, dynamic>) : null,
       totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
-      growthRatePct: (json['growthRatePct'] as num?)?.toDouble() ?? 0,
-      momentum: (json['momentum'] as num?)?.toDouble() ?? 0,
+      classification: json['statistics'] is Map<String, dynamic>
+          ? TrendClassification.fromJson((json['statistics'] as Map<String, dynamic>)['classification'])
+          : null,
       lastCompleteYear: (json['lastCompleteYear'] as num?)?.toInt(),
       topJournals: _topItems(json['topJournals']),
       topAuthors: _topItems(json['topAuthors']),
@@ -365,8 +478,9 @@ class PublicationTrend {
   final TrendFacets? facets;
   final TrendTopicTaxonomy? taxonomy;
   final int totalPapers;
-  final double growthRatePct;
-  final double momentum;
+
+  /// The topic's trend conclusion (statistics.classification); null when the API sent no statistics.
+  final TrendClassification? classification;
   final int? lastCompleteYear;
   final List<TrendFacetBucket> topJournals;
   final List<TrendFacetBucket> topAuthors;
@@ -386,23 +500,52 @@ class TrendKeyword {
   final int count;
 }
 
+/// A keyword whose share of the scope's papers rose between the earlier and
+/// the later half of the window: 2x2 log odds ratio test, BH-adjusted. The API
+/// orders the list by [z], strongest rise first.
 class RisingKeyword {
-  const RisingKeyword({required this.keyword, required this.totalPapers, required this.growthRatePct, required this.yearlyBreakdown});
+  const RisingKeyword({
+    required this.keyword,
+    required this.totalPapers,
+    required this.yearlyBreakdown,
+    this.z = 0,
+    this.qValue,
+    this.papersA = 0,
+    this.papersB = 0,
+  });
 
-  factory RisingKeyword.fromJson(Map<String, dynamic> json) => RisingKeyword(
-        keyword: (json['keyword'] ?? '').toString(),
-        totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
-        growthRatePct: (json['growthRatePct'] as num?)?.toDouble() ?? 0,
-        yearlyBreakdown: (json['yearlyBreakdown'] as List<dynamic>? ?? [])
-            .whereType<Map<String, dynamic>>()
-            .map(YearlyCount.fromJson)
-            .toList(),
-      );
+  factory RisingKeyword.fromJson(Map<String, dynamic> json) {
+    final shift = json['shift'] is Map<String, dynamic> ? json['shift'] as Map<String, dynamic> : const <String, dynamic>{};
+    return RisingKeyword(
+      keyword: (json['keyword'] ?? '').toString(),
+      totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
+      yearlyBreakdown: (json['yearlyBreakdown'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(YearlyCount.fromJson)
+          .toList(),
+      z: (shift['z'] as num?)?.toDouble() ?? 0,
+      qValue: (shift['qValue'] as num?)?.toDouble(),
+      papersA: (shift['papersA'] as num?)?.toInt() ?? 0,
+      papersB: (shift['papersB'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  /// Significance level of the keyword test (SIGNIFICANCE_LEVEL in the backend).
+  static const significanceLevel = 0.05;
 
   final String keyword;
   final int totalPapers;
-  final double growthRatePct;
   final List<YearlyCount> yearlyBreakdown;
+
+  /// Test statistic of the shift: larger means stronger evidence of a rise.
+  final double z;
+  final double? qValue;
+
+  /// Papers carrying the keyword in the earlier (A) and later (B) half.
+  final int papersA;
+  final int papersB;
+
+  bool get significant => qValue != null && qValue! < significanceLevel && z > 0;
 }
 
 class TrendFacetBucket {
@@ -553,26 +696,20 @@ class TrendCompareResponse {
 class TopicComparisonItem extends TrendingTopic {
   const TopicComparisonItem({
     required super.topic,
-    required super.momentum,
-    required super.growthRatePct,
     required super.totalPapers,
     required super.yearlyBreakdown,
     super.taxonomy,
-    super.cagr3yPct,
     this.citationTrend = const [],
   });
 
   factory TopicComparisonItem.fromJson(Map<String, dynamic> json) => TopicComparisonItem(
         topic: (json['topic'] ?? trNow('Unknown topic')).toString(),
-        momentum: (json['momentum'] as num?)?.toDouble() ?? 0,
-        growthRatePct: (json['growthRatePct'] as num?)?.toDouble() ?? 0,
         totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
         yearlyBreakdown: (json['yearlyBreakdown'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(YearlyCount.fromJson)
             .toList(),
         taxonomy: json['taxonomy'] is Map<String, dynamic> ? TrendTopicTaxonomy.fromJson(json['taxonomy'] as Map<String, dynamic>) : null,
-        cagr3yPct: (json['cagr3yPct'] as num?)?.toDouble(),
         citationTrend: (json['citationTrend'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(YearlyCitationMetric.fromJson)
@@ -602,19 +739,14 @@ class TrendTopicCandidatesResponse {
 class TrendTopicCandidate extends TrendingTopic {
   const TrendTopicCandidate({
     required super.topic,
-    required super.momentum,
-    required super.growthRatePct,
     required super.totalPapers,
     required super.yearlyBreakdown,
     required this.matchedBy,
     super.taxonomy,
-    super.cagr3yPct,
   });
 
   factory TrendTopicCandidate.fromJson(Map<String, dynamic> json) => TrendTopicCandidate(
         topic: (json['topic'] ?? trNow('Unknown topic')).toString(),
-        momentum: (json['momentum'] as num?)?.toDouble() ?? 0,
-        growthRatePct: (json['growthRatePct'] as num?)?.toDouble() ?? 0,
         totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
         yearlyBreakdown: (json['yearlyBreakdown'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
@@ -622,7 +754,6 @@ class TrendTopicCandidate extends TrendingTopic {
             .toList(),
         matchedBy: (json['matchedBy'] ?? 'topic').toString(),
         taxonomy: json['taxonomy'] is Map<String, dynamic> ? TrendTopicTaxonomy.fromJson(json['taxonomy'] as Map<String, dynamic>) : null,
-        cagr3yPct: (json['cagr3yPct'] as num?)?.toDouble(),
       );
 
   final String matchedBy;
@@ -929,6 +1060,14 @@ bool _listEquals(List<String> a, List<String> b) {
     if (a[i] != b[i]) return false;
   }
   return true;
+}
+
+Map<TrendVerdict, int> _verdictCounts(Object? value) {
+  if (value is! Map<String, dynamic>) return const {};
+  return {
+    for (final v in TrendVerdict.values)
+      if (value[v.apiName] is num) v: (value[v.apiName] as num).toInt(),
+  };
 }
 
 List<TrendFacetBucket> _facetList(Object? value) => (value as List<dynamic>? ?? [])

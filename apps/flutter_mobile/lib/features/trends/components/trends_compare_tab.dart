@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/utils/number_format.dart';
+import 'package:flutter_mobile/features/trends/components/trend_verdict_label.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
@@ -403,6 +404,25 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
     );
   }
 
+  /// Verdict of a compared topic, taken from the overview list (compare items carry no test).
+  TrendVerdict _verdictOf(String topic) {
+    final key = topic.trim().toLowerCase();
+    for (final item in widget.overview.topics) {
+      if (item.topic.trim().toLowerCase() == key) return item.verdict;
+    }
+    return TrendVerdict.insufficient;
+  }
+
+  /// Year with the most papers (descriptive only, not part of the verdict).
+  String _peakYear(List<YearlyCount> years) {
+    if (years.isEmpty) return '—';
+    var best = years.first;
+    for (final y in years) {
+      if (y.count > best.count) best = y;
+    }
+    return best.count == 0 ? '—' : best.year.toString();
+  }
+
   Widget _buildComparisonCards(TrendCompareResponse res, bool isDark, ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -444,15 +464,15 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(context.t('Momentum'), style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                      Text(formatSigned(t.momentum), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      Text(context.t('Trend verdict'), style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                      TrendVerdictLabel(verdict: _verdictOf(t.topic)),
                     ],
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(context.t('YoY Growth'), style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                      Text('${t.growthRatePct.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      Text(context.t('Peak year'), style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                      Text(_peakYear(t.yearlyBreakdown), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ],

@@ -3,8 +3,6 @@
 /// kept sorted. See `i18n.dart` for how to add a string.
 const Map<String, String> viTranslations = {
   ' and ': ' và ',
-  '"{{topic}}" is the strongest rising topic in this dataset scope with growth rate of {{percent}}%.':
-      '"{{topic}}" là chủ đề tăng mạnh nhất trong phạm vi dữ liệu này, với tốc độ tăng trưởng {{percent}}%.',
   '10.xxxx/xxxxx': '10.xxxx/xxxxx',
   '3-year CAGR': 'CAGR 3 năm',
   'A closure check is in progress.': 'Đang kiểm tra mức đã được giải quyết.',
@@ -64,8 +62,6 @@ const Map<String, String> viTranslations = {
   'All': 'Tất cả',
   'All ({{totalCount}})': 'Tất cả ({{totalCount}})',
   'All Authors': 'Tất cả tác giả',
-  'All Domains': 'Tất cả các tên miền',
-  'All Fields': 'Tất cả các trường',
   'All Kinds': 'Tất cả loại',
   'All papers and chat history in this workspace will be deleted forever.':
       'Toàn bộ bài báo và lịch sử trò chuyện trong không gian làm việc này sẽ bị xóa vĩnh viễn.',
@@ -87,7 +83,6 @@ const Map<String, String> viTranslations = {
   'Anonymous': 'Ẩn danh',
   'Appearance': 'Giao diện',
   'Apply Filters': 'Áp dụng bộ lọc',
-  'Apply Scope Settings': 'Áp dụng thiết lập phạm vi',
   'Approved': 'Đã được phê duyệt',
   'Ask AI Assistant about project publications...':
       'Hỏi trợ lý AI về các công bố của dự án...',
@@ -149,9 +144,8 @@ const Map<String, String> viTranslations = {
   'Compare failed: {{err}}': 'So sánh thất bại: {{err}}',
   'Compare up to 5 topics at once to keep the chart readable.':
       'So sánh tối đa 5 chủ đề cùng một lúc để giữ cho biểu đồ có thể đọc được.',
+  'Complete years used': 'Số năm hoàn chỉnh đã dùng',
   'Completeness': 'Độ đầy đủ',
-  'Computed from year {{from}} to {{to}}':
-      'Tính từ năm {{from}} đến năm {{to}}',
   'Conference Proceeding': 'Kỷ yếu hội nghị',
   'Confidence': 'Độ tin cậy',
   'Confirm': 'Xác nhận',
@@ -180,12 +174,10 @@ const Map<String, String> viTranslations = {
   'Create your first research workspace above.':
       'Hãy tạo không gian nghiên cứu đầu tiên của bạn ở trên.',
   'Current Scope Summary': 'Tóm tắt phạm vi hiện tại',
-  'DATASET SCOPE': 'PHẠM VI DỮ LIỆU',
   'DOI': 'DOI',
   'DOI: {{doi}}': 'DOI: {{doi}}',
   'Danger Zone': 'Vùng nguy hiểm',
   'Dark': 'Tối',
-  'Data Scope Filters': 'Bộ lọc phạm vi dữ liệu',
   'Dataset': 'Bộ dữ liệu',
   'Dataset Overview': 'Tổng quan bộ dữ liệu',
   'Dataset report': 'Báo cáo bộ dữ liệu',
@@ -264,7 +256,6 @@ const Map<String, String> viTranslations = {
   'Explain trend': 'Giải thích xu hướng',
   'Explanation copied to clipboard':
       'Đã sao chép phần giải thích vào bộ nhớ tạm',
-  'Exploratory': 'Khám phá',
   'Explore': 'Khám phá',
   'FPT University': 'Đại học FPT',
   'Failed to add: {{e}}': 'Không thêm được: {{e}}',
@@ -326,14 +317,12 @@ const Map<String, String> viTranslations = {
   'Group papers, team chat, and AI notes in one place.':
       'Gom bài báo, trò chuyện nhóm và ghi chú AI vào một nơi.',
   'Growth': 'tăng trưởng',
-  'Growth Rate': 'Tốc độ tăng trưởng',
-  'Growth: +{{percent}}%': 'Tăng trưởng: +{{percent}}%',
   'Hello': 'Chào bạn',
   'Hello, {{name}}': 'Chào, {{name}}',
   'Hide password': 'Ẩn mật khẩu',
-  'High': 'Cao',
   'High (≥70%)': 'Cao (≥70%)',
   'High Severity': 'Mức độ nghiêm trọng cao',
+  'High confidence': 'Độ tin cậy cao',
   'High priority': 'Ưu tiên cao',
   'Hoang Long Anh': 'Hoang Long Anh',
   'Home': 'Trang chủ',
@@ -345,6 +334,7 @@ const Map<String, String> viTranslations = {
       'Nếu email này có tài khoản, bạn sẽ nhận được hướng dẫn đặt lại mật khẩu. Liên kết trong email sẽ mở trên trình duyệt.',
   'In progress': 'Đang thực hiện',
   'Include': 'Chọn',
+  'Information Technology scope': 'Phạm vi Công nghệ thông tin',
   'Initializing...': 'Đang khởi tạo...',
   'Insufficient data': 'Chưa đủ dữ liệu',
   'Insufficient evidence': 'Chưa đủ căn cứ',
@@ -352,6 +342,14 @@ const Map<String, String> viTranslations = {
   'Invalid email': 'Email không hợp lệ',
   'Invitation sent. They join once they accept it.':
       'Đã gửi lời mời. Họ sẽ tham gia khi chấp nhận.',
+  'Its share grew over the window but has levelled off near its peak in recent years.':
+      'Thị phần tăng trong giai đoạn xét nhưng vài năm gần đây đã chững lại gần mức đỉnh.',
+  'Its share grew over the window but has since fallen to less than half of its peak.':
+      'Thị phần tăng trong giai đoạn xét nhưng sau đó giảm còn chưa tới một nửa mức đỉnh.',
+  'Its share of publications grew clearly over the years.':
+      'Thị phần công bố tăng rõ rệt qua các năm.',
+  'Its share of publications shrank clearly over the years.':
+      'Thị phần công bố giảm rõ rệt qua các năm.',
   'Journal / Venue Source': 'Nguồn tạp chí / nơi công bố',
   'Journal Article': 'bài báo',
   'Judge': 'Người chấm',
@@ -401,6 +399,7 @@ const Map<String, String> viTranslations = {
   'Measures': 'Thước đo',
   'Medium (≥40%)': 'Trung bình (≥40%)',
   'Medium Severity': 'Mức độ nghiêm trọng trung bình',
+  'Medium confidence': 'Độ tin cậy trung bình',
   'Medium priority': 'Ưu tiên trung bình',
   'Member': 'Thành viên',
   'Member removed.': 'Đã xóa thành viên.',
@@ -412,12 +411,9 @@ const Map<String, String> viTranslations = {
   'Method': 'Phương thức',
   'Methodology Flowchart': 'Sơ đồ phương pháp luận',
   'Metric Trace Evidence': 'Bằng chứng truy vết chỉ số',
-  'Minimum Papers threshold': 'Ngưỡng số bài báo tối thiểu',
   'Missing information': 'Thiếu thông tin',
   'Model': 'Mô hình',
   'Momentum': 'Động lực',
-  'Momentum Score': 'Điểm động lượng',
-  'Momentum: {{momentum}}': 'Động lượng: {{momentum}}',
   'Most cited, same topic': 'Được trích dẫn nhiều nhất, cùng chủ đề',
   'Multi-Topic Trend Chart': 'Biểu đồ xu hướng nhiều chủ đề',
   'My AI (Private)': 'AI của tôi (riêng tư)',
@@ -441,6 +437,8 @@ const Map<String, String> viTranslations = {
   'No analytical reports generated yet.':
       'Chưa có báo cáo phân tích nào được tạo.',
   'No authors listed': 'Chưa có tác giả',
+  'No clear change in its share of publications.':
+      'Thị phần công bố không thay đổi rõ rệt.',
   'No community activity yet.': 'Chưa có hoạt động cộng đồng nào.',
   'No description': 'Không có mô tả',
   'No history saved yet.': 'Chưa có lịch sử nào được lưu.',
@@ -474,6 +472,8 @@ const Map<String, String> viTranslations = {
       'Chưa có gợi ý nào. Thêm chủ đề quan tâm để nhận gợi ý.',
   'No taxonomy scope metadata found.':
       'Không tìm thấy siêu dữ liệu phạm vi phân loại.',
+  'No topic shows a statistically significant rise in its share of publications in this scope.':
+      'Không có chủ đề nào tăng thị phần công bố có ý nghĩa thống kê trong phạm vi này.',
   'No trend data yet.': 'Chưa có dữ liệu xu hướng.',
   'Not available': 'Chưa có sẵn',
   'Not checked': 'Chưa kiểm tra',
@@ -528,6 +528,8 @@ const Map<String, String> viTranslations = {
   'Papers ({{length}})': 'Bài báo ({{length}})',
   'Papers / year': 'Số bài/năm',
   'Password': 'Mật khẩu',
+  'Past its peak': 'Qua đỉnh',
+  'Peak year': 'Năm đỉnh',
   'Pending': 'Đang chờ',
   'Pending review': 'Đang chờ duyệt',
   'Pinned': 'Đã ghim',
@@ -601,6 +603,7 @@ const Map<String, String> viTranslations = {
   'Rejected': 'Bị từ chối',
   'Related to your projects': 'Liên quan dự án của bạn',
   'Related works': 'Công trình liên quan',
+  'Relative change per year': 'Thay đổi tương đối mỗi năm',
   'Relevance': 'Mức độ liên quan',
   'Remove bookmark': 'Bỏ đánh dấu',
   'Remove your review for this paper?': 'Xóa đánh giá của bạn về bài báo này?',
@@ -637,6 +640,7 @@ const Map<String, String> viTranslations = {
   'SORT BY': 'SẮP XẾP THEO',
   'STATUS: ': 'TRẠNG THÁI: ',
   'Sample / data': 'Mẫu / dữ liệu',
+  'Saturated': 'Bão hoà',
   'Save': 'Lưu',
   'Save Paper': 'Lưu bài báo',
   'Save Settings': 'Lưu thiết lập',
@@ -645,12 +649,8 @@ const Map<String, String> viTranslations = {
   'Saved': 'Đã lưu',
   'Saved Explanation History': 'Lịch sử giải thích đã lưu',
   'Saved paper': 'Bài báo đã lưu',
-  'Scientific Domains': 'Lĩnh vực khoa học',
-  'Scientific Fields': 'Ngành khoa học',
   'Scope': 'Phạm vi',
-  'Scope Timeline Trend': 'Xu hướng theo thời gian trong phạm vi',
   'Scope: {{field}}': 'Phạm vi: {{field}}',
-  'Scoped Papers': 'Bài báo trong phạm vi',
   'Score': 'Điểm',
   'Scores will appear after research activity.':
       'Điểm sẽ hiển thị sau khi có hoạt động nghiên cứu.',
@@ -697,7 +697,6 @@ const Map<String, String> viTranslations = {
   'Sign out': 'Đăng xuất',
   'Signals': 'Tín hiệu',
   'Similar content': 'Nội dung tương tự',
-  'Small base': 'Đế nhỏ',
   'Some features need a verified email.':
       'Một số chức năng cần email đã xác minh.',
   'Some sections could not be refreshed.': 'Chưa làm mới được một số phần.',
@@ -751,8 +750,6 @@ const Map<String, String> viTranslations = {
   'TOPIC': 'CHỦ ĐỀ',
   'TRIGGER NEW SYNC': 'KÍCH HOẠT ĐỒNG BỘ MỚI',
   'Tap to browse files': 'Chạm để chọn tệp',
-  'Taxonomy Domains': 'Lĩnh vực phân loại',
-  'Taxonomy Fields': 'Ngành phân loại',
   'Taxonomy Subfields': 'Ngành con phân loại',
   'Taxonomy path: {{path}}': 'Đường dẫn phân loại: {{path}}',
   'Team AI (Shared)': 'AI nhóm (chia sẻ)',
@@ -760,6 +757,8 @@ const Map<String, String> viTranslations = {
   'Team Members': 'Thành viên nhóm',
   'Tensions with your plan': 'Điểm chưa khớp với kế hoạch',
   'Terms of Service': 'Điều khoản dịch vụ',
+  'Test statistic of the keyword shift: larger means stronger evidence of a rise.':
+      'Thống kê kiểm định của mức thay đổi từ khoá: càng lớn thì bằng chứng tăng càng mạnh.',
   'The AI quota is used up. Try again later or check your AI connection.':
       'Hạn mức AI đã hết. Hãy thử lại sau hoặc kiểm tra kết nối AI của bạn.',
   'The AI returned an unusable answer. Please try again.':
@@ -768,6 +767,8 @@ const Map<String, String> viTranslations = {
       'Dịch vụ AI đang bận. Vui lòng thử lại sau vài phút.',
   'The assessment is still running. Reopen this page later to see the result.':
       'Đánh giá vẫn đang chạy. Hãy mở lại trang này sau để xem kết quả.',
+  "The chart shows papers per year; the verdict is tested on the topic's share of all papers in the Information Technology scope.":
+      'Biểu đồ hiển thị số bài mỗi năm; kết luận được kiểm định trên thị phần của chủ đề trong toàn bộ bài thuộc phạm vi Công nghệ thông tin.',
   'The last closure check failed.':
       'Lần kiểm tra giải quyết gần nhất thất bại.',
   'The message content is not valid.': 'Nội dung tin nhắn không hợp lệ.',
@@ -791,13 +792,12 @@ const Map<String, String> viTranslations = {
   'To Year': 'Đến Năm',
   'To do': 'Việc cần làm',
   'Today': 'Hôm nay',
+  'Too few complete years or papers for a trend verdict.':
+      'Quá ít năm hoàn chỉnh hoặc quá ít bài để kết luận xu hướng.',
   'Too many attempts. Please try again later.':
       'Bạn đã thử quá nhiều lần, vui lòng thử lại sau.',
   'Top 20': 'Top 20',
-  'Top Topics by Growth Momentum':
-      'Chủ đề hàng đầu theo động lượng tăng trưởng',
   'Topic': 'Chủ đề',
-  'Topic Coverage': 'Độ phủ chủ đề',
   'Topic label (e.g. LLM in education)':
       'Nhãn chủ đề (ví dụ: LLM trong giáo dục)',
   'Topic must be at least 3 characters long.':
@@ -811,6 +811,10 @@ const Map<String, String> viTranslations = {
   'Total Papers': 'Tổng số bài báo',
   'Track review state, year, and paper details here.':
       'Theo dõi trạng thái đánh giá, năm và chi tiết bài báo tại đây.',
+  'Trend verdict': 'Kết luận xu hướng',
+  'Trend verdicts among the {{count}} topics tested':
+      'Kết luận xu hướng của {{count}} chủ đề đã kiểm định',
+  'Trend verdicts in this scope': 'Kết luận xu hướng trong phạm vi này',
   'Trending topics': 'Xu hướng nổi bật',
   'Trends': 'Xu hướng',
   'Trends Workbench': 'Bàn làm việc xu hướng',
@@ -822,7 +826,6 @@ const Map<String, String> viTranslations = {
   'Try another keyword.': 'Hãy thử từ khóa khác.',
   'Type': 'Loại',
   'Undecided': 'Chưa quyết định',
-  'Unique Topics': 'Chủ đề duy nhất',
   'University': 'Trường đại học',
   'Unknown': 'Chưa rõ',
   'Unknown Journal': 'Tạp chí không rõ',
@@ -862,16 +865,12 @@ const Map<String, String> viTranslations = {
   'What specific trends should Gemini write about?':
       'Gemini nên viết về những xu hướng cụ thể nào?',
   'What the abstract lets you judge': 'Những gì tóm tắt cho phép đánh giá',
-  'What this shows: Emerging research directions sorted by growth momentum (yearly change in publication counts).':
-      'Biểu đồ này cho thấy: các hướng nghiên cứu mới nổi, sắp xếp theo động lượng tăng trưởng (thay đổi số công bố theo năm).',
   'What this shows: Normalizes citation impact per paper. Useful when one topic has much larger volume.':
       'Biểu đồ này cho thấy: ảnh hưởng trích dẫn chuẩn hóa theo từng bài báo. Hữu ích khi một chủ đề có số lượng lớn hơn nhiều.',
   'What this shows: Shows accumulated citation volume. Older topics may look stronger because they had more time to collect citations.':
       'Biểu đồ này cho thấy: tổng số trích dẫn tích lũy. Chủ đề cũ có thể trông mạnh hơn vì có nhiều thời gian hơn để tích lũy trích dẫn.',
   'What this shows: Shows how many papers were published each year. Use this to compare research activity.':
       'Biểu đồ này cho thấy: số bài báo được công bố mỗi năm. Dùng để so sánh mức độ hoạt động nghiên cứu.',
-  'What this shows: The overall publication volume within the current scope over time.':
-      'Biểu đồ này cho thấy: tổng số công bố trong phạm vi hiện tại theo thời gian.',
   'Where this paper sits': 'Vị trí của bài trong chủ đề',
   'Why': 'Vì sao',
   'Why it matters': 'Vì sao quan trọng',
@@ -889,13 +888,11 @@ const Map<String, String> viTranslations = {
   'Workspace updated.': 'Đã cập nhật không gian làm việc.',
   'Write a short review': 'Viết đánh giá ngắn',
   'Year': 'Năm',
-  'Year Window': 'Khoảng năm',
   'Year from': 'Từ năm',
   'Year: {{from}}-{{to}}': 'Năm: {{from}}-{{to}}',
   'Year: {{year}} · Citations: {{citations}}':
       'Năm: {{year}} · Trích dẫn: {{citations}}',
   'Yesterday': 'Hôm qua',
-  'YoY Growth': 'Tăng trưởng hàng năm',
   'You': 'Bạn',
   'You are sending too fast. Please wait a moment.':
       'Bạn gửi quá nhanh, vui lòng đợi một chút.',
@@ -931,8 +928,6 @@ const Map<String, String> viTranslations = {
   '{{count}} Citations': '{{count}} lượt trích dẫn',
   '{{count}} PDF': '{{count}} PDF',
   '{{count}} PDFs': '{{count}} PDF',
-  '{{count}} Papers inside current scope':
-      '{{count}} bài báo trong phạm vi hiện tại',
   '{{count}} credit': '{{count}} tín chỉ',
   '{{count}} credits': '{{count}} tín chỉ',
   '{{count}} day ago': '{{count}} ngày trước',
@@ -960,7 +955,6 @@ const Map<String, String> viTranslations = {
   '{{name}}: message deleted, {{time}}':
       '{{name}}: tin nhắn đã bị xóa, {{time}}',
   '{{pct}}% confidence': 'độ tin cậy {{pct}}%',
-  '{{percent}}% YoY': '{{percent}}% so với năm trước',
   '{{percent}}% conf': 'tin cậy {{percent}}%',
   '{{percent}}% confidence · {{description}}':
       'độ tin cậy {{percent}}% · {{description}}',
@@ -969,9 +963,14 @@ const Map<String, String> viTranslations = {
       '{{publicationYear}} - {{citationCount}} trích dẫn',
   '{{ratingCount}} ratings · {{average}} avg':
       '{{ratingCount}} đánh giá · trung bình {{average}}',
+  '{{topic}} has the largest significant rise in its share of publications in this dataset ({{change}}).':
+      '{{topic}} có mức tăng thị phần công bố có ý nghĩa lớn nhất trong tập dữ liệu này ({{change}}).',
   '{{totalCount}} total alerts from papers, projects, and reports.':
       'Tổng {{totalCount}} cảnh báo từ bài báo, dự án và báo cáo.',
   '{{unreadCount}} unread updates': '{{unreadCount}} cập nhật chưa đọc',
+  '{{value}}% per year': '{{value}}%/năm',
+  '{{value}}% per year in recent years':
+      '{{value}}%/năm trong những năm gần đây',
   '{{year}} · {{citations}} cites': '{{year}} · {{citations}} trích dẫn',
   '{{year}} · {{citations}} cites · Relevance: {{score}}':
       '{{year}} · {{citations}} trích dẫn · Mức liên quan: {{score}}',

@@ -303,7 +303,7 @@ void main() {
       num growth = 0,
     }) => {
       'topic': name,
-      'growthRatePct': growth,
+      'relativeChangePct': growth,
       'yearlyBreakdown': [
         {'year': 2024, 'count': 1},
         {'year': 2025, 'count': 2},
@@ -311,18 +311,60 @@ void main() {
       'classification': ?classification,
     };
 
-    testWidgets('all four verdicts, each with its own word, colour and icon', (
+    testWidgets(
+      'the four main verdicts, each with its own word, colour and icon',
+      (
+        tester,
+      ) async {
+        final h = _Harness(
+          overview: () async => HomeOverview.fromJson(
+            _overview(
+              topics: [
+                // Growth contradicts the verdict on purpose: only the verdict counts.
+                topic('Chủ đề A', {'verdict': 'rising'}, growth: -50),
+                topic('Chủ đề B', {'verdict': 'declining'}, growth: 300),
+                topic('Chủ đề C', {'verdict': 'stable'}, growth: 80),
+                topic('Chủ đề D', {'verdict': 'insufficient'}, growth: 80),
+              ],
+            ),
+          ),
+        );
+        await _pump(tester, h);
+        await tester.pumpAndSettle();
+        const lumi = LumiColors.light;
+
+        void expectLabel(String text, IconData icon, Color color) {
+          expect(find.text(text), findsOneWidget, reason: text);
+          final row = find
+              .ancestor(of: find.text(text), matching: find.byType(Row))
+              .first;
+          final iconWidget = tester.widget<Icon>(
+            find.descendant(of: row, matching: find.byIcon(icon)),
+          );
+          expect(iconWidget.color, color, reason: text);
+          expect(
+            tester.widget<Text>(find.text(text)).style?.color,
+            color,
+            reason: text,
+          );
+        }
+
+        expectLabel('Tăng', Icons.arrow_upward, lumi.success);
+        expectLabel('Giảm', Icons.arrow_downward, lumi.error);
+        expectLabel('Ổn định', Icons.arrow_forward, lumi.muted);
+        expectLabel('Chưa đủ dữ liệu', Icons.remove, lumi.muted);
+      },
+    );
+
+    testWidgets('saturated and past its peak have their own word and icon', (
       tester,
     ) async {
       final h = _Harness(
         overview: () async => HomeOverview.fromJson(
           _overview(
             topics: [
-              // Growth contradicts the verdict on purpose: only the verdict counts.
-              topic('Chủ đề A', {'verdict': 'rising'}, growth: -50),
-              topic('Chủ đề B', {'verdict': 'declining'}, growth: 300),
-              topic('Chủ đề C', {'verdict': 'stable'}, growth: 80),
-              topic('Chủ đề D', {'verdict': 'insufficient'}, growth: 80),
+              topic('Chủ đề E', {'verdict': 'saturated'}, growth: -80),
+              topic('Chủ đề F', {'verdict': 'past_peak'}, growth: 90),
             ],
           ),
         ),
@@ -331,26 +373,24 @@ void main() {
       await tester.pumpAndSettle();
       const lumi = LumiColors.light;
 
-      void expectLabel(String text, IconData icon, Color color) {
+      for (final (text, icon) in [
+        ('Bão hoà', Icons.vertical_align_top),
+        ('Qua đỉnh', Icons.south_east),
+      ]) {
         expect(find.text(text), findsOneWidget, reason: text);
         final row = find
             .ancestor(of: find.text(text), matching: find.byType(Row))
             .first;
-        final iconWidget = tester.widget<Icon>(
-          find.descendant(of: row, matching: find.byIcon(icon)),
-        );
-        expect(iconWidget.color, color, reason: text);
         expect(
-          tester.widget<Text>(find.text(text)).style?.color,
-          color,
+          tester
+              .widget<Icon>(
+                find.descendant(of: row, matching: find.byIcon(icon)),
+              )
+              .color,
+          lumi.warning,
           reason: text,
         );
       }
-
-      expectLabel('Tăng', Icons.arrow_upward, lumi.success);
-      expectLabel('Giảm', Icons.arrow_downward, lumi.error);
-      expectLabel('Ổn định', Icons.arrow_forward, lumi.muted);
-      expectLabel('Chưa đủ dữ liệu', Icons.remove, lumi.muted);
     });
 
     testWidgets(

@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/utils/number_format.dart';
+import 'package:flutter_mobile/features/trends/components/trend_verdict_label.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:go_router/go_router.dart';
 
@@ -17,23 +20,6 @@ class TrendsSignalsTab extends StatelessWidget {
   final TrendsOverview overview;
   final TrendsOverviewParams params;
   final void Function(String) onExplainTopic;
-
-  String _getReliabilityLabel(int paperCount) {
-    if (paperCount >= 20) return tk('High');
-    if (paperCount >= 5) return tk('Exploratory');
-    return tk('Small base');
-  }
-
-  Color _getReliabilityColor(String label) {
-    switch (label) {
-      case 'High':
-        return const Color(0xFF10B981);
-      case 'Exploratory':
-        return const Color(0xFF06B6D4);
-      default:
-        return const Color(0xFFF59E0B);
-    }
-  }
 
   void _showTopicDetailSheet(BuildContext context, TrendingTopic topic) {
     final theme = Theme.of(context);
@@ -158,26 +144,38 @@ class TrendsSignalsTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // Explanation metrics
+                // The conclusion: verdict, what it means, change of the share
+                TrendVerdictLabel(verdict: topic.verdict),
+                const SizedBox(height: 6),
+                Text(
+                  context.t(trendVerdictMeaning(topic.verdict)),
+                  style: const TextStyle(fontSize: 12, height: 1.4),
+                ),
+                const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     _buildMetricCell(
-                      context.t('Growth Rate'),
-                      context.t('{{percent}}% YoY', {'percent': topic.growthRatePct.toStringAsFixed(1)}),
-                      Colors.green,
+                      context.t('Relative change per year'),
+                      trendChangeText(context, topic.classification) ?? '—',
+                      trendVerdictStyle(topic.verdict, context.lumi).color,
                     ),
                     _buildMetricCell(
-                      context.t('Momentum Score'),
-                      topic.momentum.toStringAsFixed(2),
+                      context.t('Complete years used'),
+                      '${topic.classification?.yearsUsed ?? 0}',
                       const Color(0xFF06B6D4),
                     ),
                     _buildMetricCell(
                       context.t('Publications'),
-                      topic.totalPapers.toString(),
+                      formatNumber(topic.totalPapers),
                       const Color(0xFFA78BFA),
                     ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  context.t("The chart shows papers per year; the verdict is tested on the topic's share of all papers in the Information Technology scope."),
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontStyle: FontStyle.italic),
                 ),
                 const SizedBox(height: 24),
 
@@ -288,6 +286,7 @@ class TrendsSignalsTab extends StatelessWidget {
       children: [
         Text(
           label,
+          textAlign: TextAlign.center,
           style: const TextStyle(
             fontSize: 10,
             color: Color(0xFF94A3B8),
@@ -307,6 +306,42 @@ class TrendsSignalsTab extends StatelessWidget {
     );
   }
 
+  /// How many tested topics of the scope got each verdict.
+  Widget _buildVerdictCounts(BuildContext context) {
+    final lumi = context.lumi;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          overview.testedTopicCount > 0
+              ? context.t('Trend verdicts among the {{count}} topics tested', {'count': formatNumber(overview.testedTopicCount)})
+              : context.t('Trend verdicts in this scope'),
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 12,
+          runSpacing: 6,
+          children: [
+            for (final v in TrendVerdict.values)
+              if ((overview.verdictCounts[v] ?? 0) > 0)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(trendVerdictStyle(v, lumi).icon, size: 14, color: trendVerdictStyle(v, lumi).color),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${context.t(trendVerdictStyle(v, lumi).text)} ${formatNumber(overview.verdictCounts[v]!)}',
+                      style: TextStyle(fontSize: 11, color: trendVerdictStyle(v, lumi).color),
+                    ),
+                  ],
+                ),
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -316,16 +351,16 @@ class TrendsSignalsTab extends StatelessWidget {
         ? const Color(0xFF26334A)
         : const Color(0xFFE2E8F0);
 
-    // Find the strongest topic for the banner
-    final strongestTopic = overview.topics.isNotEmpty
-        ? overview.topics.first
-        : null;
+    // The banner names the listed topic with the largest significant rise of its share.
+    final rising = overview.topics.where((t) => t.verdict == TrendVerdict.rising).toList()
+      ..sort((a, b) => (b.classification?.relativeChangePct ?? 0).compareTo(a.classification?.relativeChangePct ?? 0));
+    final strongestTopic = rising.isNotEmpty ? rising.first : null;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         // Strongest Topic Insight Banner
-        if (strongestTopic != null) ...[
+        ...[
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -345,7 +380,12 @@ class TrendsSignalsTab extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    context.t('"{{topic}}" is the strongest rising topic in this dataset scope with growth rate of {{percent}}%.', {'topic': strongestTopic.topic, 'percent': strongestTopic.growthRatePct.toStringAsFixed(1)}),
+                    strongestTopic == null
+                        ? context.t('No topic shows a statistically significant rise in its share of publications in this scope.')
+                        : context.t('{{topic}} has the largest significant rise in its share of publications in this dataset ({{change}}).', {
+                            'topic': strongestTopic.topic,
+                            'change': trendChangeText(context, strongestTopic.classification) ?? '',
+                          }),
                     style: const TextStyle(
                       fontSize: 13,
                       height: 1.4,
@@ -356,6 +396,8 @@ class TrendsSignalsTab extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          if (overview.verdictCounts.isNotEmpty) _buildVerdictCounts(context),
           const SizedBox(height: 20),
         ],
 
@@ -381,7 +423,9 @@ class TrendsSignalsTab extends StatelessWidget {
               itemBuilder: (context, idx) {
                 final kw = overview.risingKeywords[idx];
                 return ActionChip(
-                  label: Text('${kw.keyword} (+${kw.growthRatePct.round()}%)'),
+                  avatar: kw.significant ? const Icon(Icons.bolt, size: 14, color: Color(0xFF10B981)) : null,
+                  tooltip: context.t('Test statistic of the keyword shift: larger means stronger evidence of a rise.'),
+                  label: Text('${kw.keyword} · z ${kw.z.toStringAsFixed(1)}'), // i18n-ignore: keyword and its test statistic
                   onPressed: () => unawaited(
                     context.push(
                       '/search?q=${Uri.encodeComponent(kw.keyword)}',
@@ -433,8 +477,8 @@ class TrendsSignalsTab extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (context, idx) {
               final topic = overview.topics[idx];
-              final reliability = _getReliabilityLabel(topic.totalPapers);
-              final reliabilityColor = _getReliabilityColor(reliability);
+              final change = trendChangeText(context, topic.classification);
+              final verdictColor = trendVerdictStyle(topic.verdict, context.lumi).color;
 
               return Card(
                 elevation: 0,
@@ -476,28 +520,17 @@ class TrendsSignalsTab extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: reliabilityColor.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              context.t(reliability),
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: reliabilityColor,
-                              ),
-                            ),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 130),
+                            child: TrendVerdictLabel(verdict: topic.verdict),
                           ),
                         ],
                       ),
                       const SizedBox(height: 12),
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
                             context.plural(topic.totalPapers, one: '{{count}} publication', other: '{{count}} publications'),
@@ -506,33 +539,23 @@ class TrendsSignalsTab extends StatelessWidget {
                               color: Color(0xFF94A3B8),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            '·',
-                            style: TextStyle(color: Color(0xFF94A3B8)),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            context.t('Growth: +{{percent}}%', {'percent': topic.growthRatePct.toStringAsFixed(1)}),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
+                          if (change != null)
+                            Text(
+                              change,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: verdictColor,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            '·',
-                            style: TextStyle(color: Color(0xFF94A3B8)),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            context.t('Momentum: {{momentum}}', {'momentum': topic.momentum.toStringAsFixed(2)}),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF94A3B8),
+                          if (topic.classification?.confidence != null)
+                            Text(
+                              topic.classification!.confidence == 'high' ? context.t('High confidence') : context.t('Medium confidence'),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF94A3B8),
+                              ),
                             ),
-                          ),
                         ],
                       ),
                       const Divider(height: 24),
