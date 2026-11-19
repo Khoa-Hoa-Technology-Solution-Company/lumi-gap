@@ -2,9 +2,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter_mobile/core/constants/api_routes.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/network/api_client.dart';
+import 'package:flutter_mobile/features/trends/data/trend_classification.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:meta/meta.dart';
+
+export 'package:flutter_mobile/features/trends/data/trend_classification.dart';
 
 final trendsApiProvider = Provider<TrendsApi>((ref) {
   return TrendsApi(ref.watch(apiClientProvider).dio);
@@ -36,103 +39,6 @@ const trendWindowYears = 15;
 ({int from, int to}) defaultTrendYears([DateTime? now]) {
   final to = (now ?? DateTime.now()).year;
   return (from: to - trendWindowYears, to: to);
-}
-
-/// Trend verdict from the API (`classification.verdict`): Mann-Kendall test on
-/// the topic's yearly share of the Information Technology scope, same wording
-/// as the web. Unknown or missing values are `insufficient`: we never invent a
-/// direction the API did not conclude.
-enum TrendVerdict {
-  rising('rising'),
-  saturated('saturated'),
-  pastPeak('past_peak'),
-  declining('declining'),
-  stable('stable'),
-  insufficient('insufficient');
-
-  const TrendVerdict(this.apiName);
-
-  /// The value the API sends (`past_peak`, not `pastPeak`).
-  final String apiName;
-
-  static TrendVerdict parse(Object? raw) {
-    if (raw is String) {
-      for (final v in values) {
-        if (v.apiName == raw) return v;
-      }
-    }
-    return TrendVerdict.insufficient;
-  }
-}
-
-/// The single trend conclusion of a topic (packages/shared-types TrendClassification).
-/// Only the fields the app shows are kept.
-class TrendClassification {
-  const TrendClassification({
-    required this.verdict,
-    this.confidence,
-    this.yearsUsed = 0,
-    this.totalPapers = 0,
-    this.pValue,
-    this.qValue,
-    this.senSlope,
-    this.relativeChangePct,
-    this.recentRelativeChangePct,
-    this.peakRatio,
-  });
-
-  /// Null when [json] is not an object: the topic then has no conclusion.
-  static TrendClassification? fromJson(Object? json) {
-    if (json is! Map<String, dynamic>) return null;
-    final mk = json['mannKendall'];
-    return TrendClassification(
-      verdict: TrendVerdict.parse(json['verdict']),
-      confidence: json['confidence'] is String
-          ? json['confidence'] as String
-          : null,
-      yearsUsed: (json['yearsUsed'] as num?)?.toInt() ?? 0,
-      totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
-      pValue: mk is Map<String, dynamic>
-          ? (mk['pValue'] as num?)?.toDouble()
-          : null,
-      qValue: (json['qValue'] as num?)?.toDouble(),
-      senSlope: (json['senSlope'] as num?)?.toDouble(),
-      relativeChangePct: (json['relativeChangePct'] as num?)?.toDouble(),
-      recentRelativeChangePct: (json['recentRelativeChangePct'] as num?)
-          ?.toDouble(),
-      peakRatio: (json['peakRatio'] as num?)?.toDouble(),
-    );
-  }
-
-  final TrendVerdict verdict;
-
-  /// `high` or `medium`; only for rising, saturated, past_peak and declining.
-  final String? confidence;
-  final int yearsUsed;
-  final int totalPapers;
-  final double? pValue;
-
-  /// Benjamini-Hochberg q-value; only in the overview list.
-  final double? qValue;
-
-  /// Sen's slope of the share, percentage points per year.
-  final double? senSlope;
-
-  /// Sen's slope / median share x 100, % per year, over the whole window.
-  final double? relativeChangePct;
-
-  /// The same over the recent 5 years.
-  final double? recentRelativeChangePct;
-
-  /// Median share of the last 3 years / highest share of the window, 0..1.
-  final double? peakRatio;
-
-  /// The change figure shown next to the verdict, as on the web: the recent
-  /// change for saturated and past-peak topics, the whole window otherwise.
-  double? get headlineChangePct =>
-      verdict == TrendVerdict.saturated || verdict == TrendVerdict.pastPeak
-      ? recentRelativeChangePct
-      : relativeChangePct;
 }
 
 @immutable
@@ -411,7 +317,7 @@ class TrendingTopic {
     required this.totalPapers,
     required this.yearlyBreakdown,
     this.taxonomy,
-    this.classification,
+    this.classification = TrendClassification.none,
     this.crossTopic,
   });
 
@@ -439,15 +345,46 @@ class TrendingTopic {
   final List<YearlyCount> yearlyBreakdown;
   final TrendTopicTaxonomy? taxonomy;
 
-  /// The trend conclusion; null for compare items and topic candidates, which the API does not test.
-  final TrendClassification? classification;
+  /// The API's verdict; ranking and labels come from here only.
+  /// [TrendClassification.none] when the API sent none (compare items and
+  /// topic candidates are not tested).
+  final TrendClassification classification;
 
   /// Where the topic stands among topics of its size; null when the API sent none.
   final TrendTopicCrossLabels? crossTopic;
 
-  TrendVerdict get verdict =>
-      classification?.verdict ?? TrendVerdict.insufficient;
+  TrendVerdict get verdict => classification.verdict;
 }
+
+/// Topics in the backend's trend order (see [compareByTrend]).
+List<T> sortTopicsByTrend<T extends TrendingTopic>(Iterable<T> topics) =>
+    [...topics]..sort(_byTrend);
+
+/// The topic to feature: the first in trend order, only if it is really
+/// rising. Null when nothing rises, so no topic is ever called "rising" on
+/// raw-count growth. One pass, no copy: callers usually hold a list they
+/// already sorted.
+T? topRisingTopic<T extends TrendingTopic>(Iterable<T> topics) {
+  T? best;
+  for (final t in topics) {
+    if (t.classification.verdict != TrendVerdict.rising) continue;
+    if (best == null || _byTrend(t, best) < 0) best = t;
+  }
+  return best;
+}
+
+int _byTrend(TrendingTopic a, TrendingTopic b) => compareByTrend(
+  (
+    classification: a.classification,
+    totalPapers: a.totalPapers,
+    topic: a.topic,
+  ),
+  (
+    classification: b.classification,
+    totalPapers: b.totalPapers,
+    topic: b.topic,
+  ),
+);
 
 /// Size band of a topic and whether its change is anomalous for that band
 /// (Tukey fences of r over the IT scope). Descriptive only: never changes the verdict.
@@ -554,7 +491,7 @@ class PublicationTrend {
           : null,
       totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
       classification: json['statistics'] is Map<String, dynamic>
-          ? TrendClassification.fromJson(
+          ? TrendClassification.tryParse(
               (json['statistics'] as Map<String, dynamic>)['classification'],
             )
           : null,

@@ -8,8 +8,8 @@ import { useAuthStore } from "@/stores/auth-store";
 import { academicSupportApi } from "../api/academic-support.api";
 import { mentorshipError } from "./mentoring-preferences";
 
-const roles: MentorRole[] = ["PRIMARY", "SECONDARY"];
-export const mentorRoleLabel = (role: MentorRole) => role === "PRIMARY" ? "Mentor chính" : "Mentor phụ";
+const roles: MentorRole[] = ["UNASSIGNED", "PRIMARY", "SECONDARY"];
+export const mentorRoleLabel = (role: MentorRole) => role === "UNASSIGNED" ? "Cố vấn" : role === "PRIMARY" ? "Mentor chính" : "Mentor phụ";
 const labels: Record<string, string> = { READY: "Sẵn sàng gửi", PLANNED: "Dự phòng — chưa gửi", INELIGIBLE: "Chưa đủ điều kiện", PENDING: "Đang mời", ACCEPTED: "Đã chấp nhận", DECLINED: "Đã từ chối", EXPIRED: "Hết hạn", CANCELLED: "Đã thu hồi", CANCELED_BY_PROJECT: "Đã thu hồi", CLOSED_CAPACITY_REACHED: "Đã đóng" };
 export function useMentorPlan(projectId: string, enabled = true) {
   const userId = useAuthStore(s => s.user?.id);
@@ -36,7 +36,7 @@ export function MentorRecruitmentPlan({ projectId, onSend }: { projectId: string
                 {data.candidates.length}/4 ứng viên
               </span>
             </div>
-            <p className="mt-0.5 text-xs text-muted-foreground">{data.candidates.length}/4 ứng viên · Tối đa 2 lời mời đồng thời</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{data.candidates.length}/4 ứng viên · Danh sách riêng, chưa phải lời mời</p>
           </div>
         </div>
         <Button variant="outline" size="sm" className="h-8 text-xs font-semibold gap-1.5" disabled={!writable} onClick={() => setRestart(true)}>
@@ -45,13 +45,7 @@ export function MentorRecruitmentPlan({ projectId, onSend }: { projectId: string
         </Button>
       </header>
 
-      <label className="flex items-start gap-3 p-3.5 rounded-xl bg-muted/20 border border-border/60 hover:bg-muted/40 transition-colors cursor-pointer text-sm leading-6">
-        <input type="checkbox" className="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary/20 cursor-pointer" checked={data.parallelInvitations} disabled={!writable} onChange={e => void change({ action: "configure", expectedVersion: data.version, parallelInvitations: e.target.checked })} />
-        <div>
-          <span className="font-semibold text-foreground">Mời Mentor chính và Mentor phụ song song</span>
-          <span className="block text-xs text-muted-foreground mt-0.5 leading-relaxed">{data.parallelInvitations ? "Hai vai trò được giữ chỗ độc lập; Mentor phụ có thể nhận trước." : "Mặc định mời Mentor chính trước, rồi mới mời Mentor phụ."}</span>
-        </div>
-      </label>
+      <p className="text-xs text-muted-foreground">Lời mời mới độc lập, chưa phân vai chính/phụ. Phân vai sau khi cố vấn chấp nhận và xác nhận đề xuất của nhóm.</p>
 
       <div className="grid min-w-0 gap-4 lg:grid-cols-2">
         {roles.map(role => {
@@ -193,8 +187,10 @@ export function MentorRecruitmentPlan({ projectId, onSend }: { projectId: string
 }
 
 export function AddMentorCandidate({ projectId, mentor, onClose }: { projectId: string; mentor: AvailableMentor; onClose: () => void }) {
-  const plan = useMentorPlan(projectId), cache = useQueryClient(), [role, setRole] = useState<MentorRole>("PRIMARY"), lock = useRef(false);
-  const roleAvailable = (value: MentorRole) => Boolean(plan.data && !plan.data.closedRoles.includes(value) && plan.data.positions[value].status !== "ASSIGNED");
-  const save = useMutation({ mutationFn: () => academicSupportApi.changePlan(projectId, { action: "add", expectedVersion: plan.data!.version, mentorUserId: mentor._id, mentorRole: role }), onSuccess: () => { void cache.invalidateQueries({ queryKey: ["academic-support"] }); onClose(); }, onError: () => void plan.refetch() });
-  return <Dialog open onOpenChange={open => { if (!open && !save.isPending) onClose(); }}><DialogContent data-no-i18n><DialogHeader><DialogTitle>Thêm ứng viên vào kế hoạch</DialogTitle><DialogDescription>{mentor.fullName} chưa nhận được lời mời, thông báo hay quyền truy cập.</DialogDescription></DialogHeader><label className="space-y-2 text-sm"><span>Vai trò dự kiến</span><select className="block h-10 w-full rounded-md border bg-background px-3" value={role} disabled={save.isPending} onChange={e => setRole(e.target.value as MentorRole)}>{roles.map(r => <option key={r} value={r} disabled={!roleAvailable(r)}>{mentorRoleLabel(r)}{!roleAvailable(r) ? " — chưa mở tuyển" : ""}</option>)}</select></label><p className="text-xs text-muted-foreground">Chọn vai trò còn mở tuyển. Tối đa 4 ứng viên. Thứ tự riêng cho từng vai trò; bạn có thể đổi thứ tự trước khi gửi.</p>{(save.error || plan.isError) && <p role="alert" className="text-sm text-destructive">{save.error ? mentorshipError(save.error) : "Chưa tải được kế hoạch. Hãy đóng và mở lại."}</p>}<div className="flex justify-end gap-2"><Button variant="ghost" disabled={save.isPending} onClick={onClose}>Quay lại</Button><Button disabled={!plan.data?.canManage || !roleAvailable(role) || plan.isFetching || save.isPending} onClick={async () => { if (lock.current) return; lock.current = true; try { await save.mutateAsync(); } catch { /* Preserve role for retry. */ } finally { lock.current = false; } }}>Thêm vào kế hoạch</Button></div></DialogContent></Dialog>;
+  const plan = useMentorPlan(projectId), cache = useQueryClient(), lock = useRef(false);
+  const save = useMutation({ mutationFn: () => academicSupportApi.changePlan(projectId, { action: "add", expectedVersion: plan.data!.version, mentorUserId: mentor._id, mentorRole: "UNASSIGNED" }), onSuccess: () => { void cache.invalidateQueries({ queryKey: ["academic-support"] }); onClose(); }, onError: () => void plan.refetch() });
+  return <Dialog open onOpenChange={open => { if (!open && !save.isPending) onClose(); }}><DialogContent data-no-i18n><DialogHeader><DialogTitle>Thêm ứng viên vào kế hoạch</DialogTitle><DialogDescription>{mentor.fullName} chưa nhận được lời mời, thông báo hay quyền truy cập. Bạn có thể mời trực tiếp mà không cần danh sách này.</DialogDescription></DialogHeader>
+    {(save.error || plan.isError) && <p role="alert" className="text-sm text-destructive">{save.error ? mentorshipError(save.error) : "Chưa tải được kế hoạch. Hãy đóng và mở lại."}</p>}
+    <div className="flex justify-end gap-2"><Button variant="ghost" disabled={save.isPending} onClick={onClose}>Quay lại</Button><Button disabled={!plan.data?.canManage || plan.isFetching || save.isPending} onClick={async () => { if (lock.current) return; lock.current = true; try { await save.mutateAsync(); } catch { /* Keep the selected lecturer for retry. */ } finally { lock.current = false; } }}>Thêm vào kế hoạch</Button></div>
+  </DialogContent></Dialog>;
 }

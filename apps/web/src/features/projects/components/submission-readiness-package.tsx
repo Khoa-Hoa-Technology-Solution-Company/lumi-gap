@@ -1,3 +1,4 @@
+import { buildCreditStatement } from "../submission-readiness-model";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,12 +10,9 @@ import {
   AlertCircle,
   ShieldAlert,
   Download,
-  FileText,
   Plus,
   Trash2,
-  Scale,
   Sparkles,
-  HelpCircle,
   Copy,
   BookOpen,
 } from "lucide-react";
@@ -23,21 +21,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { projectsApi } from "../api/projects.api";
-import { useI18n } from "@/i18n";
 import type {
-  CreditRole,
   DeclareExternalAiInput,
-  UpdateAuthorshipInput,
   ProjectIntegrityOverview,
 } from "@trend/shared-types";
-import { creditRoles } from "@trend/shared-types";
 
-const ALL_CREDIT_ROLES: CreditRole[] = [...creditRoles];
 
 export function SubmissionReadinessPackage({
   projectId,
   currentUserId,
-  isOwner,
   readOnly = false,
 }: {
   projectId: string;
@@ -45,7 +37,6 @@ export function SubmissionReadinessPackage({
   isOwner: boolean;
   readOnly?: boolean;
 }) {
-  const { t } = useI18n();
   const queryClient = useQueryClient();
 
   const [activeSubTab, setActiveSubTab] = useState<"authorship" | "credit" | "mentors" | "ai" | "citations" | "export">("authorship");
@@ -59,7 +50,6 @@ export function SubmissionReadinessPackage({
   const [aiToolName, setAiToolName] = useState("");
   const [aiPurpose, setAiPurpose] = useState<DeclareExternalAiInput["purpose"]>("LANGUAGE_POLISH");
   const [aiDescription, setAiDescription] = useState("");
-  const [aiScope, setAiScope] = useState("");
   const [aiHumanOversightNote, setAiHumanOversightNote] = useState("");
 
   const overviewQuery = useQuery({
@@ -100,7 +90,6 @@ export function SubmissionReadinessPackage({
       setShowAiModal(false);
       setAiToolName("");
       setAiDescription("");
-      setAiScope("");
       setAiHumanOversightNote("");
     },
     onError: (e: any) => toast.error(e.response?.data?.error?.message ?? "Lỗi khi khai báo AI"),
@@ -202,11 +191,7 @@ export function SubmissionReadinessPackage({
   }
 
   function copyCreditStatement() {
-    const lines = overview.contributions.authors.map(a => {
-      const roles = a.creditRoles.join(", ");
-      return `**${a.name}**: ${roles || "Contributor"}.`;
-    });
-    const statement = `### CRediT Authorship Contribution Statement\n\n${lines.join("\n")}\n\nAll authors have reviewed and agreed to the published version of the manuscript.`;
+    const statement = buildCreditStatement(overview.contributions.authors);
     navigator.clipboard.writeText(statement);
     toast.success("Đã sao chép CRediT Authorship Statement");
   }
@@ -311,7 +296,7 @@ export function SubmissionReadinessPackage({
               )}
             </div>
             <p className="text-muted-foreground text-[11px]">
-              {checklist.readyForOfficialSubmission ? "Hồ sơ đã đầy đủ và đạt chuẩn học thuật." : "Còn các mục cần đối soát trước khi nộp."}
+              {checklist.readyForOfficialSubmission ? "Các mục kiểm tra đã hoàn tất. Tác giả cần đối chiếu thêm yêu cầu của nơi nộp." : "Còn các mục cần đối soát trước khi nộp."}
             </p>
           </div>
         </div>

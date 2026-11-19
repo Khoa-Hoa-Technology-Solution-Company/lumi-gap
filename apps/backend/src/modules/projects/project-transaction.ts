@@ -26,7 +26,7 @@ export async function assertActiveProjectAccount(tx: Prisma.TransactionClient, u
 export async function authorizeProjectTransaction(tx: Prisma.TransactionClient, projectId: string, actorId: string, action?: ProjectMutationAction) {
   const actor = await assertActiveProjectAccount(tx, actorId);
   const project = await tx.project.findUnique({ where: { id: projectId } });
-  if (!project) throw AppError.notFound("Project not found");
+  if (!project || Boolean(project.deletedAt)) throw AppError.notFound("Project not found");
   const member = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId, userId: actorId } } });
   const role = project.ownerId === actorId ? "OWNER" : member?.status === "ACTIVE" ? "MEMBER" : undefined;
   if (action) assertProjectActionAllowed(role, project.status, action);

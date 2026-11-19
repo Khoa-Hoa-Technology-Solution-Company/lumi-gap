@@ -10,7 +10,7 @@
 .screening-workspace select,.screening-form textarea,.screening-form input:not([type=checkbox]):not([type=radio]) { border: 1px solid hsl(var(--border)); border-radius: .5rem; background: hsl(var(--background)); color: hsl(var(--foreground)); padding: .55rem .7rem; max-width: 100%; }
 .screening-workspace select:focus-visible,.screening-workspace button:focus-visible,.screening-form textarea:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
 .screening-form { display: grid; gap: 1rem; margin: 1rem 0; }
-.screening-form label:not(.screening-check),.screening-bulk > label:not(.screening-check) { display: grid; gap: .4rem; font-size: .9rem; font-weight: 500; }
+.screening-form label:not(.screening-check):not(.screening-radio-card),.screening-bulk > label:not(.screening-check):not(.screening-radio-card) { display: grid; gap: .4rem; font-size: .9rem; font-weight: 500; }
 .screening-form textarea { width: 100%; resize: vertical; }
 .screening-form fieldset { display: grid; gap: .8rem; min-width: 0; }
 .screening-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }

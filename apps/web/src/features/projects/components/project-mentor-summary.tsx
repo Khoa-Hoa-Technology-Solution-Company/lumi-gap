@@ -12,6 +12,7 @@ export function ProjectMentorSummary({ projectId }: { projectId: string }) {
   const mentorships = useQuery({ queryKey: ["academic-support", "project", projectId, 1], queryFn: () => academicSupportApi.list(projectId) });
   if (!mentorships.data) return null;
   const activeRelationships = mentorships.data.relationships.filter(r => r.status === "ACTIVE");
+  const pendingRequests = mentorships.data.requests.filter(r => r.status === "PENDING");
 
   return (
     <section className="project-mentor-showcase rounded-2xl border border-border/80 bg-card p-6 shadow-xs relative overflow-hidden" data-no-i18n>
@@ -29,13 +30,18 @@ export function ProjectMentorSummary({ projectId }: { projectId: string }) {
                   <span>{t("Active")}</span>
                 </Badge>
               )}
+              {pendingRequests.length > 0 && (
+                <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-semibold py-0.5 px-2">
+                  {pendingRequests.length} {t("Pending")}
+                </Badge>
+              )}
             </div>
             <p className="mt-0.5 text-sm text-muted-foreground">{t("Expert guidance and academic critique for your research.")}</p>
           </div>
         </div>
         <Button asChild variant="outline" size="sm" className="font-semibold gap-1.5 self-start sm:self-center shadow-xs">
           <Link to={`/projects/${encodeURIComponent(projectId)}?tab=support`}>
-            <span>{t(mentorships.data.counts.active ? "Academic Support" : "Find Mentors")}</span>
+            <span>{t(mentorships.data.counts.active ? "Academic Support" : pendingRequests.length ? "Manage invitations" : "Find Mentors")}</span>
             <ArrowUpRight className="h-4 w-4" />
           </Link>
         </Button>
@@ -76,7 +82,37 @@ export function ProjectMentorSummary({ projectId }: { projectId: string }) {
             );
           })}
         </ul>
-      ) : (
+      ) : null}
+
+      {pendingRequests.length > 0 ? (
+        <div className="mt-5 space-y-2.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("Pending supervisor invitations")}</p>
+          <ul className="space-y-2" role="list">
+            {pendingRequests.map(req => (
+              <li key={req.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-amber-500/25 bg-amber-500/5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Link to={`/academics/${req.mentorUser._id}`} className="text-sm font-semibold text-foreground hover:underline truncate">
+                      {req.mentorUser.fullName}
+                    </Link>
+                    <Badge variant="outline" className="text-xs border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                      {t("Pending")}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                    {req.mentorUser.positionTitle ? `${req.mentorUser.positionTitle} · ` : ""}{req.mentorUser.institutionName || ""}
+                  </p>
+                </div>
+                <Button asChild variant="outline" size="sm" className="h-8 text-xs self-start sm:self-center">
+                  <Link to={`/projects/${encodeURIComponent(projectId)}?tab=support`}>
+                    {t("Manage invitations")}
+                  </Link>
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : activeRelationships.length === 0 ? (
         <div className="mt-5 rounded-xl border border-dashed border-border/80 p-6 text-center bg-muted/10">
           <Award className="mx-auto h-7 w-7 text-muted-foreground/50 mb-2" />
           <p className="text-sm font-medium text-foreground">{t("Your project has no active mentor yet.")}</p>
@@ -90,7 +126,7 @@ export function ProjectMentorSummary({ projectId }: { projectId: string }) {
             </Link>
           </Button>
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

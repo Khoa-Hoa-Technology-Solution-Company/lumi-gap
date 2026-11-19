@@ -8,6 +8,11 @@ import 'package:flutter_mobile/features/auth/presentation/login_screen.dart';
 import 'package:flutter_mobile/features/auth/presentation/register_screen.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/bookmarks/presentation/bookmarks_screen.dart';
+import 'package:flutter_mobile/features/community/data/forum_api.dart';
+import 'package:flutter_mobile/features/community/presentation/community_detail_screen.dart';
+import 'package:flutter_mobile/features/community/presentation/community_screen.dart';
+import 'package:flutter_mobile/features/community/presentation/forum_post_screen.dart';
+import 'package:flutter_mobile/features/community/presentation/new_post_screen.dart';
 import 'package:flutter_mobile/features/explore/presentation/explore_screen.dart';
 import 'package:flutter_mobile/features/gaps/presentation/gaps_screen.dart';
 import 'package:flutter_mobile/features/home/presentation/app_shell_screen.dart';
@@ -16,38 +21,28 @@ import 'package:flutter_mobile/features/notifications/presentation/notifications
 import 'package:flutter_mobile/features/papers/presentation/my_papers_screen.dart';
 import 'package:flutter_mobile/features/papers/presentation/paper_detail_screen.dart';
 import 'package:flutter_mobile/features/papers/presentation/submit_paper_screen.dart';
+import 'package:flutter_mobile/features/profile/presentation/account_screen.dart';
 import 'package:flutter_mobile/features/profile/presentation/profile_screen.dart';
+import 'package:flutter_mobile/features/projects/presentation/invitation_link_screen.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail_screen.dart';
 import 'package:flutter_mobile/features/projects/presentation/projects_screen.dart';
 import 'package:flutter_mobile/features/rankings/presentation/rankings_screen.dart';
 import 'package:flutter_mobile/features/reports/presentation/report_detail_screen.dart';
 import 'package:flutter_mobile/features/reports/presentation/reports_screen.dart';
-import 'package:flutter_mobile/features/search/presentation/keyword_papers_screen.dart';
+import 'package:flutter_mobile/features/reviews/presentation/review_center_screen.dart';
+import 'package:flutter_mobile/features/reviews/presentation/review_request_screen.dart';
 import 'package:flutter_mobile/features/search/presentation/search_screen.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_mobile/features/trends/presentation/trends_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-// Dummy screens for features not yet built
-class PlaceholderScreen extends StatelessWidget {
-  const PlaceholderScreen({required this.title, super.key});
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(child: Text(context.t('Screen: {{title}}', {'title': title}))),
-    );
-  }
-}
-
 // Global navigator keys
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 final _shellNavigatorHomeKey = GlobalKey<NavigatorState>(debugLabel: 'homeTab');
 final _shellNavigatorExploreKey = GlobalKey<NavigatorState>(debugLabel: 'exploreTab');
 final _shellNavigatorProjectsKey = GlobalKey<NavigatorState>(debugLabel: 'projectsTab');
+final _shellNavigatorCommunityKey = GlobalKey<NavigatorState>(debugLabel: 'communityTab');
 final _shellNavigatorProfileKey = GlobalKey<NavigatorState>(debugLabel: 'profileTab');
 
 class RouterNotifier extends ChangeNotifier {
@@ -102,7 +97,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/login',
-        builder: (context, state) => const LoginScreen(),
+        builder: (context, state) => LoginScreen(
+          initialEmail: state.uri.queryParameters['email'] ?? '',
+        ),
       ),
       GoRoute(
         path: '/forgot-password',
@@ -112,7 +109,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/register',
-        builder: (context, state) => const RegisterScreen(),
+        builder: (context, state) => RegisterScreen(
+          initialEmail: state.uri.queryParameters['email'] ?? '',
+        ),
       ),
 
       // StatefulShellRoute for Bottom Navigation Tabs
@@ -148,6 +147,20 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: '/projects',
                 name: 'projects',
                 builder: (context, state) => const ProjectsScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            navigatorKey: _shellNavigatorCommunityKey,
+            routes: [
+              GoRoute(
+                path: '/community',
+                name: 'community',
+                builder: (context, state) => CommunityScreen(
+                  initialView: state.uri.queryParameters['view'] == 'communities'
+                      ? CommunityView.communities
+                      : CommunityView.discussions,
+                ),
               ),
             ],
           ),
@@ -191,6 +204,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             initialYearFrom: int.tryParse(params['yearFrom'] ?? ''),
             initialYearTo: int.tryParse(params['yearTo'] ?? ''),
             initialScopeFilters: TrendScopeFilters.fromQuery(params),
+            // A link that asks for a report (or brings its subject) opens
+            // the steps; the plain screen opens on the list.
+            startBuilding: params['create'] == 'true' ||
+                (params['topic'] ?? '').trim().isNotEmpty ||
+                (params['query'] ?? '').trim().isNotEmpty,
           );
         },
       ),
@@ -203,6 +221,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/submit-paper',
         name: 'submit_paper',
         builder: (context, state) => SubmitPaperScreen(editId: state.uri.queryParameters['editId']),
+      ),
+      GoRoute(
+        path: '/account',
+        name: 'account',
+        builder: (context, state) => const AccountScreen(),
       ),
       GoRoute(
         path: '/my-papers',
@@ -228,6 +251,47 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const BookmarksScreen(),
       ),
       GoRoute(
+        path: '/forum/new',
+        name: 'forum_new',
+        builder: (context, state) => NewPostScreen(
+          communityId: state.uri.queryParameters['communityId'],
+          communityName: state.uri.queryParameters['communityName'],
+        ),
+      ),
+      GoRoute(
+        path: '/forum/edit',
+        name: 'forum_edit',
+        // Opened from the discussion with the post as `extra`; a cold link
+        // has nothing to edit and goes back to the forum.
+        redirect: (context, state) => state.extra is ForumPost ? null : '/community',
+        builder: (context, state) => NewPostScreen(editing: state.extra! as ForumPost),
+      ),
+      GoRoute(
+        path: '/forum/post/:id',
+        name: 'forum_post',
+        builder: (context, state) => ForumPostScreen(idOrSlug: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/communities/:slug',
+        name: 'community_detail',
+        builder: (context, state) => CommunityDetailScreen(slug: state.pathParameters['slug']!),
+      ),
+      GoRoute(
+        path: '/reviews',
+        name: 'review_center',
+        builder: (context, state) => const ReviewCenterScreen(),
+      ),
+      GoRoute(
+        path: '/review-requests/:id',
+        name: 'review_request',
+        builder: (context, state) => ReviewRequestScreen(id: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/invitations/:token',
+        name: 'invitation_link',
+        builder: (context, state) => InvitationLinkScreen(token: state.pathParameters['token']!),
+      ),
+      GoRoute(
         path: '/notifications',
         name: 'notifications',
         builder: (context, state) => const NotificationsScreen(),
@@ -240,7 +304,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/keyword/:keyword',
         name: 'keyword_detail',
-        builder: (context, state) => KeywordPapersScreen(keyword: state.pathParameters['keyword'] ?? ''),
+        // Kept for old links: a keyword's papers are a search for it, so
+        // they open Search instead of a second, poorer copy of it.
+        redirect: (context, state) => Uri(
+          path: '/search',
+          queryParameters: {'q': state.pathParameters['keyword'] ?? ''},
+        ).toString(),
       ),
       GoRoute(
         path: '/search',

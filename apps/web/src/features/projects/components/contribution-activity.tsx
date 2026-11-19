@@ -30,9 +30,11 @@ export function ContributionActivityPanel({ projectId }: { projectId: string }) 
   const [member, setMember] = useState(""); const [category, setCategory] = useState("");
   const [timeZone, setTimeZone] = useState("Asia/Ho_Chi_Minh");
   const [day, setDay] = useState<string | null>(null); const [page, setPage] = useState(1);
+  const [scopeKey,setScopeKey] = useState("");
+  const scopes = useWorkspaceResource(projectId,"contribution-activity-scopes",()=>contributionsApi.research(projectId,{page:1,pageSize:1}));
   const today = contributionDate(new Date(), timeZone);
   const offset = timeZone === "UTC" ? "Z" : "+07:00";
-  const query = { from: `${from}T00:00:00${offset}`, to: `${to}T23:59:59.999${offset}`, timeZone, memberId: member || undefined, category: category || undefined, eventDay: day ?? undefined, page, pageSize: 20 };
+  const query = { from: `${from}T00:00:00${offset}`, to: `${to}T23:59:59.999${offset}`, timeZone, memberId: member || undefined, category: category || undefined, scopeKey:scopeKey||undefined,eventDay: day ?? undefined, page, pageSize: 20 };
   const result = useWorkspaceResource(projectId, "contribution-activity", () => contributionsApi.activity(projectId, query), query);
   const days = useMemo(() => heatmapDays(from, to), [from, to]);
   const calendar = useMemo(() => heatmapCalendar(days), [days]);
@@ -49,7 +51,8 @@ export function ContributionActivityPanel({ projectId }: { projectId: string }) 
     <div className="contribution-filters contribution-activity-filters">
       <label>{t("From date")}<input type="date" value={from} max={to} onChange={e => change(setFrom, e.target.value)} /></label>
       <label>{t("To date")}<input type="date" value={to} min={from} max={today} onChange={e => change(setTo, e.target.value)} /></label>
-      <label>{t("Member")}<select value={member} onChange={e => change(setMember, e.target.value)}><option value="">{t("All members")}</option>{result.data?.members.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+      <label>{t("researchContribution.manuscript")}<select value={scopeKey} onChange={e=>change(setScopeKey,e.target.value)}><option value="">{t("researchContribution.wholeProject")}</option>{!scopes.isError && scopes.data?.manuscripts.map(scope=><option key={scope.key} value={scope.key}>{scope.title}</option>)}</select></label>
+      <label>{t("Member")}<select value={member} onChange={e => change(setMember, e.target.value)}><option value="">{t("All members")}</option>{!result.isError && result.data?.members.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
       <label>{t("Category")}<select value={category} onChange={e => change(setCategory, e.target.value)}><option value="">{t("All categories")}</option>{Object.entries(activityLabels).map(([key, label]) => <option key={key} value={key}>{t(label)}</option>)}</select></label>
       <label>{t("Timezone")}<select value={timeZone} onChange={e => change(setTimeZone, e.target.value)}><option value="Asia/Ho_Chi_Minh">UTC+7 · {t("Vietnam")}</option><option value="UTC">UTC</option></select></label>
     </div>
@@ -76,7 +79,7 @@ export function ContributionActivityPanel({ projectId }: { projectId: string }) 
         </div>
         <footer className="contribution-calendar-footer"><span>{days.length ? `${dateFormat.format(calendarDate(from))} – ${dateFormat.format(calendarDate(to))}` : ""}</span><div className="contribution-legend"><span>{t("Less activity")}</span>{[0, 1, 2, 3, 4].map(level => <i key={level} className={`heat-cell heat-level-${level}`} aria-hidden="true" />)}<span>{t("More activity")}</span></div></footer>
       </section>
-      <p className="contribution-note contribution-guidance"><Info size={16} aria-hidden="true" />{t("Recorded activity does not automatically determine contribution percentages.")}</p>
+      <p className="contribution-note contribution-guidance"><Info size={16} aria-hidden="true" />{t("researchContribution.activityHint")}</p>
       <section className="contribution-history-section" aria-label={t("Recent activity")}>
         <header className="contribution-history-heading"><h3>{day ? `${t("Selected day")}: ${dateFormat.format(calendarDate(day))}` : t("Recent activity")}</h3>{day && <Button variant="outline" size="sm" onClick={() => { setDay(null); setPage(1); }}>{t("Clear day filter")}</Button>}</header>
         {!result.data?.items.length ? <div className="contribution-empty contribution-activity-empty"><Activity size={24} aria-hidden="true" /><p>{t(day ? "No recorded events for this day." : "Meaningful research actions will appear here as your team works.")}</p></div> : <ol className="contribution-timeline">{result.data.items.map(row => <li key={row.id}>

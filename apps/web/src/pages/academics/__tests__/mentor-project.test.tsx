@@ -20,6 +20,7 @@ const emptyPage = { items: [], page: 1, pageSize: 20, total: 0, hasNext: false }
 let host: HTMLDivElement, root: Root, client: QueryClient;
 async function tick() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); }); }
 async function mount() { await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/academic-support/projects/project?view=resources"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Routes><Route path="/academic-support/projects/:projectId" element={<MentorProjectPage />} /></Routes></MemoryRouter></QueryClientProvider>)); await tick(); await tick(); }
+async function mountEmbedded() { await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/mentor-workspace?view=project&projectId=project&section=resources"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><MentorProjectPage embedded /></MemoryRouter></QueryClientProvider>)); await tick(); await tick(); }
 function button(label: string) { return [...document.querySelectorAll<HTMLButtonElement>("button")].find(value => value.textContent?.trim() === label)!; }
 async function click(label: string) { expect(button(label), label).toBeDefined(); await act(async () => button(label).click()); await tick(); }
 async function fill(label: string, value: string) {
@@ -32,6 +33,18 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } }); host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); host.remove(); vi.unstubAllGlobals(); });
+
+it("loads only the selected project's granted resources inside the mentor workspace", async () => {
+  await mountEmbedded();
+  expect(mocks.workspace).toHaveBeenCalledWith("project", 1);
+  expect(host.textContent).toContain("Tóm tắt được duyệt");
+  expect(host.querySelector('a[href="/mentor-workspace?view=projects"]')).not.toBeNull();
+  expect(host.querySelector('main')).toBeNull();
+  mocks.workspace.mockRejectedValue({ isAxiosError: true, response: { status: 403 } });
+  await act(async () => { await client.invalidateQueries({ queryKey: ["mentor-access", "mentor", "project", "workspace"] }); }); await tick();
+  expect(host.textContent).not.toContain("Tóm tắt được duyệt");
+  expect(button("Gửi phản hồi")).toBeUndefined();
+});
 
 it("renders only approved section text with no source, exports or team navigation", async () => {
   await mount(); expect(host.querySelector("h2")?.textContent).toBe("Nhóm nghiên cứu"); expect(host.textContent).toContain("Tóm tắt được duyệt"); expect(mocks.resource).not.toHaveBeenCalled();

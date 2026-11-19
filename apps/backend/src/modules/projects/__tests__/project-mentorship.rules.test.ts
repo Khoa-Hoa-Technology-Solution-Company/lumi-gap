@@ -4,6 +4,8 @@ import {
   canEndMentorRelationship,
   canViewMentorRelationship,
 } from "../project-mentorship.rules.js";
+import { requestMentorshipInfoSchema } from "../project-mentorship.controller.js";
+import { buildMentorshipMail } from "../mentorship-mail.service.js";
 
 describe("project mentorship rules", () => {
   it("keeps mentorship visibility explicit and project-scoped", () => {
@@ -66,5 +68,27 @@ describe("project mentorship rules", () => {
       projectOwnerId: "owner",
       status: "PENDING",
     })).toBe(false);
+  });
+
+  it("validates lecturer clarification notes via requestMentorshipInfoSchema", () => {
+    expect(requestMentorshipInfoSchema.safeParse({ note: "abc" }).success).toBe(false);
+    expect(requestMentorshipInfoSchema.safeParse({ note: "  Please clarify methodology  " }).success).toBe(true);
+    expect(requestMentorshipInfoSchema.safeParse({ note: "Clarify scope", extra: true }).success).toBe(false);
+  });
+
+  it("builds MENTORSHIP_INFO_REQUESTED mail targeting project support tab", () => {
+    const mail = buildMentorshipMail(
+      {
+        event: "MENTORSHIP_INFO_REQUESTED",
+        projectId: "6ab33f15-3780-2fe3-0d38-753b00000001",
+        projectTitle: "AI Vulnerability Detection",
+        actorName: "Dr. Tran",
+      },
+      "Nguyen An",
+      "vi",
+      "https://lumigap.example",
+    );
+    expect(mail.subject).toContain("Dr. Tran");
+    expect(mail.text).toContain("https://lumigap.example/projects/6ab33f15-3780-2fe3-0d38-753b00000001?tab=support");
   });
 });

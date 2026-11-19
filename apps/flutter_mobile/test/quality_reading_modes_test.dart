@@ -160,8 +160,8 @@ void main() {
     });
 
     test('a reported fact without a value degrades to not reported; legacy has no details', () {
-      expect(QualityFact.fromJson({'status': 'reported', 'value': null}).reported, isFalse);
-      final legacy = QualityEvaluation.fromJson({'rationale': 'old', 'freshness': 'legacy'});
+      expect(QualityFact.fromJson(const {'status': 'reported', 'value': null}).reported, isFalse);
+      final legacy = QualityEvaluation.fromJson(const {'rationale': 'old', 'freshness': 'legacy'});
       expect(legacy.isLegacy, isTrue);
       expect(legacy.details, isNull);
     });
@@ -169,7 +169,7 @@ void main() {
     test('task and reading context parse', () {
       final task = QualityEvaluationTask.tryParse({'status': 'running', 'jobId': 'j1'})!;
       expect(task.isPending, isTrue);
-      final ctx = PaperReadingContext.fromJson({
+      final ctx = PaperReadingContext.fromJson(const {
         'paperId': 'p1',
         'trend': {'topic': 'AI', 'source': 'paper_topic', 'totalPapers': 10, 'yearlyBreakdown': [{'year': 2020, 'count': 3}], 'paperYear': 2020},
         'related': [
@@ -363,14 +363,14 @@ void main() {
 
   group('QA fixes', () {
     test('unverified fact keeps its value; error code and partialYear parse', () {
-      final f = QualityFact.fromJson({'status': 'unverified', 'value': 'AMBOSS', 'evidence': null});
+      final f = QualityFact.fromJson(const {'status': 'unverified', 'value': 'AMBOSS', 'evidence': null});
       expect(f.unverified, isTrue);
       expect(f.hasValue, isTrue);
       expect(f.reported, isFalse);
-      expect(QualityFact.fromJson({'status': 'unverified', 'value': null}).hasValue, isFalse);
+      expect(QualityFact.fromJson(const {'status': 'unverified', 'value': null}).hasValue, isFalse);
       final task = QualityEvaluationTask.tryParse({'status': 'failed', 'errorCode': 'AI_EVALUATION_BUSY'})!;
       expect(task.errorCode, 'AI_EVALUATION_BUSY');
-      final ctx = PaperReadingContext.fromJson({
+      final ctx = PaperReadingContext.fromJson(const {
         'paperId': 'p',
         'trend': {'topic': 'T', 'source': 'requested', 'totalPapers': 1, 'cagr3yPct': null, 'yearlyBreakdown': <dynamic>[], 'partialYear': 2026},
       });

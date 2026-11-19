@@ -19,7 +19,7 @@ export function useInvitationContent(projectId: string, direction: string, enabl
   // Every async operation retains its own project/user context. A late response
   // must never initialize or overwrite a different project's invitation.
   const session = useMemo(() => ({ projectId, direction, userId, enabled,
-    value: { message: "", mentorRole: "PRIMARY", attachments: [] } as Form,
+    value: { message: "", mentorRole: "UNASSIGNED", attachments: [] } as Form,
     initialized: false, version: 0, saved: "", queue: Promise.resolve() as Promise<void>, uploading: false,
   }), [projectId, direction, userId, enabled, recipientId]);
   const current = useRef(session); current.current = session;
@@ -35,7 +35,7 @@ export function useInvitationContent(projectId: string, direction: string, enabl
   }, [session, enabled]);
   useEffect(() => {
     if (!enabled || !draft.data || draft.isFetching || session.initialized) return;
-    const initial: Form = { message: recipientId ? "" : draft.data.message, attachments: recipientId ? [] : draft.data.attachments, mentorRole: allowedRoles.includes(draft.data.mentorRole) ? draft.data.mentorRole : allowedRoles[0] ?? "PRIMARY" };
+    const initial: Form = { message: recipientId ? "" : draft.data.message, attachments: recipientId ? [] : draft.data.attachments, mentorRole: allowedRoles.includes(draft.data.mentorRole) ? draft.data.mentorRole : allowedRoles[0] ?? "UNASSIGNED" };
     session.initialized = true; session.value = initial; session.version = draft.data.version; session.saved = fingerprint(recipientId ? initial : draft.data);
     rerender(n => n + 1); setStatus("saved"); setError("");
   }, [enabled, draft.data, draft.isFetching, allowedRoles, session]);
@@ -98,7 +98,7 @@ export function useInvitationContent(projectId: string, direction: string, enabl
       const result = await draft.refetch();
       if (!result.isSuccess || current.current !== session) return;
       session.value = { message: result.data.message, attachments: result.data.attachments,
-        mentorRole: allowedRoles.includes(result.data.mentorRole) ? result.data.mentorRole : allowedRoles[0] ?? "PRIMARY" };
+        mentorRole: allowedRoles.includes(result.data.mentorRole) ? result.data.mentorRole : allowedRoles[0] ?? "UNASSIGNED" };
       session.initialized = true; session.version = result.data.version; session.saved = fingerprint(result.data);
       setStatus("saved"); setError(""); rerender(n => n + 1);
     } };

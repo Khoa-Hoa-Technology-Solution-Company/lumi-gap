@@ -152,12 +152,12 @@ void main() {
 
         final [rising, pastPeak, untested] = overview.topics;
         expect(rising.verdict, TrendVerdict.rising);
-        expect(rising.classification!.confidence, 'high');
-        expect(rising.classification!.pValue, 0.0001);
-        expect(rising.classification!.headlineChangePct, 12.5);
+        expect(rising.classification.confidence, TrendConfidence.high);
+        expect(rising.classification.pValue, 0.0001);
+        expect(rising.classification.headlineChangePct, 12.5);
         expect(pastPeak.verdict, TrendVerdict.pastPeak);
-        expect(pastPeak.classification!.headlineChangePct, -9.4);
-        expect(untested.classification, isNull);
+        expect(pastPeak.classification.headlineChangePct, -9.4);
+        expect(untested.classification.yearsUsed, 0);
         expect(untested.verdict, TrendVerdict.insufficient);
 
         final [agents, old] = overview.risingKeywords;

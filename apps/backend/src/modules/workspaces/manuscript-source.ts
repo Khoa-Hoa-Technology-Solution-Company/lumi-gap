@@ -1,6 +1,6 @@
 import * as Y from "yjs";
 import { createHash } from "node:crypto";
-import type { ManuscriptTemplate } from "@trend/shared-types";
+import { MANUSCRIPT_TEMPLATE_REGISTRY, type ManuscriptTemplate } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 
 export const hashBytes = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
@@ -42,8 +42,9 @@ export function texEscape(value: string) {
   return value.replace(/[\\{}%$&#_^~]/g, c => ({ "\\": "\\textbackslash{}", "{": "\\{", "}": "\\}", "%": "\\%", "$": "\\$", "&": "\\&", "#": "\\#", "_": "\\_", "^": "\\textasciicircum{}", "~": "\\textasciitilde{}" })[c]!);
 }
 export function manuscriptTemplate(title: string, template: ManuscriptTemplate) {
+  if (!MANUSCRIPT_TEMPLATE_REGISTRY[template] || MANUSCRIPT_TEMPLATE_REGISTRY[template].compatibilityStatus !== "SUPPORTED") throw AppError.badRequest("This template is unavailable.");
   const sections = template === "PROPOSAL" ? ["Research problem", "Research questions", "Methodology", "Research plan"] : template === "REPORT" ? ["Introduction", "Methodology", "Results", "Conclusion"] : ["Introduction", "Related work", "Methodology", "Results", "Conclusion"];
-  const files = sections.map(name => ({ path: `sections/${name.toLowerCase().replaceAll(" ", "_")}.tex`, text: `\\section{${name}}\n% Write your research here.\n` }));
+  const files = sections.map(name => ({ path: `sections/${name.toLowerCase().replaceAll(" ", "_")}.tex`, text: `\\${template === "REPORT" ? "chapter" : "section"}{${name}}\n% Write your research here.\n` }));
   const fonts = "\\usepackage{iftex}\n\\ifPDFTeX\n  \\usepackage[utf8]{inputenc}\n  \\usepackage[T1,T5]{fontenc}\n  \\usepackage{lmodern}\n\\else\n  \\usepackage{fontspec}\n  \\setmainfont{DejaVu Serif}\n\\fi";
   if (["THESIS", "ELSEVIER", "SPRINGER", "APS"].includes(template)) {
     const classes = { THESIS: "memoir", ELSEVIER: "elsarticle", SPRINGER: "llncs", APS: "revtex4-2" };
@@ -56,7 +57,7 @@ export function manuscriptTemplate(title: string, template: ManuscriptTemplate) 
   if (template === "BLANK") return [{ path: "main.tex", text: `\\documentclass{article}\n${fonts}\n\\begin{document}\n% Write your research here.\n\\null\n\\end{document}\n` }];
   if (template === "PRESENTATION") return [{ path: "main.tex", text: `\\documentclass{beamer}\n${fonts}\n\\usepackage{graphicx}\n\\title{${texEscape(title)}}\n\\author{}\n\\date{}\n\\begin{document}\n\\begin{frame}\n\\titlepage\n\\end{frame}\n\\input{sections/slides.tex}\n\\end{document}\n` }, { path: "sections/slides.tex", text: "\\begin{frame}{Research question}\n  % Introduce the research question and supporting evidence.\n\\end{frame}\n\\begin{frame}{Methods}\n  % Describe your approach.\n\\end{frame}\n" }, { path: "references.bib", text: "% Add your verified references here.\n" }];
   if (template === "IEEE_CONFERENCE") return [{ path: "main.tex", text: `\\documentclass[conference]{IEEEtran}\n${fonts}\n\\usepackage{cite,amsmath,amssymb,graphicx,booktabs}\n\\title{${texEscape(title)}}\n\\author{\\IEEEauthorblockN{Your team}}\n\\begin{document}\n\\maketitle\n\\begin{abstract}\n% Summarize your research.\n\\end{abstract}\n${files.map(file => `\\input{${file.path}}`).join("\n")}\n\\bibliographystyle{IEEEtran}\n\\bibliography{references}\n\\end{document}\n` }, ...files, { path: "references.bib", text: "% Add your verified references here.\n" }];
-  return [{ path: "main.tex", text: `\\documentclass[11pt]{${template === "REPORT" ? "report" : "article"}}\n${fonts}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\title{${texEscape(title)}}\n\\author{}\n\\date{}\n\\begin{document}\n\\maketitle\n${files.map(file => `\\input{${file.path}}`).join("\n")}\n\\bibliographystyle{plain}\n\\bibliography{references}\n\\end{document}\n` }, ...files, { path: "references.bib", text: "% Add references from the project literature panel or edit BibTeX here.\n" }];
+  return [{ path: "main.tex", text: `\\documentclass[11pt]{${template === "REPORT" ? "report" : "article"}}\n${fonts}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\title{${texEscape(title)}}\n\\author{}\n\\date{}\n\\begin{document}\n\\maketitle\n${template === "ARTICLE" ? "\\begin{abstract}\n% Summarize the research problem, method and findings.\n\\end{abstract}\n" : template === "REPORT" ? "\\tableofcontents\n" : ""}${files.map(file => `\\input{${file.path}}`).join("\n")}\n\\bibliographystyle{plain}\n\\bibliography{references}\n\\end{document}\n` }, ...files, { path: "references.bib", text: "% Add references from the project literature panel or edit BibTeX here.\n" }];
 }
 export function citationKey(paper: { id: string; publicationYear: number }, authors: string[]) {
   const name = (authors[0] ?? "reference").normalize("NFKD").replace(/[^a-zA-Z]/g, "").slice(0, 20).toLowerCase() || "reference";

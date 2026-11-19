@@ -1,9 +1,7 @@
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/features/trends/data/trend_classification.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart'
-    show TrendVerdict, YearlyCount;
-
-export 'package:flutter_mobile/features/trends/data/trends_api.dart'
-    show TrendVerdict;
+    show RisingKeyword, YearlyCount;
 
 // Hand-written, forgiving parsers for GET /home/overview and /home/research
 // (shapes: packages/shared-types/src/home.ts). Unknown fields are ignored,
@@ -424,29 +422,40 @@ class HomeTrendTopic {
   const HomeTrendTopic({
     required this.topic,
     required this.yearlyBreakdown,
-    required this.verdict,
+    this.classification = TrendClassification.none,
+    this.totalPapers = 0,
   });
 
   static HomeTrendTopic? fromJson(Json j) {
     final topic = _str(j['topic'] ?? j['topicName']);
     if (topic == null) return null;
-    final classification = j['classification'];
     return HomeTrendTopic(
       topic: topic,
       yearlyBreakdown: _items(j['yearlyBreakdown'], YearlyCount.fromJson),
-      verdict: TrendVerdict.parse(
-        classification is Json ? classification['verdict'] : null,
-      ),
+      classification: TrendClassification.fromJson(j['classification']),
+      totalPapers: (j['totalPapers'] as num?)?.toInt() ?? 0,
     );
   }
 
   final String topic;
   final List<YearlyCount> yearlyBreakdown;
-  final TrendVerdict verdict;
+
+  /// The API's verdict: the label, the order and the % per year come from
+  /// here only.
+  final TrendClassification classification;
+
+  /// Papers on the topic in the window; 0 when the API did not say.
+  final int totalPapers;
+
+  TrendVerdict get verdict => classification.verdict;
 }
 
 class HomeOverview {
-  const HomeOverview({required this.topics, required this.recentPapers});
+  const HomeOverview({
+    required this.topics,
+    required this.recentPapers,
+    this.risingKeywords = const [],
+  });
 
   factory HomeOverview.fromJson(Json json) {
     final trends = json['trends'];
@@ -455,9 +464,21 @@ class HomeOverview {
           ? _items(trends['topics'], HomeTrendTopic.fromJson)
           : const [],
       recentPapers: _items(json['recentPapers'], HomeRecentPaper.fromJson),
+      risingKeywords: trends is Json
+          ? [
+              for (final k
+                  in trends['risingKeywords'] as List<dynamic>? ?? const [])
+                if (k is Json && _str(k['keyword']) != null)
+                  RisingKeyword.fromJson(k),
+            ]
+          : const [],
     );
   }
 
   final List<HomeTrendTopic> topics;
   final List<HomeRecentPaper> recentPapers;
+
+  /// Keywords whose paper counts grew the most; growth is a raw-count
+  /// figure, shown as such, never as a trend verdict.
+  final List<RisingKeyword> risingKeywords;
 }

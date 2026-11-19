@@ -19,6 +19,7 @@ import {
   Link2,
   Loader2,
   Maximize2,
+  MessagesSquare,
   PanelRight,
   Plus,
   RotateCcw,
@@ -46,6 +47,7 @@ import { useI18n } from "@/i18n";
 import { ProjectLiteratureEmpty } from "./project-literature-empty";
 import { ProjectPaperAnalysis } from "./project-paper-analysis";
 import type { PaperPickerSource } from "./project-paper-picker-dialog";
+import { useQuickChatStore } from "../stores/quick-chat-store";
 import "../project-literature.css";
 import "../research-synthesis.css";
 
@@ -533,6 +535,22 @@ export function ProjectLiteratureWorkspace({
                       type="button"
                       variant="ghost"
                       size="icon"
+                      className="project-paper-chat-share"
+                      aria-label={t("Trao đổi với nhóm")}
+                      title={t("Trao đổi với nhóm")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const paperId = paperParts(link).id;
+                        useQuickChatStore.getState().openChat(projectId, { kind: "PAPER", id: paperId });
+                      }}
+                    >
+                      <MessagesSquare className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
                       className="project-paper-remove"
                       aria-label={t("Remove {{title}} from project", { title })}
                       onClick={() => setRemoveDialog(link)}
@@ -764,6 +782,23 @@ function PaperDetailPanel({
                 {t("Open full paper")}
                 <ExternalLink className="ml-1 h-3 w-3 opacity-60" />
               </Link>
+            </Button>
+
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                const paperId = paper?.id ?? summary?._id ?? (typeof link.targetId === "string" ? link.targetId : "");
+                if (paperId) {
+                  useQuickChatStore.getState().openChat(projectId, { kind: "PAPER", id: paperId });
+                }
+              }}
+              title={t("Trao đổi với nhóm")}
+            >
+              <MessagesSquare className="mr-1.5 h-3.5 w-3.5 text-primary" />
+              {t("Trao đổi với nhóm")}
             </Button>
           </div>
 

@@ -38,6 +38,9 @@ class ProjectView {
     this.ownerId,
     this.members = const [],
     this.papers = const [],
+    this.memberCountFromApi,
+    this.paperCountFromApi,
+    this.accessRole,
   });
 
   factory ProjectView.fromJson(Map<String, dynamic> json) {
@@ -46,6 +49,15 @@ class ProjectView {
       title: (json['title'] ?? trNow('Untitled project')).toString(),
       description: json['description']?.toString(),
       ownerId: json['ownerId']?.toString(),
+      // The list endpoint sends `members: []` and the real number in
+      // `memberCount`; counting the list would always give 0.
+      memberCountFromApi: json['memberCount'] is num
+          ? (json['memberCount'] as num).toInt()
+          : null,
+      paperCountFromApi: json['paperCount'] is num
+          ? (json['paperCount'] as num).toInt()
+          : null,
+      accessRole: json['accessRole']?.toString(),
       members: (json['members'] as List<dynamic>? ?? [])
           .map(ProjectMemberRef.fromUnknown)
           .where((member) => member.id.isNotEmpty)
@@ -63,6 +75,21 @@ class ProjectView {
   final String? ownerId;
   final List<ProjectMemberRef> members;
   final List<ProjectPaperRef> papers;
+  final int? memberCountFromApi;
+  final int? paperCountFromApi;
+
+  /// "OWNER" or "MEMBER": the signed-in user's role, decided by the server.
+  final String? accessRole;
+
+  int get memberCount => memberCountFromApi ?? members.length;
+  int get paperCount => paperCountFromApi ?? papers.length;
+
+  /// Null when the server did not say (older payloads).
+  bool? get viewerIsOwner => switch (accessRole?.toUpperCase()) {
+        'OWNER' => true,
+        'MEMBER' => false,
+        _ => null,
+      };
 }
 
 class ProjectPaperRef {
@@ -106,6 +133,7 @@ class ProjectMemberRef {
   const ProjectMemberRef({
     required this.id,
     required this.displayName,
+    this.role,
   });
 
   factory ProjectMemberRef.fromUnknown(Object? value) {
@@ -117,10 +145,14 @@ class ProjectMemberRef {
       return ProjectMemberRef(id: '', displayName: trNow('Member'));
     }
 
-    final rawUser = value['userId'] is Map<String, dynamic>
-        ? value['userId'] as Map<String, dynamic>
-        : value;
-    final id = (rawUser['_id'] ?? rawUser['id'] ?? value['userId'] ?? '')
+    // Current API: {targetKind: 'User', targetId: <user summary or id>,
+    // role}. Older payloads: {userId: <user or id>}.
+    final ref = value['targetId'] ?? value['userId'];
+    final rawUser = ref is Map<String, dynamic> ? ref : value;
+    final id = (rawUser['_id'] ??
+            rawUser['id'] ??
+            (ref is String ? ref : null) ??
+            '')
         .toString();
     final name =
         rawUser['displayName'] ??
@@ -129,11 +161,22 @@ class ProjectMemberRef {
         rawUser['email'] ??
         trNow('Member');
 
-    return ProjectMemberRef(id: id, displayName: name.toString());
+    return ProjectMemberRef(
+      id: id,
+      displayName: name.toString(),
+      role: value['role']?.toString(),
+    );
   }
 
   final String id;
   final String displayName;
+
+  /// "OWNER" or "MEMBER" when the API sends it.
+  final String? role;
+
+  bool isOwnerOf(ProjectView project) =>
+      role?.toUpperCase() == 'OWNER' ||
+      (project.ownerId != null && project.ownerId == id);
 }
 
 class ChatSender {
@@ -223,13 +266,21 @@ class ProjectsApi {
     );
   }
 
-  Future<ProjectView> create(String title, String? description) async {
+  /// [idempotencyKey] (a UUID) lets the same request be sent again after a
+  /// timeout without creating a second project: the backend returns the
+  /// project it already made for that key and those details.
+  Future<ProjectView> create(
+    String title,
+    String? description, {
+    String? idempotencyKey,
+  }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       ApiRoutes.projectsCreate,
       data: {
         'title': title,
         if (description != null && description.isNotEmpty)
           'description': description,
+        'idempotencyKey': ?idempotencyKey,
       },
     );
     return ProjectView.fromJson(

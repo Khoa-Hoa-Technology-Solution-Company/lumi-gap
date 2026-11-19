@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Bot,
@@ -11,27 +11,23 @@ import {
   Sparkles,
   FileText,
   Send,
-  MessageSquare,
-  History,
   User,
-  Plus,
-  Trash2,
   Download,
   ChevronDown,
   GitCompare,
   ShieldAlert,
   Scale,
   CheckSquare,
-  ListChecks,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { SubmissionIntroductionView } from "@/features/submissions/components/submission-introduction-view";
+import { MentorManuscriptDialog } from "@/features/submissions/components/mentor-manuscript-dialog";
 import { VersionHistory } from "@/features/submissions/components/version-history";
 import { SubmitReviewDialog } from "@/features/reviews/components/submit-review-dialog";
 import { SubmissionReviewProgress } from "@/features/submissions/components/submission-review-progress";
+import { internalAssessmentLabel } from "@/features/reviews/scientific-review-model";
 import { ContentComparison } from "@/features/submissions/components/content-comparison";
 import { submissionStatusBadge, submissionTypeBadge } from "./submission-list";
 import { useI18n } from "@/i18n";
@@ -42,12 +38,12 @@ import {
   useRunAiPreReview,
   useSubmission,
   useSubmissionHistory,
-  useSubmitFeedback,
   submissionsApi,
 } from "@/features/submissions";
 import { projectSubmissionPath } from "@/features/submissions/project-submission-path";
 
-const RUBRIC_CRITERIA = [
+// Read-only adapter for historical mentor scores; new reviews use published templates.
+const LEGACY_RUBRIC_LABELS = [
   { key: "rq_clarity", label: "Câu hỏi nghiên cứu & Mục tiêu", desc: "Tính rõ ràng, khả thi và sự đóng góp tri thức của câu hỏi nghiên cứu." },
   { key: "methodology", label: "Phương pháp luận", desc: "Tính chặt chẽ, tính tái lập và sự phù hợp của quy trình nghiên cứu." },
   { key: "results", label: "Kết quả & Dữ liệu", desc: "Độ tin cậy của phân tích, minh bạch về số liệu và tính logic của kết quả." },
@@ -68,6 +64,7 @@ export function SubmissionDetailPage({
   readOnly?: boolean;
 }) {
   const { t, language } = useI18n();
+  const navigate = useNavigate();
   const uploading = useRef(false);
   const { id: routeId = "" } = useParams();
   const id = submissionId ?? routeId;
@@ -79,39 +76,22 @@ export function SubmissionDetailPage({
   const history = useSubmissionHistory(id, scopedAccess);
   const addRevision = useAddSubmissionRevision(id);
   const createVersion = useCreateSubmissionVersion(id);
-  const submitFeedbackMutation = useSubmitFeedback(id);
   const preReviews = useAiPreReviews(id, scopedAccess);
   const runPreReview = useRunAiPreReview(id);
 
   // Active selected version
-  const [selectedVersionId, setSelectedVersionId] = useState<string>("");
+  const [selectedVersionId, setSelectedVersionId] = useState<string>(() => new URLSearchParams(window.location.search).get("revision") ?? "");
   const [showDiff, setShowDiff] = useState(false);
   const [addressedAiItems, setAddressedAiItems] = useState<Record<string, boolean>>({});
 
   // Revision upload modal / section state
   const [showRevision, setShowRevision] = useState(false);
+  const [mentorSendOpen, setMentorSendOpen] = useState(false);
   const [revisionFile, setRevisionFile] = useState<File>();
   const [revisionResponse, setRevisionResponse] = useState("");
   const [revisionContent, setRevisionContent] = useState("");
   const [revisionMode, setRevisionMode] = useState<"PDF" | "TEXT">("PDF");
 
-  // Mentor feedback state
-  const [overallComment, setOverallComment] = useState("");
-  const [requestedInformation, setRequestedInformation] = useState("");
-  const [paragraphComments, setParagraphComments] = useState<Array<{ criterionKey: string; comment: string; evidence: string }>>([]);
-  const [newCommentParagraph, setNewCommentParagraph] = useState("1");
-  const [newCommentText, setNewCommentText] = useState("");
-  const [newCommentQuote, setNewCommentQuote] = useState("");
-  const [rubricScores, setRubricScores] = useState<Record<string, { score: number; comment?: string }>>({
-    rq_clarity: { score: 4, comment: "" },
-    methodology: { score: 4, comment: "" },
-    results: { score: 4, comment: "" },
-    evidence: { score: 4, comment: "" },
-    discussion: { score: 4, comment: "" },
-    limitations: { score: 4, comment: "" },
-    citations: { score: 4, comment: "" },
-    integrity: { score: 5, comment: "" },
-  });
 
   if (submission.isLoading) {
     return (
@@ -185,7 +165,6 @@ export function SubmissionDetailPage({
 
   const latestPreReview = preReviews.data?.[0];
   const preReviewRunning = latestPreReview?.status === "QUEUED" || latestPreReview?.status === "PROCESSING";
-  const preReviewFailed = latestPreReview?.status === "FAILED";
   const preReviewOutdated = latestPreReview?.sourceRevisionId !== undefined && latestPreReview.sourceRevisionId !== data.currentRevisionId;
 
   async function uploadRevision() {
@@ -223,57 +202,10 @@ export function SubmissionDetailPage({
     }
   }
 
-  function addParagraphComment() {
-    if (!newCommentText.trim()) return;
-    setParagraphComments(prev => [
-      ...prev,
-      {
-        criterionKey: `Đoạn ${newCommentParagraph}`,
-        comment: newCommentText.trim(),
-        evidence: newCommentQuote.trim(),
-      },
-    ]);
-    setNewCommentText("");
-    setNewCommentQuote("");
-  }
-
-  function removeParagraphComment(index: number) {
-    setParagraphComments(prev => prev.filter((_, i) => i !== index));
-  }
-
-  async function handleMentorSubmit(result: "FEEDBACK_GIVEN" | "REVISION_REQUESTED" | "READY_TO_ADVANCE") {
-    if (!overallComment.trim()) {
-      toast.error("Vui lòng ghi nhận xét tổng quan cho nhóm sinh viên");
-      return;
-    }
-
-    const formattedRubric = Object.entries(rubricScores).map(([criterionKey, val]) => ({
-      criterionKey,
-      score: val.score,
-      comment: val.comment?.trim() || undefined,
-    }));
-
-    try {
-      await submitFeedbackMutation.mutateAsync({
-        result,
-        overallComment: overallComment.trim(),
-        requestedInformation: requestedInformation.trim() || undefined,
-        paragraphComments: paragraphComments.length > 0 ? paragraphComments : undefined,
-        rubricScores: formattedRubric,
-      });
-      toast.success("Đã hoàn tất góp ý cho bản thảo");
-      setOverallComment("");
-      setRequestedInformation("");
-      setParagraphComments([]);
-    } catch (e: any) {
-      toast.error(e.response?.data?.error?.message ?? "Không thể gửi góp ý");
-    }
-  }
-
-
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
+      <MentorManuscriptDialog open={mentorSendOpen} onOpenChange={setMentorSendOpen} projectId={projectId ?? data.projectId} submissionId={id} manuscriptId={data.sourceManuscriptId ?? undefined} onSent={() => { setMentorSendOpen(false); void history.refetch(); toast.success(t("Manuscript sent for mentor feedback.")); }} />
       {/* Top Bar Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <Link
@@ -320,16 +252,16 @@ export function SubmissionDetailPage({
             {canRevise && (
               <Button
                 variant={data.status.toLowerCase().includes("revision") ? "default" : "outline"}
-                onClick={() => setShowRevision(v => !v)}
+                onClick={() => history.data?.assignedMentor ? setMentorSendOpen(true) : setShowRevision(v => !v)}
                 disabled={revisionPending}
                 className="gap-1.5 shadow-xs"
               >
                 <Upload className="h-4 w-4" />
-                {t("New PDF version")}
+                {t(history.data?.assignedMentor ? "Send next version for mentor feedback" : "New PDF version")}
               </Button>
             )}
             {canRequestReview && (
-              <SubmitReviewDialog submissionId={id} artifactTitle={data.title} artifactType={data.submissionType} />
+              <SubmitReviewDialog submissionId={id} revisionId={currentVersion.id} artifactTitle={data.title} artifactType={data.submissionType} />
             )}
           </div>
         </div>
@@ -530,19 +462,7 @@ export function SubmissionDetailPage({
                     >
                       <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
                         <span className="font-semibold text-primary/80">Đoạn {index + 1}</span>
-                        {canProvideFeedback && (
-                          <button
-                            type="button"
-                            className="hidden group-hover:inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
-                            onClick={() => {
-                              setNewCommentParagraph(String(index + 1));
-                              setNewCommentQuote(p.slice(0, 120) + (p.length > 120 ? "…" : ""));
-                            }}
-                          >
-                            <MessageSquare className="h-3 w-3" />
-                            Góp ý đoạn này
-                          </button>
-                        )}
+
                       </div>
                       <p className="text-sm leading-relaxed text-foreground break-words">{p}</p>
                     </div>
@@ -750,202 +670,10 @@ export function SubmissionDetailPage({
         {/* Right Column (Mentor Feedback & Action Loop) - 5 cols */}
         <div className="space-y-6 lg:col-span-5">
           {/* Active Mentor Feedback Form */}
-          {canProvideFeedback && (
-            <section className="rounded-xl border-2 border-primary/40 bg-card p-6 shadow-sm">
-              <div className="flex items-center gap-2 border-b pb-3">
-                <MessageSquare className="h-5 w-5 text-primary" />
-                <h3 className="font-bold text-base text-foreground">Góp ý của Mentor (v{currentVersion?.revisionNumber ?? 1})</h3>
-              </div>
-
-              <div className="mt-4 space-y-5">
-                {/* Overall comment */}
-                <div>
-                  <label className="block text-sm font-semibold text-foreground">
-                    Nhận xét tổng quan <span className="text-destructive">*</span>
-                  </label>
-                  <textarea
-                    className="mt-2 w-full rounded-md border border-input bg-background p-3 text-sm leading-6 min-h-28 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    placeholder="Ghi nhận xét đánh giá tổng quan về nội dung, lập luận và hướng phát triển cho nhóm sinh viên..."
-                    value={overallComment}
-                    onChange={e => setOverallComment(e.target.value)}
-                    rows={4}
-                  />
-                </div>
-
-                {/* Academic Rubric Criteria Evaluation */}
-                <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
-                      <Scale className="h-3.5 w-3.5 text-primary" />
-                      Thang điểm Rubric học thuật ({RUBRIC_CRITERIA.length} tiêu chí)
-                    </h4>
-                    <span className="text-xs font-bold text-primary">
-                      Điểm TB: {(Object.values(rubricScores).reduce((acc, c) => acc + (c.score || 0), 0) / RUBRIC_CRITERIA.length).toFixed(1)} / 5.0
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2.5">
-                    {RUBRIC_CRITERIA.map(crit => {
-                      const current = rubricScores[crit.key] ?? { score: 4 };
-                      return (
-                        <div key={crit.key} className="rounded-md border bg-card p-3 text-xs space-y-1.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-semibold text-foreground">{crit.label}</span>
-                            <div className="flex items-center gap-1">
-                              {[1, 2, 3, 4, 5].map(pt => (
-                                <button
-                                  key={pt}
-                                  type="button"
-                                  onClick={() => setRubricScores(prev => ({ ...prev, [crit.key]: { ...prev[crit.key], score: pt } }))}
-                                  className={`h-6 w-6 rounded text-[11px] font-semibold transition-colors ${
-                                    current.score === pt
-                                      ? "bg-primary text-primary-foreground shadow-xs"
-                                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                                  }`}
-                                >
-                                  {pt}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                          <p className="text-[11px] text-muted-foreground">{crit.desc}</p>
-                          <input
-                            type="text"
-                            placeholder="Ghi chú thêm cho tiêu chí này (tùy chọn)..."
-                            className="w-full rounded border border-input bg-background px-2 py-1 text-[11px]"
-                            value={current.comment ?? ""}
-                            onChange={e => setRubricScores(prev => ({
-                              ...prev,
-                              [crit.key]: { score: prev[crit.key]?.score ?? 0, comment: e.target.value },
-                            }))}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Paragraph-level comments */}
-                <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
-                  <h4 className="text-xs font-semibold uppercase text-muted-foreground flex items-center justify-between">
-                    <span>Bình luận theo đoạn văn ({paragraphComments.length})</span>
-                  </h4>
-
-                  {paragraphComments.length > 0 && (
-                    <ul className="space-y-2.5">
-                      {paragraphComments.map((pc, i) => (
-                        <li key={i} className="rounded-md border bg-card p-3 text-xs space-y-1">
-                          <div className="flex items-center justify-between font-semibold text-primary">
-                            <span>{pc.criterionKey}</span>
-                            <button
-                              type="button"
-                              className="text-muted-foreground hover:text-destructive"
-                              onClick={() => removeParagraphComment(i)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
-                          {pc.evidence && <p className="italic text-muted-foreground">“{pc.evidence}”</p>}
-                          <p className="text-foreground">{pc.comment}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  <div className="space-y-2 pt-2 border-t">
-                    <div className="flex gap-2">
-                      <Input
-                        className="w-24 text-xs h-8"
-                        placeholder="Số đoạn"
-                        value={newCommentParagraph}
-                        onChange={e => setNewCommentParagraph(e.target.value)}
-                      />
-                      <Input
-                        className="flex-1 text-xs h-8"
-                        placeholder="Trích dẫn đoạn văn (nếu có)"
-                        value={newCommentQuote}
-                        onChange={e => setNewCommentQuote(e.target.value)}
-                      />
-                    </div>
-                    <textarea
-                      className="w-full rounded-md border border-input bg-background p-2 text-xs min-h-16"
-                      placeholder="Ý kiến góp ý cho đoạn này..."
-                      value={newCommentText}
-                      onChange={e => setNewCommentText(e.target.value)}
-                      rows={2}
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="w-full text-xs h-8 gap-1"
-                      onClick={addParagraphComment}
-                      disabled={!newCommentText.trim()}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Thêm bình luận cho đoạn
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Requested Information */}
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">
-                    Đề nghị bổ sung tài liệu / bối cảnh (nếu cần)
-                  </label>
-                  <textarea
-                    className="w-full rounded-md border border-input bg-background p-2.5 text-xs leading-5 min-h-16"
-                    placeholder="Gợi ý tài liệu tham khảo hoặc yêu cầu nhóm cung cấp thêm dữ liệu nếu chưa đủ..."
-                    value={requestedInformation}
-                    onChange={e => setRequestedInformation(e.target.value)}
-                    rows={2}
-                  />
-                </div>
-
-                {/* 3 Outcome Buttons */}
-                <div className="pt-3 border-t space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground mb-2">
-                    Hoàn tất với một trong 3 kết luận:
-                  </p>
-                  <div className="grid grid-cols-1 gap-2">
-                    <Button
-                      type="button"
-                      className="w-full justify-start gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
-                      disabled={submitFeedbackMutation.isPending || !overallComment.trim()}
-                      onClick={() => handleMentorSubmit("READY_TO_ADVANCE")}
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      <span>Có thể tiếp tục — Nội dung đạt yêu cầu cho bước tiếp theo</span>
-                    </Button>
-
-                    <Button
-                      type="button"
-                      className="w-full justify-start gap-2 bg-amber-600 hover:bg-amber-700 text-white"
-                      disabled={submitFeedbackMutation.isPending || !overallComment.trim()}
-                      onClick={() => handleMentorSubmit("REVISION_REQUESTED")}
-                    >
-                      <AlertCircle className="h-4 w-4" />
-                      <span>Cần chỉnh sửa — Yêu cầu nhóm sinh viên nộp phiên bản mới</span>
-                    </Button>
-
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="w-full justify-start gap-2 border"
-                      disabled={submitFeedbackMutation.isPending || !overallComment.trim()}
-                      onClick={() => handleMentorSubmit("FEEDBACK_GIVEN")}
-                    >
-                      <CheckCircle2 className="h-4 w-4 text-blue-600" />
-                      <span>Đã góp ý — Nhận xét thông thường, không bắt buộc vòng sửa</span>
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
+          {canProvideFeedback && <section className="rounded-xl border bg-card p-5 space-y-3"><h3 className="font-semibold">{t("Mentor academic review")}</h3><p className="text-sm text-muted-foreground">{t("Review the assigned immutable revision using its published template. Previous feedback stays in history.")}</p><Button onClick={async () => { try { const prepared = await submissionsApi.prepareMentorReview(id); navigate(`/reviews/${prepared.assignmentId}`); } catch (error) { const message=(error as {response?:{data?:{error?:{message?:string}}}})?.response?.data?.error?.message; toast.error(t(message || "Ask the owner to share this manuscript and assign mentor review first.")); } }}>{t("Open review workspace")}</Button></section>}
 
           {/* Feedback Display Card (when feedback exists) */}
-          {latestMentorReview ? (
+          {latestMentorReview?.requestId ? <section className="rounded-xl border bg-card p-5"><h3 className="font-semibold">{t("Mentor academic review")} · v{currentVersion.revisionNumber}</h3><p className="mt-2 text-sm font-medium">{t(internalAssessmentLabel(latestMentorReview.overallAssessment ?? undefined))}</p><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{latestMentorReview.overallComment}</p><Button asChild className="mt-4" variant="outline"><Link to={`/review-requests/${latestMentorReview.requestId}`}>{t("View feedback and respond")}</Link></Button></section> : latestMentorReview ? (
             <section className="rounded-xl border bg-card p-6 shadow-xs space-y-4">
               <div className="flex items-center justify-between border-b pb-3">
                 <div className="flex items-center gap-2">
@@ -1009,7 +737,7 @@ export function SubmissionDetailPage({
                       .filter((r: any) => r.criterionKey?.startsWith("rubric:"))
                       .map((r: any, idx: number) => {
                         const cleanKey = r.criterionKey.replace(/^rubric:/, "");
-                        const crit = RUBRIC_CRITERIA.find(c => c.key === cleanKey);
+                        const crit = LEGACY_RUBRIC_LABELS.find(c => c.key === cleanKey);
                         const title = crit ? crit.label : cleanKey;
                         return (
                           <div key={idx} className="rounded border bg-card p-2.5 text-xs space-y-1">
@@ -1064,7 +792,7 @@ export function SubmissionDetailPage({
                 <div className="pt-3 border-t">
                   <Button
                     className="w-full gap-2"
-                    onClick={() => { setShowRevision(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                    onClick={() => { if (history.data?.assignedMentor) setMentorSendOpen(true); else { setShowRevision(true); window.scrollTo({ top: 0, behavior: "smooth" }); } }}
                   >
                     <Upload className="h-4 w-4" />
                     Tạo phiên bản chỉnh sửa (v{data.currentRevisionNumber + 1})
@@ -1072,7 +800,7 @@ export function SubmissionDetailPage({
                 </div>
               )}
             </section>
-          ) : !canProvideFeedback && history.data?.assignedMentor ? (
+          ) : !canProvideFeedback && history.data?.assignedMentor && (!history.data.reviewRequests?.length || history.data.reviewRequests?.some(r=>["REQUESTED","ACCEPTED","IN_REVIEW","RESUBMITTED"].includes(r.status))) ? (
             <section className="rounded-xl border border-dashed bg-muted/10 p-6 text-center space-y-3">
               <Clock className="mx-auto h-8 w-8 text-amber-600 dark:text-amber-400" />
               <h4 className="font-medium text-sm">Chờ Mentor góp ý</h4>
@@ -1104,17 +832,5 @@ export function SubmissionDetailPage({
         </div>
       </div>
     </div>
-  );
-}
-
-function Claim({ title, value, preserve }: { title: string; value?: string; preserve?: boolean }) {
-  if (!value) return null;
-  return (
-    <article className="rounded-lg border border-border bg-card p-5">
-      <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{title}</h2>
-      <p className={`mt-3 text-sm leading-6 text-foreground ${preserve ? "whitespace-pre-line" : ""}`}>
-        {value}
-      </p>
-    </article>
   );
 }

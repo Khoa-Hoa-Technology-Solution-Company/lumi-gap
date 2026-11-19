@@ -4,6 +4,8 @@ import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/readable_text.dart';
+
 /// The token table of the mobile foundation spec (section 2.1) and the type
 /// scale (section 2.3), written out literally so a change to a colour or a
 /// size has to change this file too.
@@ -68,8 +70,8 @@ const _light = _Tokens(
 );
 
 const _dark = _Tokens(
-  background: 0x0B1120,
-  surface: 0x131C31,
+  background: 0x020817,
+  surface: 0x0F172A,
   surfaceMuted: 0x1E293B, // slate-800
   line: 0x1E293B,
   foreground: 0xF1F5F9, // slate-100
@@ -77,10 +79,10 @@ const _dark = _Tokens(
   muted: 0x94A3B8, // slate-400
   primary: 0x60A5FA, // blue-400
   primaryPressed: 0x93C5FD,
-  onPrimary: 0x0B1120,
+  onPrimary: 0x020817,
   primarySoft: 0x172554, // blue-950
   error: 0xF87171, // red-400
-  onError: 0x0B1120,
+  onError: 0x020817,
   success: 0x4ADE80, // green-400
   warning: 0xFBBF24, // amber-400
   focus: 0x60A5FA,
@@ -218,6 +220,19 @@ void main() {
         }
       });
 
+      test('status bar icons contrast with the page', () {
+        // Dark icons on the light theme, light icons on the dark one, set on
+        // the theme so a transparent app bar cannot flip them.
+        final style = theme.appBarTheme.systemOverlayStyle;
+        expect(style, isNotNull);
+        expect(
+          style!.statusBarIconBrightness,
+          theme.brightness == Brightness.light
+              ? Brightness.dark
+              : Brightness.light,
+        );
+      });
+
       test('cards are 8dp, sheets 12dp, nav bar 80dp, app bar 64dp', () {
         expect(
           (theme.cardTheme.shape! as RoundedRectangleBorder).borderRadius,
@@ -296,5 +311,26 @@ void main() {
       expect(onPrimary.bodyLarge?.color, const Color(0xFFFFFFFF));
       expect(onPrimary.bodyLarge?.fontSize, text.bodyLarge?.fontSize);
     });
+  });
+
+  test('an "off" switch and an unreached step stand out on a card (3:1)', () {
+    for (final (theme, lumi) in [
+      (AppTheme.lightTheme, LumiColors.light),
+      (AppTheme.darkTheme, LumiColors.dark),
+    ]) {
+      final outline =
+          theme.switchTheme.trackOutlineColor!.resolve(const <WidgetState>{})!;
+      expect(
+        contrastRatio(outline, lumi.surface),
+        greaterThanOrEqualTo(3),
+        reason: '${theme.brightness} switch outline',
+      );
+      // Step circle border (muted) on the indicator track (surfaceMuted).
+      expect(
+        contrastRatio(lumi.muted, lumi.surfaceMuted),
+        greaterThanOrEqualTo(3),
+        reason: '${theme.brightness} step outline',
+      );
+    }
   });
 }

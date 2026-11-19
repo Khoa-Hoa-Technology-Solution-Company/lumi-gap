@@ -134,7 +134,7 @@ function policyFlag(policy: unknown, keys: string[]): boolean {
   });
 }
 
-async function createEmailVerification(user: PrismaUser, requestedEmail?: string): Promise<void> {
+async function createEmailVerification(user: PrismaUser, requestedEmail?: string): Promise<boolean> {
   const prisma = getPrisma();
   const email = normalizeEmail(requestedEmail ?? user.email);
   let userEmail = await prisma.userEmail.findUnique({ where: { normalizedEmail: email } });
@@ -144,7 +144,7 @@ async function createEmailVerification(user: PrismaUser, requestedEmail?: string
     });
   }
   if (userEmail.userId !== user.id) throw AppError.conflict("Email is already linked to another account");
-  if (userEmail.verifiedAt) return;
+  if (userEmail.verifiedAt) return true;
   const rawToken = createOpaqueToken();
   const now = new Date();
   await prisma.$transaction(async (tx) => {
@@ -153,7 +153,7 @@ async function createEmailVerification(user: PrismaUser, requestedEmail?: string
       data: { userId: user.id, userEmailId: userEmail.id, tokenHash: hashOpaqueToken(rawToken), expiresAt: new Date(now.getTime() + EMAIL_TOKEN_TTL_MS) },
     });
   });
-  await authMailService.sendEmailVerification(email, rawToken);
+  return authMailService.sendEmailVerification(email, rawToken);
 }
 
 async function issueTokens(user: PrismaUser, context: SessionContext = {}, familyId = crypto.randomUUID()): Promise<AuthTokens> {
@@ -257,10 +257,17 @@ export const authService = {
       if ((error as { code?: string }).code === "P2002") throw AppError.conflict("Email already registered");
       throw error;
     }
-    await createEmailVerification(user);
+    let verificationEmailDelivery: NonNullable<AuthResponse["verificationEmailDelivery"]>;
+    try { verificationEmailDelivery = await createEmailVerification(user) ? "SENT" : "DISABLED"; }
+    catch {
+      // The account is already committed. Never tell the user registration failed
+      // because mail is unavailable, and never mark an unsent email as verified.
+      verificationEmailDelivery = "FAILED";
+      logger.warn({ event: "auth.registration.verification_delivery_failed", userId: user.id }, "Account created; verification email requires retry");
+    }
     await auditService.log("ACCOUNT_CREATED", { userId: user.id, targetTableName: "users", targetRecordId: user.id, details: { admissionBasis: admission.basis } });
     const tokens = await issueTokens(user, context);
-    return { user: await toUserDto(user), tokens };
+    return { user: await toUserDto(user), tokens, verificationEmailDelivery };
   },
 
   async login(input: LoginInput, context: SessionContext = {}): Promise<AuthResponse> {

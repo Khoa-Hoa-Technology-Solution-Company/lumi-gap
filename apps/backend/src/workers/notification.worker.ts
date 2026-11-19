@@ -10,7 +10,9 @@ import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { deliverMentorshipEmail } from "../modules/projects/mentorship-mail.service.js";
 import { deliverLecturerVerificationEmail } from "../modules/academic-profiles/lecturer-verification-delivery.service.js";
 import { projectMentorshipService } from "../modules/projects/project-mentorship.service.js";
+import { projectService } from "../modules/projects/project.service.js";
 import { notificationService } from "../modules/notifications/notification.service.js";
+import { reviewNotificationRecoveryConditions } from "../modules/reviews/review-notifications.js";
 import { notificationQueue } from "../infrastructure/queue.js";
 import { deliverProjectInvitationEmail, recoverProjectInvitationEmails } from "../modules/projects/project-invitation-delivery.js";
 import { canDeliverWorkspaceNotification } from "../modules/projects/workspace-notification-access.js";
@@ -172,9 +174,10 @@ async function main() {
       // A worker that died after sending cannot know SMTP delivery outcome.
       await db.notification.updateMany({ where: { emailStatus: "SENDING", emailClaimedAt: { lt: new Date(Date.now() - 5 * 60000) } }, data: { emailStatus: "UNCERTAIN" } });
       await projectMentorshipService.expireRequests();
+      await projectService.purgeExpiredTrashedProjects();
       await maintainScreeningCases();
       await recoverProjectInvitationEmails();
-      const rows = await db.notification.findMany({ where: { userId: { not: null }, AND: [{ OR: [{ eventKey: { startsWith: "MENTORSHIP_" } }, { eventKey: { startsWith: "PROJECT_INVITATION_" } }, { eventKey: { startsWith: "LECTURER_VERIFICATION_" } }, { eventKey: { startsWith: "WORKSPACE:" } }, { eventKey: { startsWith: "CONTRIBUTIONS:" } }] }, { OR: [{ dispatchedAt: null }, { emailStatus: "PENDING" }, { pushSentAt: null }] }] }, take: 100, orderBy: { createdAt: "asc" } });
+      const rows = await db.notification.findMany({ where: { userId: { not: null }, AND: [{ OR: [...reviewNotificationRecoveryConditions, { eventKey: { startsWith: "MENTORSHIP_" } }, { eventKey: { startsWith: "PROJECT_INVITATION_" } }, { eventKey: { startsWith: "LECTURER_VERIFICATION_" } }, { eventKey: { startsWith: "WORKSPACE:" } }, { eventKey: { startsWith: "CONTRIBUTIONS:" } }] }, { OR: [{ dispatchedAt: null }, { emailStatus: "PENDING" }, { pushSentAt: null }] }] }, take: 100, orderBy: { createdAt: "asc" } });
       for (const row of rows) {
         const job = await notificationQueue.getJob(publicDatabaseId(row));
         if (job && await job.isFailed()) await job.retry();

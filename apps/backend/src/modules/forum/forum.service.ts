@@ -124,14 +124,14 @@ async function resolveGapRow(value: string) {
 }
 async function resolveProject(value?: string): Promise<string | undefined> {
   if (!value) return undefined;
-  const row = await getPrisma().project.findUnique({ where: idWhere(value), select: { id: true, visibility: true } });
-  if (!row) throw AppError.badRequest("A linked academic entity does not exist");
+  const row = await getPrisma().project.findUnique({ where: idWhere(value), select: { id: true, visibility: true, deletedAt: true } });
+  if (!row || Boolean(row.deletedAt)) throw AppError.badRequest("A linked academic entity does not exist");
   if (!canExposeForumProject(row.visibility)) throw AppError.forbidden("Only a project with a public summary can be linked in the forum");
   return row.id;
 }
 async function resolveProjectRow(value: string) {
   const row = await getPrisma().project.findUnique({ where: idWhere(value) });
-  if (!row) throw AppError.notFound("Project not found");
+  if (!row || Boolean(row.deletedAt)) throw AppError.notFound("Project not found");
   return row;
 }
 
@@ -517,7 +517,7 @@ async function forumResearchContexts(posts: Array<Awaited<ReturnType<typeof reso
   const [papers, gaps, projects] = await Promise.all([
     paperIds.length ? prisma.paper.findMany({ where: { id: { in: paperIds }, dataStatus: "active" }, select: { id: true, legacyMongoId: true, title: true, doi: true, publicationYear: true } }) : [],
     gapIds.length ? prisma.researchGap.findMany({ where: { id: { in: gapIds }, forumShareable: true, status: "active" }, select: { id: true, legacyMongoId: true, title: true, topic: true, validationStatus: true, status: true } }) : [],
-    projectIds.length ? prisma.project.findMany({ where: { id: { in: projectIds }, visibility: "PUBLIC_SUMMARY", archivedAt: null }, select: { id: true, legacyMongoId: true, title: true } }) : [],
+    projectIds.length ? prisma.project.findMany({ where: { id: { in: projectIds }, visibility: "PUBLIC_SUMMARY", archivedAt: null, deletedAt: null }, select: { id: true, legacyMongoId: true, title: true } }) : [],
   ]);
   return {
     papers: new Map(papers.map((paper) => [paper.id, { id: publicDatabaseId(paper), title: paper.title, doi: paper.doi ?? undefined, publicationYear: paper.publicationYear }])),
@@ -1761,7 +1761,7 @@ export const forumService = {
     const userId = await resolveUserId(userInput); const prisma = getPrisma();
     const [memberships, ownedProjects] = await Promise.all([
       prisma.projectMember.findMany({ where: { userId, status: "ACTIVE" }, select: { projectId: true } }),
-      prisma.project.findMany({ where: { ownerId: userId, status: { not: "ARCHIVED" } }, select: { id: true } }),
+      prisma.project.findMany({ where: { ownerId: userId, status: { not: "ARCHIVED" }, deletedAt: null }, select: { id: true } }),
     ]);
     const accessibleProjectIds = [...new Set([...memberships.map((membership) => membership.projectId), ...ownedProjects.map((project) => project.id)])];
     const search = query?.trim();
@@ -1771,7 +1771,7 @@ export const forumService = {
     const [papers, savedPapers, projects, gaps] = await Promise.all([
       prisma.paper.findMany({ where: { dataStatus: "active", ...(search ? { OR: [{ title: { contains: search, mode: "insensitive" } }, { doi: { contains: search, mode: "insensitive" } }, { id: { in: matchingAuthors.map((author) => author.paperId) } }] } : {}) }, select: { id: true, legacyMongoId: true, title: true, doi: true, journalName: true, publicationYear: true }, orderBy: { citationCount: "desc" }, take: 20 }),
       savedPaperIds.length ? prisma.paper.findMany({ where: { id: { in: savedPaperIds }, dataStatus: "active", ...(search ? { OR: [{ title: { contains: search, mode: "insensitive" } }, { doi: { contains: search, mode: "insensitive" } }, { id: { in: matchingAuthors.map((author) => author.paperId) } }] } : {}) }, select: { id: true, legacyMongoId: true, title: true, doi: true, publicationYear: true } }) : [],
-      prisma.project.findMany({ where: { visibility: "PUBLIC_SUMMARY", OR: [{ ownerId: userId }, { id: { in: accessibleProjectIds } }], ...(search ? { title: { contains: search, mode: "insensitive" } } : {}) }, select: { id: true, legacyMongoId: true, title: true, visibility: true }, orderBy: { updatedAt: "desc" }, take: 20 }),
+      prisma.project.findMany({ where: { visibility: "PUBLIC_SUMMARY", deletedAt: null, OR: [{ ownerId: userId }, { id: { in: accessibleProjectIds } }], ...(search ? { title: { contains: search, mode: "insensitive" } } : {}) }, select: { id: true, legacyMongoId: true, title: true, visibility: true }, orderBy: { updatedAt: "desc" }, take: 20 }),
       prisma.researchGap.findMany({ where: { AND: [
         { OR: [{ userId }, { projectId: { in: accessibleProjectIds } }] },
         ...(search ? [{ OR: [{ title: { contains: search, mode: "insensitive" as const } }, { topic: { contains: search, mode: "insensitive" as const } }] }] : []),

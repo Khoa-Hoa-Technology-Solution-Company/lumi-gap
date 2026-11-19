@@ -21,7 +21,9 @@ function decisionDto(row: ProjectDecision, people: Map<string, WorkspacePerson>)
 async function mentorThreadScope(context: WorkspaceContext): Promise<Prisma.ProjectDiscussionWhereInput[]> {
   const relations = await context.tx.mentorRelationship.findMany({ where: { projectId: context.project.id, mentorUserId: context.actorId, status: "ACTIVE" }, select: { id: true } });
   const shares = await context.tx.planShare.findMany({ where: { projectId: context.project.id, revokedAt: null, relationshipId: { in: relations.map(row => row.id) } }, select: { relationshipId: true, revisionId: true } });
-  return [...shares.map(share => ({ mentorRelationshipId: share.relationshipId, targetKind: "PLAN_REVISION", targetId: share.revisionId })), { mentorRelationshipId: null, targetKind: "PLAN_REVISION", targetId: { in: shares.map(share => share.revisionId) }, context: { path: ["planSection", "section"], string_starts_with: "" } }, { mentorRelationshipId: { in: relations.map(r => r.id) }, targetKind: "MANUSCRIPT_SNAPSHOT" }];
+  // General discussion routes expose shared plan questions only. Manuscript
+  // comments retain their separate snapshot/resource authorization boundary.
+  return [...shares.map(share => ({ mentorRelationshipId: share.relationshipId, targetKind: "PLAN_REVISION", targetId: share.revisionId })), { mentorRelationshipId: null, targetKind: "PLAN_REVISION", targetId: { in: shares.map(share => share.revisionId) }, context: { path: ["planSection", "section"], string_starts_with: "" } }];
 }
 async function availableManuscriptThreads(context: WorkspaceContext): Promise<Prisma.ProjectDiscussionWhereInput> {
   const drafts = await context.tx.draftWorkspace.findMany({ where: { projectId: context.project.id, deletedAt: null }, select: { id: true } });
@@ -61,7 +63,7 @@ async function checkDiscussionShare(context: WorkspaceContext, input: SaveWorksp
 }
 export const projectDiscussionsService = {
   async list(projectId: string, actorId: string, query: Page & { q?: string; status?: string }): Promise<WorkspacePage<WorkspaceDiscussion>> {
-    return withWorkspace(projectId, actorId, { mentor: true }, async context => {
+    return withWorkspace(projectId, actorId, { mentor: true, mentorScope: "SHARED_RESOURCES" }, async context => {
       const scopes = context.role ? undefined : await mentorThreadScope(context);
       const available = await availableManuscriptThreads(context);
       const where: Prisma.ProjectDiscussionWhereInput = { projectId: context.project.id, ...(query.q ? { title: { contains: query.q, mode: "insensitive" } } : {}), ...(query.status ? { status: query.status } : {}), AND: [available, ...(scopes ? [{ OR: scopes }] : [])] };
@@ -71,7 +73,7 @@ export const projectDiscussionsService = {
     });
   },
   async detail(projectId: string, actorId: string, id: string, query: Page): Promise<WorkspaceDiscussionDetail> {
-    return withWorkspace(projectId, actorId, { mentor: true }, async context => {
+    return withWorkspace(projectId, actorId, { mentor: true, mentorScope: "SHARED_RESOURCES" }, async context => {
       const thread = await requireDiscussion(context, id);
       const where = { projectId: context.project.id, threadId: id, isDeleted: false };
       const [rows, total] = await Promise.all([context.tx.projectTeamMessage.findMany({ where, ...paging(query), orderBy: [{ createdAt: "asc" }, { id: "asc" }] }), context.tx.projectTeamMessage.count({ where })]);
@@ -108,7 +110,7 @@ export const projectDiscussionsService = {
     });
   },
   async reply(projectId: string, actorId: string, id: string, input: { body: string; replyToId: string | null; clientKey: string; mentions: string[] }) {
-    return withWorkspace(projectId, actorId, { write: true, mentor: true, accounts: input.mentions }, async context => {
+    return withWorkspace(projectId, actorId, { write: true, mentor: true, mentorScope: "SHARED_RESOURCES", accounts: input.mentions }, async context => {
       const thread = await requireDiscussion(context, id, true);
       if (thread.status !== "OPEN") throw AppError.conflict("Reopen this discussion before replying");
       if (!context.role && input.mentions.length) throw AppError.forbidden("Mentors cannot mention private project members");
@@ -171,7 +173,7 @@ export const projectDiscussionsService = {
     });
   },
   async history(projectId: string, actorId: string, kind: "DECISION" | "DISCUSSION", id: string, query: Page) {
-    return withWorkspace(projectId, actorId, { mentor: kind === "DISCUSSION" }, async context => {
+    return withWorkspace(projectId, actorId, { mentor: kind === "DISCUSSION", mentorScope: "SHARED_RESOURCES" }, async context => {
       if (kind === "DISCUSSION") await requireDiscussion(context, id);
       else if (!await context.tx.projectDecision.findFirst({ where: { id, projectId: context.project.id } })) throw AppError.notFound("Decision not found");
       return workspaceHistory(context, kind, id, query);

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { authApi, resolvePostAuthPath, useLogout } from "@/features/auth";
 import { useAuthStore } from "@/stores/auth-store";
@@ -9,6 +9,7 @@ import { LanguageSwitcher, useI18n } from "@/i18n";
 export function VerifyEmailPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const delivery = (useLocation().state as { verificationEmailDelivery?: string } | null)?.verificationEmailDelivery;
   const queryClient = useQueryClient();
   const logout = useLogout();
   const { t } = useI18n();
@@ -16,7 +17,9 @@ export function VerifyEmailPage() {
   const token = params.get("token");
   const email = user?.email ?? params.get("email") ?? "";
   const handled = useRef<string>();
-  const [status, setStatus] = useState(token ? "Verifying your email…" : "Check your inbox for the LumiGap verification link.");
+  const [status, setStatus] = useState(token ? "Verifying your email…" : delivery === "FAILED" ? "Your account was created, but the verification email could not be sent. Request a new email below."
+    : delivery === "DISABLED" ? "Your account was created. Email delivery is disabled on this environment; verification is still required."
+    : "Check your inbox for the LumiGap verification link.");
   const [busy, setBusy] = useState(Boolean(token));
   const [verified, setVerified] = useState(false);
   useEffect(() => {

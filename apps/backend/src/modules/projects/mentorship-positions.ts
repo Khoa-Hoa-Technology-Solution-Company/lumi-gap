@@ -3,7 +3,7 @@ import type { Prisma } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 
-export const mentorshipPolicy = { maxActiveMentors: 2, maxPendingRequests: 2, maxPendingPerRole: 1, expiryDays: 6 } as const;
+export const mentorshipPolicy = { maxActiveMentors: 2, maxPendingRequests: null, maxPendingPerRole: 1, expiryDays: null } as const;
 
 export async function mentorPositions(projectId: string, db: Prisma.TransactionClient = getPrisma()): Promise<MentorPositions> {
   const now = new Date();
@@ -17,12 +17,15 @@ export async function mentorPositions(projectId: string, db: Prisma.TransactionC
     const count = pending.filter(r => r.mentorRole === role).length;
     positions[role] = { role, status: relationship ? "ASSIGNED" : count ? "INVITING" : "VACANT", pendingRequests: count, relationshipId: relationship?.id };
   }
+  positions.UNASSIGNED = { role: "UNASSIGNED", status: active.length >= mentorshipPolicy.maxActiveMentors ? "ASSIGNED" : "VACANT", pendingRequests: pending.filter(r => r.mentorRole === "UNASSIGNED").length };
   return positions;
 }
 
 // Caller must hold the project's row lock for every mutation.
 export async function assertMentorPosition(db: Prisma.TransactionClient, projectId: string, role: MentorRole, creating = false) {
   const positions = await mentorPositions(projectId, db), position = positions[role];
+  if (!creating && await db.mentorRelationship.count({ where: { projectId, status: "ACTIVE" } }) >= mentorshipPolicy.maxActiveMentors) throw AppError.conflict("Dự án đã có đủ hai cố vấn đang hướng dẫn. Lời mời vẫn được giữ để nhóm và giảng viên xử lý sau.");
+  if (role === "UNASSIGNED") return positions;
   if (position.status === "ASSIGNED") throw AppError.conflict("This mentor position has already been assigned");
   if (position.pendingRequests > 1) throw AppError.conflict("Có nhiều lời mời cũ cùng vai trò. Chủ dự án cần rà soát và thu hồi rõ ràng trước khi tiếp tục");
   if (creating && position.pendingRequests >= mentorshipPolicy.maxPendingPerRole) throw AppError.conflict("Vai trò đang có lời mời chờ phản hồi. Chưa thể mời ứng viên dự phòng");

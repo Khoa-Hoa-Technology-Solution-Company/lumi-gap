@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1240" viewBox="0 0 1240 1240" font-family="Arial">
+<rect width="1240" height="1240" fill="white"/>
+<text x="620.0" y="52" font-size="28" font-weight="bold" text-anchor="middle">Context diagram: LumiGap</text>
+<rect x="515" y="120" width="210" height="980" rx="40" fill="#DAE8FC" stroke="#6C8EBF" stroke-width="3"/>
+<text x="620.0" y="590.5" font-size="30" text-anchor="middle" font-weight="bold" fill="#1A1A1A">LumiGap</text>
+<text x="620.0" y="626.3" font-size="16" text-anchor="middle" font-weight="normal" fill="#1A1A1A">research-support</text>
+<text x="620.0" y="645.8" font-size="16" text-anchor="middle" font-weight="normal" fill="#1A1A1A">platform</text>
+<text x="620.0" y="665.4" font-size="16" text-anchor="middle" font-weight="normal" fill="#1A1A1A">[System, one</text>
+<text x="620.0" y="684.9" font-size="16" text-anchor="middle" font-weight="normal" fill="#1A1A1A">black box]</text>
+<rect x="20.0" y="225.0" width="220" height="80" rx="9" fill="#FFF2CC" stroke="#D6B656" stroke-width="2"/>
+<text x="130.0" y="261.9" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Guest</text>
+<text x="130.0" y="295.0" font-size="13" text-anchor="middle" fill="#555">[User role]</text>
+<line x1="240.0" y1="254.0" x2="501.0" y2="254.0" stroke="#1F4E79" stroke-width="2.2"/>
+<polygon points="515.0,254.0 499.0,247.0 499.0,261.0" fill="#1F4E79"/>
+<text x="377.5" y="249.6" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">search queries</text>
+<line x1="515.0" y1="276.0" x2="254.0" y2="276.0" stroke="#9C3D10" stroke-width="2.2"/>
+<polygon points="240.0,276.0 256.0,269.0 256.0,283.0" fill="#9C3D10"/>
+<text x="377.5" y="301.6" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">papers, trends,</text>
+<text x="377.5" y="321.1" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">public forum posts</text>
+<rect x="20.0" y="455.0" width="220" height="80" rx="9" fill="#FFF2CC" stroke="#D6B656" stroke-width="2"/>
+<text x="130.0" y="491.9" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Researcher / Student</text>
+<text x="130.0" y="525.0" font-size="13" text-anchor="middle" fill="#555">[User role]</text>
+<line x1="240.0" y1="484.0" x2="501.0" y2="484.0" stroke="#1F4E79" stroke-width="2.2"/>
+<polygon points="515.0,484.0 499.0,477.0 499.0,491.0" fill="#1F4E79"/>
+<text x="377.5" y="460.1" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">queries, project data,</text>
+<text x="377.5" y="479.6" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">manuscripts, payment orders</text>
+<line x1="515.0" y1="506.0" x2="254.0" y2="506.0" stroke="#9C3D10" stroke-width="2.2"/>
+<polygon points="240.0,506.0 256.0,499.0 256.0,513.0" fill="#9C3D10"/>
+<text x="377.5" y="531.6" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">reports, research gaps,</text>
+<text x="377.5" y="551.1" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">reviews, credit balance</text>
+<rect x="20.0" y="685.0" width="220" height="80" rx="9" fill="#FFF2CC" stroke="#D6B656" stroke-width="2"/>
+<text x="130.0" y="722.0" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Lecturer / Reviewer</text>
+<text x="130.0" y="755.0" font-size="13" text-anchor="middle" fill="#555">[User role]</text>
+<line x1="240.0" y1="714.0" x2="501.0" y2="714.0" stroke="#1F4E79" stroke-width="2.2"/>
+<polygon points="515.0,714.0 499.0,707.0 499.0,721.0" fill="#1F4E79"/>
+<text x="377.5" y="690.1" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">verification evidence,</text>
+<text x="377.5" y="709.6" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">reviews, mentor decisions</text>
+<line x1="515.0" y1="736.0" x2="254.0" y2="736.0" stroke="#9C3D10" stroke-width="2.2"/>
+<polygon points="240.0,736.0 256.0,729.0 256.0,743.0" fill="#9C3D10"/>
+<text x="377.5" y="761.6" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">review requests, manuscripts,</text>
+<text x="377.5" y="781.1" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">verification status</text>
+<rect x="20.0" y="915.0" width="220" height="80" rx="9" fill="#FFF2CC" stroke="#D6B656" stroke-width="2"/>
+<text x="130.0" y="952.0" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Administrator</text>
+<text x="130.0" y="985.0" font-size="13" text-anchor="middle" fill="#555">[User role]</text>
+<line x1="240.0" y1="944.0" x2="501.0" y2="944.0" stroke="#1F4E79" stroke-width="2.2"/>
+<polygon points="515.0,944.0 499.0,937.0 499.0,951.0" fill="#1F4E79"/>
+<text x="377.5" y="920.1" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">moderation, verification</text>
+<text x="377.5" y="939.6" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">decisions, ingestion jobs</text>
+<line x1="515.0" y1="966.0" x2="254.0" y2="966.0" stroke="#9C3D10" stroke-width="2.2"/>
+<polygon points="240.0,966.0 256.0,959.0 256.0,973.0" fill="#9C3D10"/>
+<text x="377.5" y="991.6" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">audit records, pipeline</text>
+<text x="377.5" y="1011.1" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">status, content reports</text>
+<rect x="1000.0" y="161.1" width="220" height="80" rx="9" fill="#F5F5F5" stroke="#666666" stroke-width="2"/>
+<text x="1110.0" y="198.1" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">OpenAlex</text>
+<text x="1110.0" y="231.1" font-size="13" text-anchor="middle" fill="#555">[External system]</text>
+<line x1="1000.0" y1="190.1" x2="739.0" y2="190.1" stroke="#1F4E79" stroke-width="2.2"/>
+<polygon points="725.0,190.1 741.0,183.1 741.0,197.1" fill="#1F4E79"/>
+<text x="862.5" y="166.2" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">works, authors,</text>
+<text x="862.5" y="185.7" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">topics metadata</text>
+<line x1="725.0" y1="212.1" x2="986.0" y2="212.1" stroke="#9C3D10" stroke-width="2.2"/>
+<polygon points="1000.0,212.1 984.0,205.1 984.0,219.1" fill="#9C3D10"/>
+<text x="862.5" y="237.7" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">metadata queries</text>
+<rect x="1000.0" y="263.3" width="220" height="80" rx="9" fill="#F5F5F5" stroke="#666666" stroke-width="2"/>
+<text x="1110.0" y="289.9" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">LLM providers (Gemini,</text>
+<text x="1110.0" y="310.7" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Ollama, user-supplied)</text>
+<text x="1110.0" y="333.3" font-size="13" text-anchor="middle" fill="#555">[External system]</text>
+<line x1="1000.0" y1="292.3" x2="739.0" y2="292.3" stroke="#1F4E79" stroke-width="2.2"/>
+<polygon points="725.0,292.3 741.0,285.3 741.0,299.3" fill="#1F4E79"/>
+<text x="862.5" y="268.4" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">generated text,</text>
+<text x="862.5" y="287.9" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">embeddings</text>
+<line x1="725.0" y1="314.3" x2="986.0" y2="314.3" stroke="#9C3D10" stroke-width="2.2"/>
+<polygon points="1000.0,314.3 984.0,307.3 984.0,321.3" fill="#9C3D10"/>
+<text x="862.5" y="339.9" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">prompts, paper excerpts</text>
+<rect x="1000.0" y="365.6" width="220" height="80" rx="9" fill="#F5F5F5" stroke="#666666" stroke-width="2"/>
+<text x="1110.0" y="402.5" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">PayOS</text>
+<text x="1110.0" y="435.6" font-size="13" text-anchor="middle" fill="#555">[External system]</text>
+<line x1="1000.0" y1="394.6" x2="739.0" y2="394.6" stroke="#1F4E79" stroke-width="2.2"/>
+<polygon points="725.0,394.6 741.0,387.6 741.0,401.6" fill="#1F4E79"/>
+<text x="862.5" y="370.6" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">signed payment-</text>
+<text x="862.5" y="390.2" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">status webhook</text>
+<line x1="725.0" y1="416.6" x2="986.0" y2="416.6" stroke="#9C3D10" stroke-width="2.2"/>
+<polygon points="1000.0,416.6 984.0,409.6 984.0,423.6" fill="#9C3D10"/>
+<text x="862.5" y="442.2" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">payment-link request</text>
+<rect x="1000.0" y="467.8" width="220" height="80" rx="9" fill="#F5F5F5" stroke="#666666" stroke-width="2"/>
+<text x="1110.0" y="504.7" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Google OAuth / OIDC</text>
+<text x="1110.0" y="537.8" font-size="13" text-anchor="middle" fill="#555">[External system]</text>
+<line x1="1000.0" y1="496.8" x2="739.0" y2="496.8" stroke="#1F4E79" stroke-width="2.2"/>
+<polygon points="725.0,496.8 741.0,489.8 741.0,503.8" fill="#1F4E79"/>
+<text x="862.5" y="492.4" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">identity token</text>
+<line x1="725.0" y1="518.8" x2="986.0" y2="518.8" stroke="#9C3D10" stroke-width="2.2"/>
+<polygon points="1000.0,518.8 984.0,511.8 984.0,525.8" fill="#9C3D10"/>
+<text x="862.5" y="544.4" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">sign-in request</text>
+<rect x="1000.0" y="570.0" width="220" height="80" rx="9" fill="#F5F5F5" stroke="#666666" stroke-width="2"/>
+<text x="1110.0" y="607.0" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">ORCID</text>
+<text x="1110.0" y="640.0" font-size="13" text-anchor="middle" fill="#555">[External system]</text>
+<line x1="1000.0" y1="599.0" x2="739.0" y2="599.0" stroke="#1F4E79" stroke-width="2.2"/>
+<polygon points="725.0,599.0 741.0,592.0 741.0,606.0" fill="#1F4E79"/>
+<text x="862.5" y="594.6" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">ORCID iD, public record</text>
+<line x1="725.0" y1="621.0" x2="986.0" y2="621.0" stroke="#9C3D10" stroke-width="2.2"/>
+<polygon points="1000.0,621.0 984.0,614.0 984.0,628.0" fill="#9C3D10"/>
+<text x="862.5" y="646.6" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">authorization request</text>
+<rect x="1000.0" y="672.2" width="220" height="80" rx="9" fill="#F5F5F5" stroke="#666666" stroke-width="2"/>
+<text x="1110.0" y="709.2" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">SMTP e-mail server</text>
+<text x="1110.0" y="742.2" font-size="13" text-anchor="middle" fill="#555">[External system]</text>
+<line x1="725.0" y1="712.2" x2="986.0" y2="712.2" stroke="#9C3D10" stroke-width="2.2"/>
+<polygon points="1000.0,712.2 984.0,705.2 984.0,719.2" fill="#9C3D10"/>
+<text x="862.5" y="737.8" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">notification e-mails</text>
+<rect x="1000.0" y="774.4" width="220" height="80" rx="9" fill="#F5F5F5" stroke="#666666" stroke-width="2"/>
+<text x="1110.0" y="811.4" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">GitHub (optional)</text>
+<text x="1110.0" y="844.4" font-size="13" text-anchor="middle" fill="#555">[External system]</text>
+<line x1="1000.0" y1="803.4" x2="739.0" y2="803.4" stroke="#1F4E79" stroke-width="2.2"/>
+<polygon points="725.0,803.4 741.0,796.4 741.0,810.4" fill="#1F4E79"/>
+<text x="862.5" y="799.0" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">manuscript files</text>
+<line x1="725.0" y1="825.4" x2="986.0" y2="825.4" stroke="#9C3D10" stroke-width="2.2"/>
+<polygon points="1000.0,825.4 984.0,818.4 984.0,832.4" fill="#9C3D10"/>
+<text x="862.5" y="851.0" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">manuscript files</text>
+<rect x="1000.0" y="876.7" width="220" height="80" rx="9" fill="#F5F5F5" stroke="#666666" stroke-width="2"/>
+<text x="1110.0" y="913.6" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">LibreTranslate (optional)</text>
+<text x="1110.0" y="946.7" font-size="13" text-anchor="middle" fill="#555">[External system]</text>
+<line x1="1000.0" y1="905.7" x2="739.0" y2="905.7" stroke="#1F4E79" stroke-width="2.2"/>
+<polygon points="725.0,905.7 741.0,898.7 741.0,912.7" fill="#1F4E79"/>
+<text x="862.5" y="901.3" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">translated text</text>
+<line x1="725.0" y1="927.7" x2="986.0" y2="927.7" stroke="#9C3D10" stroke-width="2.2"/>
+<polygon points="1000.0,927.7 984.0,920.7 984.0,934.7" fill="#9C3D10"/>
+<text x="862.5" y="953.3" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">titles and abstracts</text>
+<rect x="1000.0" y="978.9" width="220" height="80" rx="9" fill="#F5F5F5" stroke="#666666" stroke-width="2"/>
+<text x="1110.0" y="1005.5" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Object storage: R2 /</text>
+<text x="1110.0" y="1026.2" font-size="17" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Cloudinary (optional)</text>
+<text x="1110.0" y="1048.9" font-size="13" text-anchor="middle" fill="#555">[External system]</text>
+<line x1="1000.0" y1="1007.9" x2="739.0" y2="1007.9" stroke="#1F4E79" stroke-width="2.2"/>
+<polygon points="725.0,1007.9 741.0,1000.9 741.0,1014.9" fill="#1F4E79"/>
+<text x="862.5" y="1003.5" font-size="16" text-anchor="middle" font-weight="normal" fill="#1F4E79">stored files</text>
+<line x1="725.0" y1="1029.9" x2="986.0" y2="1029.9" stroke="#9C3D10" stroke-width="2.2"/>
+<polygon points="1000.0,1029.9 984.0,1022.9 984.0,1036.9" fill="#9C3D10"/>
+<text x="862.5" y="1055.5" font-size="16" text-anchor="middle" font-weight="normal" fill="#9C3D10">uploaded files</text>
+<rect x="60" y="1140" width="24" height="16" fill="#FFF2CC" stroke="#D6B656"/><text x="92" y="1153" font-size="14">User role</text>
+<rect x="200" y="1140" width="24" height="16" fill="#F5F5F5" stroke="#666"/><text x="232" y="1153" font-size="14">External system</text>
+<line x1="400" y1="1148" x2="450" y2="1148" stroke="#1F4E79" stroke-width="2.2"/><text x="460" y="1153" font-size="14" fill="#1F4E79">data sent to LumiGap</text>
+<line x1="640" y1="1148" x2="690" y2="1148" stroke="#9C3D10" stroke-width="2.2"/><text x="700" y="1153" font-size="14" fill="#9C3D10">data sent by LumiGap</text>
+<text x="60" y="1180" font-size="14" fill="#555">Arrows carry data, not actions. Users work through the web app or the mobile app. Internal parts (clients, API, workers,</text>
+<text x="60" y="1200" font-size="14" fill="#555">AI reviewer, compiler, database, queue) are inside the black box and not shown. Source: code on main 0be3737.</text>
+</svg>

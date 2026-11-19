@@ -23,8 +23,9 @@ function useRefreshApplications() {
 }
 export function MentorshipApplicationDialog({ project, onClose }: { project: MentorProjectPreview; onClose: () => void }) {
   const { t } = useI18n(), userId = useAuthStore(s => s.user?.id), refresh = useRefreshApplications();
-  const availableRoles = project.availableRoles ?? (["PRIMARY", "SECONDARY"] as const);
-  const [draft, setDraft] = useState({ message: "", availability: "", areas: "", methodologies: "", capabilities: "", mentorRole: availableRoles[0] ?? "PRIMARY" });
+  const availableRoles = project.availableRoles?.filter((role): role is "PRIMARY" | "SECONDARY" => role === "PRIMARY" || role === "SECONDARY");
+  const requestedRoles = availableRoles?.length ? availableRoles : (["PRIMARY", "SECONDARY"] as const);
+  const [draft, setDraft] = useState({ message: "", availability: "", areas: "", methodologies: "", capabilities: "", mentorRole: requestedRoles[0] ?? "PRIMARY" });
   const [key] = useState(() => crypto.randomUUID()), lock = useRef(false);
   useUnsavedWorkspace(Boolean(draft.message || draft.availability || draft.areas || draft.capabilities || draft.methodologies));
   const send = useMutation({ mutationFn: () => {
@@ -39,10 +40,10 @@ export function MentorshipApplicationDialog({ project, onClose }: { project: Men
         <div className="space-y-2"><Label htmlFor="application-message">{t("How can you guide this research?")}</Label><textarea id="application-message" className="min-h-28 w-full rounded-md border bg-background p-3 text-sm" required minLength={20} maxLength={2000} value={draft.message} onChange={e => setDraft({ ...draft, message: e.target.value })} /></div>
         {([['areas', 'Research areas you can support'], ['methodologies', 'Methods you can support'], ['capabilities', 'Mentoring support offered']] as const).map(([field, label]) => <div key={field} className="space-y-2"><Label htmlFor={`application-${field}`}>{t(label)}</Label><input id={`application-${field}`} className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={draft[field]} maxLength={1200} onChange={e => setDraft({ ...draft, [field]: e.target.value })} /><p className="text-xs text-muted-foreground">{t("Separate up to 10 terms with commas.")}</p></div>)}
         <div className="space-y-2"><Label htmlFor="application-availability">{t("Availability and feedback commitment")}</Label><textarea id="application-availability" className="min-h-20 w-full rounded-md border bg-background p-3 text-sm" required minLength={10} maxLength={1000} value={draft.availability} onChange={e => setDraft({ ...draft, availability: e.target.value })} /></div>
-        <div className="space-y-2"><Label htmlFor="application-role">{t("Preferred mentoring role")}</Label><select id="application-role" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={draft.mentorRole} onChange={e => setDraft({ ...draft, mentorRole: e.target.value as "PRIMARY" | "SECONDARY" })}>{availableRoles.map(role => <option key={role} value={role}>{t(role === "PRIMARY" ? "Primary mentor" : "Secondary mentor")}</option>)}</select></div>
+        <div className="space-y-2"><Label htmlFor="application-role">{t("Preferred mentoring role")}</Label><select id="application-role" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={draft.mentorRole} onChange={e => setDraft({ ...draft, mentorRole: e.target.value as "PRIMARY" | "SECONDARY" })}>{requestedRoles.map(role => <option key={role} value={role}>{t(role === "PRIMARY" ? "Primary mentor" : "Secondary mentor")}</option>)}</select></div>
       </fieldset>
       {send.isError && <ErrorMessage error={send.error} />}
-      <div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={send.isPending} onClick={() => void close()}>{t("Cancel")}</Button><Button type="submit" disabled={send.isPending || !availableRoles.includes(draft.mentorRole) || draft.message.trim().length < 20 || draft.availability.trim().length < 10}>{t(send.isPending ? "Sending…" : "Submit application")}</Button></div>
+      <div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={send.isPending} onClick={() => void close()}>{t("Cancel")}</Button><Button type="submit" disabled={send.isPending || !requestedRoles.includes(draft.mentorRole) || draft.message.trim().length < 20 || draft.availability.trim().length < 10}>{t(send.isPending ? "Sending…" : "Submit application")}</Button></div>
     </form>
   </DialogContent></Dialog>;
 }

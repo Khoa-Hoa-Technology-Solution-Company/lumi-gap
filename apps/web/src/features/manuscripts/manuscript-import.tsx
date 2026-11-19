@@ -6,9 +6,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { useI18n } from "@/i18n";
 import { manuscriptsApi } from "./manuscripts.api";
 
-export function ImportManuscript({ project, onImported }: { project: string; onImported: (id: string) => void }) {
+export function ImportManuscript({ project, onImported, open: controlledOpen, onOpenChange }: { project: string; onImported: (id: string) => void; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false), [title, setTitle] = useState(""), [main, setMain] = useState(""), [file, setFile] = useState<File>();
+  const [localOpen, setLocalOpen] = useState(false), [title, setTitle] = useState(""), [main, setMain] = useState(""), [file, setFile] = useState<File>();
+  const open = controlledOpen ?? localOpen;
+  const setOpen = onOpenChange ?? setLocalOpen;
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [result, setResult] = useState<{ id: string; ignoredFiles: string[] }>();
   const key = useRef(crypto.randomUUID()), submitting = useRef(false);
   const resetKey = () => { key.current = crypto.randomUUID(); setError(""); };

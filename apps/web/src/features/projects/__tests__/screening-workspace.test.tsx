@@ -357,7 +357,7 @@ it("requires the assigned finalizer to confirm and explain a final decision", as
   expect(document.body.textContent).not.toContain("Xác nhận và lưu lịch sử");
 });
 it("blocks uncertain reviews from finalization in the UI", async () => {
-  const uncertain = { ...round, status: "NEEDS_RESOLUTION" as const, canReview: false, canFinalize: true, hiddenReviews: false, completed: 2, unblindedAt: "2026-10-29T01:00:00Z", reviews: [{ id: "unsure", assignmentId: "peer", reviewerId: "peer", revision: 1, decision: "UNSURE" as const, exclusionReason: "", comment: "Need full text", submittedAt: "2026-10-29T01:00:00Z" }] };
+  const uncertain = { ...round, consensus: { startedAt: new Date().toISOString(), deadline: new Date(Date.now() + 48 * 3600000).toISOString(), status: "CONSENSUS_REQUIRED" as const, canConfirm: false, canUpdate: false, confirmations: [] }, status: "NEEDS_RESOLUTION" as const, canReview: false, canFinalize: true, hiddenReviews: false, completed: 2, unblindedAt: "2026-10-29T01:00:00Z", reviews: [{ id: "unsure", assignmentId: "peer", reviewerId: "peer", revision: 1, decision: "UNSURE" as const, exclusionReason: "", comment: "Need full text", submittedAt: "2026-10-29T01:00:00Z" }] };
   mocks.detail.mockResolvedValue(uncertain); mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0], round: uncertain }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
   expect(document.body.textContent).toContain("Hai Reviewer chưa thống nhất");

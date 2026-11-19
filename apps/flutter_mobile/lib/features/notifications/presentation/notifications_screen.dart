@@ -1,163 +1,231 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/relative_time.dart';
-import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
-import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/notifications/data/notifications_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-class NotificationsScreen extends ConsumerWidget {
+class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NotificationsScreen> createState() =>
+      _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
+  /// True while "Read all" runs, so a second tap cannot send it twice.
+  bool _markingAll = false;
+
+  void _showError(Object error) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.t(failureMessageKey(error))),
+        backgroundColor: context.lumi.error,
+      ),
+    );
+  }
+
+  Future<void> _markAllRead() async {
+    if (_markingAll) return;
+    setState(() => _markingAll = true);
+    try {
+      await ref.read(notificationsApiProvider).markAllRead();
+    } on Object catch (e) {
+      _showError(e);
+    } finally {
+      // Reload either way: after a failure the list shows what the server
+      // really has.
+      ref.invalidate(notificationsProvider);
+      if (mounted) setState(() => _markingAll = false);
+    }
+  }
+
+  Future<void> _open(AppNotification item) async {
+    // Open first: a failed "mark as read" must not keep the user from the
+    // thing the notification is about.
+    final route = notificationRoute(item);
+    if (route != null) unawaited(context.push(route));
+    if (item.isRead) return;
+    try {
+      await ref.read(notificationsApiProvider).markRead(item.id);
+      ref.invalidate(notificationsProvider);
+    } on Object catch (e) {
+      _showError(e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final query = ref.watch(notificationsProvider);
+    final unreadCount =
+        query.value?.where((item) => !item.isRead).length ?? 0;
     return Scaffold(
       appBar: AppBar(
         title: Text(context.t('Notifications')),
         surfaceTintColor: Colors.transparent,
         actions: [
-          TextButton.icon(
-            onPressed: () async {
-              await ref.read(notificationsApiProvider).markAllRead();
-              ref.invalidate(notificationsProvider);
-            },
-            icon: const Icon(Icons.done_all_rounded, size: 18),
-            label: Text(context.t('Read all')),
+          // An icon with a tooltip: a labelled button did not fit next to
+          // the title on a narrow phone with large text.
+          IconButton(
+            tooltip: context.t('Read all'),
+            // Nothing to do when everything is read already.
+            onPressed: _markingAll || unreadCount == 0
+                ? null
+                : () => unawaited(_markAllRead()),
+            icon: const Icon(Icons.done_all_rounded),
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(notificationsProvider),
-        child: query.when(
-          data: (items) {
-            if (items.isEmpty) {
-              return ListView(
-                padding: const EdgeInsets.all(24),
-                children: [
-                  AppEmptyState(
-                    icon: Icons.notifications_none,
-                    title: context.t('No notifications'),
-                    message: context.t('Research activity will appear here.'),
-                  ),
-                ],
-              );
-            }
-            final unreadCount = items.where((item) => !item.isRead).length;
-            return ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 112),
-              itemCount: items.length + 1,
-              separatorBuilder: (_, index) =>
-                  SizedBox(height: index == 0 ? 14 : 10),
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return _NotificationsHeader(
-                    totalCount: items.length,
-                    unreadCount: unreadCount,
-                  );
-                }
-                final item = items[index - 1];
-                return _NotificationCard(
-                  item: item,
-                  onTap: () async {
-                    await ref.read(notificationsApiProvider).markRead(item.id);
-                    ref.invalidate(notificationsProvider);
-                    if (!context.mounted) return;
-                    _openTarget(context, item);
-                  },
-                );
-              },
-            );
-          },
-          loading: () => AppLoading(
-            fullScreen: true,
-            message: context.t('Loading notifications...'),
-          ),
-          error: (error, _) => AppErrorState(message: error.toString()),
-        ),
+        child: _body(context, query),
       ),
     );
   }
 
-  void _openTarget(BuildContext context, AppNotification item) {
-    if (item.targetKind == 'paper' && item.targetId != null) {
-      unawaited(context.push('/paper/${item.targetId}'));
-    }
-    if (item.targetKind == 'report' && item.targetId != null) {
-      unawaited(context.push('/report/${item.targetId}'));
-    }
-    if (item.targetKind == 'project' && item.targetId != null) {
-      unawaited(context.push('/project/${item.targetId}'));
-    }
-    if (item.targetKind == 'gap') unawaited(context.push('/gaps'));
-  }
-}
-
-class _NotificationsHeader extends StatelessWidget {
-  const _NotificationsHeader({
-    required this.totalCount,
-    required this.unreadCount,
-  });
-
-  final int totalCount;
-  final int unreadCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final lumi = context.lumi;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: lumi.primarySoft,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: lumi.line),
-      ),
-      child: Row(
+  Widget _body(BuildContext context, AsyncValue<List<AppNotification>> query) {
+    if (query.hasValue) {
+      final items = query.requireValue;
+      if (items.isEmpty) {
+        return LumiEmptyState(
+          icon: Icons.notifications_none,
+          title: context.t('No notifications'),
+          message: context.t('Research activity will appear here.'),
+        );
+      }
+      final groups = groupNotificationsByDay(items, DateTime.now());
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: lumi.surface,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              Icons.notifications_active_outlined,
-              color: lumi.primary,
-            ),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          for (final (label, group) in groups) ...[
+            LumiSectionHeader(title: context.t(label)),
+            LumiRowGroup(
               children: [
-                Text(
-                  context.t('{{unreadCount}} unread updates', {'unreadCount': unreadCount}),
-                  style: theme.textTheme.titleMedium,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  context.t('{{totalCount}} total alerts from papers, projects, and reports.', {'totalCount': totalCount}),
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: lumi.foregroundSecondary),
-                ),
+                for (final item in group)
+                  _NotificationRow(
+                    item: item,
+                    onTap: () => unawaited(_open(item)),
+                  ),
               ],
             ),
-          ),
+            const SizedBox(height: 20),
+          ],
         ],
-      ),
-    );
+      );
+    }
+    if (query.hasError) {
+      return LumiErrorState(
+        message: context.t(failureMessageKey(query.error!)),
+        retrying: query.isLoading,
+        onRetry: () => ref.invalidate(notificationsProvider),
+      );
+    }
+    return const LumiPageSkeleton(rows: 5, height: 72);
   }
 }
 
-class _NotificationCard extends StatelessWidget {
-  const _NotificationCard({required this.item, required this.onTap});
+/// Notifications in day groups, newest first: "Today", "Yesterday",
+/// "Earlier" (English keys). A date the app cannot read goes to "Earlier".
+List<(String, List<AppNotification>)> groupNotificationsByDay(
+  List<AppNotification> items,
+  DateTime now,
+) {
+  final today = DateTime(now.year, now.month, now.day);
+  final yesterday = today.subtract(const Duration(days: 1));
+  String bucket(AppNotification n) {
+    final t = DateTime.tryParse(n.createdAt)?.toLocal();
+    if (t == null) return tk('Earlier');
+    final day = DateTime(t.year, t.month, t.day);
+    if (!day.isBefore(today)) return tk('Today');
+    if (day == yesterday) return tk('Yesterday');
+    return tk('Earlier');
+  }
+
+  final order = [tk('Today'), tk('Yesterday'), tk('Earlier')];
+  final byBucket = <String, List<AppNotification>>{};
+  for (final n in items) {
+    byBucket.putIfAbsent(bucket(n), () => []).add(n);
+  }
+  return [
+    for (final key in order)
+      if (byBucket[key] case final group?) (key, group),
+  ];
+}
+
+/// Screen a notification opens, or null when the app has no screen for it.
+String? notificationRoute(AppNotification item) {
+  final id = item.targetId;
+  final hasId = id != null && id.isNotEmpty;
+  return switch (item.targetKind) {
+    'paper' when hasId => '/paper/$id',
+    'report' when hasId => '/report/$id',
+    'project' when hasId => '/project/$id',
+    'gap' || 'gap_analysis' || 'gap_direction' || 'gap_closure_check' =>
+      '/gaps',
+    'forum_post' when hasId => '/forum/post/${Uri.encodeComponent(id)}',
+    'community' when hasId => '/communities/${Uri.encodeComponent(id)}',
+    'review_request' when hasId =>
+      '/review-requests/${Uri.encodeComponent(id)}',
+    _ => null,
+  };
+}
+
+/// Readable name of what a notification is about, as an English key for
+/// `context.t`. Null for a kind this app does not know: an internal code
+/// such as "forum_post" is never shown to the user.
+String? notificationKindLabel(String? targetKind) => switch (targetKind) {
+      'paper' => tk('Paper'),
+      'report' => tk('Report'),
+      'project' || 'project_chat' || 'project_synthesis' => tk('Project'),
+      'community' => tk('Community'),
+      'forum_post' => tk('Discussion'),
+      'gap' ||
+      'gap_analysis' ||
+      'gap_direction' ||
+      'gap_closure_check' =>
+        tk('Research gap'),
+      'submission' => tk('Submission'),
+      'review_request' || 'paper_review' => tk('Review'),
+      'academic_profile' => tk('Profile'),
+      'keyword' || 'tag' || 'topic' => tk('Topic'),
+      'author' => tk('Author'),
+      'payment_order' => tk('Payment'),
+      _ => null,
+    };
+
+/// Icon of what a notification is about, from its kind (never guessed from
+/// its words).
+IconData notificationIcon(String? targetKind) => switch (targetKind) {
+      'paper' => Icons.article_outlined,
+      'report' => Icons.description_outlined,
+      'project' || 'project_chat' || 'project_synthesis' => Icons.folder_outlined,
+      'community' => Icons.groups_outlined,
+      'forum_post' => Icons.forum_outlined,
+      'gap' ||
+      'gap_analysis' ||
+      'gap_direction' ||
+      'gap_closure_check' =>
+        Icons.lightbulb_outline,
+      'submission' => Icons.upload_file,
+      'review_request' || 'paper_review' => Icons.rate_review_outlined,
+      'academic_profile' => Icons.person_outline,
+      'keyword' || 'tag' || 'topic' => Icons.tag,
+      'payment_order' => Icons.receipt_long_outlined,
+      _ => Icons.notifications_outlined,
+    };
+
+class _NotificationRow extends StatelessWidget {
+  const _NotificationRow({required this.item, required this.onTap});
 
   final AppNotification item;
   final VoidCallback onTap;
@@ -166,183 +234,84 @@ class _NotificationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final lumi = context.lumi;
-    final accent = _notificationColor(item, lumi);
+    final kind = notificationKindLabel(item.targetKind);
+    final meta = [
+      if (kind != null) context.t(kind),
+      _relativeTime(context, item.createdAt),
+    ].join(' · ');
 
-    return Material(
-      color: lumi.surface,
-      borderRadius: BorderRadius.circular(8),
+    return Semantics(
+      // Unread is said, not only shown as a dot.
+      label: item.isRead ? null : context.t('Unread'),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: item.isRead ? lumi.line : accent,
-            ),
-          ),
-          child: Stack(
+        child: Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(16, 14, 16, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: 4,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: item.isRead ? Colors.transparent : accent,
-                    borderRadius: const BorderRadius.horizontal(
-                      left: Radius.circular(8),
-                    ),
-                  ),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: item.isRead ? lumi.surfaceMuted : lumi.primarySoft,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  notificationIcon(item.targetKind),
+                  size: 20,
+                  color: item.isRead ? lumi.foregroundSecondary : lumi.primary,
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: lumi.surfaceMuted,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        _notificationIcon(item),
-                        color: accent,
-                        size: 21,
+                    Text(
+                      item.title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight:
+                            item.isRead ? FontWeight.w500 : FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  item.title,
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    fontWeight: item.isRead
-                                        ? FontWeight.w500
-                                        : FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              if (!item.isRead) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  margin: const EdgeInsets.only(top: 5),
-                                  decoration: BoxDecoration(
-                                    color: accent,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            item.message,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: lumi.foregroundSecondary,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _NotificationPill(
-                                label: context.t(_notificationTypeLabel(item)),
-                                color: accent,
-                              ),
-                              _NotificationPill(
-                                label: _relativeTime(context, item.createdAt),
-                                color: lumi.muted,
-                                muted: true,
-                              ),
-                            ],
-                          ),
-                        ],
+                    if (item.message.trim().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        item.message,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: lumi.foregroundSecondary),
                       ),
+                    ],
+                    const SizedBox(height: 4),
+                    Text(
+                      meta,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: lumi.foregroundSecondary),
                     ),
                   ],
                 ),
               ),
+              if (!item.isRead) ...[
+                const SizedBox(width: 8),
+                Container(
+                  width: 10,
+                  height: 10,
+                  margin: const EdgeInsets.only(top: 6),
+                  decoration: BoxDecoration(
+                    color: lumi.primary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
   }
-}
-
-class _NotificationPill extends StatelessWidget {
-  const _NotificationPill({
-    required this.label,
-    required this.color,
-    this.muted = false,
-  });
-
-  final String label;
-  final Color color;
-  final bool muted;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final lumi = context.lumi;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: lumi.surfaceMuted,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelMedium?.copyWith(
-          color: muted ? lumi.foregroundSecondary : color,
-        ),
-      ),
-    );
-  }
-}
-
-Color _notificationColor(AppNotification item, LumiColors lumi) {
-  final value = '${item.type ?? ''} ${item.targetKind ?? ''} ${item.title}'
-      .toLowerCase();
-  if (value.contains('approve') || value.contains('level')) return lumi.success;
-  if (value.contains('pending')) return lumi.warning;
-  if (value.contains('report')) return lumi.foregroundSecondary;
-  return lumi.primary;
-}
-
-IconData _notificationIcon(AppNotification item) {
-  final value = '${item.type ?? ''} ${item.targetKind ?? ''} ${item.title}'
-      .toLowerCase();
-  if (value.contains('project') || value.contains('team')) {
-    return Icons.forum_outlined;
-  }
-  if (value.contains('approve')) return Icons.verified_outlined;
-  if (value.contains('pending')) return Icons.hourglass_top_outlined;
-  if (value.contains('level')) return Icons.workspace_premium_outlined;
-  if (value.contains('report')) return Icons.summarize_outlined;
-  return Icons.notifications_outlined;
-}
-
-String _notificationTypeLabel(AppNotification item) {
-  if (item.targetKind?.isNotEmpty == true) return item.targetKind!;
-  if (item.type?.isNotEmpty == true) return item.type!;
-  return item.isRead ? tk('Read') : tk('New');
 }
 
 String _relativeTime(BuildContext context, String value) {

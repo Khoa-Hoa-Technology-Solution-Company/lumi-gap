@@ -46,7 +46,6 @@ class ConfirmDialog extends StatelessWidget {
     return AlertDialog(
       title: Text(title),
       content: Text(message),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),

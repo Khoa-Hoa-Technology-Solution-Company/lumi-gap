@@ -13,6 +13,7 @@ import { compilerEndpoint, processCompilation } from "../manuscript-compiler.js"
 import { compileSchema } from "../dto/manuscript.schema.js";
 import { sourceState } from "../manuscript-source.js";
 import { zipSync, strToU8 } from "fflate";
+import { MANUSCRIPT_TEMPLATE_REGISTRY } from "@trend/shared-types";
 
 const auth = vi.hoisted(() => ({ sub: "" }));
 vi.mock("../../../common/middleware/auth.js", () => ({ requireAuth: (req: any, _res: any, next: () => void) => { req.user = { sub: auth.sub }; next(); } }));
@@ -139,7 +140,7 @@ describe.skipIf(!isolated).sequential("real manuscript compilation (disposable D
     console.info("Larger fixture: source bytes=%d, PDF bytes=%d, elapsed=%dms", Object.values(files).reduce((sum, bytes) => sum + bytes.length, 0), result.pdfData!.length, Math.round(performance.now() - started));
   });
   it.each(["BLANK", "IEEE_CONFERENCE", "PRESENTATION", "THESIS", "ELSEVIER", "SPRINGER", "APS"] as const)("creates and compiles the actual %s template", async template => {
-    const draft = await writing.create(project, owner, { title: "Nghiên cứu của nhóm", documentType: "RESEARCH_PAPER", template, description: "", clientKey: crypto.randomUUID() });
+    const draft = await writing.create(project, owner, { title: "Nghiên cứu của nhóm", documentType: MANUSCRIPT_TEMPLATE_REGISTRY[template].documentType, template, description: "", clientKey: crypto.randomUUID() });
     const sealed = await writing.snapshot(project, owner, draft.id, { label: "Template baseline", clientKey: crypto.randomUUID(), minimumSequences: {} });
     const job = await writing.compile(project, owner, draft.id, sealed.id, "pdflatex");
     const result = await complete(job.id); expect(result.status, result.diagnostics).toBe("SUCCESS");

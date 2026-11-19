@@ -105,6 +105,62 @@ class ApiRoutes {
   static String projectsTeamChatMessage(String id, String messageId) =>
       '/projects/$id/team-chat/$messageId';
 
+  // Project invitations (projects/project.routes.ts)
+  static const String projectInvitationsMine = '/projects/invitations/mine';
+  static String projectInvitationRespond(
+    String projectId,
+    String invitationId, {
+    required bool accept,
+  }) =>
+      '/projects/${Uri.encodeComponent(projectId)}/invitations/'
+      '${Uri.encodeComponent(invitationId)}/${accept ? 'accept' : 'decline'}';
+  static String projectInvitationToken(String token) =>
+      '/projects/invitation-tokens/${Uri.encodeComponent(token)}';
+  static String projectInvitationTokenRespond(String token, {required bool accept}) =>
+      '${projectInvitationToken(token)}/${accept ? 'accept' : 'decline'}';
+
+  // Review requests (reviews/review.routes.ts)
+  static const String reviewRequests = '/review-requests';
+  static String reviewRequest(String id) =>
+      '/review-requests/${Uri.encodeComponent(id)}';
+  static String reviewRequestAction(String id, String action) =>
+      '${reviewRequest(id)}/$action';
+
+  // Academic profile
+  static const String academicProfileMe = '/academic-profiles/me';
+  static const String academicVerificationStatus =
+      '/academic-profiles/me/verification-status';
+
+  // Forum (forum/forum.routes.ts)
+  static const String forumPosts = '/forum/posts';
+  static const String forumCategories = '/forum/categories';
+  static String forumPost(String idOrSlug) =>
+      '/forum/posts/${Uri.encodeComponent(idOrSlug)}';
+  static String forumComments(String postId) => '${forumPost(postId)}/comments';
+  static String forumComment(String id) =>
+      '/forum/comments/${Uri.encodeComponent(id)}';
+  static const String forumReports = '/forum/reports';
+  static String forumAcceptedAnswer(String postId, [String? commentId]) =>
+      '${forumPost(postId)}/accepted-answer'
+      '${commentId == null ? '' : '/${Uri.encodeComponent(commentId)}'}';
+  static String forumNotificationLevel(String postId) =>
+      '${forumPost(postId)}/notifications';
+  static String forumReactions({required bool comment, required String id}) =>
+      comment
+          ? '/forum/comments/${Uri.encodeComponent(id)}/reactions'
+          : '${forumPost(id)}/reactions';
+
+  // Research communities (communities/community.routes.ts)
+  static const String communities = '/communities';
+  static String community(String idOrSlug) =>
+      '/communities/${Uri.encodeComponent(idOrSlug)}';
+  static String communityJoin(String id) => '${community(id)}/join';
+  static String communityMembership(String id) => '${community(id)}/membership';
+  static String communityPublicMembers(String id) => '${community(id)}/members/public';
+  static String communityRelatedPapers(String id) => '${community(id)}/related-papers';
+  static String communityRelatedGaps(String id) => '${community(id)}/related-gaps';
+  static String communitySummary(String id) => '${community(id)}/summary';
+
   // Admin
   static const String adminSync = '/admin/sync';
   static const String adminSyncRuns = '/admin/sync/runs';

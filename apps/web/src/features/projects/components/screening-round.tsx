@@ -6,13 +6,12 @@ import { ScreeningTaskGuard } from "./screening-task-feedback";
 import { RoundHistory, ReviewVersionHistory } from "./screening-round-history";
 export { RoundHistory } from "./screening-round-history";
 import { ScreeningCaseStatus } from "./screening-case-status";
-import { ScreeningConflictResolution } from "./screening-conflict-resolution";
-import { ScreeningAgreementPanel } from "./screening-agreement";
+import { ScreeningConflictResolution, ScreeningDiscussionCountdown } from "./screening-conflict-resolution";
 import { ScreeningPacketPreview } from "./screening-adjudication";
 import { LibraryAssessment } from "./library-assessment";
 import { LegacyScreeningRepair } from "./screening-legacy-repair";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Sparkles, RotateCcw, FileText, ExternalLink, Globe, Copy, Check, Quote, Tag, CheckCircle2, Bookmark, BookOpen, Info, Users, AlertTriangle, Edit3 } from "lucide-react";
+import { Sparkles, FileText, ExternalLink, Globe, Copy, Check, Quote, Tag, HelpCircle, CheckCircle2, XCircle, Bookmark, BookOpen, Info, Users, AlertTriangle, Edit3, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import type { ScreeningChoice, ScreeningPaperRow, ScreeningRoundView, ScreeningSettings, WorkspacePerson } from "@trend/shared-types";
 import { AssessmentContextFields, initialAssessmentContext, ReviewContextSummary } from "./assessment-context";
@@ -263,28 +262,6 @@ export function ScreeningPaperDetail({ projectId, paper, people, readOnly, colla
             </p>
           </div>
         </div>
-
-        {/* AI PAPER INSIGHT PANEL: Vấn đề, Phương pháp, Kết quả, Hạn chế, Mức độ liên quan RQ & Minh chứng */}
-        <details className="paper-secondary-meta-details" open>
-          <summary className="paper-secondary-meta-summary">
-            <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-              <Sparkles size={13} className="shrink-0 text-primary" />
-              <span>AI Paper Insight · Vấn đề, Phương pháp, Kết quả, Hạn chế & Minh chứng</span>
-              <span className="paper-meta-summary-pill">
-                {paper.fullTextAvailable ? "Có toàn văn" : "Chỉ từ tóm tắt (Abstract-only)"}
-              </span>
-            </div>
-            <span className="text-[11px] text-muted-foreground/80">Ẩn/Hiện ▾</span>
-          </summary>
-          <div className="paper-secondary-meta-body pt-3">
-            <ProjectPaperAnalysis
-              projectId={projectId}
-              paperId={paper.paperId}
-              readOnly={readOnly}
-              paper={paper}
-            />
-          </div>
-        </details>
 
         {/* THU GỌN: Chỉ số trích dẫn, Loại bài, Quyền truy cập & Keywords */}
         {(Boolean(paper.keywords?.length) || Boolean(paper.tags?.length) || typeof paper.citationCount === "number" || paper.paperKind || paper.importSource) && (
@@ -604,8 +581,11 @@ function RoundContentInner({ projectId, initial, paper, people, readOnly: projec
       <div className="screening-resolution-round" data-screening-section="discussion">
         {legacyNotice}
         <div className="screening-resolution-round-heading">
-          <h4>Vòng {round.number} · {round.phase === "FULL_TEXT" ? "Toàn văn" : "Tiêu đề và tóm tắt"}</h4>
-          <ScreeningStatus status={round.status} round={round} />
+          <h4>{roundHeaderLabel}</h4>
+          <div className="screening-resolution-round-status flex flex-wrap items-center justify-end gap-1.5">
+            <ScreeningDiscussionCountdown round={round} />
+            <ScreeningStatus status={round.status} round={round} />
+          </div>
         </div>
         {data.isError && <ScreeningError error={data.error} retry={() => void data.refetch()} />}
         <ScreeningConflictResolution
@@ -763,7 +743,6 @@ function RoundContentInner({ projectId, initial, paper, people, readOnly: projec
       {round.finalDecision && Boolean(round.consensus?.confirmations.length) && <details className="rounded-lg border p-3 text-sm"><summary className="cursor-pointer font-medium">Xác nhận cuối cùng của hai reviewer</summary>{round.assignments.filter(a => a.completed).map(a => { const final = round.consensus!.confirmations.find(v => v.reviewerId === a.reviewerId); return <div key={a.id} className="mt-3 min-w-0"><strong>{a.name}{a.id === round.myAssignmentId ? " (Bạn)" : ""}</strong><p>{final ? choiceLabels[final.decision] : "Chưa xác nhận trong thời hạn"}</p>{final && <><p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{final.reason}</p><time className="text-xs text-muted-foreground" dateTime={final.confirmedAt}>{new Date(final.confirmedAt).toLocaleString("vi-VN")}</time></>}</div>; })}</details>}
       {round.finalDecision && <div className="screening-notice"><h4>Kết quả của vòng: {round.resolutionType === "CONSENSUS_NOT_REACHED" ? "Không đạt đồng thuận" : round.finalDecision.decision === "INCLUDED" && round.extractionReady === false ? "Qua sàng lọc · Chờ đọc toàn văn" : round.finalDecision.decision === "INCLUDED" ? "Đã chấp nhận" : legacyLabel(round.finalDecision.decision)}</h4><p>{round.resolutionType === "CONSENSUS_NOT_REACHED" ? "Không đạt đồng thuận trong thời hạn" : round.finalDecision.source === "CONSENSUS" ? "Đồng thuận của tất cả reviewer theo quy trình đã lưu" : `Chốt bởi ${people.find(p => p.id === round.finalDecision?.resolverId)?.name ?? round.finalDecision.resolverId ?? "Không có thông tin"}`} · phiên bản {round.finalDecision.version} · {new Date(round.finalDecision.createdAt).toLocaleString("vi-VN")}</p><p>{round.finalDecision.reason}</p></div>}
       {!round.legacyNeedsAudit && (round.canManage || round.canFinalize || round.canDefer || hadManagementAccess) && <OwnerActions projectId={projectId} round={round} people={people} readOnly={readOnly} />}
-      <ScreeningAgreementPanel projectId={projectId} round={round} readOnly={readOnly} />
       <RoundHistory projectId={projectId} round={round} people={people} readOnly={readOnly} />
     </>
   );

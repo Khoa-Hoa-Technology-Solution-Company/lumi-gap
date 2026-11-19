@@ -93,7 +93,7 @@ describe.skipIf(!isolated).sequential("project settings through real HTTP, Postg
     await once(socket, "open");
     const state = new Promise<Record<string, unknown>>(resolve => { socket.on("message", raw => { const frame = JSON.parse(raw.toString()); if (frame.type === "state") resolve(frame); }); });
     socket.send(JSON.stringify({ type: "hello", ticket, clientId: 4501 })); expect((await state).canWrite).toBe(true);
-    expect((await call(`/${projectId}`, owner, "DELETE")).status).toBe(409);
+    expect((await call(`/${projectId}/permanent`, owner, "DELETE")).status).toBe(409);
     expect((await call(`/${projectId}/archive`, owner, "POST")).status).toBe(200);
     const rejected = new Promise<Record<string, unknown>>(resolve => { socket.on("message", raw => { const frame = JSON.parse(raw.toString()); if (frame.type === "error") resolve(frame); }); });
     socket.send(JSON.stringify({ type: "update", clientSessionId: crypto.randomUUID(), clientSequence: 1, update: "AAA=" }));
@@ -108,7 +108,10 @@ describe.skipIf(!isolated).sequential("project settings through real HTTP, Postg
     expect((await read()).mentorshipDiscovery).toBe("CLOSED");
     expect((await manuscriptService.detail(projectId, owner.userId, manuscript.id)).canWrite).toBe(true);
     const empty = await call("", owner, "POST", { title: "Empty project", idempotencyKey: crypto.randomUUID() });
-    expect((await call(`/${empty.json.data._id}`, owner, "DELETE")).status).toBe(200);
+    const trashed = await call(`/${empty.json.data._id}`, owner, "DELETE");
+    expect(trashed.status).toBe(200);
+    expect(trashed.json.data.softDeleted).toBe(true);
+    expect((await call(`/${empty.json.data._id}/restore`, owner, "POST")).status).toBe(200);
   });
   it("persists actual form saves and remains usable at desktop, tablet and mobile widths", async () => {
     browser = await chromium.launch({ headless: true });

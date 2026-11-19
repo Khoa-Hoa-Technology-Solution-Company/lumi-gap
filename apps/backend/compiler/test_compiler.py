@@ -23,6 +23,14 @@ def source(path, text):
 
 
 class CompilerTests(unittest.TestCase):
+    def test_revtex_bibliography_reads_generated_notes_in_build_directory(self):
+        result = compiler.compile_source({"mainFile": "main.tex", "files": [
+            source("main.tex", "\\documentclass[aps,prl,reprint]{revtex4-2}\n\\begin{document}\n\\title{Bibliography regression}\n\\author{Test Fixture}\n\\noaffiliation\n\\maketitle\nA synthetic citation~\\cite{fixture}.\\bibliographystyle{apsrev4-2}\\bibliography{references}\n\\end{document}"),
+            source("references.bib", "@misc{fixture,author={Test Fixture},title={Synthetic bibliography check},year={2026}}"),
+        ]})
+        self.assertTrue(result["success"], result["diagnostics"])
+        self.assertNotIn("undefined citations", result["diagnostics"])
+
     def test_synctex_roundtrip_across_included_file(self):
         result = compiler.compile_source({"mainFile": "main.tex", "files": [
             source("main.tex", "\\documentclass{article}\n\\begin{document}\n\\input{sections/intro}\n\\end{document}"),

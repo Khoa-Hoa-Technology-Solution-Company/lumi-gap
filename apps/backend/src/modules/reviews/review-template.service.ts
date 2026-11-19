@@ -9,6 +9,7 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { auditService } from "../audit/audit.service.js";
+import type { Prisma } from "../../generated/prisma/client.js";
 import { nextTemplateVersionNumber } from "./academic-review.rules.js";
 
 function whereId(value: string): { id?: string; legacyMongoId?: string } {
@@ -91,8 +92,7 @@ async function hydrateTemplate(template: Awaited<ReturnType<typeof getPrisma>>["
   };
 }
 
-async function replaceCriteria(versionId: string, templateId: string, input: ReviewTemplateVersionInput) {
-  const prisma = getPrisma();
+async function replaceCriteria(prisma: Prisma.TransactionClient, versionId: string, templateId: string, input: ReviewTemplateVersionInput) {
   await prisma.reviewCriterion.deleteMany({ where: { versionId } });
   for (const [index, item] of input.criteria.entries()) {
     const criterion = await prisma.reviewCriterion.create({
@@ -170,9 +170,9 @@ export const reviewTemplateService = {
         status, createdById: actor.id, publishedAt: input.publish ? new Date() : undefined,
       } });
       await tx.reviewTemplate.update({ where: { id: template.id }, data: { activeVersionId: version.id } });
+      await replaceCriteria(tx, version.id, template.id, input);
       return { template, version };
     });
-    await replaceCriteria(created.version.id, created.template.id, input);
     await auditService.log("TEMPLATE_CREATED", {
       userId: actor.id, targetTableName: "review_templates", targetRecordId: created.template.id,
       details: { source: input.source, reviewMode: input.reviewMode, version: 1 },
@@ -187,32 +187,36 @@ export const reviewTemplateService = {
   async saveVersion(templateInput: string, input: ReviewTemplateVersionInput, actorInput: string, systemRole: SystemRole) {
     const actor = await resolveUser(actorInput);
     const template = await assertManage(templateInput, actor.id, systemRole);
-    const versions = await getPrisma().reviewTemplateVersion.findMany({ where: { templateId: template.id }, orderBy: { versionNumber: "desc" } });
-    let draft = versions.find((item) => item.status === "DRAFT");
-    if (!draft) draft = await getPrisma().reviewTemplateVersion.create({ data: {
-      templateId: template.id, versionNumber: nextTemplateVersionNumber(versions),
-      reviewMode: input.reviewMode, description: clean(input.description), guidelines: input.guidelines,
-      status: "DRAFT", createdById: actor.id,
-    } });
-    else draft = await getPrisma().reviewTemplateVersion.update({ where: { id: draft.id }, data: {
-      reviewMode: input.reviewMode, description: clean(input.description), guidelines: input.guidelines,
-    } });
-    await replaceCriteria(draft.id, template.id, input);
-    await getPrisma().reviewTemplate.update({ where: { id: template.id }, data: { status: "DRAFT", description: clean(input.description) } });
-    return hydrateVersion(draft.id);
+    const versionId = await getPrisma().$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM review_templates WHERE id = ${template.id}::uuid FOR UPDATE`;
+      const live = await tx.reviewTemplate.findUniqueOrThrow({ where: { id: template.id } });
+      if (!live.active) throw AppError.conflict("Archived templates are read-only");
+      const versions = await tx.reviewTemplateVersion.findMany({ where: { templateId: template.id }, orderBy: { versionNumber: "desc" } });
+      let draft = versions.find(item => item.status === "DRAFT");
+      if (!draft) draft = await tx.reviewTemplateVersion.create({ data: { templateId: template.id, versionNumber: nextTemplateVersionNumber(versions), reviewMode: input.reviewMode, description: clean(input.description), guidelines: input.guidelines, status: "DRAFT", createdById: actor.id } });
+      else draft = await tx.reviewTemplateVersion.update({ where: { id: draft.id }, data: { reviewMode: input.reviewMode, description: clean(input.description), guidelines: input.guidelines } });
+      await replaceCriteria(tx, draft.id, template.id, input);
+      const active = live.activeVersionId ? await tx.reviewTemplateVersion.findUnique({where:{id:live.activeVersionId}}) : null;
+      await tx.reviewTemplate.update({ where: { id: template.id }, data: { status: active?.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT" } });
+      return draft.id;
+    });
+    return hydrateVersion(versionId);
   },
 
   async publish(templateInput: string, actorInput: string, systemRole: SystemRole) {
     const actor = await resolveUser(actorInput);
     const template = await assertManage(templateInput, actor.id, systemRole);
-    const draft = await getPrisma().reviewTemplateVersion.findFirst({ where: { templateId: template.id, status: "DRAFT" }, orderBy: { versionNumber: "desc" } });
-    if (!draft) throw AppError.conflict("This template has no draft version to publish");
-    const criteriaCount = await getPrisma().reviewCriterion.count({ where: { versionId: draft.id } });
-    if (!criteriaCount) throw AppError.badRequest("A template requires at least one criterion");
-    await getPrisma().$transaction([
-      getPrisma().reviewTemplateVersion.update({ where: { id: draft.id }, data: { status: "PUBLISHED", publishedAt: new Date() } }),
-      getPrisma().reviewTemplate.update({ where: { id: template.id }, data: { status: "PUBLISHED", activeVersionId: draft.id, version: draft.versionNumber } }),
-    ]);
+    const draft = await getPrisma().$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM review_templates WHERE id = ${template.id}::uuid FOR UPDATE`;
+      const live = await tx.reviewTemplate.findUniqueOrThrow({where:{id:template.id}});
+      if (!live.active) throw AppError.conflict("Archived templates are read-only");
+      const draft = await tx.reviewTemplateVersion.findFirst({where:{templateId:template.id,status:"DRAFT"},orderBy:{versionNumber:"desc"}});
+      if (!draft) throw AppError.conflict("This template has no draft version to publish");
+      if (!await tx.reviewCriterion.count({where:{versionId:draft.id}})) throw AppError.badRequest("A template requires at least one criterion");
+      await tx.reviewTemplateVersion.update({where:{id:draft.id},data:{status:"PUBLISHED",publishedAt:new Date()}});
+      await tx.reviewTemplate.update({where:{id:template.id},data:{status:"PUBLISHED",activeVersionId:draft.id,version:draft.versionNumber,description:draft.description}});
+      return draft;
+    });
     await auditService.log("TEMPLATE_VERSION_PUBLISHED", { userId: actor.id, targetTableName: "review_template_versions", targetRecordId: draft.id, details: { templateId: template.id, version: draft.versionNumber } });
     return hydrateTemplate(await getPrisma().reviewTemplate.findUniqueOrThrow({ where: { id: template.id } }));
   },

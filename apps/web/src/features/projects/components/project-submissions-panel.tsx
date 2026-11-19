@@ -21,7 +21,7 @@ export function ProjectSubmissionsPanel({ projectId, projectTitle, readOnly }: {
   const backPath = projectSubmissionPath(projectId);
   if (selected === "new" && readOnly) return <div className="space-y-4" data-no-i18n><p>{t("Archived projects are read-only.")}</p><Button asChild variant="outline"><Link to={backPath}>{t("Back to submissions")}</Link></Button></div>;
   return <div className="project-submission-flow min-w-0"><Suspense fallback={loading}>
-    {selected === "new" ? <SubmissionNew key={projectId} projectId={projectId} projectTitle={projectTitle} />
+    {selected === "new" ? <><SubmissionList projectId={projectId} readOnly={readOnly} /><SubmissionNew key={projectId} projectId={projectId} projectTitle={projectTitle} /></>
       : selected ? <SubmissionDetail key={`${projectId}:${selected}`} submissionId={selected} projectId={projectId} readOnly={readOnly} />
       : <SubmissionList projectId={projectId} readOnly={readOnly} />}
   </Suspense></div>;

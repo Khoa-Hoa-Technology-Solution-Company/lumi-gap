@@ -6,7 +6,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AcademicSupportPage, MentorProjectPanel, ConsentComposer } from '../academic-support';
 import { MentorAccessWorkspace } from '@/features/projects/components/mentor-access-workspace';
-const mocks=vi.hoisted(()=>({mine:vi.fn(),preferences:vi.fn(),savePreferences:vi.fn(),opportunities:vi.fn(),respond:vi.fn(),offer:vi.fn(),draft:vi.fn(),saveDraft:vi.fn(),projects:vi.fn(),workspace:vi.fn(),list:vi.fn(),mentors:vi.fn(),guidance:vi.fn(),settings:vi.fn(),request:vi.fn(),requestDetail:vi.fn(),mentorEvidence:vi.fn()}));
+const mocks=vi.hoisted(()=>({mine:vi.fn(),preferences:vi.fn(),savePreferences:vi.fn(),opportunities:vi.fn(),respond:vi.fn(),requestInfo:vi.fn(),offer:vi.fn(),draft:vi.fn(),saveDraft:vi.fn(),projects:vi.fn(),workspace:vi.fn(),list:vi.fn(),mentors:vi.fn(),guidance:vi.fn(),settings:vi.fn(),saveSettings:vi.fn(),request:vi.fn(),requestDetail:vi.fn(),previewDossier:vi.fn(),suggestions:vi.fn(),suggest:vi.fn(),dismissSuggestion:vi.fn(),plan:vi.fn(),changePlan:vi.fn(),mentorEvidence:vi.fn()}));
 const accessMocks=vi.hoisted(()=>({workspace:vi.fn(),feedback:vi.fn(),history:vi.fn(),agreements:vi.fn(),comment:vi.fn()}));
 vi.mock('@/features/projects/api/mentor-access.api',()=>({mentorAccessApi:accessMocks}));
 const applications=vi.hoisted(()=>({apply:vi.fn(),mine:vi.fn(),list:vi.fn(),detail:vi.fn(),action:vi.fn(),note:vi.fn()}));
@@ -28,20 +28,34 @@ const invitation={kind:'REQUEST',id:'request',projectId:'project',project,mentor
 let host:HTMLDivElement,root:Root,client:QueryClient;
 async function tick(){await act(async()=>{await new Promise(r=>setTimeout(r,30));});}
 function LocationProbe(){return <output data-testid="current-location">{useLocation().pathname}</output>;}
-async function mount(url='/academic-support?view=incoming'){await act(async()=>root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[url]}><AcademicSupportPage/><LocationProbe/></MemoryRouter></QueryClientProvider>));await tick();await tick();}
+async function mount(url='/academic-support?view=incoming', embedded=false){await act(async()=>root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[url]}><AcademicSupportPage embedded={embedded}/><LocationProbe/></MemoryRouter></QueryClientProvider>));await tick();await tick();}
 function button(label:string){return [...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.startsWith(label))!;}
 async function click(label:string){await act(async()=>button(label).click());await tick();}
-beforeEach(()=>{vi.resetAllMocks();vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);state.role='LECTURER';
+beforeEach(()=>{vi.resetAllMocks();sessionStorage.clear();vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);state.role='LECTURER';
 applications.apply.mockResolvedValue({id:'application'});applications.mine.mockResolvedValue({items:[],meta:{page:1,pageSize:10,total:0,totalPages:0}});applications.list.mockResolvedValue({items:[],meta:{page:1,pageSize:10,total:0,totalPages:0}});
 accessMocks.workspace.mockResolvedValue({viewerId:'mentor',projectId:'project',title:project.title,canManage:false,readOnly:false,policies:[],page:1,pageSize:20,total:0,hasNext:false});
 for (const method of ['feedback','history','agreements'] as const) accessMocks[method].mockResolvedValue({items:[],total:0,page:1,pageSize:20,hasNext:false});
 mocks.preferences.mockResolvedValue({canEnable:true,acceptingMentorships:true,emailEnabled:false,locale:'en'});
 mocks.mine.mockImplementation(async({view}:any)=>({requests:view==='incoming'?[invitation]:[],relationships:[],counts:{incoming:1,active:0,pending:1},requestMeta:meta,relationshipMeta:meta}));
-mocks.opportunities.mockResolvedValue({items:[project],meta});mocks.respond.mockResolvedValue({});mocks.offer.mockResolvedValue({});mocks.projects.mockResolvedValue([]);
+mocks.opportunities.mockResolvedValue({items:[project],meta});mocks.respond.mockResolvedValue({});mocks.requestInfo.mockResolvedValue({});mocks.offer.mockResolvedValue({});mocks.projects.mockResolvedValue([]);
 mocks.requestDetail.mockResolvedValue(invitation);
+mocks.suggestions.mockResolvedValue({items:[],meta:{page:1,pageSize:10,total:0,totalPages:0},counts:{pending:0,total:0,mine:0,minePending:0}});
+mocks.suggest.mockResolvedValue({id:'suggestion-1'});
+mocks.dismissSuggestion.mockResolvedValue({id:'suggestion-1'});
+mocks.plan.mockResolvedValue({version:1,parallelInvitations:false,autoSend:false,currentMentors:[],currentInvitations:[],closedRoles:[],canManage:false,positions:{PRIMARY:{status:'VACANT',pendingRequests:0},SECONDARY:{status:'LOCKED',pendingRequests:0}},candidates:[]});
+mocks.changePlan.mockResolvedValue({});
 mocks.draft.mockResolvedValue({message:'I can help with experiments',mentorRole:'PRIMARY',attachments:[],version:1});mocks.saveDraft.mockImplementation(async(_p:any,_d:any,input:any)=>({...input,attachments:[],version:2}));
 client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});host=document.createElement('div');document.body.append(host);root=createRoot(host);});
 afterEach(async()=>{await act(async()=>root.unmount());client.clear();host.remove();vi.unstubAllGlobals();});
+it('reuses real invitation queries and tabs within the mentor workspace',async()=>{
+  await mount('/mentor-workspace?view=incoming',true);
+  expect(host.querySelector('.mentor-embedded-support')).not.toBeNull();
+  expect(host.textContent).toContain('Please guide our research');
+  expect(mocks.mine).toHaveBeenCalledWith(expect.objectContaining({view:'incoming'}));
+  await click('Find teams to mentor');
+  expect(host.querySelector('[data-testid="current-location"]')?.textContent).toBe('/mentor-workspace');
+  expect(mocks.opportunities).toHaveBeenCalled();
+});
 async function mountMentorFinder(total = 13) {
   mocks.workspace.mockResolvedValue({project:{...project,discovery:'CLOSED'},accessRole:'TEAM',canManage:false,canProvideFeedback:true,guidance:[]});
   mocks.list.mockResolvedValue({relationships:[],requests:[],counts:{active:0,pending:0},policy:{maxActiveMentors:2,maxPendingRequests:3},requestMeta:meta,relationshipMeta:meta});
@@ -104,26 +118,25 @@ it('shows the approved abstract before opening any dialog, and repeats the topic
   expect(mocks.projects).not.toHaveBeenCalled();
   expect(mocks.workspace).not.toHaveBeenCalled();
 });
-it('lets the lecturer review an invitation then accept through a separate explicit confirmation',async()=>{
-  await mount(); await click('View Project Preview');
+it('lets the recipient review the same snapshot and explicitly accept from the viewer',async()=>{
+  await mount(); await click('Review Invitation Dossier');
   const preview=document.querySelector('[role="dialog"]')!;
-  expect(preview.textContent).toContain('Research mentorship invitation');
+  expect(preview.textContent).toContain('supervisor.receivedTitle');
   expect(preview.textContent).toContain(project.summary);
-  expect(preview.textContent).toContain('Invited role');
-  await act(async()=>{[...preview.querySelectorAll('button')].find(b=>b.textContent==='Accept mentorship')!.click();});await tick();
   expect(mocks.respond).not.toHaveBeenCalled();
-  expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
-  await click('Confirm');expect(mocks.respond).toHaveBeenCalledWith(expect.objectContaining({id:'request'}),'accept','');
+  await click('supervisor.accept'); expect(mocks.respond).toHaveBeenCalledWith(expect.objectContaining({id:'request'}),'accept','');
 });
+
 it('shows the sender the current approved abstract immediately instead of stale project data',async()=>{
   mocks.settings.mockResolvedValue({...project,summary:'Approved abstract from settings',version:1,discovery:'CLOSED'});
   mocks.list.mockResolvedValue({positions:{PRIMARY:{status:'VACANT',pendingRequests:0},SECONDARY:{status:'LOCKED',pendingRequests:0}},policy:{maxPendingPerRole:3}});
   await act(async()=>root.render(<QueryClientProvider client={client}><MemoryRouter><ConsentComposer project={{...project,discovery:'CLOSED',stage:'PLANNING',availableRoles:['PRIMARY']}} mentor={{_id:'lecturer',fullName:'Lecturer'}} onClose={()=>{}} /></MemoryRouter></QueryClientProvider>));await tick();await tick();
   const dialog=document.querySelector('[role="dialog"]')!;
-  expect(dialog.querySelector('details')?.open).toBe(true);
-  expect(dialog.textContent).toContain('Approved abstract from settings');
+  expect(dialog.querySelector('textarea')?.value).toBe('Approved abstract from settings');
+  expect(dialog.querySelector('textarea')?.value).toBe('Approved abstract from settings');
   expect(dialog.textContent).not.toContain('Shared project introduction');
-  expect(dialog.textContent).toContain('Project access starts after acceptance');
+  expect(dialog.textContent).not.toContain('supervisor.sharedInfo');
+  expect(dialog.textContent).toContain('supervisor.invite');
   expect(mocks.request).not.toHaveBeenCalled();
 });
 it('preserves the confirmation and note if accepting fails',async()=>{mocks.respond.mockRejectedValue({response:{data:{error:{message:'Position filled'}}}});await mount();await click('Accept');const note=document.querySelector<HTMLTextAreaElement>('[aria-label="Note"]')!;await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(note,'Meet weekly');note.dispatchEvent(new Event('input',{bubbles:true}));});await click('Confirm');expect(document.querySelector('[role="alert"]')?.textContent).toContain('Position filled');expect(note.value).toBe('Meet weekly');expect(document.querySelector('[role="dialog"]')).not.toBeNull();});
@@ -181,12 +194,12 @@ it('sends one application when submitted twice before React updates',async()=>{
   await act(async()=>{form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});await tick();expect(applications.apply).toHaveBeenCalledTimes(1);expect(mocks.offer).not.toHaveBeenCalled();
   await act(async()=>finish());await tick();
 });
-it('explains and blocks sending when all mentoring positions are unavailable',async()=>{
-  mocks.settings.mockResolvedValue({...project,version:1,discovery:'CLOSED'});
+it('does not require a primary or secondary vacancy before preparing an unassigned invitation',async()=>{
+  mocks.settings.mockResolvedValue({...project,version:1,discovery:'CLOSED', invitationContext:{title:project.title,researchAreas:project.researchAreas,senderDisplayName:'Student leader',memberCount:3,token:'b'.repeat(64)}});
   mocks.list.mockResolvedValue({positions:{PRIMARY:{status:'ASSIGNED',pendingRequests:0},SECONDARY:{status:'LOCKED',pendingRequests:0}},policy:{maxPendingPerRole:3}});
   await act(async()=>root.render(<QueryClientProvider client={client}><MemoryRouter><ConsentComposer project={{...project,discovery:'CLOSED',stage:'PLANNING',availableRoles:['PRIMARY']}} mentor={{_id:'lecturer',fullName:'Lecturer'}} onClose={()=>{}} /></MemoryRouter></QueryClientProvider>));await tick();await tick();
-  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('No mentoring position is available.');
-  expect(button('Send Invitation').disabled).toBe(true);expect(mocks.request).not.toHaveBeenCalled();
+  expect(document.querySelector('[role="dialog"] select')).toBeNull();
+  expect(button('Send Invitation').disabled).toBe(false);expect(mocks.request).not.toHaveBeenCalled();
 });
 it('opens an application without creating a request and submits only after confirmation',async()=>{await mount('/academic-support?view=discover');await click('Express mentoring interest');expect(applications.apply).not.toHaveBeenCalled();expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Applying does not reserve');await fillApplication();await click('Submit application');expect(applications.apply).toHaveBeenCalledWith('project',expect.objectContaining({message:'I can guide experiments and research methods',availability:'One feedback meeting every week',mentorRole:'PRIMARY',idempotencyKey:expect.any(String)}));expect(mocks.offer).not.toHaveBeenCalled();});
 it('explains disabled discovery and exposes availability settings',async()=>{mocks.preferences.mockResolvedValue({canEnable:true,acceptingMentorships:false,emailEnabled:false});await mount('/academic-support?view=discover');expect(host.textContent).toContain('Enable mentoring availability');expect(host.querySelector<HTMLDetailsElement>('#mentoring-settings')?.open).toBe(true);expect(mocks.opportunities).not.toHaveBeenCalled();});
@@ -238,6 +251,93 @@ it('keeps an unauthorized deep link closed and allows a safe retry',async()=>{
   expect(mocks.workspace).not.toHaveBeenCalled();
 });
 
+it('opens the shared direct invitation form without rewriting project discovery settings',async()=>{
+  mocks.settings.mockResolvedValue({...project,version:1,invitationDefaults:{summary:'The team compares reproducible research methods and plans a documented baseline evaluation for the study.',goal:'Benchmark robustness',keywords:['Evaluation']}});
+  mocks.list.mockResolvedValue({positions:{PRIMARY:{status:'VACANT',pendingRequests:0},SECONDARY:{status:'LOCKED',pendingRequests:0}}});
+  await act(async()=>root.render(<QueryClientProvider client={client}><MemoryRouter><ConsentComposer project={{...project,stage:'PLANNING',discovery:'CLOSED',availableRoles:['PRIMARY']}} mentor={{_id:'lecturer',fullName:'Dr. Tran'}} onClose={()=>{}} /></MemoryRouter></QueryClientProvider>));await tick();await tick();
+  const dialog=document.querySelector('[role="dialog"]')!;
+  expect(dialog.textContent).toContain('supervisor.invite');
+  expect(dialog.querySelector('textarea')?.value).toContain('reproducible research methods');
+  expect(dialog.textContent).not.toContain('Benchmark robustness');
+  expect(mocks.saveSettings).not.toHaveBeenCalled();
+  expect(mocks.request).not.toHaveBeenCalled();
+});
+
+it('renders the lecturer supervision request card with visible preview sections and Request More Info flow',async()=>{
+  const richInvitation={
+    ...invitation,
+    actions:{accept:true,decline:true,cancel:false,end:false,openProject:false,requestInfo:true},
+    dossier:{
+      version:1,
+      generatedAt:'2026-11-13T00:00:00Z',
+      project:{id:'project',title:project.title,abstract:'Shared abstract about security vulnerabilities.',abstractApproved:true,researchField:'Information Security',researchAreas:['Security'],keywords:['LLM'],stage:'PLANNING',teamMemberCount:3},
+      team:{teamMemberCount:3,representative:{_id:'leader',fullName:'Student leader',institutionName:'FPT University',programName:'Software Engineering',researchInterests:[],skills:[],expertiseAreas:[],featuredWorks:[],publicLinks:[],affiliationVerified:true,provenance:['VERIFIED_AFFILIATION']},sharedMembersCount:0,sharedMembers:[],privacyRedactedCount:2},
+      competencies:{researchMethods:[],technicalSkills:[],researchTools:[],experienceHighlights:[],integrityNotice:''},
+      whyThisLecturer:{message:'Please guide our research'},
+      expectations:{supportAreas:['RESEARCH_DIRECTION','RESEARCH_METHODOLOGY']},
+      accessPreview:{mentorRole:'PRIMARY',preset:'ADVISOR',permissionCount:1,permissions:['OVERVIEW_VIEW'],sharedResourceSummary:[],expiresAt:null,beforeAcceptNotice:'',afterAcceptNotice:''},
+    },
+  };
+  mocks.mine.mockImplementation(async({view}:any)=>({requests:view==='incoming'?[richInvitation]:[],relationships:[],counts:{incoming:1,active:0,pending:1},requestMeta:meta,relationshipMeta:meta}));
+  await mount();
+  expect(host.textContent).toContain('Lecturer Dashboard / Supervision Requests');
+  expect(host.textContent).toContain('Yêu cầu hướng dẫn mới');
+  expect(host.textContent).toContain('Thông tin giảng viên được xem');
+  expect(host.textContent).toContain('Research Abstract');
+  expect(host.textContent).toContain('Research Team');
+  expect(host.textContent).toContain('Expected Support');
+  expect(host.textContent).toContain('Quyết định của giảng viên');
+  expect(host.textContent).toContain('Request More Info');
+
+  await click('Request More Info');
+  const note=document.querySelector<HTMLTextAreaElement>('[aria-label="Note"]')!;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(note,'Please clarify your dataset and sample size.');note.dispatchEvent(new Event('input',{bubbles:true}));});
+  await click('Confirm');
+  expect(mocks.requestInfo).toHaveBeenCalledWith(expect.objectContaining({id:'request'}),'Please clarify your dataset and sample size.');
+});
+
+it('shows an unanswered hint after fourteen days while keeping the invitation pending and actionable',async()=>{
+  mocks.mine.mockResolvedValue({requests:[{...invitation,mentorRole:'UNASSIGNED',createdAt:new Date(Date.now()-15*86400000).toISOString()}],relationships:[],counts:{incoming:1,active:0,pending:1},requestMeta:meta,relationshipMeta:meta});
+  await mount(); expect(host.textContent).toContain('supervisor.unanswered'); expect(button('Accept').disabled).toBe(false);
+});
+
+const briefInvitation = {
+  ...invitation, createdAt: '2026-11-18T00:00:00Z', mentorRole: 'UNASSIGNED',
+  dossier: { version:1, presentation:'BRIEF', senderDisplayName:'Frozen representative', generatedAt:'2026-11-18T00:00:00Z',
+    project:{id:'project',title:project.title,abstract:'Frozen research summary.',abstractApproved:true,researchField:'Security',researchAreas:['Security'],keywords:[],stage:'PLANNING',teamMemberCount:3},
+    team:{teamMemberCount:3,representative:null,sharedMembersCount:0,sharedMembers:[],privacyRedactedCount:2},
+    competencies:{researchMethods:[],technicalSkills:[],researchTools:[],experienceHighlights:[],integrityNotice:''},
+    whyThisLecturer:{message:'Please guide our research'},expectations:{supportAreas:[]},accessPreview:{mentorRole:'UNASSIGNED',preset:'ADVISOR',permissionCount:1,permissions:['OVERVIEW_VIEW'],sharedResourceSummary:[],expiresAt:null,beforeAcceptNotice:'',afterAcceptNotice:''}
+  }
+};
+function provideBrief() { mocks.mine.mockResolvedValue({requests:[briefInvitation],relationships:[],counts:{incoming:1,active:0,pending:1},requestMeta:meta,relationshipMeta:meta}); mocks.requestDetail.mockResolvedValue(briefInvitation); }
+it('opens a compact invitation with the frozen summary and accepts directly once with a next-step project link',async()=>{
+  provideBrief(); await mount(); expect(host.textContent).not.toContain('Frozen research summary.');
+  await click('supervisor.viewInvitation'); expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Frozen representative');
+  expect(document.querySelector('[data-testid="invitation-summary-preview"]')?.textContent).toBe('Frozen research summary.');
+  expect(mocks.respond).not.toHaveBeenCalled();
+  let finish!:(value:unknown)=>void; mocks.respond.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+  const accept=button('supervisor.accept'); await act(async()=>{accept.click();accept.click();}); expect(mocks.respond).toHaveBeenCalledTimes(1);
+  const accepted={...briefInvitation,status:'ACCEPTED',actions:{accept:false,decline:false,cancel:false,end:false,openProject:true}};
+  mocks.requestDetail.mockResolvedValue(accepted); mocks.mine.mockResolvedValue({requests:[],relationships:[],counts:{incoming:0,active:1,pending:0},requestMeta:meta,relationshipMeta:meta}); await act(async()=>finish(accepted)); await tick();
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('supervisor.accepted');
+  expect([...document.querySelectorAll('a')].some(link=>link.textContent==='Open project' && link.getAttribute('href')?.includes('mentor-workspace'))).toBe(true);
+});
+it('refreshes a cancelled invitation before permitting consent and shows its current state',async()=>{
+  provideBrief(); mocks.requestDetail.mockResolvedValue({...briefInvitation,status:'CANCELED_BY_PROJECT',actions:{accept:false,decline:false,cancel:false,end:false,openProject:false}});
+  await mount(); await click('supervisor.viewInvitation');
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('CANCELED_BY_PROJECT');
+  expect(button('supervisor.accept')).toBeUndefined(); expect(mocks.respond).not.toHaveBeenCalled();
+});
+it('keeps the short invitation open after a failed decline and retries without requiring a reason',async()=>{
+  provideBrief(); mocks.respond.mockRejectedValueOnce(new Error('Offline')); await mount(); await click('supervisor.viewInvitation');
+  await click('Decline'); expect(mocks.respond).toHaveBeenCalledWith(expect.objectContaining({id:'request'}),'decline',''); expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  expect(document.querySelector('[role="dialog"] [role="alert"]')).not.toBeNull();
+  const declined={...briefInvitation,status:'DECLINED',actions:{accept:false,decline:false,cancel:false,end:false,openProject:false}};
+  mocks.requestDetail.mockResolvedValue(declined); mocks.respond.mockResolvedValue(declined);
+  await click('Decline'); expect(mocks.respond).toHaveBeenCalledTimes(2);
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('DECLINED');
+});
 it('filters by specialization and technology on the backend without inventing a suitability score', async () => {
   await mountMentorFinder();
   for (const [label, value] of [['Research Specializations', 'Computer Vision'], ['Technology or skill', 'PyTorch']]) {

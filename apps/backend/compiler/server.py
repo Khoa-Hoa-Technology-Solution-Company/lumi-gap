@@ -33,7 +33,9 @@ def command(root, args, deadline, log):
                    # Landlock still restricts all reads to installed resources/job.
                    "openin_any": "r" if args[0] == "/usr/bin/lualatex" else "p", "openout_any": "p", "shell_escape": "f",
                    "TEXMFOUTPUT": str(root), "TEXMFVAR": str(root / "cache"),
-                   "TEXINPUTS": ".:", "BIBINPUTS": ".:", "BSTINPUTS": ".:", "LC_ALL": "C.UTF-8"}
+                   # REVTeX generates paperNotes.bib beside paper.aux. Search
+                   # this job's fixed build directory as well as uploaded sources.
+                   "TEXINPUTS": ".:", "BIBINPUTS": ".:lumigap-build:", "BSTINPUTS": ".:", "LC_ALL": "C.UTF-8"}
     with open(log, "ab") as output:
         process = subprocess.Popen(["/usr/local/bin/tex-sandbox", str(root), *args], cwd=root,
                                    env=environment, stdin=subprocess.DEVNULL, stdout=output,

@@ -12,7 +12,7 @@ import { mentorshipContentService as service } from "./mentorship-content.servic
 export const mentorshipContentRouter = Router();
 mentorshipContentRouter.use(requireAuth, requireResearchWorkflow);
 const context = z.object({ projectId: databaseIdSchema, direction: z.enum(["PROJECT_TO_LECTURER", "LECTURER_TO_PROJECT"]) }).strict();
-const draft = context.extend({ message: z.string().trim().max(1000), mentorRole: z.enum(["PRIMARY", "SECONDARY"]), attachmentIds: z.array(z.string().uuid()).max(5), expectedVersion: z.number().int().min(0) });
+const draft = context.extend({ message: z.string().trim().max(1000), mentorRole: z.enum(["UNASSIGNED", "PRIMARY", "SECONDARY"]), attachmentIds: z.array(z.string().uuid()).max(5), expectedVersion: z.number().int().min(0) });
 const writes = createRateLimiter("projects:mentorship-content", { windowMs: 60_000, limit: 30, keyGenerator: req => req.user!.sub });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0, parts: 2 } }).single("file");
 

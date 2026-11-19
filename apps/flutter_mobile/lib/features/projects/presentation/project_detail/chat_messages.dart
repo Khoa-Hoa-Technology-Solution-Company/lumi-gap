@@ -31,7 +31,7 @@ class ProjectAiMessages extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     if (messages.isEmpty) {
       return ProjectEmptyChat(
-        icon: Icons.auto_awesome,
+        icon: Icons.summarize_outlined,
         title: context.t('No AI messages yet'),
         message: paperCount == 0
             ? context.t('Add papers before asking AI.')
@@ -59,7 +59,7 @@ class ProjectAiMessages extends ConsumerWidget {
         final name = isMe ? context.t('You') : (item.requester?.displayName ?? context.t('Member'));
         return ProjectMessageBubble(
           mine: isUser && isMe,
-          icon: isUser ? null : Icons.auto_awesome,
+          icon: isUser ? null : Icons.summarize_outlined,
           heading: isUser
               ? name
               : item.requester == null
@@ -75,7 +75,7 @@ class ProjectAiMessages extends ConsumerWidget {
                   children: [
                     if (item.creditCost != null)
                       ProjectBubbleActionPill(
-                        icon: Icons.bolt_outlined,
+                        icon: Icons.toll_outlined,
                         label: context.plural(item.creditCost!, one: '{{count}} credit', other: '{{count}} credits'),
                         subtle: true,
                       ),

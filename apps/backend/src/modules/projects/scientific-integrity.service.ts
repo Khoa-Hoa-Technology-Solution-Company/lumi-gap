@@ -14,12 +14,10 @@ import type {
   UpdateAuthorshipInput,
   ConfirmAuthorshipInput,
   CreditRole,
-  ProjectSecurityEventView,
 } from "@trend/shared-types";
 import { creditRoles } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
-import { getPrisma } from "../../infrastructure/database/prisma.js";
-import { withWorkspace, type WorkspaceContext } from "./workspace-access.js";
+import { withWorkspace } from "./workspace-access.js";
 import { researchLedgerService } from "../audit/research-ledger.service.js";
 import { sourceText } from "../workspaces/manuscript-source.js";
 import { normalizeProjectDoi } from "./project-paper-identity.js";
@@ -390,12 +388,12 @@ export const scientificIntegrityService = {
         where: { projectId: project.id, type: "MEMBER_CREDIT_UPDATED" as any },
         orderBy: { createdAt: "desc" },
       });
-      const memberCreditMap = new Map<string, { creditRoles: CreditRole[]; external?: string }>();
+      const memberCreditMap = new Map<string, { creditRoles: CreditRole[]; external?: string; updatedAt: Date }>();
       for (const act of creditActivities) {
         if (!act.entityId || memberCreditMap.has(act.entityId)) continue;
         const m = (act.metadata ?? {}) as any;
         if (Array.isArray(m.creditRoles)) {
-          memberCreditMap.set(act.entityId, { creditRoles: m.creditRoles, external: m.externalContribution });
+          memberCreditMap.set(act.entityId, { creditRoles: m.creditRoles, external: m.externalContribution, updatedAt: act.createdAt });
         }
       }
 
@@ -406,6 +404,8 @@ export const scientificIntegrityService = {
       const confirmedUserMap = new Map<string, { decision: "CONFIRM" | "DISPUTE"; note?: string; date: string }>();
       for (const act of creditConfirmations) {
         if (!act.entityId || confirmedUserMap.has(act.entityId)) continue;
+        const changedAt = memberCreditMap.get(act.entityId)?.updatedAt;
+        if (changedAt && act.createdAt < changedAt) continue;
         const m = (act.metadata ?? {}) as any;
         confirmedUserMap.set(act.entityId, {
           decision: m.decision === "DISPUTE" ? "DISPUTE" : "CONFIRM",
@@ -422,6 +422,16 @@ export const scientificIntegrityService = {
       const savedAuthorship = (latestAuthorshipAct?.metadata ?? {}) as any;
       const savedAuthorsList: Array<{ userId: string; order: number; isCorresponding: boolean; creditRoles: CreditRole[]; rationale?: string }> =
         Array.isArray(savedAuthorship.authors) ? savedAuthorship.authors : [];
+
+      // Authorship consent is distinct from acknowledging CRediT roles. Changing the
+      // registry invalidates earlier order confirmations without deleting history.
+      const authorshipConfirmations = await tx.projectActivity.findMany({where:{projectId:project.id,type:"AUTHORSHIP_CONFIRMED",...(latestAuthorshipAct ? {createdAt:{gte:latestAuthorshipAct.createdAt}} : {})},orderBy:{createdAt:"desc"}});
+      const authorConfirmationMap = new Map<string,{decision:"CONFIRM"|"DISPUTE";note?:string;date:string}>();
+      for (const activity of authorshipConfirmations) {
+        if (!activity.entityId || authorConfirmationMap.has(activity.entityId)) continue;
+        const metadata = activity.metadata as {decision?:string;note?:string};
+        authorConfirmationMap.set(activity.entityId,{decision:metadata?.decision === "CONFIRM" ? "CONFIRM" : "DISPUTE",note:metadata?.note,date:activity.createdAt.toISOString()});
+      }
 
       // Query Evidence: Completed tasks & screened papers
       const [tasksGroup, papersScreenedGroup] = await Promise.all([
@@ -485,7 +495,7 @@ export const scientificIntegrityService = {
       const authorshipItems: AuthorshipRegistryItem[] = savedAuthorsList.length > 0
         ? savedAuthorsList.map(a => {
             const user = userMap.get(a.userId);
-            const confirm = confirmedUserMap.get(a.userId);
+            const confirm = authorConfirmationMap.get(a.userId);
             return {
               userId: a.userId,
               name: user?.fullName || "Tác giả",
@@ -507,12 +517,12 @@ export const scientificIntegrityService = {
             isCorresponding: idx === 0,
             creditRoles: m.creditRoles,
             rationale: idx === 0 ? "Tác giả chính (Lead author)" : "Đồng tác giả nghiên cứu (Co-author)",
-            confirmationStatus: m.confirmationStatus,
-            confirmationNote: m.confirmationNote,
-            confirmedAt: m.confirmedAt,
+            confirmationStatus: authorConfirmationMap.get(m.userId)?.decision === "CONFIRM" ? "CONFIRMED" : authorConfirmationMap.get(m.userId)?.decision === "DISPUTE" ? "DISPUTED" : "PENDING",
+            confirmationNote: authorConfirmationMap.get(m.userId)?.note ?? null,
+            confirmedAt: authorConfirmationMap.get(m.userId)?.date ?? null,
           }));
 
-      const allConfirmed = memberCreditItems.every(m => m.confirmationStatus === "CONFIRMED");
+      const allConfirmed = memberCreditItems.filter(m=>m.role !== "ADVISOR" || savedAuthorsList.some(a=>a.userId === m.userId)).every(m => m.confirmationStatus === "CONFIRMED");
 
       // 5. Access Permissions & Provenance Audit
       const accessRoles: AccessProvenanceItem[] = allProjectPeople.map(p => {
@@ -546,9 +556,11 @@ export const scientificIntegrityService = {
       });
 
       // 6. Pre-Submission Checklist
-      const citationsReady = brokenCount === 0;
+      const citationsReady = brokenCount === 0 && mismatchedCount === 0 && unverifiedCount === 0;
       const citationsWarning = brokenCount > 0
         ? `Có ${brokenCount} trích dẫn thiếu khóa trong references.bib.`
+        : mismatchedCount > 0
+        ? `Có ${mismatchedCount} trích dẫn chưa khớp metadata cần đối chiếu.`
         : unverifiedCount > 0
         ? `Có ${unverifiedCount} nguồn chưa có DOI cần kiểm tra thủ công trước khi nộp chính thức.`
         : null;
@@ -558,17 +570,20 @@ export const scientificIntegrityService = {
         ? `Có ${unverifiedAiCount} hoạt động AI chưa được thành viên phụ trách xác nhận kiểm chứng.`
         : null;
 
-      const authorshipReady = authorshipItems.length > 0;
-      const authorshipWarning = !authorshipReady
+      const authorshipConfirmed = authorshipItems.length > 0 && authorshipItems.every(a=>a.confirmationStatus === "CONFIRMED");
+      const authorshipReady = authorshipConfirmed && allConfirmed;
+      const authorshipWarning = !authorshipItems.length
         ? "Chưa xác định danh sách tác giả dự kiến."
+        : !authorshipConfirmed
+        ? "Danh sách và thứ tự tác giả chưa được tất cả tác giả xác nhận."
         : !allConfirmed
         ? "Một số thành viên chưa xác nhận vai trò đóng góp CRediT."
         : null;
 
-      const accessReady = true;
-      const accessWarning = null;
+      const accessReady = openDisputesCount === 0;
+      const accessWarning = accessReady ? null : "Còn hồ sơ liêm chính chưa được giải quyết.";
 
-      const readyForOfficialSubmission = citationsReady && aiDeclarationsReady && authorshipReady;
+      const readyForOfficialSubmission = citationsReady && aiDeclarationsReady && authorshipReady && accessReady;
 
       return {
         projectId: project.id,

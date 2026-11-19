@@ -1,7 +1,17 @@
-import { describe, expect, it } from "vitest";
-import { buildPasswordResetContent, resolvePasswordResetOrigin } from "../auth-mail.service.js";
+import { describe, expect, it, vi } from "vitest";
+import { authMailService, buildPasswordResetContent, resolvePasswordResetOrigin } from "../auth-mail.service.js";
+
+import { env } from "../../../config/env.js";
 
 describe("password reset email content", () => {
+  it("skips disabled verification delivery before resolving a production localhost origin", async () => {
+    const original = { mode: env.EMAIL_DELIVERY_MODE, nodeEnv: env.NODE_ENV, origin: env.CORS_ORIGIN };
+    try {
+      env.EMAIL_DELIVERY_MODE = "disabled"; env.NODE_ENV = "production"; env.CORS_ORIGIN = "http://localhost:8080";
+      await expect(authMailService.sendEmailVerification("synthetic@example.test", "secret-test-token")).resolves.toBe(false);
+      expect(() => resolvePasswordResetOrigin(env.CORS_ORIGIN, env.NODE_ENV)).toThrow("must use HTTPS");
+    } finally { env.EMAIL_DELIVERY_MODE = original.mode; env.NODE_ENV = original.nodeEnv; env.CORS_ORIGIN = original.origin; vi.restoreAllMocks(); }
+  });
   it("includes the LumiGap branded reset details in HTML and plain text", () => {
     const resetUrl = "https://app.example.test/reset-password?token=single-use-token";
     const content = buildPasswordResetContent("Nguyễn Đình Thanh", resetUrl);

@@ -51,6 +51,25 @@ describe.skipIf(!enabled).sequential("automatic Screening obligation ledger", ()
   }
   async function conflict() { const f = await fixture(); await vote(f, a, "INCLUDE"); await vote(f, b, "EXCLUDE"); return f; }
 
+  it("closes an expired discussion on the first summary read with valid audit attribution and no duplicate closure", async () => {
+    const f = await conflict();
+    const ballots = await db.screeningReview.count({ where: { projectId: f.id } });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 80 * 3600000);
+    try {
+      const summary = await screening.workspaceSummary(f.id, a);
+      expect(summary.pendingDiscussions).toEqual([]);
+      expect(summary.myEvaluations).toEqual([expect.objectContaining({ roundId: f.roundId, groupStatus: "CLOSED_UNRESOLVED" })]);
+      expect(await db.screeningRound.findUniqueOrThrow({ where: { id: f.roundId } })).toMatchObject({ status: "CLOSED_UNRESOLVED" });
+      const closure = await db.screeningAudit.findFirstOrThrow({ where: { roundId: f.roundId, type: "ROUND_CLOSED_UNRESOLVED" } });
+      expect(closure).toMatchObject({ actorId: a, details: expect.objectContaining({ actorType: "SYSTEM", reason: "DEADLINE_EXPIRED" }) });
+      expect((await active(f, a)).some(t => t.actionType === "DISCUSSION" && ["TODO", "IN_PROGRESS", "BLOCKED"].includes(t.status))).toBe(false);
+      await screening.workspaceSummary(f.id, b);
+      expect(await db.screeningAudit.count({ where: { roundId: f.roundId, type: "ROUND_CLOSED_UNRESOLVED" } })).toBe(1);
+      expect(await db.screeningReview.count({ where: { projectId: f.id } })).toBe(ballots);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("claims create one TODO, opening does not change it, and submission completes only that person's obligation", async () => {
     const f = await fixture(false), clientKey = key();
     await Promise.all([1, 2].map(() => screening.claim(f.id, a, f.roundId, { clientKey })));

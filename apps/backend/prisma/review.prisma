@@ -3,6 +3,7 @@ model Submission {
   legacyMongoId          String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
   projectId              String   @map("project_id") @db.Uuid
   sourceReportId         String?  @unique @map("source_report_id") @db.Uuid
+  sourceManuscriptId     String?  @unique @map("source_manuscript_id") @db.Uuid
   createdById            String   @map("created_by_id") @db.Uuid
   title                  String   @db.VarChar(300)
   abstractText           String?  @map("abstract_text")
@@ -70,6 +71,7 @@ model SubmissionRevision {
   updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([submissionId, revisionNumber])
+  @@index([manuscriptSnapshotId])
   @@index([uploadedById])
   @@map("submission_revisions")
 }
@@ -80,6 +82,7 @@ model ReviewerAssignment {
   submissionId    String    @map("submission_id") @db.Uuid
   reviewRequestId String?   @unique @map("review_request_id") @db.Uuid
   artifactRevisionId String? @map("artifact_revision_id") @db.Uuid
+  mentorAccessId String? @map("mentor_access_id") @db.Uuid
   reviewerId      String    @map("reviewer_id") @db.Uuid
   assignedById    String    @map("assigned_by_id") @db.Uuid
   anonymousCode   String    @unique @map("anonymous_code")
@@ -94,6 +97,7 @@ model ReviewerAssignment {
 
   @@index([reviewerId, status, createdAt])
   @@index([submissionId, status])
+  @@index([mentorAccessId])
   @@map("reviewer_assignments")
 }
 
@@ -264,6 +268,9 @@ model ExternalReviewInvitation {
 }
 
 model HumanReview {
+  integrityChecks Json @default("{}") @map("integrity_checks")
+  clientKey String? @map("client_key") @db.Uuid
+  submissionHash String? @map("submission_hash") @db.Char(64)
   id                String    @id @default(uuid()) @db.Uuid
   legacyMongoId     String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
   assignmentId      String    @map("assignment_id") @db.Uuid
@@ -313,6 +320,9 @@ model ReviewResponse {
 }
 
 model ReviewRevisionItem {
+  criterionKey String? @map("criterion_key") @db.VarChar(80)
+  locator String? @db.VarChar(500)
+  quotation String?
   id          String   @id @default(uuid()) @db.Uuid
   reviewId    String   @map("review_id") @db.Uuid
   position    Int

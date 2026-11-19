@@ -1,12 +1,54 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
-import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
-import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/core/widgets/notification_bell.dart';
+import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
+import 'package:flutter_mobile/features/projects/data/invitations_api.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
+import 'package:flutter_mobile/features/projects/presentation/create_project_sheet.dart';
+import 'package:flutter_mobile/features/projects/presentation/project_invitations_section.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+enum ProjectFilter { all, mine, joined }
+
+/// Whether the signed-in user owns [project]: the server's `accessRole`
+/// first, the owner id as a fallback for payloads without it. Null when
+/// neither is known.
+bool? ownsProject(ProjectView project, String? userId) {
+  final fromRole = project.viewerIsOwner;
+  if (fromRole != null) return fromRole;
+  final owner = project.ownerId;
+  if (userId == null || owner == null || owner.isEmpty) return null;
+  return owner == userId;
+}
+
+/// "Mine" is a project the user owns; "Joined" is one they are in without
+/// owning it. Ownership comes from the API, never from a guess.
+List<ProjectView> filterProjects(
+  List<ProjectView> projects,
+  ProjectFilter filter,
+  String? userId,
+) =>
+    switch (filter) {
+      ProjectFilter.all => projects,
+      ProjectFilter.mine =>
+        projects.where((p) => ownsProject(p, userId) ?? false).toList(),
+      ProjectFilter.joined =>
+        projects.where((p) => ownsProject(p, userId) == false).toList(),
+    };
+
+/// The filters only make sense when the signed-in user is known and every
+/// project says who owns it. Otherwise only the full list is shown.
+bool canFilterProjects(List<ProjectView> projects, String? userId) =>
+    projects.every((p) => ownsProject(p, userId) != null);
 
 class ProjectsScreen extends ConsumerStatefulWidget {
   const ProjectsScreen({super.key});
@@ -16,399 +58,285 @@ class ProjectsScreen extends ConsumerStatefulWidget {
 }
 
 class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
-  final title = TextEditingController();
-  final description = TextEditingController();
+  ProjectFilter _filter = ProjectFilter.all;
 
-  @override
-  void dispose() {
-    title.dispose();
-    description.dispose();
-    super.dispose();
+  /// True while the create sheet is open, so a second tap on "Create
+  /// project" cannot stack a second sheet.
+  bool _sheetOpen = false;
+
+  Future<void> _openCreateSheet() async {
+    if (_sheetOpen) return;
+    _sheetOpen = true;
+    try {
+      final project = await showCreateProjectSheet(context);
+      if (project == null || !mounted) return;
+      ref.invalidate(projectsProvider);
+      if (project.id.isNotEmpty) {
+        await context.push('/project/${project.id}');
+      }
+    } finally {
+      _sheetOpen = false;
+    }
   }
 
-  Future<void> _create() async {
-    final cleanTitle = title.text.trim();
-    if (cleanTitle.isEmpty || cleanTitle.length > 100) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t('Project title must be 1-100 characters.')),
-        ),
-      );
-      return;
+  Future<void> _refresh() async {
+    ref
+      ..invalidate(projectsProvider)
+      ..invalidate(myInvitationsProvider);
+    try {
+      await ref.read(projectsProvider.future);
+    } on Object catch (_) {
+      // The list shows its own error state with a retry.
     }
-    final project = await ref
-        .read(projectsApiProvider)
-        .create(cleanTitle, description.text.trim());
-    ref.invalidate(projectsProvider);
-    title.clear();
-    description.clear();
-    if (mounted) await context.push('/project/${project.id}');
   }
 
   @override
   Widget build(BuildContext context) {
     final projects = ref.watch(projectsProvider);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final userId = ref.watch(currentUserProvider)?.id;
+    final hasInvitations =
+        ref.watch(myInvitationsProvider).value?.isNotEmpty ?? false;
+
+    final Widget body;
+    if (projects.hasValue) {
+      final all = projects.requireValue;
+      final filterable = canFilterProjects(all, userId);
+      final filter = filterable ? _filter : ProjectFilter.all;
+      final shown = filterProjects(all, filter, userId);
+      body = Column(
+        children: [
+          if (filterable && all.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+              child: LumiSegmentedTabs<ProjectFilter>(
+                options: [
+                  (ProjectFilter.all, context.t('All')),
+                  (ProjectFilter.mine, context.t('Mine')),
+                  (ProjectFilter.joined, context.t('Joined')),
+                ],
+                selected: filter,
+                onChanged: (f) => setState(() => _filter = f),
+              ),
+            ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              child: shown.isEmpty && !hasInvitations
+                  ? _EmptyProjects(filter: filter, onCreate: _openCreateSheet)
+                  : ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                      children: [
+                        const ProjectInvitationsSection(),
+                        if (shown.isEmpty)
+                          _EmptyProjects(
+                            filter: filter,
+                            onCreate: _openCreateSheet,
+                            inline: true,
+                          )
+                        else
+                          LumiRowGroup(
+                            children: [
+                              for (final project in shown)
+                                _ProjectRow(
+                                  project: project,
+                                  isOwner: filterable
+                                      ? ownsProject(project, userId)
+                                      : null,
+                                  onTap: () => unawaited(
+                                    context.push('/project/${project.id}'),
+                                  ),
+                                ),
+                            ],
+                          ),
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      );
+    } else if (projects.hasError) {
+      body = LumiErrorState(
+        message: context.t(failureMessageKey(projects.error!)),
+        retrying: projects.isLoading,
+        onRetry: () => ref.invalidate(projectsProvider),
+      );
+    } else {
+      // Clipped, not scrollable: on a short screen the last placeholder is
+      // simply cut off.
+      body = const SingleChildScrollView(
+        physics: NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.all(16),
+        child: LumiSkeleton(rows: 4, height: 104),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: Text(context.t('Projects')),
-        surfaceTintColor: Colors.transparent,
-        actions: const [NotificationBell(), SizedBox(width: 4)],
+        actions: [
+          IconButton(
+            tooltip: context.t('Create project'),
+            onPressed: () => unawaited(_openCreateSheet()),
+            icon: const Icon(Icons.add),
+          ),
+          const NotificationBell(),
+          const SizedBox(width: 4),
+        ],
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-          children: [
-            _CreateProjectPanel(
-              title: title,
-              description: description,
-              onCreate: _create,
-            ),
-            const SizedBox(height: 22),
-            Text(
-              context.t('Active workspaces'),
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: theme.colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 10),
-            projects.when(
-              data: (items) {
-                if (items.isEmpty) {
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 18),
-                    child: AppEmptyState(
-                      icon: Icons.folder_open,
-                      title: context.t('No projects yet'),
-                      message: context.t('Create your first research workspace above.'),
-                    ),
-                  );
-                }
-                return Column(
-                  children: items
-                      .map(
-                        (project) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _ProjectCard(
-                            project: project,
-                            isDark: isDark,
-                            onTap: () => context.push('/project/${project.id}'),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                );
-              },
-              loading: () => AppLoading(message: context.t('Loading projects...')),
-              error: (error, _) => AppErrorState(message: error.toString()),
-            ),
-          ],
+      body: SafeArea(child: body),
+    );
+  }
+}
+
+class _EmptyProjects extends StatelessWidget {
+  const _EmptyProjects({
+    required this.filter,
+    required this.onCreate,
+    this.inline = false,
+  });
+
+  final ProjectFilter filter;
+  final VoidCallback onCreate;
+
+  /// Under the invitations, inside their list: no page of its own.
+  final bool inline;
+
+  @override
+  Widget build(BuildContext context) {
+    final (String message, bool canCreate) = switch (filter) {
+      ProjectFilter.all => (
+          context.t('No projects yet. Create one to group papers and work with your team.'),
+          true,
+        ),
+      ProjectFilter.mine => (
+          context.t('You have not created a project yet.'),
+          true,
+        ),
+      ProjectFilter.joined => (
+          context.t('You have not joined a project yet.'),
+          false,
+        ),
+    };
+    final empty = LumiEmptyState(
+      icon: Icons.folder_open,
+      message: message,
+      actionLabel: canCreate ? context.t('Create project') : null,
+      onAction: canCreate ? onCreate : null,
+    );
+    if (inline) return empty;
+    // Scrollable so pull-to-refresh works on an empty list too.
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: empty,
         ),
       ),
     );
   }
 }
 
-class _CreateProjectPanel extends StatelessWidget {
-  const _CreateProjectPanel({
-    required this.title,
-    required this.description,
-    required this.onCreate,
-  });
-
-  final TextEditingController title;
-  final TextEditingController description;
-  final VoidCallback onCreate;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final borderColor = isDark
-        ? const Color(0xFF26334A)
-        : const Color(0xFFE2E8F0);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF111C2E) : Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: borderColor),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF172338) : const Color(0xFFF1F7FF),
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(8),
-              ),
-              border: Border(bottom: BorderSide(color: borderColor)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF06B6D4).withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.create_new_folder_outlined,
-                    color: Color(0xFF0891B2),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        context.t('Start a research project'),
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        context.t('Group papers, team chat, and AI notes in one place.'),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(
-                            alpha: 0.64,
-                          ),
-                          height: 1.25,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                TextField(
-                  controller: title,
-                  textInputAction: TextInputAction.next,
-                  decoration: _fieldDecoration(
-                    context,
-                    label: context.t('Project title'),
-                    icon: Icons.drive_file_rename_outline,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: description,
-                  minLines: 2,
-                  maxLines: 3,
-                  decoration: _fieldDecoration(
-                    context,
-                    label: context.t('Description'),
-                    icon: Icons.notes_outlined,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: FilledButton.icon(
-                    onPressed: onCreate,
-                    icon: const Icon(Icons.add),
-                    label: Text(context.t('Create project')),
-                    style: FilledButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProjectCard extends StatelessWidget {
-  const _ProjectCard({
+/// One project: folder tile, name, one line of description, role and what
+/// it holds. The whole row opens the project.
+class _ProjectRow extends StatelessWidget {
+  const _ProjectRow({
     required this.project,
-    required this.isDark,
+    required this.isOwner,
     required this.onTap,
   });
 
   final ProjectView project;
-  final bool isDark;
+
+  /// Null when ownership is not known: no role chip is shown then.
+  final bool? isOwner;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final description = project.description?.trim().isNotEmpty == true
-        ? project.description!.trim()
-        : context.t('No description');
+    final lumi = context.lumi;
+    final description = project.description?.trim() ?? '';
+    final counts = [
+      context.plural(
+        project.paperCount,
+        one: '{{count}} paper',
+        other: '{{count}} papers',
+      ),
+      context.plural(
+        project.memberCount,
+        one: '{{count}} member',
+        other: '{{count}} members',
+      ),
+    ].join(' · ');
 
-    return Material(
-      color: isDark ? const Color(0xFF111C2E) : Colors.white,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isDark ? const Color(0xFF26334A) : const Color(0xFFE2E8F0),
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF06B6D4).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.folder_rounded,
-                  color: Color(0xFF0891B2),
-                ),
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(16, 14, 12, 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: lumi.primarySoft,
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      project.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
+              child: Icon(Icons.folder_outlined, size: 22, color: lumi.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    project.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  if (description.isNotEmpty)
                     Text(
                       description,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(
-                          alpha: 0.64,
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(color: lumi.foregroundSecondary),
+                    ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (isOwner != null)
+                        LumiChip(
+                          label: isOwner!
+                              ? context.t('Owner')
+                              : context.t('Member'),
+                          tone: isOwner!
+                              ? LumiChipTone.primary
+                              : LumiChipTone.neutral,
                         ),
+                      Text(
+                        counts,
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: lumi.foregroundSecondary),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _MetaPill(
-                          icon: Icons.description_outlined,
-                          label: context.plural(project.papers.length, one: '{{count}} paper', other: '{{count}} papers'),
-                        ),
-                        _MetaPill(
-                          icon: Icons.group_outlined,
-                          label: context.plural(project.members.length, one: '{{count}} member', other: '{{count}} members'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.42),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MetaPill extends StatelessWidget {
-  const _MetaPill({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF172338) : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: isDark ? const Color(0xFF26334A) : const Color(0xFFE2E8F0),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: const Color(0xFF0891B2)),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
             ),
-          ),
-        ],
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right, size: 20, color: lumi.muted),
+          ],
+        ),
       ),
     );
   }
-}
-
-InputDecoration _fieldDecoration(
-  BuildContext context, {
-  required String label,
-  required IconData icon,
-}) {
-  final theme = Theme.of(context);
-  final isDark = theme.brightness == Brightness.dark;
-  final borderColor = isDark
-      ? const Color(0xFF26334A)
-      : const Color(0xFFE2E8F0);
-  return InputDecoration(
-    labelText: label,
-    prefixIcon: Icon(icon, size: 20),
-    filled: true,
-    fillColor: isDark ? const Color(0xFF0F1B2D) : const Color(0xFFF8FAFC),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
-      borderSide: BorderSide(color: borderColor),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
-      borderSide: BorderSide(color: borderColor),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
-      borderSide: const BorderSide(color: Color(0xFF06B6D4), width: 1.5),
-    ),
-  );
 }

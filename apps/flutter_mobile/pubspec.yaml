@@ -78,6 +78,7 @@ flutter:
 
   assets:
     - assets/ranking/
+    - assets/branding/
 
   fonts:
     - family: SourceSans3

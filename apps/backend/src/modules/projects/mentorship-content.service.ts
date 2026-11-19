@@ -26,7 +26,7 @@ export type InvitationDirection = "PROJECT_TO_LECTURER" | "LECTURER_TO_PROJECT";
 async function senderContext(db: Db, projectInput: string, actorInput: string, direction: InvitationDirection, readOnly = false) {
   const lookup = (value: string) => { const parsed = parseDatabaseId(value); if (!parsed) throw AppError.badRequest("Invalid identifier"); return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }; };
   const [p, a] = await Promise.all([db.project.findUnique({ where: lookup(projectInput) }), db.user.findUnique({ where: lookup(actorInput) })]);
-  if (!p || !a?.isActive || a.accountStatus !== "ACTIVE" || !a.emailVerifiedAt) throw AppError.forbidden();
+  if (!p || Boolean(p.deletedAt) || !a?.isActive || a.accountStatus !== "ACTIVE" || !a.emailVerifiedAt) throw AppError.forbidden();
   await db.$queryRaw`SELECT id FROM projects WHERE id=${p.id}::uuid FOR UPDATE`;
   const live = await db.project.findUniqueOrThrow({ where: { id: p.id } });
   if (!readOnly && ["ARCHIVED", "COMPLETED"].includes(live.status)) throw AppError.conflict("This project is read-only");
@@ -97,7 +97,7 @@ export const mentorshipContentService = {
       if (input && (existing?.version ?? 0) !== input.expectedVersion) throw AppError.conflict("Your invitation draft changed in another tab. Reload it before saving");
       if (input) await invitationFiles(tx, context.projectId, context.userId, input.attachmentIds);
       const row = input ? await tx.mentorshipDraft.upsert({ where, create: { ...context, direction, message: input.message, mentorRole: input.mentorRole, attachmentIds: input.attachmentIds }, update: { message: input.message, mentorRole: input.mentorRole, attachmentIds: input.attachmentIds, version: { increment: 1 } } }) : existing;
-      return { message: row?.message ?? "", mentorRole: (row?.mentorRole ?? "PRIMARY") as MentorRole, version: row?.version ?? 0,
+      return { message: row?.message ?? "", mentorRole: (row?.mentorRole ?? "UNASSIGNED") as MentorRole, version: row?.version ?? 0,
         attachments: row ? await invitationFiles(tx, context.projectId, context.userId, row.attachmentIds) : [], updatedAt: row?.updatedAt.toISOString() };
     });
   },

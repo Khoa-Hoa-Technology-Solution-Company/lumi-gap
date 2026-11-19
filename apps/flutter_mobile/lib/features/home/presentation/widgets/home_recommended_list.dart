@@ -1,87 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
-import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
+import 'package:flutter_mobile/core/widgets/paper_row.dart';
 import 'package:flutter_mobile/features/home/data/home_models.dart';
 
+/// "Suggested papers": one grouped card, the reason or topic above each
+/// title. Missing authors, venue or year are left out, never "Unknown".
 class HomeRecommendedList extends StatelessWidget {
   const HomeRecommendedList({
     required this.items,
     required this.onOpen,
     super.key,
+    this.onBookmark,
   });
 
   final List<HomeRecommendedPaper> items;
   final void Function(HomeRecommendedPaper paper) onOpen;
+  final void Function(HomeRecommendedPaper paper)? onBookmark;
 
   @override
   Widget build(BuildContext context) {
-    final lumi = context.lumi;
-    final theme = Theme.of(context);
-    return Column(
+    return LumiRowGroup(
       children: [
-        for (var i = 0; i < items.length; i++) ...[
-          if (i > 0) const SizedBox(height: 12),
-          Material(
-            color: lumi.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-              side: BorderSide(color: lumi.line),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => onOpen(items[i]),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: lumi.surfaceMuted,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        context.t(items[i].chipText),
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: lumi.foregroundSecondary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      items[i].title,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium,
-                    ),
-                    if (items[i].authors.isNotEmpty)
-                      Text(
-                        formatAuthors(items[i].authors),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: lumi.foregroundSecondary,
-                        ),
-                      ),
-                    Text(
-                      [
-                        if (items[i].venue != null) items[i].venue!,
-                        if (items[i].year != null) '${items[i].year}',
-                      ].join(' · '),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: lumi.muted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+        for (final paper in items)
+          PaperRow(
+            id: paper.id,
+            overline: context.t(paper.chipText),
+            title: paper.title,
+            meta: [
+              if (paper.authors.isNotEmpty) formatAuthors(paper.authors),
+              if (paper.venue != null) paper.venue!,
+              if (paper.year != null) '${paper.year}',
+            ].join(' · '),
+            onTap: () => onOpen(paper),
+            onBookmarkTap:
+                onBookmark == null ? null : () => onBookmark!(paper),
           ),
-        ],
       ],
     );
   }

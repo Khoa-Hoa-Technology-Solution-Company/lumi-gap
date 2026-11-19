@@ -36,8 +36,11 @@ describe("getNotificationDestination", () => {
   it.each(["MENTORSHIP_REQUEST_DECLINED", "MENTORSHIP_CANCELLED", "MENTORSHIP_EXPIRED", "MENTORSHIP_ENDED", "MENTORSHIP_POSITION_FILLED"])("opens history for %s", type => {
     expect(getNotificationDestination({ type, targetKind: "project", targetId: "project" }, false)).toBe("/academic-support?view=history");
   });
-  it("opens team suggestions in the owner's project support panel", () => {
+  it("opens team suggestions and suggestion updates in the project support panel", () => {
     expect(getNotificationDestination({ type: "MENTORSHIP_SUGGESTED", targetKind: "project", targetId: "project/one" }, false)).toBe("/projects/project%2Fone?tab=support");
+    expect(getNotificationDestination({ type: "MENTORSHIP_SUGGESTION_PLANNED", targetKind: "project", targetId: "project/one" }, false)).toBe("/projects/project%2Fone?tab=support");
+    expect(getNotificationDestination({ type: "MENTORSHIP_SUGGESTION_INVITED", targetKind: "project", targetId: "project/one" }, false)).toBe("/projects/project%2Fone?tab=support");
+    expect(getNotificationDestination({ type: "MENTORSHIP_SUGGESTION_DISMISSED", targetKind: "project", targetId: "project/one" }, false)).toBe("/projects/project%2Fone?tab=support");
   });
   it.each(["academic_verification_submitted", "academic_verification_more_info", "academic_verification_approved", "academic_verification_rejected"])("routes %s to private settings", type => {
     expect(getNotificationDestination({ type, targetKind: "academic_profile", targetId: "profile" }, false)).toBe("/settings/academic");

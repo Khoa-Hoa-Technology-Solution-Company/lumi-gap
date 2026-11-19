@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_colors.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 
 /// Rounds [bound] x 100 UP to one decimal, e.g. 0.1533 -> 15.4 and 0.15 -> 15.0.
@@ -65,8 +68,8 @@ class ClosureBadgeSpec {
           semanticsLabel:
               translate('Closure check: already answered by an existing paper', locale),
           icon: Icons.do_not_disturb_on_outlined,
-          lightColor: const Color(0xFFB91C1C),
-          darkColor: const Color(0xFFFCA5A5),
+          lightColor: LumiLight.error,
+          darkColor: LumiDark.error,
         );
       case GapClosureStatus.openCertified:
         final bound = gap.latestClosureCheck?.bound;
@@ -75,8 +78,8 @@ class ClosureBadgeSpec {
             label: translate('Open', locale),
             semanticsLabel: translate('Closure check: open, certified', locale),
             icon: Icons.verified_outlined,
-            lightColor: const Color(0xFF047857),
-            darkColor: const Color(0xFF6EE7B7),
+            lightColor: LumiLight.success,
+            darkColor: LumiDark.success,
           );
         }
         final percent = formatClosureRiskPercent(bound);
@@ -85,8 +88,8 @@ class ClosureBadgeSpec {
           semanticsLabel:
               translate('Closure check: open, false-novelty risk at most {{percent}} percent', locale, {'percent': percent}),
           icon: Icons.verified_outlined,
-          lightColor: const Color(0xFF047857),
-          darkColor: const Color(0xFF6EE7B7),
+          lightColor: LumiLight.success,
+          darkColor: LumiDark.success,
         );
       case GapClosureStatus.abstain:
         return ClosureBadgeSpec(
@@ -94,16 +97,16 @@ class ClosureBadgeSpec {
           semanticsLabel:
               translate('Closure check: needs review, no decision could be made', locale),
           icon: Icons.rate_review_outlined,
-          lightColor: const Color(0xFF92400E),
-          darkColor: const Color(0xFFFCD34D),
+          lightColor: LumiLight.warning,
+          darkColor: LumiDark.warning,
         );
       case GapClosureStatus.notChecked:
         return ClosureBadgeSpec(
           label: translate('Not checked', locale),
           semanticsLabel: translate('Closure check: not checked yet', locale),
           icon: Icons.help_outline,
-          lightColor: const Color(0xFF475569),
-          darkColor: const Color(0xFFCBD5E1),
+          lightColor: LumiLight.foregroundSecondary,
+          darkColor: LumiDark.foregroundSecondary,
         );
     }
   }
@@ -120,7 +123,7 @@ class ClosureBadgeSpec {
 /// Small pill with an icon and text (never colour alone) for the closure
 /// result of a gap.
 class GapClosureBadge extends StatelessWidget {
-  const GapClosureBadge({super.key, required this.gap});
+  const GapClosureBadge({required this.gap, super.key});
 
   final ResearchGapItem gap;
 
@@ -137,7 +140,10 @@ class GapClosureBadge extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
+            // Plain surface, not a tint of the status colour: the theme's
+            // status colours are picked for 4.5:1 on the surface, and a
+            // tint under them would take that away.
+            color: context.lumi.surface,
             border: Border.all(color: color.withValues(alpha: 0.4)),
             borderRadius: BorderRadius.circular(6),
           ),
@@ -149,9 +155,8 @@ class GapClosureBadge extends StatelessWidget {
               Flexible(
                 child: Text(
                   spec.label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
+                  style: context.type.bodySmall!.copyWith(
+                    fontWeight: FontWeight.w600,
                     color: color,
                   ),
                 ),
@@ -167,7 +172,7 @@ class GapClosureBadge extends StatelessWidget {
 /// "Closure check" block of the gap detail sheet. Read-only: screening and
 /// decisions happen on the web app.
 class GapClosureSection extends StatelessWidget {
-  const GapClosureSection({super.key, required this.gap});
+  const GapClosureSection({required this.gap, super.key});
 
   final ResearchGapItem gap;
 
@@ -176,10 +181,7 @@ class GapClosureSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final check = gap.latestClosureCheck;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark
-        ? const Color(0xFFCBD5E1)
-        : const Color(0xFF475569);
+    final mutedColor = context.lumi.foregroundSecondary;
     final judge = closureJudgeLabel(check?.judgeKind);
     final bound = check?.bound;
     final decidedAt = check?.decidedAt;
@@ -202,9 +204,8 @@ class GapClosureSection extends StatelessWidget {
       children: [
         Text(
           context.t('Closure check'),
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
+          style: context.type.bodyMedium!.copyWith(
+            fontWeight: FontWeight.w600,
             color: mutedColor,
           ),
         ),
@@ -212,14 +213,13 @@ class GapClosureSection extends StatelessWidget {
         GapClosureBadge(gap: gap),
         if (progress != null) ...[
           const SizedBox(height: 8),
-          Text(context.t(progress), style: const TextStyle(fontSize: 12, height: 1.4)),
+          Text(context.t(progress), style: context.type.bodySmall!.copyWith(height: 1.4)),
         ],
         if (rows.isNotEmpty) ...[const SizedBox(height: 8), ...rows],
         const SizedBox(height: 8),
         Text(
           context.t(webNote),
-          style: TextStyle(
-            fontSize: 12,
+          style: context.type.bodySmall!.copyWith(
             fontStyle: FontStyle.italic,
             height: 1.4,
             color: mutedColor,
@@ -254,13 +254,13 @@ class GapClosureSection extends StatelessWidget {
             width: 72,
             child: Text(
               label,
-              style: TextStyle(fontSize: 12, color: labelColor),
+              style: AppTypography.metrics.bodySmall!.copyWith(color: labelColor),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              style: AppTypography.metrics.bodySmall!.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
         ],

@@ -1,5 +1,9 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
+const canonical = vi.hoisted(() => ({prepareMentorReview:vi.fn(),assertReviewer:vi.fn(),getReview:vi.fn(),saveReview:vi.fn()}));
+vi.mock("../../reviews/review.service.js",()=>({reviewService:canonical}));
+vi.mock("../../reviews/review-request.service.js",()=>({reviewRequestService:canonical}));
+vi.mock("../../reviews/peer-review-access.js",async (original)=>({...await original<typeof import("../../reviews/peer-review-access.js")>(),assertPeerReviewer:canonical.assertReviewer}));
 const db = vi.hoisted(() => ({
   user: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
   project: { findFirst: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn() },
@@ -117,20 +121,14 @@ beforeEach(() => {
   });
 });
 
-it("submits mentor feedback and completes mentor task", async () => {
-  const result = await submissionService.submitFeedback(
-    submissionId,
-    {
-      result: "FEEDBACK_GIVEN",
-      overallComment: "Great progress, keep going.",
-      paragraphComments: [{ criterionKey: "para-1", comment: "Clear explanation", evidence: "Paragraph 1" }],
-    },
-    mentorId,
-    "lecturer"
-  );
-
-  expect(result.success).toBe(true);
-  expect(db.$transaction).toHaveBeenCalledOnce();
+it("preserves legacy feedback as a canonical draft without fabricating scores or approval", async () => {
+  canonical.prepareMentorReview.mockResolvedValue({assignmentId:"canonical-assignment",requestId:"canonical-request"});
+  canonical.getReview.mockResolvedValue({artifactRevision:{id:revisionId},roundNumber:1,responses:[],requiredRevisions:[]});
+  canonical.saveReview.mockResolvedValue({review:{id:"draft"}});
+  const result=await submissionService.submitFeedback(submissionId,{result:"READY_TO_ADVANCE",overallComment:"Ready"},mentorId,"lecturer");
+  expect(result).toMatchObject({submitted:false,requiresCompletion:true,assignmentId:"canonical-assignment"});
+  expect(canonical.saveReview).toHaveBeenCalledWith("canonical-assignment",mentorId,expect.objectContaining({responses:[],overallComment:"Ready",expectedRevisionId:revisionId}),false);
+  expect(db.humanReview.create).not.toHaveBeenCalled();
 });
 
 it("lists active mentors for a project", async () => {

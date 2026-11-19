@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/number_format.dart';
+import 'package:flutter_mobile/core/widgets/app_alert.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
-import 'package:flutter_mobile/features/home/presentation/widgets/home_trend_list.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_data.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -24,10 +26,21 @@ class TrendsEmergingTab extends ConsumerWidget {
     final query = ref.watch(trendEmergingProvider(params.scopeFilters));
     return query.when(
       data: (data) => _EmergingList(data: data),
-      loading: () => AppLoading(
-        message: context.t(
-          'Looking for emerging keywords. The first time can take about 15 seconds.',
-        ),
+      // A list of keyword cards is loading: skeleton cards in that shape.
+      loading: () => ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            context.t(
+              'Looking for emerging keywords. The first time can take about 15 seconds.',
+            ),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: context.lumi.foregroundSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const LumiSkeleton(rows: 4, height: 96),
+        ],
       ),
       error: (error, _) => AppErrorState(message: error.toString()),
     );
@@ -41,44 +54,31 @@ class _EmergingList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final lumi = context.lumi;
     final e = data.earlierPeriod;
     final r = data.recentPeriod;
+    final note = theme.textTheme.bodySmall?.copyWith(
+      color: lumi.foregroundSecondary,
+    );
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: lumi.warning.withValues(alpha: 0.1),
-            border: Border.all(color: lumi.warning.withValues(alpha: 0.4)),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
+        AppAlert(
+          tone: AppAlertTone.warning,
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.info_outline, color: lumi.warning, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      context.t('Early signal, not a forecast'),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      context.t(
-                        'These are keywords, not topics, and they are separate from the topic verdicts. Nothing says a keyword will keep growing.',
-                      ),
-                      style: const TextStyle(fontSize: 12, height: 1.4),
-                    ),
-                  ],
+              Text(
+                context.t('Early signal, not a forecast'),
+                style: theme.textTheme.titleSmall,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                context.t(
+                  'These are keywords, not topics, and they are separate from the topic verdicts. Nothing says a keyword will keep growing.',
                 ),
+                style: theme.textTheme.bodySmall,
               ),
             ],
           ),
@@ -96,11 +96,7 @@ class _EmergingList extends StatelessWidget {
               'eTo': e.yearTo,
             },
           ),
-          style: TextStyle(
-            fontSize: 12,
-            height: 1.4,
-            color: lumi.foregroundSecondary,
-          ),
+          style: note,
         ),
         const SizedBox(height: 6),
         Text(
@@ -108,28 +104,31 @@ class _EmergingList extends StatelessWidget {
             'found': data.matchedCount,
             'tested': data.termsTested,
           }),
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+          style: theme.textTheme.labelLarge?.copyWith(
             color: lumi.foregroundSecondary,
           ),
         ),
         const SizedBox(height: 16),
         if (data.dataSource == 'local')
-          _Empty(
-            text: context.t(
+          LumiEmptyState(
+            icon: Icons.cloud_off_outlined,
+            compact: true,
+            message: context.t(
               'Emerging signals need OpenAlex keyword counts; the local corpus cannot compute them.',
             ),
           )
         else if (data.keywords.isEmpty)
-          _Empty(
-            text: context.t('No keyword meets every criterion in this scope.'),
+          LumiEmptyState(
+            icon: Icons.search_off,
+            compact: true,
+            message: context.t(
+              'No keyword meets every criterion in this scope.',
+            ),
           )
         else
           for (final keyword in data.keywords) ...[
             _EmergingCard(
               keyword: keyword,
-              recentFrom: r.yearFrom,
               lastCompleteYear: data.lastCompleteYear,
             ),
             const SizedBox(height: 10),
@@ -139,97 +138,63 @@ class _EmergingList extends StatelessWidget {
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 24),
-    child: Text(
-      text,
-      textAlign: TextAlign.center,
-      style: TextStyle(fontStyle: FontStyle.italic, color: context.lumi.muted),
-    ),
-  );
-}
-
 class _EmergingCard extends StatelessWidget {
-  const _EmergingCard({
-    required this.keyword,
-    required this.recentFrom,
-    required this.lastCompleteYear,
-  });
+  const _EmergingCard({required this.keyword, required this.lastCompleteYear});
 
   final EmergingKeyword keyword;
-  final int recentFrom;
   final int? lastCompleteYear;
 
   @override
   Widget build(BuildContext context) {
     final lumi = context.lumi;
-    // The running year is still accumulating: the sparkline stops at the last complete year.
+    // The running year is still accumulating: the sparkline stops at the last
+    // complete year.
     final complete = keyword.yearlyBreakdown
         .where((y) => lastCompleteYear == null || y.year <= lastCompleteYear!)
         .toList();
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      color: lumi.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: lumi.line),
+    final values = [for (final y in complete) y.count.toDouble()];
+    return LumiCard(
+      padding: const EdgeInsets.all(14),
+      onTap: () => unawaited(
+        context.push('/search?q=${Uri.encodeComponent(keyword.keyword)}'),
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => unawaited(
-          context.push('/search?q=${Uri.encodeComponent(keyword.keyword)}'),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      keyword.keyword,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  HomeSparkline(points: complete),
-                ],
+              Expanded(
+                child: Text(
+                  keyword.keyword,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
               ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 12,
-                runSpacing: 4,
-                children: [
-                  _Figure(
-                    label: context.t('Papers before → recent'),
-                    value:
-                        '${formatNumber(keyword.earlierPapers)} → ${formatNumber(keyword.recentPapers)}',
-                  ),
-                  _Figure(
-                    label: context.t('Novelty'),
-                    value:
-                        '${(keyword.noveltyShare * 100).toStringAsFixed(0)}%',
-                  ),
-                  _Figure(
-                    label: context.t('Log odds ratio'),
-                    value: keyword.logOddsRatio.toStringAsFixed(2),
-                  ),
-                ],
+              const SizedBox(width: 8),
+              if (LumiSparkline.canDraw(values))
+                LumiSparkline(values: values, color: lumi.success),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: [
+              _Figure(
+                label: context.t('Papers before → recent'),
+                value:
+                    '${formatNumber(keyword.earlierPapers)} → ${formatNumber(keyword.recentPapers)}',
+              ),
+              _Figure(
+                label: context.t('Novelty'),
+                value: '${(keyword.noveltyShare * 100).toStringAsFixed(0)}%',
+              ),
+              _Figure(
+                label: context.t('Log odds ratio'),
+                value: keyword.logOddsRatio.toStringAsFixed(2),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -242,14 +207,17 @@ class _Figure extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label, style: TextStyle(fontSize: 10, color: context.lumi.muted)),
-      Text(
-        value,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-      ),
-    ],
-  );
+  Widget build(BuildContext context) {
+    final type = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: type.labelSmall?.copyWith(color: context.lumi.muted),
+        ),
+        Text(value, style: type.labelLarge),
+      ],
+    );
+  }
 }

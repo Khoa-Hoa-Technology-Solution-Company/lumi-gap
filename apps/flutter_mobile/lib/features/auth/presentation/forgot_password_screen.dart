@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_alert.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_text_field.dart';
 import 'package:flutter_mobile/features/auth/data/auth_api.dart';
 import 'package:flutter_mobile/features/auth/data/recovery_failure.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -112,34 +113,25 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    TextField(
+                    LumiTextField(
+                      label: context.t('Email'),
+                      isRequired: true,
                       controller: _email,
                       enabled: !_sending,
+                      hintText: 'example@gmail.com', // i18n-ignore: sample address
                       keyboardType: TextInputType.emailAddress,
                       autofillHints: const [AutofillHints.email],
+                      autocorrect: false,
+                      enableSuggestions: false,
                       textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => unawaited(_send()),
+                      errorText:
+                          _emailError == null ? null : context.t(_emailError!),
+                      onFieldSubmitted: (_) => unawaited(_send()),
                       onChanged: (_) {
                         if (_emailError != null) {
                           setState(() => _emailError = null);
                         }
                       },
-                      decoration: InputDecoration(
-                        labelText: context.t('Email'),
-                        error: _emailError == null
-                            ? null
-                            : Row(
-                                children: [
-                                  Icon(
-                                    Icons.error_outline,
-                                    size: 16,
-                                    color: lumi.error,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Expanded(child: Text(context.t(_emailError!))),
-                                ],
-                              ),
-                      ),
                     ),
                     if (_failure != null) ...[
                       const SizedBox(height: 16),

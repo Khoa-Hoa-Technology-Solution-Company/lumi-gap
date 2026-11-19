@@ -33,6 +33,7 @@ export interface ReviewAssignmentSummary {
 }
 
 export interface ReviewCenterItem {
+  origin?: string;
   mentorRelationshipActive?: boolean;
   id: string;
   status: ReviewRequestStatus;
@@ -49,6 +50,7 @@ export interface ReviewCenterItem {
 }
 
 export interface ReviewerCandidate {
+  assignedMentor?: boolean;
   id: string;
   name: string;
   avatarUrl?: string;
@@ -58,14 +60,18 @@ export interface ReviewerCandidate {
 }
 
 export interface ReviewWorkspace {
+  delivery?: { sentAt: string; authors: string[] };
+  comparisonVersions?: import("@trend/shared-types").ResearchVersion[];
   assignment: ReviewAssignmentSummary;
-  request?: { id: string; status: ReviewRequestStatus; message?: string; dueAt?: string };
+  request?: { id: string; origin?: string; status: ReviewRequestStatus; message?: string; dueAt?: string };
   review?: {
+    recommendation?: string | null;
+    integrityChecks?: AcademicReviewInput["integrityChecks"];
     id: string; status: "DRAFT" | "SUBMITTED"; roundNumber: number; keyStrengths?: string; keyConcerns?: string;
     overallComment?: string; overallAssessment?: AcademicReviewInput["overallAssessment"]; weightedScore?: number;
   };
   responses: Array<{ criterionKey: string; comment: string; evidence?: string; assessment?: string; performanceLevelId?: string; score?: number; notApplicable: boolean }>;
-  requiredRevisions: Array<{ id: string; priority: "MINOR" | "MAJOR"; description: string; status: string; responses?: Array<{ submissionRevisionId: string; responseText: string; status: string }> }>;
+  requiredRevisions: Array<{ id: string; priority: "MINOR" | "MAJOR"; description: string; locator?: string; criterionKey?: string; quotation?: string; status: string; responses?: Array<{ submissionRevisionId: string; responseText: string; status: string }> }>;
   templateVersion?: ReviewTemplateVersionDetail;
   criteria: ReviewTemplateVersionDetail["criteria"];
   artifactContent?: string;
@@ -76,17 +82,20 @@ export interface ReviewWorkspace {
 }
 
 export interface ReviewRequestDetail extends ReviewCenterItem {
+  canRespond?: boolean;
   templateVersion: ReviewTemplateVersionDetail;
   artifactContent?: string;
   reviews: Array<{
     id: string; revisionId: string; weightedScore?: number | null; roundNumber: number; status: string; keyStrengths?: string; keyConcerns?: string; overallComment?: string;
+    integrityChecks?: AcademicReviewInput["integrityChecks"];
     overallAssessment?: string; submittedAt?: string; responses: ReviewWorkspace["responses"];
-    requiredRevisions: Array<{ id: string; priority: "MINOR" | "MAJOR"; description: string; status: string; responses?: Array<{ submissionRevisionId: string; responseText: string; status: string }> }>;
+    requiredRevisions: Array<{ id: string; priority: "MINOR" | "MAJOR"; description: string; locator?: string; criterionKey?: string; quotation?: string; status: string; responses?: Array<{ submissionRevisionId: string; responseText: string; status: string }> }>;
   }>;
 }
 
 export const reviewsApi = {
-  async verifyRevision(requestId: string, itemId: string, status: "ACCEPTED" | "REOPENED"): Promise<void> { await api.patch(API_ROUTES.reviewRequests.revisionItem(requestId, itemId), { status }); },
+  async saveResponseDrafts(requestId: string, input: ResubmitReviewRequestInput): Promise<void> { await api.put(`/review-requests/${encodeURIComponent(requestId)}/responses`,input); },
+  async verifyRevision(requestId: string, itemId: string, status: "ACCEPTED" | "REOPENED", expectedRevisionId?:string): Promise<void> { await api.patch(API_ROUTES.reviewRequests.revisionItem(requestId, itemId), { status, expectedRevisionId }); },
   async availability(): Promise<ReviewAvailabilitySettings> { const response = await api.get(API_ROUTES.reviewAvailability.mine); return response.data.data; },
   async updateAvailability(input: Omit<ReviewAvailabilitySettings, "activeReviewCount">): Promise<ReviewAvailabilitySettings> { const response = await api.put(API_ROUTES.reviewAvailability.mine, input); return response.data.data; },
   async opportunities(params: Record<string, string | undefined> = {}): Promise<{ availability: ReviewAvailabilitySettings; opportunities: ReviewOpportunity[] }> { const response = await api.get(API_ROUTES.reviewOpportunities.list, { params }); return response.data.data; },

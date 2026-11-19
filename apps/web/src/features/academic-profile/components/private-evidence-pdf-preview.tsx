@@ -7,12 +7,13 @@ import { useI18n } from "@/i18n";
 GlobalWorkerOptions.workerSrc = workerUrl;
 
 /** Render pixels only: no scripting, annotation links, forms, attachments or iframe document. */
-export default function PrivateEvidencePdfPreview({ blob, zoomable = false, compact = false, continuous = false, target, onPoint }: { blob: Blob; zoomable?: boolean; compact?: boolean; continuous?: boolean; target?: { page: number; x: number; y: number; key: number }; onPoint?: (page: number, x: number, y: number) => void }) {
+export default function PrivateEvidencePdfPreview({ blob, zoomable = false, compact = false, continuous = false, target, onPoint, onValidation }: { blob: Blob; zoomable?: boolean; compact?: boolean; continuous?: boolean; target?: { page: number; x: number; y: number; key: number }; onPoint?: (page: number, x: number, y: number) => void; onValidation?: (valid: boolean) => void }) {
   const { t } = useI18n();
   const [document, setDocument] = useState<PDFDocumentProxy>(), [page, setPage] = useState(1), [error, setError] = useState(false);
   const [zoom, setZoom] = useState(1), [fitWidth, setFitWidth] = useState(true), [fitScale, setFitScale] = useState(1);
   const scrollRoot = useRef<HTMLDivElement>(null);
   const readingAnchor = useRef<{ page: number; fraction: number }>();
+  const validation = useRef(onValidation); validation.current = onValidation;
   const rememberPosition = () => {
     const root = scrollRoot.current;
     if (!continuous || !root) return;
@@ -51,14 +52,15 @@ export default function PrivateEvidencePdfPreview({ blob, zoomable = false, comp
   useEffect(() => {
     let cancelled = false, task: ReturnType<typeof getDocument> | undefined;
     setDocument(undefined); setPage(1); setError(false);
+    validation.current?.(false);
     void (async () => {
       try {
         const bytes = new Uint8Array(await blob.arrayBuffer());
         if (cancelled) return;
         task = getDocument({ data: bytes, useWorkerFetch: false, useWasm: false, enableXfa: false, stopAtErrors: true, disableAutoFetch: true, disableRange: true, disableStream: true, maxImageSize: 20_000_000, canvasMaxAreaInBytes: 80_000_000 });
         const pdf = await task.promise;
-        if (!cancelled) setDocument(pdf);
-      } catch { if (!cancelled) setError(true); }
+        if (!cancelled) { setDocument(pdf); validation.current?.(pdf.numPages > 0 && pdf.numPages <= 1000); }
+      } catch { if (!cancelled) { setError(true); validation.current?.(false); } }
     })();
     return () => { cancelled = true; void task?.destroy().catch(() => undefined); };
   }, [blob]);

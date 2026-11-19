@@ -17,11 +17,14 @@ import type { ContributionParticipant, ContributionReview, ProjectContributionPr
 import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { assertActiveProjectAccount, lockProjectAccounts } from "./project-transaction.js";
-import { withWorkspace, workspaceId, expectWorkspaceVersion, assertWorkspaceLink, jsonSnapshot, workspacePeople, workspacePerson, type WorkspaceContext } from "./workspace-access.js";
+import { workspaceId, expectWorkspaceVersion, assertWorkspaceLink, jsonSnapshot, workspacePeople, workspacePerson, type WorkspaceContext } from "./workspace-access.js";
 import { contributionsNotify } from "./contributions-notification.js";
 import { canAccessProjectAsMentor } from "./academic-relationship-access.js";
 import { contributionEvidenceManifest, contributionEvidenceChanged } from "./contribution-evidence.js";
 import type { contributionsPageSchema, contributionReviewSchema } from "./dto/project-contributions.schema.js";
+import { withResearchContributions } from "./research-contribution-projection.js";
+import { effectiveMentorAccess } from "./mentor-access.service.js";
+import { readableReviewAssignments } from "../reviews/mentor-review-access.js";
 
 function deduplicateEvidenceRefs(refs: ContributionArtifactLink[]): ContributionArtifactLink[] {
   const seen = new Set<string>();
@@ -51,7 +54,7 @@ export async function resolveContributionArtifactRefs(
           }),
         );
       } else {
-        await assertWorkspaceLink(context, link);
+        await assertContributionLink(context, link);
         available = true;
       }
     } catch {
@@ -65,6 +68,34 @@ export async function resolveContributionArtifactRefs(
     });
   }
   return results;
+}
+
+export async function assertContributionLink(context: WorkspaceContext, link: ContributionArtifactLink) {
+  const { tx, project } = context;
+  if (!context.role) {
+    if (!["SUBMISSION", "SUBMISSION_REVISION", "HUMAN_REVIEW"].includes(link.kind)) throw AppError.forbidden("Only shared review evidence can be linked by a mentor");
+    const revision = link.kind === "SUBMISSION_REVISION" ? await tx.submissionRevision.findUnique({ where: { id: link.id } }) : null;
+    const review = link.kind === "HUMAN_REVIEW" ? await tx.humanReview.findFirst({ where: { id: link.id, reviewerId: context.actorId, status: "SUBMITTED" } }) : null;
+    const submissionId = link.kind === "SUBMISSION" ? link.id : revision?.submissionId ?? review?.submissionId;
+    if (!submissionId || !await tx.submission.count({ where: { id: submissionId, projectId: project.id } })) throw AppError.notFound("Shared evidence unavailable");
+    const policies = await tx.mentorAccess.findMany({ where: { projectId: project.id, mentorUserId: context.actorId, permissions: { has: "SUBMISSIONS_VIEW" } } });
+    const assignments = await readableReviewAssignments(tx,submissionId,context.actorId);
+    let allowed = assignments.some(assignment => link.kind === "SUBMISSION" || link.kind === "SUBMISSION_REVISION" && assignment.artifactRevisionId === link.id || link.kind === "HUMAN_REVIEW" && assignment.artifactRevisionId === review?.revisionId);
+    for (const policy of policies) if (await effectiveMentorAccess(tx, policy) && await tx.mentorResourceShare.count({ where: { projectId: project.id, accessId: policy.id, kind: "SUBMISSION", resourceId: submissionId, revokedAt: null } })) allowed = true;
+    if (!allowed) throw AppError.notFound("Shared evidence unavailable");
+    return;
+  }
+  const valid = link.kind === "SYNTHESIS" ? await tx.projectWorkspaceRevision.count({where:{id:link.id,projectId:project.id,entityKind:"SYNTHESIS"}})
+    : link.kind === "RESEARCH_DECISION" ? await tx.projectDecision.count({where:{id:link.id,projectId:project.id}})
+    : link.kind === "SUBMISSION" ? await tx.submission.count({ where: { id: link.id, projectId: project.id } })
+    : link.kind === "SUBMISSION_REVISION" ? (await tx.$queryRaw<{ id: string }[]>`SELECT r.id FROM submission_revisions r JOIN submissions s ON s.id=r.submission_id WHERE r.id=${link.id}::uuid AND s.project_id=${project.id}::uuid`).length
+    : link.kind === "HUMAN_REVIEW" ? (await tx.$queryRaw<{ id: string }[]>`SELECT r.id FROM human_reviews r JOIN submissions s ON s.id=r.submission_id WHERE r.id=${link.id}::uuid AND s.project_id=${project.id}::uuid AND r.status='SUBMITTED'`).length
+    : null;
+  if (valid === null) {
+    if (link.kind === "TASK") {
+      if (!await tx.projectTask.count({ where: { id: link.id, projectId: project.id, deletedAt: null } })) throw AppError.badRequest("Task evidence is unavailable");
+    } else await assertWorkspaceLink(context, link as Exclude<ContributionArtifactLink, { kind: "TASK" | "SUBMISSION" | "SUBMISSION_REVISION" | "HUMAN_REVIEW" | "SYNTHESIS" | "RESEARCH_DECISION" }>);
+  } else if (!valid) throw AppError.badRequest("Contribution evidence is unavailable in this project");
 }
 
 function resolveRowCategory(row: ProjectContributionProposal): ContributionCategoryKey {
@@ -85,10 +116,11 @@ async function record(context: WorkspaceContext, id: string) {
 }
 export async function withWorkRecord<T>(projectId: string, actorId: string, id: string, write: boolean, run: (context: WorkspaceContext) => Promise<T>) {
   const db = getPrisma(); const [project, actor] = await Promise.all([db.project.findUnique({ where: workspaceId(projectId) }), db.user.findUnique({ where: workspaceId(actorId) })]);
-  if (!project || !actor) throw AppError.notFound("Contribution not found");
+  if (!project || Boolean(project.deletedAt) || !actor) throw AppError.notFound("Contribution not found");
   return db.$transaction(async tx => {
     await lockProjectAccounts(tx, [actor.id], project.id); await assertActiveProjectAccount(tx, actor.id);
     const live = await tx.project.findUniqueOrThrow({ where: { id: project.id } });
+    if (live.deletedAt) throw AppError.notFound("Contribution not found");
     const member = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: live.id, userId: actor.id } } });
     const role = live.ownerId === actor.id ? "OWNER" : member?.status === "ACTIVE" ? "MEMBER" : null;
     const row = await tx.projectContributionProposal.findFirst({ where: { id, projectId: live.id } });
@@ -101,8 +133,13 @@ export async function withWorkRecord<T>(projectId: string, actorId: string, id: 
     return run({ tx, project: live, actorId: actor.id, role });
   }, { maxWait: 10000, timeout: 20000 });
 }
-type WorkListData = { participants: ContributionParticipant[]; reviews: ContributionReview[]; people: Map<string, WorkspacePerson> };
+type WorkListData = { participants: ContributionParticipant[]; reviews: ContributionReview[]; people: Map<string, WorkspacePerson>; mentorAllowed?: boolean };
 async function present(context: WorkspaceContext, row: ProjectContributionProposal, detail = true, listData?: WorkListData): Promise<WorkContribution> {
+  let ownMentorRecord = Boolean(listData?.mentorAllowed && row.proposedById===context.actorId);
+  if (!context.role && row.proposedById===context.actorId && !listData) {
+    const policies = await context.tx.mentorAccess.findMany({ where: { projectId: context.project.id, mentorUserId: context.actorId, permissions: { has: "CONTRIBUTIONS_VIEW" } } });
+    ownMentorRecord = (await Promise.all(policies.map(p=>effectiveMentorAccess(context.tx,p)))).some(Boolean);
+  }
   const [participants, reviews, history] = listData ? [listData.participants.filter(p => p.proposalId === row.id), listData.reviews.filter(r => r.proposalId === row.id && r.version === row.version), []] : await Promise.all([
     context.tx.contributionParticipant.findMany({ where: { proposalId: row.id } }),
     context.tx.contributionReview.findMany({ where: { proposalId: row.id, ...(!detail ? { version: row.version } : {}) }, orderBy: { createdAt: "asc" } }),
@@ -116,11 +153,11 @@ async function present(context: WorkspaceContext, row: ProjectContributionPropos
     else if (context.role) reviewActions.push("ACCEPT");
     reviewActions.push("NEEDS_CHANGES", "DISPUTE");
   }
-  const visibleEvidenceRefs = context.role ? (row.evidenceRefs as unknown as ContributionInput["evidenceRefs"]) : [];
-  const evidenceRefDetails = context.role && Array.isArray(visibleEvidenceRefs)
+  const visibleEvidenceRefs = context.role || ownMentorRecord ? (row.evidenceRefs as unknown as ContributionInput["evidenceRefs"]) : [];
+  const evidenceRefDetails = (context.role || ownMentorRecord) && Array.isArray(visibleEvidenceRefs)
     ? await resolveContributionArtifactRefs(context, visibleEvidenceRefs)
     : [];
-  return { id: row.id, projectId: row.projectId, title: row.title, description: row.description, category: resolveRowCategory(row), source: row.source as ContributionInput["source"], workDate: row.workDate.toISOString(), version: row.version, status: row.status, createdBy: workspacePerson(people, row.proposedById), participants: participants.map(p => ({ ...p, name: workspacePerson(people, p.userId).name, roles: p.roles as CreditRole[] })), evidence: row.evidence ?? "", evidenceRefs: visibleEvidenceRefs, evidenceRefDetails, reviews: reviews.map(r => ({ ...r, name: workspacePerson(people, r.userId).name, createdAt: r.createdAt.toISOString() })), history: history.map(h => ({ ...h, snapshot: context.role ? h.snapshot : { title: (h.snapshot as { title?: string }).title, description: (h.snapshot as { description?: string }).description, participants: (h.snapshot as { participants?: unknown }).participants, status: (h.snapshot as { status?: string }).status }, createdAt: h.createdAt.toISOString() })), viewerId: context.actorId, reviewActions, canManage: (Boolean(context.role) || await canAccessProjectAsMentor(context.project.id, context.actorId, context.tx)) && row.proposedById === context.actorId && row.source !== "LEGACY" && row.status !== "SUBMITTED" && context.project.status !== "ARCHIVED", readOnly: context.project.status === "ARCHIVED", createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { id: row.id, projectId: row.projectId, title: row.title, description: row.description, category: resolveRowCategory(row), source: row.source as ContributionInput["source"], workDate: row.workDate.toISOString(), version: row.version, status: row.status, createdBy: workspacePerson(people, row.proposedById), participants: participants.map(p => ({ ...p, name: workspacePerson(people, p.userId).name, roles: p.roles as CreditRole[] })), evidence: row.evidence ?? "", evidenceRefs: visibleEvidenceRefs, evidenceRefDetails, reviews: reviews.map(r => ({ ...r, name: workspacePerson(people, r.userId).name, createdAt: r.createdAt.toISOString() })), history: history.map(h => ({ ...h, snapshot: context.role ? h.snapshot : { title: (h.snapshot as { title?: string }).title, description: (h.snapshot as { description?: string }).description, participants: (h.snapshot as { participants?: unknown }).participants, status: (h.snapshot as { status?: string }).status }, createdAt: h.createdAt.toISOString() })), viewerId: context.actorId, reviewActions, canManage: Boolean(context.role || ownMentorRecord) && row.proposedById === context.actorId && row.source !== "LEGACY" && row.status !== "SUBMITTED" && context.project.status !== "ARCHIVED", readOnly: context.project.status === "ARCHIVED", createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 async function history(context: WorkspaceContext, row: ProjectContributionProposal, action: string, note?: string, input?: unknown) {
   const participants = await context.tx.contributionParticipant.findMany({ where: { proposalId: row.id } });
@@ -132,17 +169,19 @@ async function validateWork(context: WorkspaceContext, input: ContributionInput)
   if (!context.role && input.participants.some(p => p.userId !== context.actorId)) throw AppError.forbidden("Mentors can record only their own work");
   for (const person of input.participants) {
     const membership = await context.tx.projectMembershipPeriod.findFirst({ where: { projectId: context.project.id, userId: person.userId } });
-    if (!membership && person.userId !== context.project.ownerId && !await canAccessProjectAsMentor(context.project.id, person.userId, context.tx)) throw AppError.badRequest("Participants must have documented membership or effective mentor access");
+    const mentorship = !membership ? await context.tx.mentorRelationship.findFirst({ where: { projectId: context.project.id, mentorUserId: person.userId } }) : null;
+    if (!membership && !mentorship) throw AppError.badRequest("Participants must have documented research participation");
+    if (!context.role && person.userId!==context.actorId) throw AppError.forbidden("Mentors may declare their own contributions only");
   }
   const uniqueRefs = deduplicateEvidenceRefs(input.evidenceRefs);
   for (const link of uniqueRefs) {
     if (!context.role) {
       const feedback = link.kind === "MENTOR_FEEDBACK" && (await context.tx.projectDiscussion.findFirst({ where: { id: link.id, projectId: context.project.id, authorId: context.actorId, mentorRelationshipId: { not: null } } }) || await context.tx.mentorFeedback.findFirst({ where: { id: link.id, projectId: context.project.id, authorId: context.actorId } }));
-      if (!feedback) throw AppError.forbidden("Mentors may reference only their own feedback here; project evidence remains private");
+      if (!feedback) await assertContributionLink(context, link);
       continue;
     }
     if (link.kind === "TASK") { if (!await context.tx.projectTask.findFirst({ where: { id: link.id, projectId: context.project.id, deletedAt: null } })) throw AppError.badRequest("Related task must belong to this project"); }
-    else await assertWorkspaceLink(context, link);
+    else await assertContributionLink(context, link);
   }
   if (new Date(input.workDate) > new Date()) throw AppError.badRequest("Work date cannot be in the future");
 }
@@ -162,7 +201,7 @@ const fields = (input: ContributionInput) => {
 };
 export const workContributionsService = {
   async overview(projectId: string, actorId: string): Promise<ContributionOverview> {
-    return withWorkspace(projectId, actorId, { mentor: true, mentorScope: "SHARED_RESOURCES" }, async context => {
+    return withResearchContributions(projectId, actorId, async context => {
       const own = context.role ? undefined : await context.tx.contributionParticipant.findMany({ where: { userId: context.actorId }, select: { proposalId: true } });
       const rows = await context.tx.projectContributionProposal.findMany({ where: { projectId: context.project.id, status: { not: "DRAFT" }, ...(own ? { id: { in: own.map(p => p.proposalId) } } : {}) }, select: { id: true, status: true, contributorId: true, roles: true, evidenceRefs: true } });
       const participants = await context.tx.contributionParticipant.findMany({ where: { proposalId: { in: rows.map(r => r.id) } } });
@@ -182,7 +221,7 @@ export const workContributionsService = {
     });
   },
   async people(projectId: string, actorId: string) {
-    return withWorkspace(projectId, actorId, { mentor: true, mentorScope: "SHARED_RESOURCES" }, async context => {
+    return withResearchContributions(projectId, actorId, async context => {
       const members = context.role ? await context.tx.projectMember.findMany({ where: { projectId: context.project.id, status: "ACTIVE" }, select: { userId: true } }) : [];
       const mentors = context.role ? await context.tx.mentorRelationship.findMany({ where: { projectId: context.project.id, status: "ACTIVE" }, select: { mentorUserId: true } }) : [];
       const feedback = !context.role ? await context.tx.mentorFeedback.findMany({ where: { projectId: context.project.id, authorId: context.actorId }, orderBy: { createdAt: "desc" }, take: 50, select: { id: true, body: true } }) : [];
@@ -190,7 +229,7 @@ export const workContributionsService = {
     });
   },
   async list(projectId: string, actorId: string, query: z.infer<typeof contributionsPageSchema>) {
-    return withWorkspace(projectId, actorId, { mentor: true, mentorScope: "SHARED_RESOURCES" }, async context => {
+    return withResearchContributions(projectId, actorId, async context => {
       const own = query.filter === "MINE" || !context.role ? (await context.tx.$queryRaw<{ proposalId: string }[]>`SELECT p.proposal_id AS "proposalId" FROM contribution_participants p JOIN project_contribution_proposals c ON c.id=p.proposal_id WHERE p.user_id=${context.actorId}::uuid AND c.project_id=${context.project.id}::uuid`).map(p => p.proposalId) : undefined;
       const pending = query.filter === "PENDING" ? (await context.tx.$queryRaw<{ id: string }[]>`
         SELECT c.id FROM project_contribution_proposals c
@@ -210,14 +249,14 @@ export const workContributionsService = {
         rows.length ? context.tx.contributionReview.findMany({ where: { OR: rows.map(row => ({ proposalId: row.id, version: row.version })) }, orderBy: { createdAt: "asc" } }) : Promise.resolve([]),
       ]);
       const people = await workspacePeople(context.tx, [...rows.map(r => r.proposedById), ...participants.map(p => p.userId), ...reviews.map(r => r.userId)]);
-      return { items: await Promise.all(rows.map(row => present(context, row, false, { participants, reviews, people }))), total, hasNext: query.page * query.pageSize < total, page: query.page, pageSize: query.pageSize, currentActorId: context.actorId };
+      return { items: await Promise.all(rows.map(row => present(context, row, false, { participants, reviews, people, mentorAllowed: !context.role }))), total, hasNext: query.page * query.pageSize < total, page: query.page, pageSize: query.pageSize, currentActorId: context.actorId };
     });
   },
   async detail(projectId: string, actorId: string, id: string) { return withWorkRecord(projectId, actorId, id, false, async context => {
     return present(context, await record(context, id));
   }); },
   async save(projectId: string, actorId: string, input: ContributionInput & { clientKey?: string; expectedVersion?: number; correctionReason?: string }, id?: string) {
-    return withWorkspace(projectId, actorId, { write: true, mentor: true, mentorScope: "SHARED_RESOURCES" }, async context => {
+    return withResearchContributions(projectId, actorId, async context => {
       const previous = id ? await record(context, id) : await context.tx.projectContributionProposal.findUnique({ where: { projectId_proposedById_clientKey: { projectId: context.project.id, proposedById: context.actorId, clientKey: input.clientKey! } } });
       if (previous && !id) {
         const original = await context.tx.projectContributionHistory.findFirst({ where: { proposalId: previous.id, action: "CREATED" } });
@@ -238,10 +277,10 @@ export const workContributionsService = {
       await history(context, row, previous ? "CORRECTED" : "CREATED", input.correctionReason, previous ? undefined : input);
       await contributionsNotify(context, [...input.participants.map(p => p.userId), ...previousParticipants.map(p => p.userId)], previous ? "CORRECTED" : "ATTRIBUTED", row.id, row.version);
       return present(context, row);
-    });
+    }, true);
   },
   async submit(projectId: string, actorId: string, id: string, expectedVersion: number) {
-    return withWorkspace(projectId, actorId, { write: true, mentor: true, mentorScope: "SHARED_RESOURCES" }, async context => {
+    return withResearchContributions(projectId, actorId, async context => {
       const row = await record(context, id); expectWorkspaceVersion(row.version, expectedVersion);
       if (row.proposedById !== context.actorId || row.source === "LEGACY") throw AppError.forbidden("Only the record creator can submit");
       if (["SUBMITTED", "SELF_RECORDED"].includes(row.status)) return present(context, row);
@@ -254,7 +293,7 @@ export const workContributionsService = {
       await history(context, next, "SUBMITTED");
       await contributionsNotify(context, [...roster.map(p => p.userId), ...participants.map(p => p.userId)], "SUBMITTED", id, row.version);
       return present(context, next);
-    });
+    }, true);
   },
   async review(projectId: string, actorId: string, id: string, input: z.infer<typeof contributionReviewSchema>) {
     return withWorkRecord(projectId, actorId, id, true, async context => {

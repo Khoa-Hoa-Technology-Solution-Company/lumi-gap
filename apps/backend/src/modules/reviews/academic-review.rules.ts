@@ -1,7 +1,7 @@
 import type { OverallAcademicAssessment, ParticipantScope, ReviewRequestStatus } from "@trend/shared-types";
 
 export function reviewOutcome(overall: OverallAcademicAssessment | undefined, requiredRevisionCount: number) {
-  const needsRevision = overall === "MINOR_REVISION" || overall === "MAJOR_REVISION" || requiredRevisionCount > 0;
+  const needsRevision = overall === "NOT_READY" || overall === "MINOR_REVISION" || overall === "MAJOR_REVISION" || requiredRevisionCount > 0;
   return {
     requestStatus: (needsRevision ? "REVISION_REQUESTED" : "COMPLETED") as ReviewRequestStatus,
     submissionStatus: needsRevision ? "revision_requested" : "completed",

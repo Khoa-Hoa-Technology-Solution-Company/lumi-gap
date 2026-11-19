@@ -2,533 +2,375 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/number_format.dart';
-import 'package:flutter_mobile/features/trends/components/trend_verdict_label.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
+import 'package:flutter_mobile/features/trends/components/trend_verdict.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:go_router/go_router.dart';
 
+/// Years offered for the scope: the last 30 years up to now.
+final List<int> scopeYears = [
+  for (var y = DateTime.now().year - 30; y <= DateTime.now().year; y++) y,
+];
+
+/// The default scope the "Reset" button goes back to: the 15-year window the
+/// verdicts are calibrated on.
+final int scopeDefaultYearFrom = defaultTrendYears().from;
+final int scopeDefaultYearTo = defaultTrendYears().to;
+const int scopeDefaultMinPapers = 1;
+
+/// The trend scope editor: years, then the taxonomy and publication facets
+/// the API offers, then shortcuts that use this scope. It reports every
+/// change through [onChanged]; the sheet around it decides when to apply.
 class TrendsScopeTab extends StatefulWidget {
   const TrendsScopeTab({
     required this.overview,
     required this.params,
     required this.onChanged,
-    required this.onGoToSignals,
     super.key,
   });
 
   final TrendsOverview overview;
   final TrendsOverviewParams params;
   final ValueChanged<TrendsOverviewParams> onChanged;
-  final VoidCallback onGoToSignals;
 
   @override
   State<TrendsScopeTab> createState() => _TrendsScopeTabState();
 }
 
 class _TrendsScopeTabState extends State<TrendsScopeTab> {
-  int? _yearFrom;
-  int? _yearTo;
-  int? _minPapers;
+  TrendsOverviewParams get _p => widget.params;
+  TrendScopeFilters get _f => _p.scopeFilters;
 
-  final List<String> _selectedKinds = [];
-  final List<String> _selectedOA = [];
-  // Trends cover the Information Technology scope only, so the taxonomy filter
-  // narrows by subfield; domain and field filters are not offered (as on the web).
-  final List<String> _selectedSubfields = [];
-  final List<String> _selectedSizeBands = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _initFilters();
-  }
-
-  @override
-  void didUpdateWidget(covariant TrendsScopeTab oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.params != widget.params) {
-      _initFilters();
-    }
-  }
-
-  void _initFilters() {
-    _yearFrom = widget.params.yearFrom;
-    _yearTo = widget.params.yearTo;
-    _minPapers = widget.params.minPapers;
-
-    _selectedKinds
-      ..clear()
-      ..addAll(widget.params.scopeFilters.paperKinds);
-
-    _selectedOA
-      ..clear()
-      ..addAll(widget.params.scopeFilters.openAccessStatuses);
-
-    _selectedSubfields
-      ..clear()
-      ..addAll(widget.params.scopeFilters.subfieldIds);
-
-    _selectedSizeBands
-      ..clear()
-      ..addAll(widget.params.sizeBands);
-  }
-
-  void _updateParams() {
-    final newFilters = TrendScopeFilters(
-      paperKinds: _selectedKinds,
-      openAccessStatuses: _selectedOA,
-      subfieldIds: _selectedSubfields,
-    );
-
-    final newParams = TrendsOverviewParams(
-      yearFrom: _yearFrom,
-      yearTo: _yearTo,
-      minPapers: _minPapers,
-      scopeFilters: newFilters,
-      sortBy: widget.params.sortBy,
-      sizeBands: List.of(_selectedSizeBands),
-      limit: widget.params.limit,
-    );
-
-    widget.onChanged(newParams);
-  }
-
-  void _toggleFilter(List<String> list, String value) {
-    setState(() {
-      if (list.contains(value)) {
-        list.remove(value);
-      } else {
-        list.add(value);
-      }
-    });
-    _updateParams();
-  }
-
-  void _clearAll() {
-    setState(() {
-      _yearFrom = defaultTrendYears().from;
-      _yearTo = defaultTrendYears().to;
-      _minPapers = 1;
-      _selectedKinds.clear();
-      _selectedOA.clear();
-      _selectedSubfields.clear();
-      _selectedSizeBands.clear();
-    });
-    _updateParams();
-  }
-
-  String _scopeSearchQuery() {
-    final labels = [
-      ..._selectedSubfields,
-      ..._selectedKinds,
-      ..._selectedOA,
-    ].where((value) => value.trim().isNotEmpty).toList();
-    return labels.isEmpty ? 'research' : labels.first;
-  }
-
-  Map<String, String> _scopeQueryParameters({String? q}) {
-    return {
-      if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
-      if (_selectedSubfields.isNotEmpty)
-        'subfieldIds': _selectedSubfields.join(','),
-      if (_selectedKinds.isNotEmpty) 'paperKinds': _selectedKinds.join(','),
-      if (_selectedOA.isNotEmpty) 'openAccessStatuses': _selectedOA.join(','),
-      if (_yearFrom != null) 'yearFrom': _yearFrom.toString(),
-      if (_yearTo != null) 'yearTo': _yearTo.toString(),
-    };
-  }
-
-  /// Names of the selected subfields (their ids when the facet list lacks them).
-  List<String> _subfieldNames() {
-    final buckets =
-        widget.overview.facets?.subfields ?? const <TrendFacetBucket>[];
-    return [
-      for (final id in _selectedSubfields)
-        buckets.where((b) => b.id == id).map((b) => b.name).firstOrNull ?? id,
-    ];
-  }
-
-  /// Years offered by the range pickers: 30 years back from now, plus the
-  /// selected years if they fall outside (a dropdown must contain its value).
-  List<int> _yearOptions() {
-    final now = DateTime.now().year;
-    return {
-      for (var y = now - 30; y <= now; y++) y,
-      ?_yearFrom,
-      ?_yearTo,
-    }.toList()..sort();
-  }
-
-  String _routeWithQuery(String path, Map<String, String> queryParameters) {
-    return Uri(path: path, queryParameters: queryParameters).toString();
-  }
-
-  /// Size bands: tertiles of total papers among the topics of the IT scope.
-  Widget _buildSizeBandChips(BuildContext context) {
-    final cutoffs = widget.overview.bandCutoffs;
-    if (cutoffs == null) return const SizedBox.shrink();
-    String range(String band) => switch (band) {
-      'small' => '≤ ${formatNumber(cutoffs.smallMax.round())}',
-      'medium' =>
-        '${formatNumber(cutoffs.smallMax.round())}–${formatNumber(cutoffs.mediumMax.round())}',
-      _ => '> ${formatNumber(cutoffs.mediumMax.round())}',
-    };
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          context.t('Topic size (papers in the window)'),
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
-            color: Color(0xFF94A3B8),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final band in trendSizeBands)
-              ChoiceChip(
-                label: Text(
-                  '${context.t(trendSizeBandLabel(band))} (${range(band)})',
-                  style: const TextStyle(fontSize: 11),
-                ),
-                selected: _selectedSizeBands.contains(band),
-                selectedColor: const Color(0xFF06B6D4),
-                onSelected: (_) => _toggleFilter(_selectedSizeBands, band),
-              ),
-          ],
-        ),
-        const SizedBox(height: 20),
-      ],
-    );
-  }
-
-  Widget _buildMultiSelectChips({
-    required String title,
-    required List<TrendFacetBucket> buckets,
-    required List<String> selectedList,
-    required bool isDark,
+  void _emit({
+    int? yearFrom,
+    int? yearTo,
+    int? minPapers,
+    TrendScopeFilters? filters,
+    List<String>? sizeBands,
   }) {
-    if (buckets.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
-            color: Color(0xFF94A3B8),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: buckets.map((bucket) {
-            final isSelected = selectedList.contains(bucket.id);
-            return ChoiceChip(
-              label: Text(
-                '${bucket.name} (${bucket.count})',
-                style: const TextStyle(fontSize: 11),
-              ),
-              selected: isSelected,
-              selectedColor: const Color(0xFF06B6D4),
-              onSelected: (_) => _toggleFilter(selectedList, bucket.id),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 20),
-      ],
+    var from = yearFrom ?? _p.yearFrom ?? scopeDefaultYearFrom;
+    var to = yearTo ?? _p.yearTo ?? scopeDefaultYearTo;
+    // Never a backwards range: moving one end past the other moves both.
+    if (from > to) {
+      if (yearFrom != null) {
+        to = from;
+      } else {
+        from = to;
+      }
+    }
+    widget.onChanged(
+      TrendsOverviewParams(
+        yearFrom: from,
+        yearTo: to,
+        minPapers: minPapers ?? _p.minPapers,
+        scopeFilters: filters ?? _f,
+        sizeBands: sizeBands ?? _p.sizeBands,
+        sortBy: _p.sortBy,
+        limit: _p.limit,
+      ),
     );
+  }
+
+  List<String> _toggled(List<String> list, String id) =>
+      list.contains(id) ? [...list.where((x) => x != id)] : [...list, id];
+
+  void _reset() => widget.onChanged(
+    TrendsOverviewParams(
+      yearFrom: scopeDefaultYearFrom,
+      yearTo: scopeDefaultYearTo,
+      minPapers: scopeDefaultMinPapers,
+      sortBy: _p.sortBy,
+      limit: _p.limit,
+    ),
+  );
+
+  Map<String, String> _query({String? q}) => {
+    if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+    if (_f.subfieldIds.isNotEmpty) 'subfieldIds': _f.subfieldIds.join(','),
+    if (_f.paperKinds.isNotEmpty) 'paperKinds': _f.paperKinds.join(','),
+    if (_f.openAccessStatuses.isNotEmpty)
+      'openAccessStatuses': _f.openAccessStatuses.join(','),
+    if (_p.yearFrom != null) 'yearFrom': '${_p.yearFrom}',
+    if (_p.yearTo != null) 'yearTo': '${_p.yearTo}',
+  };
+
+  /// What to search or report on: the narrowest chosen facet, else
+  /// "research".
+  String _scopeTopic() {
+    final facets = widget.overview.facets;
+    String? nameOf(List<TrendFacetBucket>? buckets, List<String> ids) {
+      if (ids.isEmpty) return null;
+      for (final b in buckets ?? const <TrendFacetBucket>[]) {
+        if (b.id == ids.first) return b.name;
+      }
+      return ids.first;
+    }
+
+    return nameOf(facets?.subfields, _f.subfieldIds) ?? 'research';
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final cardBg = isDark ? const Color(0xFF1A2332) : theme.cardColor;
-    final borderColor = isDark
-        ? const Color(0xFF26334A)
-        : const Color(0xFFE2E8F0);
-
+    final lumi = context.lumi;
     final facets = widget.overview.facets;
+    final from = _p.yearFrom ?? scopeDefaultYearFrom;
+    final to = _p.yearTo ?? scopeDefaultYearTo;
 
-    // Count total matched publications
-    final totalPublications = widget.overview.totalPapersInWindow;
+    Widget yearField(String label, int value, ValueChanged<int> onPick) =>
+        DropdownButtonFormField<int>(
+          isExpanded: true,
+          initialValue: scopeYears.contains(value) ? value : null,
+          decoration: InputDecoration(labelText: label),
+          items: [
+            for (final y in scopeYears)
+              DropdownMenuItem(value: y, child: Text('$y')),
+          ],
+          onChanged: (v) {
+            if (v != null) onPick(v);
+          },
+        );
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       children: [
-        // Scope Summary Card
-        Card(
-          elevation: 0,
-          margin: EdgeInsets.zero,
-          color: const Color(0xFF0F172A).withValues(alpha: 0.04),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: borderColor),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.shield,
-                          color: Color(0xFF06B6D4),
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          context.t('Current Scope Summary'),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                    TextButton(
-                      onPressed: _clearAll,
-                      child: Text(
-                        context.t('Reset'),
-                        style: const TextStyle(fontSize: 12, color: Colors.red),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  context.t(
-                    'Publications in scope: {{totalPublications}} papers',
-                    {'totalPublications': totalPublications},
-                  ),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: Color(0xFF06B6D4),
-                  ),
-                ),
-                if (_selectedSubfields.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    context.t('Taxonomy path: {{path}}', {
-                      'path': [
-                        context.t('Information Technology scope'),
-                        _subfieldNames().join(', '),
-                      ].join(' ➔ '),
-                    }),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF94A3B8),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 8),
-                const Divider(),
-                const SizedBox(height: 4),
-                Text(
-                  context.t(
-                    'These filters change every Signals, Compare, Search, Report, and Explain result dynamically.',
-                  ),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    height: 1.4,
-                    fontStyle: FontStyle.italic,
-                    color: Color(0xFF94A3B8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 24),
-
-        // Year range selector
         Text(
-          context.t('Publication Year Range'),
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          context.t(
+            'Publications in scope: {{totalPublications}} papers',
+            {
+              'totalPublications': formatNumber(
+                widget.overview.totalPapersInWindow,
+              ),
+            },
+          ),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: lumi.foregroundSecondary,
+          ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 16),
         Row(
           children: [
             Expanded(
-              child: DropdownButtonFormField<int>(
-                initialValue: _yearFrom,
-                decoration: InputDecoration(
-                  labelText: context.t('From Year'),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                items: _yearOptions()
-                    .map(
-                      (y) =>
-                          DropdownMenuItem(value: y, child: Text(y.toString())),
-                    )
-                    .toList(),
-                onChanged: (val) {
-                  setState(() => _yearFrom = val);
-                  _updateParams();
-                },
+              child: Text(
+                context.t('Publication Year Range'),
+                style: theme.textTheme.titleMedium,
               ),
             ),
-            const SizedBox(width: 16),
+            TextButton(onPressed: _reset, child: Text(context.t('Reset'))),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
             Expanded(
-              child: DropdownButtonFormField<int>(
-                initialValue: _yearTo,
-                decoration: InputDecoration(
-                  labelText: context.t('To Year'),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                items: _yearOptions()
-                    .map(
-                      (y) =>
-                          DropdownMenuItem(value: y, child: Text(y.toString())),
-                    )
-                    .toList(),
-                onChanged: (val) {
-                  setState(() => _yearTo = val);
-                  _updateParams();
-                },
+              child: yearField(
+                context.t('From Year'),
+                from,
+                (y) => _emit(yearFrom: y),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: yearField(
+                context.t('To Year'),
+                to,
+                (y) => _emit(yearTo: y),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 24),
-
         if (facets != null) ...[
-          // Taxonomy selectors
-          _buildSizeBandChips(context),
-          _buildMultiSelectChips(
+          // Trends cover the Information Technology scope only, so the taxonomy
+          // filter narrows by subfield; domain and field filters are not
+          // offered (as on the web).
+          _FacetChips(
             title: context.t('Taxonomy Subfields'),
             buckets: facets.subfields,
-            selectedList: _selectedSubfields,
-            isDark: isDark,
+            selected: _f.subfieldIds,
+            onToggle: (id) => _emit(
+              filters: _copy(_f, subfieldIds: _toggled(_f.subfieldIds, id)),
+            ),
           ),
-
-          // Publication selectors
-          _buildMultiSelectChips(
+          if (widget.overview.bandCutoffs case final cutoffs?)
+            _SizeBandChips(
+              cutoffs: cutoffs,
+              selected: _p.sizeBands,
+              onToggle: (band) =>
+                  _emit(sizeBands: _toggled(_p.sizeBands, band)),
+            ),
+          _FacetChips(
             title: context.t('Paper Type'),
             buckets: facets.paperKinds,
-            selectedList: _selectedKinds,
-            isDark: isDark,
+            selected: _f.paperKinds,
+            onToggle: (id) => _emit(
+              filters: _copy(_f, paperKinds: _toggled(_f.paperKinds, id)),
+            ),
           ),
-          _buildMultiSelectChips(
+          _FacetChips(
             title: context.t('Open Access Status'),
             buckets: facets.openAccessStatuses,
-            selectedList: _selectedOA,
-            isDark: isDark,
+            selected: _f.openAccessStatuses,
+            onToggle: (id) => _emit(
+              filters: _copy(
+                _f,
+                openAccessStatuses: _toggled(_f.openAccessStatuses, id),
+              ),
+            ),
           ),
         ],
-
-        const Divider(height: 32),
-
-        // Recommended Actions
-        Text(
-          context.t('Recommended Actions in this Scope'),
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        const SizedBox(height: 24),
+        LumiRowGroup(
+          children: [
+            LumiListRow(
+              icon: Icons.search,
+              title: context.t('Search scoped papers'),
+              onTap: () => unawaited(
+                context.push(
+                  Uri(
+                    path: '/search',
+                    queryParameters: _query(q: _scopeTopic()),
+                  ).toString(),
+                ),
+              ),
+            ),
+            LumiListRow(
+              icon: Icons.description_outlined,
+              title: context.t('Generate scoped report'),
+              onTap: () => unawaited(
+                context.push(
+                  Uri(
+                    path: '/reports',
+                    queryParameters: {
+                      'create': 'true',
+                      'topic': _scopeTopic(),
+                      ..._query(),
+                    },
+                  ).toString(),
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 0,
-          color: cardBg,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: borderColor),
-          ),
-          child: Column(
+      ],
+    );
+  }
+}
+
+TrendScopeFilters _copy(
+  TrendScopeFilters f, {
+  List<String>? paperKinds,
+  List<String>? openAccessStatuses,
+  List<String>? subfieldIds,
+}) => TrendScopeFilters(
+  paperKinds: paperKinds ?? f.paperKinds,
+  openAccessStatuses: openAccessStatuses ?? f.openAccessStatuses,
+  providers: f.providers,
+  sources: f.sources,
+  citationBands: f.citationBands,
+  domains: f.domains,
+  fields: f.fields,
+  subfields: f.subfields,
+  topics: f.topics,
+  domainIds: f.domainIds,
+  fieldIds: f.fieldIds,
+  subfieldIds: subfieldIds ?? f.subfieldIds,
+  topicIds: f.topicIds,
+);
+
+class _FacetChips extends StatelessWidget {
+  const _FacetChips({
+    required this.title,
+    required this.buckets,
+    required this.selected,
+    required this.onToggle,
+  });
+
+  final String title;
+  final List<TrendFacetBucket> buckets;
+  final List<String> selected;
+  final ValueChanged<String> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    if (buckets.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              ListTile(
-                leading: const Icon(
-                  Icons.trending_up,
-                  color: Color(0xFF22C55E),
+              for (final b in buckets)
+                FilterChip(
+                  label: Text('${b.name} (${formatNumber(b.count)})'),
+                  selected: selected.contains(b.id),
+                  onSelected: (_) => onToggle(b.id),
                 ),
-                title: Text(
-                  context.t('Find signals in this scope'),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                trailing: const Icon(Icons.chevron_right, size: 16),
-                onTap: widget.onGoToSignals,
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.search, color: Color(0xFF06B6D4)),
-                title: Text(
-                  context.t('Search scoped papers'),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                trailing: const Icon(Icons.chevron_right, size: 16),
-                onTap: () {
-                  unawaited(
-                    context.push(
-                      _routeWithQuery(
-                        '/search',
-                        _scopeQueryParameters(q: _scopeSearchQuery()),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(
-                  Icons.description,
-                  color: Color(0xFFA78BFA),
-                ),
-                title: Text(
-                  context.t('Generate scoped report'),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                trailing: const Icon(Icons.chevron_right, size: 16),
-                onTap: () {
-                  unawaited(
-                    context.push(
-                      _routeWithQuery(
-                        '/reports',
-                        {
-                          'create': 'true',
-                          'topic': _scopeSearchQuery(),
-                          ..._scopeQueryParameters(),
-                        },
-                      ),
-                    ),
-                  );
-                },
-              ),
             ],
           ),
-        ),
-        const SizedBox(height: 48),
-      ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Size bands: tertiles of total papers among the topics of the IT scope,
+/// each with its paper range.
+class _SizeBandChips extends StatelessWidget {
+  const _SizeBandChips({
+    required this.cutoffs,
+    required this.selected,
+    required this.onToggle,
+  });
+
+  final ({double smallMax, double mediumMax}) cutoffs;
+  final List<String> selected;
+  final ValueChanged<String> onToggle;
+
+  String _range(String band) {
+    final small = formatNumber(cutoffs.smallMax.round());
+    final medium = formatNumber(cutoffs.mediumMax.round());
+    return switch (band) {
+      'small' => '≤ $small',
+      'medium' => '$small–$medium',
+      _ => '> $medium',
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            context.t('Topic size (papers in the window)'),
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final band in trendSizeBands)
+                FilterChip(
+                  label: Text(
+                    '${context.t(trendSizeBandLabel(band))} (${_range(band)})',
+                  ),
+                  selected: selected.contains(band),
+                  onSelected: (_) => onToggle(band),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,10 +1,9 @@
 import 'dart:async';
 import 'dart:developer';
 
-import 'package:dio/dio.dart';
-import 'package:flutter_mobile/core/errors/api_exception.dart';
 import 'package:flutter_mobile/core/storage/secure_token_store.dart';
 import 'package:flutter_mobile/features/auth/data/auth_api.dart';
+import 'package:flutter_mobile/features/auth/data/auth_failure.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -54,22 +53,29 @@ class AuthController extends Notifier<AsyncValue<User?>> {
     log('AuthController: _initAuth completed, state is ${state.value}');
   }
 
-  Future<void> login(String email, String password) async {
+  /// Signs in. Returns null on success (the router then leaves the auth
+  /// screens by itself) or the reason it failed. On failure the state goes
+  /// back to "signed out", never to an error state, so nothing else in the
+  /// app has to know a sign-in was attempted.
+  Future<AuthFailure?> login(String email, String password) async {
     state = const AsyncLoading();
     try {
       final response = await _authApi.login(LoginRequest(email: email, password: password));
+      // Tokens first: screens opened by the redirect call the API at once.
       await _tokenStore.save(response.tokens);
       state = AsyncData(response.user);
-    } on Object catch (e, st) {
-      if (e is DioException && e.error is ApiException) {
-        state = AsyncError(e.error! as ApiException, st);
-      } else {
-        state = AsyncError(e, st);
-      }
+      return null;
+    } on Object catch (e) {
+      log('AuthController: login failed: ${e.runtimeType}');
+      state = const AsyncData(null);
+      return classifyAuthError(e);
     }
   }
 
-  Future<void> register(String email, String password, String fullName, UserRole role) async {
+  /// Creates the account and signs it in, as the web app does: the register
+  /// response already carries the session. There is no role choice here; the
+  /// academic profile is filled in later from the profile.
+  Future<AuthFailure?> register(String email, String password, String fullName) async {
     state = const AsyncLoading();
     try {
       final response = await _authApi.register(RegisterRequest(
@@ -78,16 +84,12 @@ class AuthController extends Notifier<AsyncValue<User?>> {
         fullName: fullName,
       ));
       await _tokenStore.save(response.tokens);
-      await _authApi.updateAcademicProfile(AcademicProfileType.values.byName(role.name));
-      await _tokenStore.delete();
-      // Require user to login again after registration
+      state = AsyncData(response.user);
+      return null;
+    } on Object catch (e) {
+      log('AuthController: register failed: ${e.runtimeType}');
       state = const AsyncData(null);
-    } on Object catch (e, st) {
-      if (e is DioException && e.error is ApiException) {
-        state = AsyncError(e.error! as ApiException, st);
-      } else {
-        state = AsyncError(e, st);
-      }
+      return classifyAuthError(e);
     }
   }
 
@@ -102,6 +104,22 @@ class AuthController extends Notifier<AsyncValue<User?>> {
     if (state.value?.id != current.id) return null;
     state = AsyncData(fresh);
     return fresh;
+  }
+
+  /// Saves the profile and shows the saved user without a loading state.
+  /// Ignored if the session changed meanwhile (logout, other account).
+  Future<void> updateProfile({
+    String? institution,
+    List<String>? researchInterests,
+  }) async {
+    final current = state.value;
+    if (current == null) return;
+    final updated = await ref.read(authApiProvider).updateProfile(
+          institution: institution,
+          researchInterests: researchInterests,
+        );
+    if (state.value?.id != current.id) return;
+    state = AsyncData(updated);
   }
 
   Future<void> logout() async {
