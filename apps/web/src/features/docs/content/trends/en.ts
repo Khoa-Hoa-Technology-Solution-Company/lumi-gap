@@ -559,7 +559,7 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
           kind: "callout",
           tone: "limitation",
           heading: "8. The scope is defined by the project",
-          text: `The list of subfields of the scope (version \`${C.scopeVersion}\`) is a choice of this project. Applied IT areas that sit in other fields (bioinformatics, health informatics, e-learning...) are not counted yet. OpenAlex also changes how it assigns topics to works over time; counts always follow the current assignment.`,
+          text: `The list of subfields of the scope (version \`${C.scopeVersion}\`) is a choice of this project. Applied IT areas that sit in other fields (bioinformatics, health informatics, e-learning...) are counted only through a list of layer-3 topics chosen by the team, so other application topics may be missed. OpenAlex also changes how it assigns topics to works over time; counts always follow the current assignment.`,
         },
         {
           kind: "callout",

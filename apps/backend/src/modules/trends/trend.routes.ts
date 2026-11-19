@@ -41,6 +41,7 @@ trendRouter.get("/periods", ...throttledRead, trendController.periods);
 trendRouter.get("/compare", ...throttledRead, trendController.compare);
 trendRouter.get("/topic-candidates", ...throttledRead, trendController.topicCandidates);
 trendRouter.get("/relationships", ...throttledRead, trendController.relationships);
+trendRouter.get("/emerging", ...throttledRead, trendController.emerging);
 trendRouter.get("/explain/history", requireAuth, trendController.explainHistory);
 trendRouter.get("/follows", requireAuth, trendController.listFollows);
 trendRouter.get("/follows/check", requireAuth, trendController.checkFollow);

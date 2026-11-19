@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import { Sparkles, Search, Loader2, ChevronDown, ChevronRight, AlertCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { TREND_CITATION_BANDS, type TrendCitationBand } from "@trend/shared-types";
+import { TREND_CITATION_BANDS, type TrendCitationBand, type TrendSizeBand } from "@trend/shared-types";
 import { useTrendsOverview, useTrendCompare, useTrendRelationships, useExplainTrend, useTrendExplainHistory } from "@/features/trends/hooks/use-trends";
 import { getRisingKeywordTarget, getTopicTrendTarget } from "@/features/trends/trend-navigation";
 import { FilterChip, type RisingKeywordRow, type TrendBarChartDatum } from "@/features/trends/components/trends-shared.components";
@@ -10,8 +10,10 @@ import { OverviewTab } from "@/features/trends/components/overview-tab";
 import { TopicsTab } from "@/features/trends/components/topics-tab";
 import { DatasetTab } from "@/features/trends/components/dataset-tab";
 import { CompareTab } from "@/features/trends/components/compare-tab";
+import { EmergingTab } from "@/features/trends/components/emerging-tab";
 import { AITab } from "@/features/trends/components/ai-tab";
 import { PeriodsTab } from "@/features/trends/components/periods-tab";
+import { parseSizeBands } from "@/features/trends/cross-topic";
 import { isVerdictFilter, type VerdictFilter } from "@/features/trends/components/verdict-filter";
 import type { TrendsOverviewParams } from "@/features/trends/api/trends.api";
 import { DataSourceBadge, ScopeNotice } from "@/features/trends/components/trend-data-source";
@@ -29,14 +31,14 @@ import {
   DEFAULT_TREND_YEAR_FROM,
   DEFAULT_TREND_YEAR_TO,
 } from "./trends.insights";
-import { buildTrendsPageParams, DEFAULT_TREND_MIN_PAPERS } from "./trends.url";
+import { buildTrendsPageParams, DEFAULT_TREND_MIN_PAPERS, parseTrendTab, type TrendTabId } from "./trends.url";
 import { formatNumber } from "@/utils";
 import { formatLanguageName } from "@/utils/language";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 
 type CitationBand = TrendCitationBand;
-type TrendTab = "overview" | "topics" | "periods" | "dataset" | "compare" | "ai";
+type TrendTab = TrendTabId;
 
 const TREND_TABS: Array<{ id: TrendTab; label: string }> = [
   { id: "overview", label: "Start here" },
@@ -44,6 +46,7 @@ const TREND_TABS: Array<{ id: TrendTab; label: string }> = [
   { id: "periods", label: "By month / quarter" },
   { id: "dataset", label: "Data Scope" },
   { id: "compare", label: "Compare topics" },
+  { id: "emerging", label: "Emerging signals" },
   { id: "ai", label: "Explain trend" },
 ];
 
@@ -71,10 +74,7 @@ function parseCitationBandsParam(params: URLSearchParams, key: string): Citation
 }
 
 function parseTabParam(params: URLSearchParams): TrendTab {
-  const tab = params.get("tab");
-  if (tab === "scope") return "dataset";
-  if (tab === "topics" || tab === "periods" || tab === "dataset" || tab === "compare" || tab === "ai") return tab;
-  return "overview";
+  return parseTrendTab(params.get("tab"));
 }
 
 export function TrendsPage() {
@@ -110,6 +110,7 @@ export function TrendsPage() {
   const [languages, setLanguages] = useState<string[]>(() => parseArrayParam(searchParams, "languages"));
   const [citationBands, setCitationBands] = useState<CitationBand[]>(() => parseCitationBandsParam(searchParams, "citationBands"));
 
+  const [sizeBands, setSizeBands] = useState<TrendSizeBand[]>(() => parseSizeBands(searchParams.get("sizeBands")));
   const [activeTab, setActiveTab] = useState<TrendTab>(() => parseTabParam(searchParams));
   const [selectedTopics, setSelectedTopics] = useState<string[]>(() => parseArrayParam(searchParams, "compare").slice(0, 5));
   const [focusTopic, setFocusTopic] = useState<string>(() => searchParams.get("focus")?.trim() ?? "");
@@ -162,14 +163,14 @@ export function TrendsPage() {
       yearFrom, yearTo, sortBy, minPapers, activeTab, verdictFilter, focusTopic, focusTopicId,
       domains: [], fields: [], subfields, topicsFilter,
       domainIds: [], fieldIds: [], subfieldIds, topicIds,
-      paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
+      paperKinds, openAccessStatuses, providers, sources, languages, citationBands, sizeBands,
       selectedTopics,
     }), { replace: true });
   }, [
     yearFrom, yearTo, sortBy, minPapers, activeTab, verdictFilter, focusTopic, focusTopicId,
     subfields, topicsFilter,
     subfieldIds, topicIds,
-    paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
+    paperKinds, openAccessStatuses, providers, sources, languages, citationBands, sizeBands,
     selectedTopics, setSearchParams
   ]);
 
@@ -189,9 +190,10 @@ export function TrendsPage() {
     sources,
     languages,
     citationBands,
+    sizeBands,
   }), [
     yearFrom, yearTo, sortBy, minPapers, subfields, topicsFilter,
-    subfieldIds, topicIds, paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
+    subfieldIds, topicIds, paperKinds, openAccessStatuses, providers, sources, languages, citationBands, sizeBands,
   ]);
   const { data, isLoading, isFetching, isError, isPlaceholderData } = useTrendsOverview(overviewParams);
   // keepPreviousData shows the last result while new filters load; it must not pass for the new answer.
@@ -927,6 +929,8 @@ export function TrendsPage() {
                 setFocusTopic={chooseFocusTopic}
                 verdictFilter={verdictFilter}
                 setVerdictFilter={setVerdictFilter}
+                sizeBands={sizeBands}
+                setSizeBands={setSizeBands}
                 overviewParams={overviewParams}
                 scopeParams={{
                   yearFrom,
@@ -1017,6 +1021,8 @@ export function TrendsPage() {
                 }}
               />
             )}
+
+            {activeTab === "emerging" && <EmergingTab subfieldIds={subfieldIds} topicIds={topicIds} />}
 
             {activeTab === "ai" && (
               <AITab

@@ -6,6 +6,8 @@ const Map<String, String> viTranslations = {
   '10.xxxx/xxxxx': '10.xxxx/xxxxx',
   '3-year CAGR': 'CAGR 3 năm',
   'A closure check is in progress.': 'Đang kiểm tra mức đã được giải quyết.',
+  'A keyword is a signal when it has at least {{min}} papers in {{rFrom}}–{{rTo}}, at least {{novelty}}% of its papers since {{eFrom}} fall in those years, and its share of papers rose significantly compared with {{eFrom}}–{{eTo}}.':
+      'Một từ khoá là tín hiệu khi có ít nhất {{min}} bài trong {{rFrom}}–{{rTo}}, ít nhất {{novelty}}% số bài của nó từ {{eFrom}} nằm trong các năm đó, và thị phần bài của nó tăng có ý nghĩa so với {{eFrom}}–{{eTo}}.',
   'ACTIVITY': 'HOẠT ĐỘNG',
   'AI Analyzable': 'AI có thể phân tích',
   'AI Assistant': 'Trợ lý AI',
@@ -82,6 +84,7 @@ const Map<String, String> viTranslations = {
   'Analyzing Gaps with AI': 'Đang phân tích khoảng trống bằng AI',
   'Anonymous': 'Ẩn danh',
   'Appearance': 'Giao diện',
+  'Application topic': 'Chủ đề ứng dụng',
   'Apply Filters': 'Áp dụng bộ lọc',
   'Approved': 'Đã được phê duyệt',
   'Ask AI Assistant about project publications...':
@@ -127,6 +130,7 @@ const Map<String, String> viTranslations = {
   'Cite Publication': 'Trích dẫn công bố',
   'Cited by': 'Được trích dẫn bởi',
   'Clear All': 'Xóa tất cả',
+  'Clear change': 'Thay đổi rõ ràng',
   'Close': 'Đóng',
   'Closure check': 'Kiểm tra đóng khoảng trống',
   'Closure check: already answered by an existing paper':
@@ -213,6 +217,7 @@ const Map<String, String> viTranslations = {
   'Draft Proposal Outline': 'Dàn ý đề xuất',
   'Draft with AI': 'Soạn bằng AI',
   'EMBEDDING CALCULATIONS': 'TÍNH TOÁN EMBEDDING',
+  'Early signal, not a forecast': 'Tín hiệu sớm, không phải dự báo',
   'Edit Evidence': 'Sửa bằng chứng',
   'Edit Pack': 'Sửa gói',
   'Email': 'Email',
@@ -222,7 +227,10 @@ const Map<String, String> viTranslations = {
   'Embedding Coverage': 'Nhúng phạm vi bảo hiểm',
   'Embedding calculation started.': 'Đã bắt đầu tính toán embedding.',
   'Embeddings': 'Embedding',
+  'Emerging': 'Mới nổi',
   'Emerging Keywords': 'Từ khóa mới nổi',
+  'Emerging signals need OpenAlex keyword counts; the local corpus cannot compute them.':
+      'Tín hiệu mới nổi cần số đếm từ khoá của OpenAlex; kho dữ liệu cục bộ không tính được.',
   'English (en)': 'Tiếng Anh (en)',
   'Enter User ID or Email': 'Nhập ID người dùng hoặc email',
   'Enter a keyword above or relax/clear filters in the top-right button to find broader publications.':
@@ -342,6 +350,8 @@ const Map<String, String> viTranslations = {
   'Invalid email': 'Email không hợp lệ',
   'Invitation sent. They join once they accept it.':
       'Đã gửi lời mời. Họ sẽ tham gia khi chấp nhận.',
+  'Its change is anomalous for topics of its size (Tukey fences)':
+      'Mức thay đổi bất thường so với các chủ đề cùng quy mô (cận Tukey)',
   'Its share grew over the window but has levelled off near its peak in recent years.':
       'Thị phần tăng trong giai đoạn xét nhưng vài năm gần đây đã chững lại gần mức đỉnh.',
   'Its share grew over the window but has since fallen to less than half of its peak.':
@@ -361,6 +371,9 @@ const Map<String, String> viTranslations = {
   'Language': 'Ngôn ngữ',
   'Language: {{language}} · {{createdAt}}':
       'Ngôn ngữ: {{language}} · {{createdAt}}',
+  'Large topics': 'Chủ đề lớn',
+  'Layer 3 of the IT scope: an application topic from another field, chosen by the project team':
+      'Lớp 3 của phạm vi CNTT: chủ đề ứng dụng thuộc lĩnh vực khác, do nhóm dự án chọn',
   'Leaderboard': 'Bảng xếp hạng',
   'Learn the method': 'Tìm hiểu phương pháp',
   'Lecturer': 'Giảng viên',
@@ -390,6 +403,9 @@ const Map<String, String> viTranslations = {
   'Loading your papers...': 'Đang tải bài báo của bạn...',
   'Loading your rank...': 'Đang tải thứ hạng của bạn...',
   'Loading…': 'Đang tải…',
+  'Log odds ratio': 'Log tỷ số odds',
+  'Looking for emerging keywords. The first time can take about 15 seconds.':
+      'Đang tìm từ khoá mới nổi. Lần đầu có thể mất khoảng 15 giây.',
   'Low Severity': 'Mức độ nghiêm trọng thấp',
   'Low priority': 'Ưu tiên thấp',
   'MIN CONFIDENCE': 'ĐỘ TIN CẬY TỐI THIỂU',
@@ -401,6 +417,7 @@ const Map<String, String> viTranslations = {
   'Medium Severity': 'Mức độ nghiêm trọng trung bình',
   'Medium confidence': 'Độ tin cậy trung bình',
   'Medium priority': 'Ưu tiên trung bình',
+  'Medium topics': 'Chủ đề vừa',
   'Member': 'Thành viên',
   'Member removed.': 'Đã xóa thành viên.',
   'Members': 'Thành viên',
@@ -444,6 +461,8 @@ const Map<String, String> viTranslations = {
   'No history saved yet.': 'Chưa có lịch sử nào được lưu.',
   'No in-library references found yet.':
       'Chưa tìm thấy tài liệu tham khảo nào trong thư viện.',
+  'No keyword meets every criterion in this scope.':
+      'Không có từ khoá nào đạt đủ mọi tiêu chí trong phạm vi này.',
   'No markdown yet. Keep the report worker running and refresh later.':
       'Chưa có nội dung markdown. Hãy để worker báo cáo tiếp tục chạy và làm mới sau.',
   'No messages yet. Start the conversation.':
@@ -482,6 +501,7 @@ const Map<String, String> viTranslations = {
   'Notification': 'Thông báo',
   'Notifications': 'Thông báo',
   'Notifications, {{count}} unread': 'Thông báo, {{count}} chưa đọc',
+  'Novelty': 'Độ mới',
   'OA': 'OA',
   'OR': 'HOẶC',
   'Offline': 'Ngoại tuyến',
@@ -527,6 +547,7 @@ const Map<String, String> viTranslations = {
   'Papers': 'Bài báo',
   'Papers ({{length}})': 'Bài báo ({{length}})',
   'Papers / year': 'Số bài/năm',
+  'Papers before → recent': 'Số bài trước → gần đây',
   'Password': 'Mật khẩu',
   'Past its peak': 'Qua đỉnh',
   'Peak year': 'Năm đỉnh',
@@ -697,6 +718,7 @@ const Map<String, String> viTranslations = {
   'Sign out': 'Đăng xuất',
   'Signals': 'Tín hiệu',
   'Similar content': 'Nội dung tương tự',
+  'Small topics': 'Chủ đề nhỏ',
   'Some features need a verified email.':
       'Một số chức năng cần email đã xác minh.',
   'Some sections could not be refreshed.': 'Chưa làm mới được một số phần.',
@@ -774,6 +796,8 @@ const Map<String, String> viTranslations = {
   'The message content is not valid.': 'Nội dung tin nhắn không hợp lệ.',
   'The original sign-in session has ended.':
       'Phiên đăng nhập ban đầu đã kết thúc.',
+  'These are keywords, not topics, and they are separate from the topic verdicts. Nothing says a keyword will keep growing.':
+      'Đây là từ khoá, không phải chủ đề, và tách riêng khỏi kết luận xu hướng của chủ đề. Không có gì bảo đảm từ khoá sẽ tiếp tục tăng.',
   'These filters change every Signals, Compare, Search, Report, and Explain result dynamically.':
       'Các bộ lọc này thay đổi trực tiếp mọi kết quả Tín hiệu, So sánh, Tìm kiếm, Báo cáo và Giải thích.',
   'This evaluation is out of date. Re-evaluate to refresh it.':
@@ -802,6 +826,7 @@ const Map<String, String> viTranslations = {
       'Nhãn chủ đề (ví dụ: LLM trong giáo dục)',
   'Topic must be at least 3 characters long.':
       'Chủ đề phải có ít nhất 3 ký tự.',
+  'Topic size (papers in the window)': 'Quy mô chủ đề (số bài trong giai đoạn)',
   'Topic: {{id}}': 'Chủ đề: {{id}}',
   'Topic: {{selectedTopic}}\n\nSummary:\n{{summary}}':
       'Chủ đề: {{selectedTopic}}\n\nTóm tắt:\n{{summary}}',
@@ -952,6 +977,8 @@ const Map<String, String> viTranslations = {
   '{{count}} research gaps found': 'Tìm thấy {{count}} khoảng trống nghiên cứu',
   '{{count}} submitted paper': '{{count}} bài báo đã nộp',
   '{{count}} submitted papers': '{{count}} bài báo đã nộp',
+  '{{found}} signals among {{tested}} keywords tested':
+      '{{found}} tín hiệu trong {{tested}} từ khoá đã kiểm định',
   '{{name}}: message deleted, {{time}}':
       '{{name}}: tin nhắn đã bị xóa, {{time}}',
   '{{pct}}% confidence': 'độ tin cậy {{pct}}%',

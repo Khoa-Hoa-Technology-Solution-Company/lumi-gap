@@ -665,6 +665,28 @@ export const openapiSpec = {
         },
       },
     },
+    "/api/v1/trends/emerging": {
+      get: {
+        tags: ["Trends"],
+        summary: "Emerging keyword signals of the IT scope",
+        description:
+          "Keywords with at least 20 papers in the last 3 complete years, at least 70% of their " +
+          "10-year papers in those 3 years, and a significant rise against the 7 earlier years " +
+          "(2×2 log odds ratio, Benjamini–Hochberg). An early signal on keywords, separate from the " +
+          "topic verdicts; not a forecast. Empty when the local corpus answers.",
+        parameters: [
+          { name: "limit", in: "query", schema: { type: "integer", default: 10, maximum: 30 } },
+          { name: "subfieldIds", in: "query", schema: { type: "string" }, description: "Comma-separated OpenAlex subfield ids inside the IT scope" },
+          { name: "topicIds", in: "query", schema: { type: "string" }, description: "Comma-separated OpenAlex topic ids" },
+        ],
+        responses: {
+          "200": {
+            description: "Emerging keyword signals (TrendEmergingResponse in @trend/shared-types)",
+            content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, data: { type: "object" } } } } },
+          },
+        },
+      },
+    },
     "/api/v1/trends": {
       get: {
         tags: ["Trends"],
@@ -675,11 +697,12 @@ export const openapiSpec = {
           "test): Mann–Kendall with Sen's slope, relabelled saturated or past_peak from " +
           "the recent change and the peak ratio.",
         parameters: [
-          { name: "yearFrom", in: "query", schema: { type: "integer" }, description: "Default: yearTo - 5" },
+          { name: "yearFrom", in: "query", schema: { type: "integer" }, description: "Default: yearTo - 15" },
           { name: "yearTo", in: "query", schema: { type: "integer" }, description: "Default: current year" },
           { name: "limit", in: "query", schema: { type: "integer", default: 10, maximum: 50 } },
           { name: "minPapers", in: "query", schema: { type: "integer", default: 3 }, description: "Hide topics with fewer total papers (noise filter)" },
           { name: "sortBy", in: "query", schema: { type: "string", enum: ["trend", "total"], default: "trend" }, description: "trend = verdict order (rising, saturated, stable, past_peak, declining, insufficient)." },
+          { name: "sizeBands", in: "query", schema: { type: "string" }, description: "Comma-separated size bands (small, medium, large): tertiles of total papers among the topics of the IT scope (crossTopic.bandCutoffs). Empty = all." },
         ],
         responses: {
           "200": {

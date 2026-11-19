@@ -46,7 +46,7 @@ Khai báo một chỗ: `trend.scope.ts`, export `IT_SCOPE` và `IT_SCOPE_VERSION
 |---|---|---|---|
 | 1. Lõi | 11 subfield của field Computer Science (17): 1702 AI (65), 1710 Information Systems (54), 1705 Computer Networks and Communications (38), 1707 Computer Vision and Pattern Recognition (38), 1703 Computational Theory and Mathematics (19), 1711 Signal Processing (10), 1712 Software (10), 1708 Hardware and Architecture (9), 1706 Computer Science Applications (8), 1704 Computer Graphics and CAD (7), 1709 Human-Computer Interaction (7) | 265 | 1 |
 | 2. Liên quan | 2207 Control and Systems Engineering (44); 1802 Information Systems and Management (7); 2214 Media Technology (6); 2611 Modeling and Simulation (6); 2614 Theoretical Computer Science (3) | 66 | 1 |
-| 3. Ứng dụng | Từng chủ đề do admin thêm qua catalogue nghiên cứu (tin sinh học, tin học y tế, e-learning, fintech…) | tuỳ admin | 2 |
+| 3. Ứng dụng | Từng chủ đề ngoài lớp 1–2 mà máy tính là nội dung chính (tin sinh học, tin học y tế, e-learning, fintech, IoT…); danh sách khởi đầu do nhóm chọn, khai báo trong code (§7.2) | 18 | 2 |
 
 Số chủ đề đếm trên OpenAlex ngày 2026-11-14; tổng lớp 1–2 là **331**.
 
@@ -242,17 +242,44 @@ Giữ envelope `{ success, data, meta }`, controller mỏng, schema Zod.
 
 Chỉ bắt đầu sau khi Đợt 1 chạy ổn. Vẫn không thêm bảng.
 
+**Thứ tự đã chốt (2026-11-19):** §7.1 → §7.3 → §7.2. Lớp 3 làm sau cùng vì chưa có danh sách chủ đề. Cả ba đã làm xong ngày 2026-11-19.
+
 ### 7.1 Phân tích giữa các chủ đề (overview)
 
 - Chia chủ đề thành ba nhóm quy mô (tam phân vị theo tổng số bài trong `W`): nhỏ, vừa, lớn; thêm bộ lọc nhóm quy mô.
 - Thống kê mô tả (§4.2) của phân phối `r` trên toàn phạm vi và theo nhóm.
 - Biểu đồ: histogram và boxplot của `r`, scatter `log₁₀(tổng bài)` × `r` tô màu theo verdict, số chủ đề theo trạng thái.
 - **Chủ đề bất thường:** `r` nằm ngoài `[Q1 − 1.5·IQR, Q3 + 1.5·IQR]` của nhóm quy mô (Tukey 1977).
-- **Nhãn "rõ ràng"** (`clear: true`) cho `rising` / `declining` là chủ đề bất thường của nhóm mình.
+- **Nhãn "rõ ràng"** (`clear: true`) cho `rising` / `declining` là chủ đề bất thường của nhóm mình, cùng chiều với verdict (`rising` vượt cận trên, `declining` dưới cận dưới).
+- **Tập dùng để tính** (chốt khi làm): mọi chủ đề của phạm vi CNTT có `r` (verdict khác `insufficient`), không phụ thuộc bộ lọc subfield, chủ đề, `minPapers` hay nhóm quy mô. Nhờ vậy ngưỡng nhóm, cận Tukey và nhãn "rõ ràng" của một chủ đề không đổi khi người dùng lọc; phần toàn cảnh luôn mô tả cả phạm vi. Chủ đề `insufficient` vẫn được xếp nhóm quy mô theo ngưỡng của tập này.
 
 ### 7.2 Chủ đề ứng dụng (lớp 3)
 
-Admin thêm chủ đề ngoài lớp 1–2 qua catalogue nghiên cứu. Các chủ đề này lọc bằng `primary_topic.id` (thuộc tính khác subfield), nên mẫu số là tổng của hai request. Thêm chủ đề = tăng `IT_SCOPE_VERSION`.
+**Quyết định (2026-11-19): nhóm chọn danh sách khởi đầu.** Danh sách là hằng số `IT_SCOPE_APPLICATION_TOPICS` trong `trend.scope.ts` (đổi qua PR, có review), không phải dữ liệu admin sửa trong DB: đổi danh sách là đổi mẫu số của mọi chủ đề, nên cần đi cùng việc tăng `IT_SCOPE_VERSION` và ghi lại. Thêm chủ đề qua catalogue cho admin để sau, nếu cần.
+
+**Cơ chế (đã làm, phiên bản `it-v2`).**
+- `itScopeWorkClauses()` = các khối subfield của lớp 1–2, rồi các khối `primary_topic.id:T…|T…` của lớp 3 (tối đa 10 giá trị mỗi khối). Không chủ đề lớp 3 nào thuộc subfield lớp 1–2 (test kiểm), nên các khối rời nhau và cộng được: N_t, tổng cửa sổ, facet và ứng viên tháng/quý tự bao gồm lớp 3.
+- `itScopeTopics()` lấy thêm các chủ đề lớp 3 bằng `/topics?filter=id:…`; mọi chủ đề mang `taxonomy.scopeLayer` (`core` / `related` / `application`). Danh sách theo dõi và job làm nóng cache dùng hàm này nên tự có lớp 3.
+- Trang chi tiết: chủ đề lớp 3 dùng mẫu số phạm vi (`isInItScope(subfieldId, topicId)`).
+- Ứng viên tháng/quý: lớp 3 là một tầng (stratum) riêng cho mỗi khối.
+- Facet subfield chỉ còn subfield lớp 1–2: lọc theo subfield gốc của một chủ đề lớp 3 sẽ kéo cả subfield đó ra ngoài phạm vi. Lọc theo từng chủ đề lớp 3 vẫn được.
+- Từ khoá đang nổi và mới nổi vẫn đếm trong field 17 (Computer Science), chưa gồm lớp 3.
+- Web và Flutter hiện nhãn "Chủ đề ứng dụng"; trang Tài liệu có bảng lớp 3.
+
+**Danh sách khởi đầu (đề xuất và được nhóm duyệt ngày 2026-11-19).** Lấy từ tìm kiếm chủ đề OpenAlex, giữ chủ đề mà máy tính là nội dung chính, bỏ chủ đề sư phạm hoặc y khoa chung (ví dụ Online and Blended Learning, 204 nghìn bài, phần lớn là giảng dạy).
+
+| Mảng | Chủ đề (mã OpenAlex) |
+|---|---|
+| Tin sinh học | Machine Learning in Bioinformatics (T12254), Bioinformatics and Genomic Networks (T10887), Biomedical Text Mining and Ontologies (T11710), Computational Drug Discovery Methods (T10211) |
+| Tin học y tế | Artificial Intelligence in Healthcare (T11396), Electronic Health Records Systems (T10350), Radiomics and Machine Learning in Medical Imaging (T12422), Mobile Health and mHealth Applications (T11446) |
+| Giáo dục | Artificial Intelligence in Education (T14414), Open Education and E-Learning (T12171) |
+| Tài chính | FinTech, Crowdfunding, Digital Finance (T11995), Stock Market Forecasting Methods (T11326) |
+| IoT, nông nghiệp | Arduino and IoT Applications (T13420), IoT Networks and Protocols (T12079), Vehicular Ad Hoc Networks (T10761), Smart Agriculture and AI (T10616) |
+| Khác | EEG and Brain-Computer Interfaces (T10429), Quantum Information and Cryptography (T10020) |
+
+**Kết quả chạy thật (2026-11-19, cửa sổ 2011–2026).** Tổng bài của cửa sổ tăng từ khoảng 8,71 triệu lên 9,78 triệu (+12%), nên thị phần mọi chủ đề giảm theo nhưng hướng thay đổi ít bị ảnh hưởng. Trong 18 chủ đề lớp 3: 9 tăng (AI in Education và Radiomics là "thay đổi rõ ràng"), 2 bão hoà, 3 ổn định, 4 giảm (EHR, Bioinformatics and Genomic Networks, Biomedical Text Mining, Open Education and E-Learning). Các ngưỡng kết luận được hiệu chỉnh trên `it-v1` (331 chủ đề) và chưa hiệu chỉnh lại.
+
+**Đổi danh sách sau này:** sửa `IT_SCOPE_APPLICATION_TOPICS` và bảng `TREND_DOC_APPLICATION_TOPICS` của trang Tài liệu cho khớp nhau; mỗi lần đổi sau khi đã triển khai thì tăng `IT_SCOPE_VERSION`.
 
 ### 7.3 Tín hiệu mới nổi
 
@@ -264,7 +291,15 @@ Dùng lại tính năng từ khoá đang nổi (`risingKeywords`, log odds ratio
 | Mới | `≥ NOVELTY_SHARE = 70%` số bài của 10 năm nằm trong 3 năm gần nhất | Rotolo et al. (2015): novelty |
 | Tăng nhanh | Log odds ratio giữa giai đoạn gần và giai đoạn trước: `z > 0`, q-value BH `< α` (đã có) | Small et al. (2014); Woolf (1955), Haldane (1956) |
 
-Verdict `emerging`, reason `EMERGING_SIGNAL`, hiển thị ở một tab riêng với ghi chú "tín hiệu sớm, không phải dự báo". Hai ngưỡng quy ước cũng được hiệu chỉnh bằng `eval:trends`.
+~~Verdict `emerging`, reason `EMERGING_SIGNAL`~~ **Đã chốt 2026-11-19: tách riêng.** Tín hiệu này đo trên từ khoá, không phải chủ đề, nên không thêm vào sáu verdict của chủ đề (bộ lọc, nhãn, thông báo follow, Flutter giữ nguyên). Response có danh sách `emergingKeywords` riêng, hiển thị ở một tab riêng với ghi chú "tín hiệu sớm, không phải dự báo". Hai ngưỡng quy ước cũng được hiệu chỉnh bằng `eval:trends`.
+
+**Triển khai và hiệu chỉnh (2026-11-19):**
+
+- Endpoint riêng `GET /trends/emerging` (tab riêng, chỉ tải khi mở), cửa sổ cố định: E = 7 năm, R = 3 năm hoàn chỉnh gần nhất (`trend.emerging.ts`). Từ khoá đếm trong cùng mệnh đề với từ khoá đang nổi (field 17, hoặc bộ lọc subfield/chủ đề). Nguồn cục bộ trả danh sách rỗng.
+- Ứng viên: 200 từ khoá phổ biến nhất của R (một trang group_by); từ khoá không có trong bảng xếp hạng của E được đếm chính xác. Ban đầu dùng chung 50 + 50 với từ khoá đang nổi thì chỉ có 70 từ khoá, sót nhiều hướng mới.
+- Sắp theo log odds ratio (độ lớn), không theo `z`: `z` tăng theo quy mô nên đẩy từ khoá rất mới (ChatGPT, YOLOv8) xuống cuối.
+- `eval:trends` ngày 2026-11-19 (E 2016–2022, R 2023–2025): 200 ứng viên đều có ≥ 5.081 bài trong R, nên `EMERGING_MIN_PAPERS = 20` hiện không loại từ khoá nào; giữ làm sàn khi ứng viên nhỏ hơn (lọc subfield/chủ đề). `NOVELTY_SHARE`: 0,6 → 52 tín hiệu, 0,65 → 39, **0,7 → 25**, 0,75 → 20, 0,8 → 12. Giữ 0,7: ngay dưới ngưỡng là các phương pháp đã phổ biến trước 2023 (ResNet50 69,6%, graph neural networks 68,5%, self-supervised learning 65,4%).
+- §7.1 trên dữ liệu thật: 309 chủ đề có `r`, ngưỡng nhóm ≈ 12–13,5 nghìn / 29–31 nghìn bài; 30 chủ đề bất thường, 26 "rõ ràng" (18 tăng, 8 giảm).
 
 Giới hạn đã biết: chỉ bắt được hướng mới khi OpenAlex đã gán từ khoá cho nó; ứng viên là các từ khoá phổ biến nhất của mỗi giai đoạn nên từ khoá rất hiếm có thể bị sót.
 
@@ -291,7 +326,7 @@ Giới hạn đã biết: chỉ bắt được hướng mới khi OpenAlex đã 
 2. **Chủ đề tăng rồi giảm trong cùng cửa sổ** có thể được xếp `stable` vì Mann–Kendall chỉ bắt xu hướng đơn điệu (xem Đợt 3, quy tắc "qua đỉnh").
 3. **Tự tương quan** vẫn chưa hiệu chỉnh (hạn chế 1 của spec 10-16); p vẫn là xấp xỉ chuẩn (hạn chế 6).
 4. **OpenAlex đổi bộ phân loại ngày 2026-10-05.** Danh sách chủ đề không đổi nhưng việc gán bài và bộ từ khoá đã đổi. Bài trong DB sync trước ngày đó có thể mang chủ đề cũ; số đếm OpenAlex dùng phân loại mới cho mọi năm.
-5. **Phạm vi do dự án định nghĩa.** Mảng ứng dụng CNTT ngoài lớp 1–2 chưa được tính cho tới Đợt 2.
+5. **Phạm vi do dự án định nghĩa.** Mảng ứng dụng CNTT ngoài lớp 1–2 chỉ được tính qua danh sách chủ đề lớp 3 do nhóm chọn, nên có thể sót chủ đề ứng dụng khác.
 6. **Skewness, kurtosis trên chuỗi ngắn** dao động mạnh, chỉ mang tính mô tả.
 7. **Mới nổi (Đợt 2) là tín hiệu sớm**, không dự báo được hướng đó sẽ tiếp tục.
 8. Các hạn chế 4, 5 của spec 10-16 (phân loại tự động, mô tả quá khứ) vẫn đúng.
@@ -314,8 +349,8 @@ Giới hạn đã biết: chỉ bắt được hướng mới khi OpenAlex đã 
 
 **Còn mở:**
 
-1. **Danh sách chủ đề lớp 3** (Đợt 2) ban đầu do ai chọn.
-2. **App Flutter** còn đọc `momentum`, `growthRatePct` (hiện 0); để sau.
+1. ~~**Danh sách chủ đề lớp 3** (Đợt 2) ban đầu do ai chọn.~~ Chốt 2026-11-19: nhóm chọn; danh sách 18 chủ đề ở §7.2 đã được duyệt.
+2. ~~**App Flutter** còn đọc `momentum`, `growthRatePct`~~ Đã cập nhật 2026-11-17: sáu verdict, thay đổi %/năm, `z` của từ khoá, chỉ lọc subfield.
 
 ---
 

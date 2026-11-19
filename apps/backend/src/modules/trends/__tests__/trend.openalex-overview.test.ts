@@ -24,8 +24,10 @@ import { TrendsOverviewQuerySchema } from "../dto/trends.schema.js";
 const YEARS = [2016, 2017, 2018, 2019, 2020, 2021];
 const each = (value: number) => new Map(YEARS.map((year) => [year, value]));
 const TYPES = "type:article|review|preprint|conference-paper|book-chapter";
-/** The scope is queried in two OR chunks of subfields; the fixtures put every paper in the first one. */
-const [CHUNK_A, CHUNK_B] = itScopeWorkClauses() as [string, string];
+/** The scope is queried in OR chunks (two of subfields, then the layer-3 topics); the fixtures put every paper in the first one. */
+const [CHUNK_A, CHUNK_B, ...TOPIC_CHUNKS] = itScopeWorkClauses() as [string, string, ...string[]];
+const OTHER_CHUNKS = [CHUNK_B, ...TOPIC_CHUNKS];
+const inOtherChunk = (filter: string) => OTHER_CHUNKS.some((chunk) => filter.includes(chunk));
 
 function query(raw: Record<string, string> = {}) {
   return TrendsOverviewQuerySchema.parse({ yearFrom: "2016", yearTo: "2021", ...raw });
@@ -35,7 +37,7 @@ function query(raw: Record<string, string> = {}) {
 const SPAN = `publication_year:1900-${new Date().getUTCFullYear()}`;
 
 function yearCounts(filter: string): Map<number, number> {
-  if (filter.includes(CHUNK_B)) return new Map();
+  if (inOtherChunk(filter)) return new Map();
   const topic = filter.endsWith(SPAN) ? /primary_topic\.id:(T\d+),/.exec(filter)?.[1] : undefined;
   if (topic) return new Map(YEARS.map((year) => [year, topicYearCount(topic, year)]));
   if (filter.includes("keywords.id:large-language-models")) return new Map([[2018, 5], [2019, 40], [2020, 100], [2021, 160]]);
@@ -91,7 +93,7 @@ function allFilters(): string[] {
 beforeEach(() => {
   vi.clearAllMocks();
   client.openAlexYearCounts.mockImplementation(async (filter: string) => yearCounts(filter));
-  client.openAlexGroupBy.mockImplementation(async (filter: string, key: string) => ({ groups: filter.includes(CHUNK_B) ? [] : GROUPS[key] ?? [], nextCursor: null }));
+  client.openAlexGroupBy.mockImplementation(async (filter: string, key: string) => ({ groups: inOtherChunk(filter) ? [] : GROUPS[key] ?? [], nextCursor: null }));
   // The topics of the scope: all four belong to the first subfield chunk.
   client.openAlexGet.mockImplementation(async (_path: string, params: Record<string, string>) => ({
     results: params.filter!.includes("1702") ? ["T1", "T2", "T3", "T4"].map(entity) : [],
@@ -110,16 +112,16 @@ describe("getOpenAlexTrendsOverview", () => {
     expect(overview.scopeVersion).toBe(IT_SCOPE_VERSION);
     expect(overview.lastCompleteYear).toBe(2021);
     expect(overview.candidateStrata).toBeNull();
-    // The topic list comes from /topics, one request per subfield chunk, not from a size-ordered group_by page.
-    expect(client.openAlexGet).toHaveBeenCalledTimes(2);
+    // The topic list comes from /topics, one request per subfield chunk and per layer-3 chunk, not from a size-ordered group_by page.
+    expect(client.openAlexGet).toHaveBeenCalledTimes(2 + TOPIC_CHUNKS.length);
+    expect(client.openAlexGet).toHaveBeenCalledWith("topics", expect.objectContaining({ filter: expect.stringMatching(/^id:T12254\|/) }));
     expect(client.openAlexGet).toHaveBeenCalledWith("topics", expect.objectContaining({ filter: expect.stringMatching(/^subfield\.id:1702\|/) }));
     // One yearly series per topic of the scope, the small and empty ones included, over the fixed span.
     for (const id of ["T1", "T2", "T3", "T4"]) {
       expect(client.openAlexYearCounts).toHaveBeenCalledWith(`${TYPES},primary_topic.id:${id},${SPAN}`);
     }
-    // Population: the scope itself, one series per subfield chunk.
-    expect(client.openAlexYearCounts).toHaveBeenCalledWith(`${TYPES},${CHUNK_A},${SPAN}`);
-    expect(client.openAlexYearCounts).toHaveBeenCalledWith(`${TYPES},${CHUNK_B},${SPAN}`);
+    // Population: the scope itself, one series per clause (subfield chunks and layer-3 chunks).
+    for (const chunk of [CHUNK_A, ...OTHER_CHUNKS]) expect(client.openAlexYearCounts).toHaveBeenCalledWith(`${TYPES},${chunk},${SPAN}`);
     expect(allFilters().some((filter) => filter.includes("primary_topic.field.id:17") && filter.endsWith(SPAN))).toBe(false);
 
     // T3 has 2 papers (below minPapers 3) and T4 none: neither is listed.
@@ -135,6 +137,7 @@ describe("getOpenAlexTrendsOverview", () => {
       fieldName: "Computer Science",
       subfieldId: "1702",
       subfieldName: "Artificial Intelligence",
+      scopeLayer: "core",
     });
     expect(rising!.totalPapers).toBe(10 + 20 + 30 + 40 + 50 + 60);
     expect(rising!.yearlyBreakdown).toHaveLength(6);
@@ -160,7 +163,7 @@ describe("getOpenAlexTrendsOverview", () => {
     const overview = await getOpenAlexTrendsOverview(query());
     const window = "publication_year:2016-2021";
 
-    for (const chunk of [CHUNK_A, CHUNK_B]) {
+    for (const chunk of [CHUNK_A, ...OTHER_CHUNKS]) {
       expect(client.openAlexYearCounts).toHaveBeenCalledWith(`${TYPES},${chunk},${window}`);
       expect(client.openAlexYearCounts).toHaveBeenCalledWith(`${TYPES},${chunk},${window},citation_normalized_percentile.is_in_top_10_percent:true`);
       expect(client.openAlexGroupBy).toHaveBeenCalledWith(`${TYPES},${chunk},${window}`, "primary_topic.id");
@@ -284,7 +287,8 @@ describe("getOpenAlexTrendsOverview", () => {
     vi.clearAllMocks();
     await getOpenAlexTrendsOverview(query({ yearFrom: "2017", yearTo: "2021" }));
 
-    expect(first).toHaveLength(4 + 2);
+    // Four topic series plus one scope series per clause.
+    expect(first).toHaveLength(4 + 2 + TOPIC_CHUNKS.length);
     expect(seriesFilters()).toEqual(first);
   });
 

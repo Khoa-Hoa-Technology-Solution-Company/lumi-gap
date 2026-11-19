@@ -1,7 +1,7 @@
 import type { TrendCandidateStrata, TrendClassification, TrendGranularity, TrendPeriodWindow, TrendTopicTaxonomy } from "@trend/shared-types";
 import { openAlexGet, openAlexGroupBy, shortId, type OpenAlexGroup } from "./trend.openalex-client.js";
 import { datesClause, withScope, type OpenAlexScope } from "./trend.openalex-scope.js";
-import { isInItScope, itScopeTopics, itScopeWorkClauses, itScopeYearCounts, topicYearCounts } from "./trend.scope.js";
+import { isItScopeSubfield, itScopeApplicationChunks, itScopeTopics, itScopeWorkClauses, itScopeYearCounts, scopeLayerOf, topicYearCounts } from "./trend.scope.js";
 import { benjaminiHochberg } from "./trend.statistics.js";
 import { mapWithConcurrency, range } from "./trend.utils.js";
 import { MIN_PAPERS, classifyTrend, shareTrendStatistics } from "./trend.verdict.js";
@@ -139,7 +139,8 @@ export async function selectTopicCandidates(input: {
 /**
  * Candidates of a period window over the whole IT scope: the GLOBAL_CANDIDATES
  * largest topics of the window plus the PER_STRATUM largest of every subfield of
- * the scope, so the small subfields are tested too. Used where every topic of
+ * the scope and of the layer-3 topics (one stratum per OR chunk), so the small
+ * subfields are tested too. Used where every topic of
  * the scope cannot be afforded (months and quarters: counts depend on the window).
  */
 export async function selectScopeCandidates(input: {
@@ -155,8 +156,11 @@ export async function selectScopeCandidates(input: {
   const [topicGroups, subfieldGroups] = await Promise.all([groupByMerged(bases, "primary_topic.id"), groupByMerged(bases, "primary_topic.subfield.id")]);
 
   const selected = new Map(valid(topicGroups, input.minPapers).slice(0, GLOBAL_CANDIDATES).map((group) => [group.key, group]));
-  const strata = subfieldGroups.filter((group) => isInItScope(group.key) && group.count >= MIN_PAPERS);
-  const pages = await runAll(strata.map((stratum) => () => openAlexGroupBy(withScope(input.plainFilter, `primary_topic.subfield.id:${stratum.key}`, input.window), "primary_topic.id")));
+  const strata = [
+    ...subfieldGroups.filter((group) => isItScopeSubfield(group.key) && group.count >= MIN_PAPERS).map((group) => `primary_topic.subfield.id:${group.key}`),
+    ...itScopeApplicationChunks().map((ids) => `primary_topic.id:${ids.join("|")}`),
+  ];
+  const pages = await runAll(strata.map((clause) => () => openAlexGroupBy(withScope(input.plainFilter, clause, input.window), "primary_topic.id")));
   const stratumMin = Math.max(input.minPapers, MIN_PAPERS);
   for (const page of pages) {
     for (const group of valid(page.groups, stratumMin).slice(0, PER_STRATUM)) {
@@ -305,11 +309,13 @@ async function fetchTopicEntities(ids: string[]): Promise<TopicEntity[]> {
 }
 
 function topicTaxonomy(topicId: string, entity: TopicEntity | undefined): TrendTopicTaxonomy {
+  const layer = scopeLayerOf(entity?.subfield?.id, topicId);
   return {
     openalexTopicId: topicId,
     ...(entity?.domain ? { domainId: shortId(entity.domain.id), domainName: entity.domain.display_name } : {}),
     ...(entity?.field ? { fieldId: shortId(entity.field.id), fieldName: entity.field.display_name } : {}),
     ...(entity?.subfield ? { subfieldId: shortId(entity.subfield.id), subfieldName: entity.subfield.display_name } : {}),
+    ...(layer ? { scopeLayer: layer } : {}),
   };
 }
 

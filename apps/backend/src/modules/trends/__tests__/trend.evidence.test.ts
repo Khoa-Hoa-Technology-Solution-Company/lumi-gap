@@ -15,6 +15,7 @@ const prisma = vi.hoisted(() => ({ $queryRaw: vi.fn(), paperKeyword: { findMany:
 vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => prisma }));
 
 import { computeTopicStatistics } from "../trend.evidence.js";
+import { IT_SCOPE_VERSION } from "../trend.scope.js";
 
 const years = [2016, 2017, 2018, 2019, 2020, 2021];
 const topicCounts = new Map(years.map((year, i) => [year, 10 + i * 10]));
@@ -86,8 +87,9 @@ describe("computeTopicStatistics with OpenAlex counts", () => {
     client.openAlexGroupBy.mockResolvedValue({ groups: [], nextCursor: null });
     client.openAlexYearCounts.mockImplementation(async (filter: string) => {
       if (filter.includes("is_in_top_10_percent")) return topCounts;
-      // One request per chunk of scope subfields (10 + 6): each returns 1000 papers a year.
+      // One request per chunk of scope subfields (10 + 6): each returns 1000 papers a year. The layer-3 chunks have none here.
       if (filter.includes("primary_topic.subfield.id")) return fieldCounts;
+      if (/primary_topic\.id:T\d+\|/.test(filter)) return new Map();
       return topicCounts;
     });
 
@@ -103,7 +105,7 @@ describe("computeTopicStatistics with OpenAlex counts", () => {
       lastCompleteYear: 2021,
     });
 
-    expect(stats.baseline).toEqual({ level: "scope", label: "Information Technology scope", scopeVersion: "it-v1" });
+    expect(stats.baseline).toEqual({ level: "scope", label: "Information Technology scope", scopeVersion: IT_SCOPE_VERSION });
     // N_t = 1000 + 1000: the share is 10 / 2000 = 0.5% in 2016.
     expect(stats.shareSeries[0]).toEqual({ year: 2016, count: 10, total: 2000, sharePct: 0.5 });
     expect(client.openAlexYearCounts).not.toHaveBeenCalledWith(expect.stringContaining("primary_topic.field.id"));

@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { ResponsiveContainer, Area, AreaChart } from "recharts";
-import type { TrendingTopic, TrendsOverview, YearlyCount } from "@trend/shared-types";
+import type { TrendSizeBand, TrendingTopic, TrendsOverview, YearlyCount } from "@trend/shared-types";
 import { type RisingKeywordRow, type TrendBarChartDatum } from "./trends-shared.components";
 import { formatSigned, getTopRisingTopic, sortTopics, type TrendSortKey } from "../../../pages/trends.insights";
+import { SizeBandFilter, TopicCrossLabels } from "./size-band-filter";
 import { TrendIntro, TrendVerdictBadge, formatRelativeChange } from "./trend-verdict-badge";
 import { formatNumber } from "@/utils";
 import { useI18n } from "@/i18n";
@@ -54,6 +55,8 @@ interface TopicsTabProps {
   verdictFilter: VerdictFilter;
   setVerdictFilter: (value: VerdictFilter) => void;
   /** Same scope as the overview request; the table pages through it. */
+  sizeBands: TrendSizeBand[];
+  setSizeBands: (bands: TrendSizeBand[]) => void;
   overviewParams: TrendsOverviewParams;
   scopeParams?: {
     yearFrom: number;
@@ -85,6 +88,8 @@ export function TopicsTab({
   setFocusTopic,
   verdictFilter,
   setVerdictFilter,
+  sizeBands,
+  setSizeBands,
   overviewParams,
   scopeParams,
 }: TopicsTabProps) {
@@ -360,6 +365,7 @@ export function TopicsTab({
                 counts={data.verdictCounts}
                 tested={data.testedTopicCount ?? data.topics.length}
               />
+              <SizeBandFilter className="mt-2" value={sizeBands} onChange={setSizeBands} cutoffs={data.crossTopic?.bandCutoffs} />
             </div>
 
             <div id="trend-topic-table" className="flex-1 overflow-x-auto select-text scroll-mt-24">
@@ -432,6 +438,14 @@ export function TopicsTab({
                             <span className="font-bold text-slate-900 dark:text-white leading-snug text-sm">
                               {entry.topic}
                             </span>
+                            {entry.taxonomy?.scopeLayer === "application" && (
+                              <span
+                                className="w-fit self-start cursor-help rounded-full border border-teal-300 bg-teal-50 px-1.5 py-px text-[10px] font-bold text-teal-800 dark:border-teal-800/70 dark:bg-teal-950/30 dark:text-teal-300"
+                                title={t("Layer 3 of the IT scope: an application topic from another field, chosen by the project team")}
+                              >
+                                {t("Application topic")}
+                              </span>
+                            )}
                             {entry.taxonomy && (
                               <span className="text-[10.5px] text-slate-400 dark:text-slate-500 font-semibold truncate max-w-[170px]" title={`${entry.taxonomy.domainName} / ${entry.taxonomy.fieldName}`}>
                                 {entry.taxonomy.domainName} / {entry.taxonomy.fieldName}
@@ -442,6 +456,7 @@ export function TopicsTab({
                         <td className="px-3 py-3 align-top">
                           <div className="flex flex-col items-start gap-1">
                             <TrendVerdictBadge classification={classification} size="sm" />
+                            <TopicCrossLabels labels={entry.crossTopic} />
                           </div>
                         </td>
                         <td className="px-3 py-3 align-top">

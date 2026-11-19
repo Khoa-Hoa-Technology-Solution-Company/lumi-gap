@@ -46,6 +46,9 @@ export interface TrendFacets {
   topics: TrendFacetBucket[];
 }
 
+/** Layer of the IT scope a topic belongs to (spec §2): a layer 1–2 subfield, or a layer-3 application topic. */
+export type TrendScopeLayer = "core" | "related" | "application";
+
 export interface TrendTopicTaxonomy {
   openalexTopicId?: string;
   domainId?: string;
@@ -54,6 +57,8 @@ export interface TrendTopicTaxonomy {
   fieldName?: string;
   subfieldId?: string;
   subfieldName?: string;
+  /** Set on topics of the IT scope. */
+  scopeLayer?: TrendScopeLayer;
 }
 
 export interface TrendTaxonomyCoverage {
@@ -156,6 +161,62 @@ export interface TrendingTopic {
   yearlyBreakdown: YearlyCount[];
   /** Trend verdict of the topic's share of its field over complete years. */
   classification: TrendClassification;
+  /** Cross-topic labels (TrendCrossTopicAnalysis); absent when the overview has no cross-topic analysis. */
+  crossTopic?: TrendTopicCrossLabels;
+}
+
+/** Size band of a topic: tertile of total papers in the window among the topics of the scope that have r. */
+export type TrendSizeBand = "small" | "medium" | "large";
+
+export const TREND_SIZE_BANDS = ["small", "medium", "large"] as const satisfies readonly TrendSizeBand[];
+
+/** Where a topic stands among the topics of its size band. */
+export interface TrendTopicCrossLabels {
+  sizeBand: TrendSizeBand;
+  /** r lies outside the Tukey fences of its size band; false when the topic has no r. */
+  outlier: boolean;
+  /** A rising topic above the upper fence, or a declining one below the lower fence, of its size band. */
+  clear: boolean;
+}
+
+/** Tukey fences of r in one size band: [Q1 − 1.5·IQR, Q3 + 1.5·IQR] (Tukey 1977). */
+export interface TrendTukeyFences {
+  q1: number;
+  q3: number;
+  iqr: number;
+  lower: number;
+  upper: number;
+}
+
+/** One topic of the cross-topic population. */
+export interface TrendCrossTopicPoint {
+  topic: string;
+  totalPapers: number;
+  /** r: relative change of the share, % per year (classification.relativeChangePct). */
+  r: number;
+  verdict: TrendVerdict;
+  sizeBand: TrendSizeBand;
+  outlier: boolean;
+  clear: boolean;
+}
+
+/**
+ * Comparison of the topics with each other (spec 2026-11-14 §7.1). The
+ * population is every topic of the scope that has r (verdict other than
+ * insufficient), whatever the subfield, topic, minPapers or size filter of the
+ * request, so the bands, fences and labels of a topic do not change with the
+ * filters. Descriptive only: it never changes a verdict.
+ */
+export interface TrendCrossTopicAnalysis {
+  /** Topics in the population. */
+  population: number;
+  /** Total papers in the window: small ≤ smallMax < medium ≤ mediumMax < large. */
+  bandCutoffs: { smallMax: number; mediumMax: number };
+  /** Descriptive statistics of r over the whole population and per size band. */
+  rStats: { all: DescriptiveStats | null } & Record<TrendSizeBand, DescriptiveStats | null>;
+  /** Tukey fences of r per size band; null for a band with fewer than 4 topics. */
+  fences: Record<TrendSizeBand, TrendTukeyFences | null>;
+  points: TrendCrossTopicPoint[];
 }
 
 export interface TrendShareYear {
@@ -307,6 +368,44 @@ export interface RisingKeyword {
   };
 }
 
+/** A keyword that is new and growing fast inside the scope (GET /trends/emerging). */
+export interface EmergingKeyword {
+  keyword: string;
+  /** Papers carrying the keyword in the earlier years E and the recent years R. */
+  earlierPapers: number;
+  recentPapers: number;
+  /** recentPapers / (earlierPapers + recentPapers), 0..1. */
+  noveltyShare: number;
+  /** 2×2 log odds ratio test of R against E, BH-adjusted across `termsTested` keywords. */
+  shift: TrendTermShift;
+  /** Papers per year over the window, plus the current year when it is still running. */
+  yearlyBreakdown: YearlyCount[];
+}
+
+/**
+ * Emerging keyword signals of the scope (spec 2026-11-14 §7.3): at least
+ * `criteria.minRecentPapers` papers in R, at least `criteria.noveltyShare` of the
+ * window's papers in R, and a significant rise of R against E. An early signal
+ * on keywords, separate from the topic verdicts; not a forecast.
+ */
+export interface TrendEmergingResponse {
+  dataSource?: TrendDataSource;
+  scopeVersion?: string;
+  scopeNotice?: TrendScopeNotice;
+  /** Earlier years E and recent years R, both complete; papers = scope papers of the period. */
+  earlierPeriod: { yearFrom: number; yearTo: number; papers: number };
+  recentPeriod: { yearFrom: number; yearTo: number; papers: number };
+  lastCompleteYear: number;
+  criteria: { minRecentPapers: number; noveltyShare: number; significanceLevel: number };
+  /** Keywords tested (the most frequent keywords of E and of R). */
+  termsTested: number;
+  /** Signals meeting every criterion, before `limit`. */
+  matchedCount: number;
+  /** Largest log odds ratio (size of the rise) first, at most `limit`. Always empty for the local corpus (OpenAlex keywords only). */
+  keywords: EmergingKeyword[];
+  computedAt: string;
+}
+
 /** Data Scope filters that could not be applied to the data source, e.g. the
  *  local "provider" facet or a source name without an OpenAlex id. */
 export interface TrendScopeNotice {
@@ -352,6 +451,8 @@ export interface TrendsOverview {
   recommendedComparisons: RecommendedTrendComparison[];
   topics: TrendingTopic[];
   risingKeywords: RisingKeyword[];
+  /** Topics compared with each other; null when there are too few topics with r (e.g. the local corpus). */
+  crossTopic?: TrendCrossTopicAnalysis | null;
   computedAt: string;
 }
 

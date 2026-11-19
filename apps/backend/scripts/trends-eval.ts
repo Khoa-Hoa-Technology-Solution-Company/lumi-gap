@@ -13,18 +13,32 @@
  * Every count is an OpenAlex aggregate, cached in Redis for 7 days: a first run
  * spends about one request per topic, a second run none.
  *
+ * It also reports (spec §7) the cross-topic analysis of the chosen thresholds
+ * (size bands, Tukey fences, "clear" topics) and the emerging keyword signals:
+ * how many keywords pass for a grid of NOVELTY_SHARE × EMERGING_MIN_PAPERS,
+ * and the keywords close to the novelty threshold.
+ *
  * Run: pnpm --filter backend eval:trends
  *      pnpm --filter backend eval:trends --flat 3 --near-peak 0.8 --past-peak 0.5 --window 15
+ *      pnpm --filter backend eval:trends --novelty 0.7 --min-recent 20
  */
 import { disconnectRedis } from "../src/infrastructure/redis.js";
-import { IT_SCOPE, IT_SCOPE_VERSION, itScopeTopics, itScopeYearCounts, topicYearCounts } from "../src/modules/trends/trend.scope.js";
+import { IT_SCOPE, IT_SCOPE_APPLICATION_TOPICS, IT_SCOPE_VERSION, itScopeTopics, itScopeYearCounts, topicYearCounts } from "../src/modules/trends/trend.scope.js";
 import { benjaminiHochberg } from "../src/modules/trends/trend.statistics.js";
 import type { TrendVerdict } from "@trend/shared-types";
+import { analyseCrossTopics } from "../src/modules/trends/trend.cross-topic.js";
+import { EMERGING_CANDIDATES, EMERGING_MIN_PAPERS, EMERGING_THRESHOLDS, NOVELTY_SHARE, emergingPeriods, selectEmerging } from "../src/modules/trends/trend.emerging.js";
+import { openAlexKeywordCounts } from "../src/modules/trends/trend.evidence.js";
+import { openAlexYearCounts } from "../src/modules/trends/trend.openalex-client.js";
+import { KEYWORD_SCOPE_CLAUSE } from "../src/modules/trends/trend.openalex-overview.js";
+import { withScope, yearsClause } from "../src/modules/trends/trend.openalex-scope.js";
 import { FLAT_PCT, FULL_WINDOW_YEARS, NEAR_PEAK, PAST_PEAK, RECENT_WINDOW_YEARS, SIGNIFICANCE_LEVEL, classifyTrend, shareTrendStatistics, type ShareYear } from "../src/modules/trends/trend.verdict.js";
 
 const FLAT_GRID = [1, 2, 3, 5, 8];
 const NEAR_PEAK_GRID = [0.7, 0.75, 0.8, 0.85, 0.9, 0.95];
 const LIST_LIMIT = 40;
+const NOVELTY_GRID = [0.6, 0.65, 0.7, 0.75, 0.8, 0.9];
+const MIN_RECENT_GRID = [10, 20, 50, 100, 500];
 
 function numberArg(argv: string[], name: string, fallback: number): number {
   const index = argv.indexOf(name);
@@ -84,7 +98,7 @@ async function main(): Promise<void> {
   const classify = (index: number, flatPct: number, peak: number): TrendVerdict =>
     classifyTrend({ ...rows[index]!.stats, source: "openalex", qValue: qValues[index] ?? null }, { flatPct, nearPeak: peak, pastPeak }).verdict;
 
-  log(`scope ${IT_SCOPE_VERSION}: ${IT_SCOPE.length} subfields, ${topics.length} topics`);
+  log(`scope ${IT_SCOPE_VERSION}: ${IT_SCOPE.length} subfields + ${IT_SCOPE_APPLICATION_TOPICS.length} layer-3 topics, ${topics.length} topics`);
   log(`window W = ${firstYear}-${lastCompleteYear} (${windowYears} years), recent window R = last ${RECENT_WINDOW_YEARS} years`);
   log(`fetched in ${seconds}s: ${topics.length} topic series + population + topic lists (cached requests cost nothing)`);
   log(`population N_t: ${[...population].filter(([year]) => year >= firstYear && year <= lastCompleteYear).sort((a, b) => a[0] - b[0]).map(([year, count]) => `${year}: ${count}`).join(", ")}\n`);
@@ -115,6 +129,52 @@ async function main(): Promise<void> {
       log(`  ${fmt(row.stats.relativeChangePct).padStart(8)} ${fmt(row.plateau.recentRelativeChangePct).padStart(8)} ${fmt(row.plateau.peakRatio)} ${fmt(q, 4).padStart(7)} ${String(row.stats.totalPapers).padStart(9)}  ${row.topic.name} [${row.topic.taxonomy.subfieldName ?? "?"}]`);
     }
     if (members.length > LIST_LIMIT) log(`  ... ${members.length - LIST_LIMIT} more`);
+  }
+
+  // ---- cross-topic analysis (§7.1) with the chosen thresholds
+  const cross = analyseCrossTopics(
+    rows.map((row, index) => ({
+      topic: row.topic.name,
+      totalPapers: row.stats.totalPapers,
+      classification: classifyTrend({ ...row.stats, source: "openalex", qValue: qValues[index] ?? null }, { flatPct: flat, nearPeak, pastPeak }),
+    })),
+  );
+  if (cross) {
+    const { analysis } = cross;
+    log(`
+=== cross-topic: ${analysis.population} topics with r; bands small <= ${Math.round(analysis.bandCutoffs.smallMax)} < medium <= ${Math.round(analysis.bandCutoffs.mediumMax)} < large papers`);
+    for (const band of ["small", "medium", "large"] as const) {
+      const fence = analysis.fences[band];
+      const members = analysis.points.filter((point) => point.sizeBand === band);
+      log(`  ${band.padEnd(6)} n=${members.length}  fences ${fence ? `[${fence.lower.toFixed(1)}, ${fence.upper.toFixed(1)}]` : "n/a"}  anomalous ${members.filter((point) => point.outlier).length}  clear ${members.filter((point) => point.clear).length}`);
+    }
+  }
+
+  // ---- emerging keyword signals (§7.3)
+  const novelty = numberArg(argv, "--novelty", NOVELTY_SHARE);
+  const minRecent = numberArg(argv, "--min-recent", EMERGING_MIN_PAPERS);
+  const { earlier, recent } = emergingPeriods(lastCompleteYear);
+  const totals = await openAlexYearCounts(withScope(KEYWORD_SCOPE_CLAUSE, yearsClause(earlier[0]!, lastCompleteYear)));
+  const sum = (years: number[]) => years.reduce((total, year) => total + (totals.get(year) ?? 0), 0);
+  const keywordRows = await openAlexKeywordCounts(KEYWORD_SCOPE_CLAUSE, earlier, recent, { a: 0, b: EMERGING_CANDIDATES });
+  const totalEarlier = sum(earlier);
+  const totalRecent = sum(recent);
+  log(`
+=== emerging: E = ${earlier[0]}-${earlier.at(-1)} (${totalEarlier} papers), R = ${recent[0]}-${recent.at(-1)} (${totalRecent} papers), ${keywordRows.length} candidate keywords (top ${EMERGING_CANDIDATES} of R, ${KEYWORD_SCOPE_CLAUSE})`);
+  log(distribution("papers in R of the candidates", keywordRows.map((row) => row.papersB)));
+  log("signals by threshold pair (rows EMERGING_MIN_PAPERS, columns NOVELTY_SHARE):");
+  log(`  ${"".padStart(6)}${NOVELTY_GRID.map((value) => String(value).padStart(6)).join("")}`);
+  for (const min of MIN_RECENT_GRID) {
+    const cells = NOVELTY_GRID.map((share) => String(selectEmerging(keywordRows, totalEarlier, totalRecent, { ...EMERGING_THRESHOLDS, minRecentPapers: min, noveltyShare: share }).keywords.length).padStart(6));
+    log(`  ${String(min).padStart(6)}${cells.join("")}`);
+  }
+  const loose = selectEmerging(keywordRows, totalEarlier, totalRecent, { ...EMERGING_THRESHOLDS, minRecentPapers: 0, noveltyShare: 0 }).keywords;
+  const chosen = new Set(selectEmerging(keywordRows, totalEarlier, totalRecent, { ...EMERGING_THRESHOLDS, minRecentPapers: minRecent, noveltyShare: novelty }).keywords.map((keyword) => keyword.term));
+  log(`
+keywords rising significantly with novelty 0.55-0.85 (* = signal with NOVELTY_SHARE ${novelty}, EMERGING_MIN_PAPERS ${minRecent}):`);
+  log(`  ${"novelty".padStart(8)} ${"E".padStart(7)} ${"R".padStart(7)} ${"LOR".padStart(6)}  keyword`);
+  for (const keyword of loose.filter((item) => item.noveltyShare >= 0.55 && item.noveltyShare <= 0.85).sort((a, b) => b.noveltyShare - a.noveltyShare)) {
+    log(`  ${(keyword.noveltyShare * 100).toFixed(1).padStart(7)}% ${String(keyword.papersA).padStart(7)} ${String(keyword.papersB).padStart(7)} ${keyword.logOddsRatio.toFixed(2).padStart(6)}  ${chosen.has(keyword.term) ? "*" : " "} ${keyword.term}`);
   }
 
   await disconnectRedis().catch(() => undefined);

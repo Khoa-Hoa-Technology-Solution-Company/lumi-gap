@@ -13,8 +13,9 @@ import { keywordShifts, risingShifts, splitPeriods } from "./trend.keywords.js";
 import { openAlexKeywordCounts } from "./trend.evidence.js";
 import { openAlexGroupBy, openAlexYearCounts, type OpenAlexGroup } from "./trend.openalex-client.js";
 import { buildOpenAlexScope, withScope, yearsClause, type OpenAlexScope } from "./trend.openalex-scope.js";
+import { analyseCrossTopics } from "./trend.cross-topic.js";
 import { buildScopeShareTopics, groupByMerged, runAll, yearPeriods } from "./trend.openalex-topics.js";
-import { IT_SCOPE_VERSION, itScopeWorkClauses, widerThanItScope } from "./trend.scope.js";
+import { IT_SCOPE_VERSION, isItScopeSubfield, itScopeWorkClauses, widerThanItScope } from "./trend.scope.js";
 import { FULL_WINDOW_YEARS, buildRecommendedComparisons, compareByTotal, countVerdicts, compareByTrend, pageTopics } from "./trend.verdict.js";
 
 /**
@@ -37,7 +38,7 @@ import { FULL_WINDOW_YEARS, buildRecommendedComparisons, compareByTotal, countVe
  */
 
 /** Keywords are ranked inside one filter clause; the core of the scope, the field Computer Science, stands in for the whole scope. */
-const KEYWORD_SCOPE_CLAUSE = "primary_topic.field.id:17";
+export const KEYWORD_SCOPE_CLAUSE = "primary_topic.field.id:17";
 const RISING_KEYWORDS_LIMIT = 10;
 
 const CITATION_BANDS = [
@@ -101,10 +102,14 @@ export async function getOpenAlexTrendsOverview(query: TrendsOverviewQuery): Pro
 
   const listed = narrowed ? new Set(groups.topics.map((group) => group.key.toUpperCase())) : null;
   const keywordTotals = narrowed ? yearlyTotalPapers : fillMissingYears(toSeries(keywordYears), yearFrom, yearTo);
-  const [topics, risingKeywords] = await Promise.all([
-    buildTopics(query, scope, listed, yearFrom, yearTo, lastCompleteYear),
+  const [scopeTopics, risingKeywords] = await Promise.all([
+    buildScopeTopics(scope, yearFrom, yearTo, lastCompleteYear),
     buildRisingKeywords(keywordFilter, withScope(keywordFilter, years), keywordTotals, yearFrom, yearTo, lastCompleteYear),
   ]);
+
+  // Topics compared with each other over the whole scope, before any filter, so their labels do not depend on it.
+  const cross = analyseCrossTopics(scopeTopics);
+  const topics = listTopics(scopeTopics, query, listed, cross?.labelsOf);
 
   return {
     dataSource: "openalex",
@@ -129,13 +134,15 @@ export async function getOpenAlexTrendsOverview(query: TrendsOverviewQuery): Pro
       citationBands: CITATION_BANDS.map(({ band }, index) => ({ id: band, name: band, count: sumCounts(bands[index] ?? new Map()) })).filter((row) => row.count > 0),
       domains: taxonomyBuckets(groups.domains, LIMITS.domains),
       fields: taxonomyBuckets(groups.fields, LIMITS.fields),
-      subfields: taxonomyBuckets(groups.subfields, LIMITS.subfields),
+      // A layer-3 topic's subfield holds more than that topic: filtering by it would leave the scope, so only layer 1–2 subfields are offered.
+      subfields: taxonomyBuckets(groups.subfields.filter((group) => isItScopeSubfield(group.key)), LIMITS.subfields),
       topics: taxonomyBuckets(groups.topics, LIMITS.topics),
     },
     taxonomyCoverage: taxonomyCoverage(totalPapersInWindow, groups.domains),
     recommendedComparisons: buildRecommendedComparisons(topics),
     ...pageTopics(topics, query),
     risingKeywords,
+    crossTopic: cross?.analysis ?? null,
     computedAt: now.toISOString(),
   };
 }
@@ -144,33 +151,39 @@ export async function getOpenAlexTrendsOverview(query: TrendsOverviewQuery): Pro
 // Topics
 // ---------------------------------------------------------------------------
 
-/**
- * Every topic of the IT scope, tested against the scope (BH across all of
- * them), then the ones the page lists: the topics of the subfield or topic
- * filter (`listed`), with at least `minPapers` papers in the window.
- */
-async function buildTopics(
-  query: TrendsOverviewQuery,
-  scope: OpenAlexScope,
-  listed: Set<string> | null,
-  yearFrom: number,
-  yearTo: number,
-  lastCompleteYear: number,
-): Promise<TrendingTopic[]> {
+type ScopeTopic = TrendingTopic & { id: string };
+
+/** Every topic of the IT scope, tested against the scope (BH across all of them). */
+async function buildScopeTopics(scope: OpenAlexScope, yearFrom: number, yearTo: number, lastCompleteYear: number): Promise<ScopeTopic[]> {
   const periods = yearPeriods(yearFrom, yearTo, lastCompleteYear);
-  const topics: TrendingTopic[] = (await buildScopeShareTopics(scope.nonTaxonomyFilter, periods))
-    .filter((row) => !listed || listed.has(row.id))
-    .map((row) => {
-      const yearlyBreakdown = periods.map((period, index) => ({ year: Number(period.key), count: row.counts[index] ?? 0 }));
-      return {
-        topic: row.name,
-        taxonomy: row.taxonomy,
-        totalPapers: yearlyBreakdown.reduce((sum, item) => sum + item.count, 0),
-        yearlyBreakdown,
-        classification: row.classification,
-      };
-    })
-    .filter((topic) => topic.totalPapers >= query.minPapers);
+  return (await buildScopeShareTopics(scope.nonTaxonomyFilter, periods)).map((row) => {
+    const yearlyBreakdown = periods.map((period, index) => ({ year: Number(period.key), count: row.counts[index] ?? 0 }));
+    return {
+      id: row.id,
+      topic: row.name,
+      taxonomy: row.taxonomy,
+      totalPapers: yearlyBreakdown.reduce((sum, item) => sum + item.count, 0),
+      yearlyBreakdown,
+      classification: row.classification,
+    };
+  });
+}
+
+/**
+ * The topics the page lists: those of the subfield or topic filter (`listed`),
+ * with at least `minPapers` papers in the window, in the requested size bands,
+ * each with its cross-topic labels.
+ */
+function listTopics(
+  scopeTopics: ScopeTopic[],
+  query: TrendsOverviewQuery,
+  listed: Set<string> | null,
+  labelsOf: ((topic: TrendingTopic) => TrendingTopic["crossTopic"]) | undefined,
+): TrendingTopic[] {
+  const topics: TrendingTopic[] = scopeTopics
+    .filter((row) => (!listed || listed.has(row.id)) && row.totalPapers >= query.minPapers)
+    .map(({ id: _id, ...topic }) => (labelsOf ? { ...topic, crossTopic: labelsOf(topic) } : topic))
+    .filter((topic) => !query.sizeBands?.length || (topic.crossTopic !== undefined && query.sizeBands.includes(topic.crossTopic.sizeBand)));
   topics.sort(query.sortBy === "total" ? compareByTotal : compareByTrend);
   return topics;
 }

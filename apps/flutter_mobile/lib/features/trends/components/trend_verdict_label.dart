@@ -108,3 +108,72 @@ class TrendVerdictLabel extends StatelessWidget {
     );
   }
 }
+
+/// Name of a size band (tertile of total papers among the topics of the IT scope).
+String trendSizeBandLabel(String band) => switch (band) {
+  'small' => tk('Small topics'),
+  'medium' => tk('Medium topics'),
+  _ => tk('Large topics'),
+};
+
+/// "Clear change" pill: the topic's change is anomalous for topics of its size
+/// (Tukey fences), in the direction of its verdict. Descriptive only.
+class TrendClearPill extends StatelessWidget {
+  const TrendClearPill({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final lumi = context.lumi;
+    return Tooltip(
+      message: context.t(
+        'Its change is anomalous for topics of its size (Tukey fences)',
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: lumi.primarySoft,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          context.t('Clear change'),
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            color: lumi.primary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "Application topic" pill: layer 3 of the IT scope, a topic from another
+/// field that the project team added to the scope.
+class TrendApplicationPill extends StatelessWidget {
+  const TrendApplicationPill({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final lumi = context.lumi;
+    return Tooltip(
+      message: context.t(
+        'Layer 3 of the IT scope: an application topic from another field, chosen by the project team',
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: lumi.success.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          context.t('Application topic'),
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            color: lumi.success,
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -8,6 +8,7 @@ import type {
   TrendGranularity,
   TrendPeriodWindow,
   TrendPeriodsOverview,
+  TrendSizeBand,
   TrendVerdict,
   TrendsOverview,
   ProjectTrendSnapshot,
@@ -31,6 +32,8 @@ export interface TrendsOverviewParams {
   providers?: string[];
   sources?: string[];
   languages?: string[];
+  /** Only topics of these size groups (tertiles of total papers); empty = all. */
+  sizeBands?: TrendSizeBand[];
   citationBands?: Array<"0-9" | "10-49" | "50-99" | "100-499" | "500-999" | "1000+">;
   subfields?: string[];
   topics?: string[];
@@ -49,6 +52,13 @@ export interface TrendCompareParams extends Omit<TrendsOverviewParams, "limit" |
   topics: string[];
   yearFrom?: number;
   yearTo?: number;
+}
+
+export interface TrendEmergingParams {
+  /** Signals returned, strongest rise first (the backend allows up to 30). */
+  limit?: number;
+  subfieldIds?: string[];
+  topicIds?: string[];
 }
 
 export interface TrendTopicCandidatesParams extends Omit<TrendsOverviewParams, "sortBy" | "verdict" | "offset"> {
@@ -130,6 +140,13 @@ export const trendsApi = {
   async compare(params: TrendCompareParams): Promise<TrendCompareResponse> {
     const res = await api.get("/trends/compare", {
       params: { ...params, topics: params.topics.join(",") },
+      paramsSerializer: { serialize: serializeTrendParams },
+    });
+    return res.data.data;
+  },
+  async emerging(params?: TrendEmergingParams): Promise<TrendEmergingResponse> {
+    const res = await api.get(API_ROUTES.trends.emerging, {
+      params,
       paramsSerializer: { serialize: serializeTrendParams },
     });
     return res.data.data;

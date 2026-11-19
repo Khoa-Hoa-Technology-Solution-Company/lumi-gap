@@ -560,7 +560,7 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
           kind: "callout",
           tone: "limitation",
           heading: "8. Phạm vi do dự án định nghĩa",
-          text: `Danh sách lĩnh vực con của phạm vi (phiên bản \`${C.scopeVersion}\`) là lựa chọn của dự án. Các mảng ứng dụng CNTT nằm ở lĩnh vực khác (tin sinh học, tin học y tế, e-learning...) chưa được tính. OpenAlex cũng đổi cách gán chủ đề cho bài báo theo thời gian; số đếm luôn theo cách gán hiện hành.`,
+          text: `Danh sách lĩnh vực con của phạm vi (phiên bản \`${C.scopeVersion}\`) là lựa chọn của dự án. Các mảng ứng dụng CNTT nằm ở lĩnh vực khác (tin sinh học, tin học y tế, e-learning...) chỉ được tính qua một danh sách chủ đề lớp 3 do nhóm chọn, nên có thể sót chủ đề ứng dụng khác. OpenAlex cũng đổi cách gán chủ đề cho bài báo theo thời gian; số đếm luôn theo cách gán hiện hành.`,
         },
         {
           kind: "callout",

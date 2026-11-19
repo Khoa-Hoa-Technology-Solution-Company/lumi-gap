@@ -4,6 +4,7 @@ import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/trends/components/trends_ai_tab.dart';
 import 'package:flutter_mobile/features/trends/components/trends_compare_tab.dart';
+import 'package:flutter_mobile/features/trends/components/trends_emerging_tab.dart';
 import 'package:flutter_mobile/features/trends/components/trends_scope_tab.dart';
 import 'package:flutter_mobile/features/trends/components/trends_signals_tab.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
@@ -28,13 +29,14 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen>
   // Verdict order (rising first), the only ranking besides total papers.
   final String _sortBy = 'trend';
   TrendScopeFilters _scopeFilters = const TrendScopeFilters();
+  List<String> _sizeBands = const [];
 
   String? _aiTabInitialTopic;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -57,6 +59,7 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen>
       yearTo: _yearTo,
       minPapers: _minPapers,
       sortBy: _sortBy,
+      sizeBands: _sizeBands,
       limit: 30,
       scopeFilters: _scopeFilters,
     );
@@ -80,6 +83,9 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen>
         elevation: 0,
         bottom: TabBar(
           controller: _tabController,
+          // Five tabs do not fit a 320dp phone at large text: let them scroll.
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
           indicatorColor: const Color(0xFF06B6D4),
           labelColor: const Color(0xFF06B6D4),
           unselectedLabelColor: const Color(0xFF94A3B8),
@@ -88,6 +94,7 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen>
             Tab(text: context.t('Scope')),
             Tab(text: context.t('Compare')),
             Tab(text: context.t('Explain')),
+            Tab(text: context.t('Emerging')),
           ],
         ),
       ),
@@ -109,6 +116,7 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen>
                   _yearTo = newParams.yearTo ?? defaultTrendYears().to;
                   _minPapers = newParams.minPapers ?? 1;
                   _scopeFilters = newParams.scopeFilters;
+                  _sizeBands = newParams.sizeBands;
                 });
               },
               onGoToSignals: () => _tabController.animateTo(0),
@@ -123,6 +131,7 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen>
               params: currentParams,
               initialTopic: _aiTabInitialTopic,
             ),
+            TrendsEmergingTab(params: currentParams),
           ],
         ),
         loading: () => AppLoading(

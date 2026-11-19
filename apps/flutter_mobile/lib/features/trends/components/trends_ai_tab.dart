@@ -274,7 +274,10 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                     ),
                   ),
                   subtitle: Text(
-                    context.t('Language: {{language}} · {{createdAt}}', {'language': item.language.toUpperCase(), 'createdAt': item.createdAt}),
+                    context.t('Language: {{language}} · {{createdAt}}', {
+                      'language': item.language.toUpperCase(),
+                      'createdAt': item.createdAt,
+                    }),
                     style: const TextStyle(fontSize: 11),
                   ),
                   trailing: const Icon(
@@ -447,16 +450,25 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
           const SizedBox(height: 24),
 
           if (_loading)
-            AppLoading(message: context.t('Gemini is running trend diagnostics...'))
+            AppLoading(
+              message: context.t('Gemini is running trend diagnostics...'),
+            )
           else if (_explanation != null) ...[
             // Summary Markdown display
             Row(
               children: [
-                const Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 18),
+                const Icon(
+                  Icons.auto_awesome,
+                  color: Color(0xFF8B5CF6),
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   context.t('AI Summary Rationale'),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
               ],
             ),
@@ -582,14 +594,21 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
                 onPressed: () {
-                  final text =
-                      context.t('Topic: {{selectedTopic}}\n\nSummary:\n{{summary}}', {'selectedTopic': _selectedTopic, 'summary': _explanation!.summary});
+                  final text = context.t(
+                    'Topic: {{selectedTopic}}\n\nSummary:\n{{summary}}',
+                    {
+                      'selectedTopic': _selectedTopic,
+                      'summary': _explanation!.summary,
+                    },
+                  );
                   unawaited(
                     Clipboard.setData(ClipboardData(text: text)).then((_) {
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(context.t('Explanation copied to clipboard')),
+                          content: Text(
+                            context.t('Explanation copied to clipboard'),
+                          ),
                         ),
                       );
                     }),
@@ -598,7 +617,10 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                 icon: const Icon(Icons.copy, size: 16),
                 label: Text(
                   context.t('Copy Explanation Text'),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
                 ),
               ),
             ),

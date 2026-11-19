@@ -157,7 +157,7 @@ async function openAlexCounts(input: {
   const years = `publication_year:${input.yearFrom}-${input.lastCompleteYear}`;
   const topicFilter = `${DEFAULT_WORK_TYPES_CLAUSE},primary_topic.id:${input.topicId}`;
   const fieldId = input.fieldId ? shortId(input.fieldId) : undefined;
-  const inScope = isInItScope(input.subfieldId);
+  const inScope = isInItScope(input.subfieldId, input.topicId);
   // The topic and scope series are the ones the overview fetches (whole span, cached), so a detail page after the overview costs one request.
   const [[topic], population, topCited] = await Promise.all([
     topicYearCounts([input.topicId]),
@@ -182,18 +182,23 @@ async function openAlexCounts(input: {
 
 /**
  * Paper counts of each period for the most frequent keywords of either period
- * (top KEYWORD_CANDIDATES_PER_PERIOD each), for any OpenAlex base filter
- * without publication_year. Feed the result to logOddsRatio2x2.
+ * (top `candidates.a` of A and `candidates.b` of B, default
+ * KEYWORD_CANDIDATES_PER_PERIOD each, at most 200 = one group_by page), for any
+ * OpenAlex base filter without publication_year. Feed the result to logOddsRatio2x2.
  */
-export async function openAlexKeywordCounts(baseFilter: string, periodA: number[], periodB: number[]) {
+export async function openAlexKeywordCounts(
+  baseFilter: string,
+  periodA: number[],
+  periodB: number[],
+  candidates: { a: number; b: number } = { a: KEYWORD_CANDIDATES_PER_PERIOD, b: KEYWORD_CANDIDATES_PER_PERIOD },
+) {
   const filterA = withScope(baseFilter, `publication_year:${periodA[0]}-${periodA.at(-1)}`);
   const filterB = withScope(baseFilter, `publication_year:${periodB[0]}-${periodB.at(-1)}`);
   const [rankedA, rankedB] = await Promise.all([keywordRanking(filterA), keywordRanking(filterB)]);
 
   const names = new Map<string, string>();
-  for (const ranked of [rankedA, rankedB]) {
-    for (const group of ranked.slice(0, KEYWORD_CANDIDATES_PER_PERIOD)) names.set(group.key, group.name);
-  }
+  for (const group of rankedA.slice(0, candidates.a)) names.set(group.key, group.name);
+  for (const group of rankedB.slice(0, candidates.b)) names.set(group.key, group.name);
   const countsA = new Map(rankedA.map((group) => [group.key, group.count]));
   const countsB = new Map(rankedB.map((group) => [group.key, group.count]));
 

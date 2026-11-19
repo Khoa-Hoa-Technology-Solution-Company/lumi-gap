@@ -47,6 +47,26 @@ void main() {
       expect(params.toQuery()['sortBy'], 'trend');
     });
 
+    test('sends size bands and compares them', () {
+      const a = TrendsOverviewParams(
+        sortBy: 'trend',
+        sizeBands: ['small', 'large'],
+      );
+      expect(a.toQuery()['sizeBands'], 'small,large');
+      expect(
+        a,
+        const TrendsOverviewParams(
+          sortBy: 'trend',
+          sizeBands: ['small', 'large'],
+        ),
+      );
+      expect(a == const TrendsOverviewParams(sortBy: 'trend'), isFalse);
+      expect(
+        const TrendsOverviewParams().toQuery().containsKey('sizeBands'),
+        isFalse,
+      );
+    });
+
     test('the default window is the last 15 years', () {
       final years = defaultTrendYears(DateTime(2026, 11, 17));
       expect(years.to, 2026);
@@ -147,6 +167,42 @@ void main() {
         expect(old.significant, isFalse);
       },
     );
+
+    test('cross-topic labels and band cutoffs', () {
+      final overview = TrendsOverview.fromJson({
+        'crossTopic': {
+          'bandCutoffs': {'smallMax': 13523.0, 'mediumMax': 30830.7},
+        },
+        'topics': [
+          {
+            'topic': 'XAI',
+            'totalPapers': 26710,
+            'yearlyBreakdown': <Object>[],
+            'crossTopic': {'sizeBand': 'large', 'outlier': true, 'clear': true},
+            'taxonomy': {
+              'openalexTopicId': 'T14414',
+              'scopeLayer': 'application',
+            },
+          },
+          {
+            'topic': 'Odd',
+            'totalPapers': 5,
+            'yearlyBreakdown': <Object>[],
+            'crossTopic': {'sizeBand': 'huge'},
+          },
+        ],
+      });
+      expect(overview.bandCutoffs!.smallMax, 13523.0);
+      expect(overview.topics.first.crossTopic!.clear, isTrue);
+      expect(overview.topics.first.crossTopic!.sizeBand, 'large');
+      expect(overview.topics.last.crossTopic, isNull);
+      expect(overview.topics.first.taxonomy!.isApplication, isTrue);
+      expect(overview.topics.last.taxonomy, isNull);
+      expect(
+        TrendsOverview.fromJson({'topics': <Object>[]}).bandCutoffs,
+        isNull,
+      );
+    });
 
     test('the topic detail reads its conclusion from statistics', () {
       final detail = PublicationTrend.fromJson({

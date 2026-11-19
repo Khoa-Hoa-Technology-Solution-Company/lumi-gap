@@ -27,6 +27,8 @@ import { researchHomeEn } from "./research-home-en";
 import { trustSafetyRagStrings } from "./trust-safety-rag";
 import { trendEvidenceStrings } from "./trend-evidence";
 import { trendEdaStrings } from "./trend-eda";
+import { trendCrossTopicStrings } from "./trend-cross-topic";
+import { trendEmergingStrings } from "./trend-emerging";
 import { trendScopeStrings } from "./trend-scope";
 import { trendVerdictStrings } from "./trend-verdict";
 import { trendResearchLinkStrings } from "./trend-research-links";
@@ -64,6 +66,8 @@ export const en = {
   ...trendEvidenceStrings,
   ...trendVerdictStrings,
   ...trendEdaStrings,
+  ...trendCrossTopicStrings,
+  ...trendEmergingStrings,
   ...trendScopeStrings,
   ...trendResearchLinkStrings,
   ...trendPeriodsStrings,

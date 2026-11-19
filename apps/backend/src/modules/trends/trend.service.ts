@@ -1,6 +1,6 @@
 import type { TrendExplanationResponse, TrendPossibleDriver } from "@trend/shared-types";
 import { TrendsOverviewQuerySchema } from "./dto/trends.schema.js";
-import type { TrendCompareQuery, TrendExplainBody, TrendExplainHistoryQuery, TrendPeriodsQuery, TrendRelationshipQuery, TrendTopicCandidatesQuery, TopicTrendQuery, TrendsOverviewQuery } from "./dto/trends.schema.js";
+import type { TrendCompareQuery, TrendEmergingQuery, TrendExplainBody, TrendExplainHistoryQuery, TrendPeriodsQuery, TrendRelationshipQuery, TrendTopicCandidatesQuery, TopicTrendQuery, TrendsOverviewQuery } from "./dto/trends.schema.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { hashKey } from "../../infrastructure/cache.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
@@ -15,6 +15,7 @@ import { fillMissingYears } from "./trend.formulas.js";
 import { isOpenAlexBudgetAvailable, shortId, withOpenAlexRefresh } from "./trend.openalex-client.js";
 import { FULL_WINDOW_YEARS } from "./trend.verdict.js";
 import { getOpenAlexCompare, getOpenAlexRelationships, getOpenAlexTopicCandidates, getOpenAlexTopicDetail } from "./trend.openalex-detail.js";
+import { emptyEmerging, getOpenAlexEmerging } from "./trend.openalex-emerging.js";
 import { getOpenAlexTrendsOverview } from "./trend.openalex-overview.js";
 import { getOpenAlexTrendPeriods } from "./trend.openalex-periods.js";
 import { getPostgresTrendPeriods, getPostgresTrendsOverview } from "./trend.postgres.js";
@@ -179,6 +180,11 @@ export const trendService = {
 
   periods(query: TrendPeriodsQuery) {
     return preferOpenAlex("periods", () => getOpenAlexTrendPeriods(query), () => getPostgresTrendPeriods(query));
+  },
+
+  /** Emerging keyword signals; the local corpus has no OpenAlex keywords, so its fallback is an empty list. */
+  emerging(query: TrendEmergingQuery) {
+    return preferOpenAlex("emerging", () => getOpenAlexEmerging(query), async () => emptyEmerging());
   },
 
   async topic(topic: string, query: TopicTrendQuery) {

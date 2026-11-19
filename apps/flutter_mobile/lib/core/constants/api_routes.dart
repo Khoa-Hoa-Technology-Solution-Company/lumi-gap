@@ -38,6 +38,7 @@ class ApiRoutes {
   static const String trendsCompare = '/trends/compare';
   static const String trendsTopicCandidates = '/trends/topic-candidates';
   static const String trendsRelationships = '/trends/relationships';
+  static const String trendsEmerging = '/trends/emerging';
   static const String trendsExplain = '/trends/explain';
   static const String trendsExplainHistory = '/trends/explain/history';
   static String trendsTopic(String topic) =>
@@ -47,7 +48,8 @@ class ApiRoutes {
   static String qualityView(String targetKind, String targetId) =>
       '/quality/$targetKind/$targetId';
   static const String qualityEvaluate = '/quality/evaluate';
-  static String qualityEvaluationJob(String jobId) => '/quality/evaluation-jobs/$jobId';
+  static String qualityEvaluationJob(String jobId) =>
+      '/quality/evaluation-jobs/$jobId';
   static const String qualityRate = '/quality/rate';
   static String qualityDeleteRate(String ratingId) => '/quality/rate/$ratingId';
 

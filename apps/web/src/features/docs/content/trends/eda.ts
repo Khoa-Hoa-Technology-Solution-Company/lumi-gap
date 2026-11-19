@@ -1,6 +1,6 @@
 import { DOCS_SECTIONS as S, docsPath } from "../../docs-section-ids";
 import type { DocsBlock, DocsSectionContent } from "../../docs.types";
-import { TREND_DOC_CONSTANTS as C, TREND_DOC_SCOPE, formatDocNumber } from "./trend-doc-constants";
+import { TREND_DOC_APPLICATION_TOPICS, TREND_DOC_CONSTANTS as C, TREND_DOC_SCOPE, formatDocNumber } from "./trend-doc-constants";
 
 /**
  * Documentation added with the exploratory-analysis method (spec
@@ -128,7 +128,72 @@ export const trendEdaVi: DocsSectionContent = {
         "Các bước 1–4 không tham gia vào kết luận.",
       ],
     },
-    { kind: "sources", ids: ["joanes-gill-1998", "hyndman-fan-1996", "leys-2013", "sen-1968", "usgs-helsel-2020"] },
+    { kind: "heading", id: "cross-topic", text: "So sánh các chủ đề với nhau" },
+    {
+      kind: "paragraph",
+      text: "Ngoài việc đọc từng chủ đề, trang Xu hướng so sánh mọi chủ đề của phạm vi Công nghệ thông tin với nhau, bất kể bộ lọc đang chọn. Phần này **chỉ mô tả**: nó không bao giờ thay đổi kết luận của một chủ đề.",
+    },
+    {
+      kind: "formula",
+      lines: [
+        "r                    = thay đổi tương đối của thị phần, % mỗi năm",
+        "Nhóm quy mô          = tam phân vị của tổng số bài trong khoảng thời gian (nhỏ / vừa / lớn)",
+        "Cận Tukey của nhóm   = [ Q1 − 1,5·IQR , Q3 + 1,5·IQR ],  IQR = Q3 − Q1",
+        "Chủ đề bất thường    ⇔  r nằm ngoài cận Tukey của nhóm của nó",
+        "Chủ đề rõ ràng       ⇔  đang tăng và r > cận trên, hoặc đang giảm và r < cận dưới",
+      ],
+      legend: [
+        { symbol: "r", meaning: "Cùng đại lượng với thay đổi tương đối mỗi năm trong kết luận của chủ đề." },
+        { symbol: "Nhóm quy mô", meaning: "Chủ đề lớn và nhỏ biến động khác nhau, nên mỗi chủ đề chỉ được so với các chủ đề cùng quy mô." },
+        { symbol: "Cận Tukey", meaning: "Quy tắc của [@tukey-1977], cũng là quy tắc vẽ râu của biểu đồ hộp; không giả định phân phối chuẩn." },
+      ],
+    },
+    {
+      kind: "list",
+      items: [
+        "Nhãn **Rõ ràng** trên một chủ đề nghĩa là mức thay đổi của nó bất thường so với các chủ đề cùng quy mô, theo hướng khớp với kết luận (tăng hoặc giảm).",
+        "Một nhóm có dưới 4 chủ đề thì không có cận, nên không chủ đề nào của nhóm đó bị đánh dấu.",
+        "Bộ lọc quy mô trên trang Xu hướng chỉ lọc danh sách chủ đề; các cận luôn được tính trên toàn phạm vi.",
+      ],
+    },
+    { kind: "heading", id: "emerging-signals", text: "Tín hiệu mới nổi" },
+    {
+      kind: "paragraph",
+      text: `Tab **Tín hiệu mới nổi** của trang Xu hướng tìm các **từ khoá** vừa xuất hiện và đang tăng nhanh. Đây là một tín hiệu sớm trên từ khoá, **tách biệt** với sáu kết luận về chủ đề: nó không bao giờ thay đổi một kết luận và **không phải dự báo**. Cửa sổ gồm ${C.emergingWindowYears} năm hoàn chỉnh cuối: giai đoạn trước E (${C.emergingWindowYears - C.emergingRecentYears} năm đầu) và giai đoạn gần R (${C.emergingRecentYears} năm cuối).`,
+    },
+    {
+      kind: "formula",
+      lines: [
+        `(1) n_R ≥ ${C.emergingMinRecentPapers}`,
+        `(2) độ mới = n_R / (n_E + n_R) ≥ ${vi(C.emergingNoveltyShare)}`,
+        "(3) log OR = ln[ (n_R+½)(N_E−n_E+½) / ((N_R−n_R+½)(n_E+½)) ] với z > 0 và q < 0,05",
+      ],
+      legend: [
+        { symbol: "n_E, n_R", meaning: "Số bài mang từ khoá trong giai đoạn trước E và giai đoạn gần R." },
+        { symbol: "N_E, N_R", meaning: "Số bài của phạm vi Công nghệ thông tin trong E và R." },
+        { symbol: "Độ mới", meaning: "Phần bài của từ khoá trong cả cửa sổ rơi vào R; theo ý tưởng về tính mới của [@rotolo-2015]." },
+        { symbol: "z, q", meaning: `Cùng công thức log OR, sai số chuẩn Woolf và cộng ½ Haldane như phần ${link("từ khoá nổi lên", S.trendSupplementary, "keywords")}; q là hiệu chỉnh Benjamini–Hochberg trên mọi từ khoá được kiểm định.` },
+      ],
+    },
+    {
+      kind: "list",
+      items: [
+        "Một từ khoá là **tín hiệu** khi thoả cả ba tiêu chí. Tiêu chí (3) theo ý tưởng so sánh tần suất giữa hai giai đoạn của [@small-2014].",
+        "Danh sách sắp theo **log OR** (độ lớn của mức tăng), không theo z: z còn tăng theo cỡ mẫu, nên từ khoá có rất nhiều bài sẽ lấn át từ khoá tăng sắc hơn nhưng ít bài hơn.",
+        `Ứng viên là ${C.emergingCandidates} từ khoá phổ biến nhất của R; số từ khoá được kiểm định hiển thị trên trang.`,
+        "Năm đang diễn ra được vẽ nhạt, nét đứt trong biểu đồ cột theo năm và không dùng trong các tiêu chí.",
+      ],
+    },
+    {
+      kind: "callout",
+      tone: "convention",
+      items: [
+        `Các ngưỡng ${C.emergingMinRecentPapers} bài, độ mới ${vi(C.emergingNoveltyShare)}, cửa sổ ${C.emergingWindowYears} năm và ${C.emergingCandidates} ứng viên là **quy ước của dự án**, chưa có nguồn công bố cho các giá trị cụ thể.`,
+        "**Hạn chế:** cần từ khoá của OpenAlex, nên kho dữ liệu cục bộ không tính được (tab báo rõ điều này). Chỉ kiểm định từ khoá phổ biến nên một từ khoá mới nhưng hiếm có thể bị bỏ sót. Từ khoá của OpenAlex do thuật toán gán, có thể trùng nghĩa hoặc nhiễu.",
+        "Đây là tín hiệu sớm, không phải dự báo: một từ khoá tăng nhanh có thể là mốt ngắn hạn.",
+      ],
+    },
+    { kind: "sources", ids: ["joanes-gill-1998", "hyndman-fan-1996", "leys-2013", "tukey-1977", "sen-1968", "usgs-helsel-2020", "rotolo-2015", "small-2014", "woolf-1955", "haldane-1956", "benjamini-hochberg-1995"] },
   ],
 };
 
@@ -243,7 +308,72 @@ export const trendEdaEn: DocsSectionContent = {
         "Steps 1–4 take no part in the conclusion.",
       ],
     },
-    { kind: "sources", ids: ["joanes-gill-1998", "hyndman-fan-1996", "leys-2013", "sen-1968", "usgs-helsel-2020"] },
+    { kind: "heading", id: "cross-topic", text: "Comparing topics with each other" },
+    {
+      kind: "paragraph",
+      text: "Besides reading each topic alone, the Trends page compares every topic of the Information Technology scope with the others, whatever filters are selected. This part is **descriptive only**: it never changes a topic's verdict.",
+    },
+    {
+      kind: "formula",
+      lines: [
+        "r                  = relative change of the share, % per year",
+        "Size group         = tertile of total papers in the window (small / medium / large)",
+        "Tukey fences       = [ Q1 − 1.5·IQR , Q3 + 1.5·IQR ],  IQR = Q3 − Q1, per size group",
+        "Anomalous topic    ⇔  r lies outside the Tukey fences of its size group",
+        "Clear topic        ⇔  rising with r > upper fence, or declining with r < lower fence",
+      ],
+      legend: [
+        { symbol: "r", meaning: "The same quantity as the relative change per year in a topic's verdict." },
+        { symbol: "Size group", meaning: "Large and small topics fluctuate differently, so each topic is compared only with topics of its own size." },
+        { symbol: "Tukey fences", meaning: "The rule of [@tukey-1977], also the rule for the whiskers of a box plot; it assumes no normal distribution." },
+      ],
+    },
+    {
+      kind: "list",
+      items: [
+        "The **Clear** label on a topic means its change is anomalous for topics of its size, in the direction that matches its verdict (rising or declining).",
+        "A group with fewer than 4 topics has no fences, so none of its topics is flagged.",
+        "The size filter of the Trends page only filters the topic list; the fences are always computed over the whole scope.",
+      ],
+    },
+    { kind: "heading", id: "emerging-signals", text: "Emerging signals" },
+    {
+      kind: "paragraph",
+      text: `The **Emerging signals** tab of the Trends page looks for **keywords** that are new and growing fast. It is an early signal on keywords, **separate** from the six topic verdicts: it never changes a verdict and is **not a forecast**. The window is the last ${C.emergingWindowYears} complete years: an earlier period E (the first ${C.emergingWindowYears - C.emergingRecentYears} years) and a recent period R (the last ${C.emergingRecentYears} years).`,
+    },
+    {
+      kind: "formula",
+      lines: [
+        `(1) n_R ≥ ${C.emergingMinRecentPapers}`,
+        `(2) novelty = n_R / (n_E + n_R) ≥ ${C.emergingNoveltyShare}`,
+        "(3) log OR = ln[ (n_R+½)(N_E−n_E+½) / ((N_R−n_R+½)(n_E+½)) ] with z > 0 and q < 0.05",
+      ],
+      legend: [
+        { symbol: "n_E, n_R", meaning: "Papers carrying the keyword in the earlier period E and the recent period R." },
+        { symbol: "N_E, N_R", meaning: "Papers of the Information Technology scope in E and R." },
+        { symbol: "Novelty", meaning: "The share of the keyword's papers of the whole window that fall in R; after the idea of novelty in [@rotolo-2015]." },
+        { symbol: "z, q", meaning: `The same log OR, Woolf standard error and Haldane ½ correction as in ${link("rising keywords", S.trendSupplementary, "keywords")}; q is the Benjamini–Hochberg adjustment over every keyword tested.` },
+      ],
+    },
+    {
+      kind: "list",
+      items: [
+        "A keyword is a **signal** when it meets all three criteria. Criterion (3) follows the idea of comparing frequencies between two periods in [@small-2014].",
+        "The list is ordered by **log OR** (size of the rise), not by z: z also grows with sample size, so a keyword with very many papers would outrank a sharper rise on fewer papers.",
+        `Candidates are the ${C.emergingCandidates} most frequent keywords of R; the number of keywords tested is shown on the page.`,
+        "The running year is drawn as a lighter, dashed bar in the yearly bar chart and takes no part in the criteria.",
+      ],
+    },
+    {
+      kind: "callout",
+      tone: "convention",
+      items: [
+        `The thresholds of ${C.emergingMinRecentPapers} papers, novelty ${C.emergingNoveltyShare}, a ${C.emergingWindowYears}-year window and ${C.emergingCandidates} candidates are **project conventions**; no published source gives these specific values.`,
+        "**Limitations:** it needs OpenAlex keywords, so the local corpus cannot compute it (the tab says so). Only frequent keywords are tested, so a new but rare keyword can be missed. OpenAlex keywords are assigned by an algorithm and can be near-duplicates or noisy.",
+        "It is an early signal, not a forecast: a fast-rising keyword may be a short-lived fashion.",
+      ],
+    },
+    { kind: "sources", ids: ["joanes-gill-1998", "hyndman-fan-1996", "leys-2013", "tukey-1977", "sen-1968", "usgs-helsel-2020", "rotolo-2015", "small-2014", "woolf-1955", "haldane-1956", "benjamini-hochberg-1995"] },
   ],
 };
 
@@ -255,12 +385,21 @@ export const trendScopeBlocksVi: DocsBlock[] = [
   { kind: "heading", id: "it-scope", text: "Phạm vi: nhóm ngành Công nghệ thông tin" },
   {
     kind: "paragraph",
-    text: `LumiGap chỉ phân tích xu hướng **bên trong nhóm ngành Công nghệ thông tin**. Phạm vi gồm ${TREND_DOC_SCOPE.length} lĩnh vực con (subfield) của OpenAlex, với ${C.scopeTopics} chủ đề tại thời điểm định nghĩa. **Mọi** chủ đề của phạm vi đều được kiểm định, không chọn theo quy mô, nên chủ đề nhỏ đang tăng mạnh không bị bỏ sót. Mọi chủ đề dùng chung một mẫu số N_t, nên thị phần của chúng so sánh được với nhau.`,
+    text: `LumiGap chỉ phân tích xu hướng **bên trong nhóm ngành Công nghệ thông tin**. Phạm vi gồm ${TREND_DOC_SCOPE.length} lĩnh vực con (subfield) của OpenAlex và ${TREND_DOC_APPLICATION_TOPICS.length} chủ đề ứng dụng lẻ (lớp 3), tổng cộng ${C.scopeTopics} chủ đề tại thời điểm định nghĩa. **Mọi** chủ đề của phạm vi đều được kiểm định, không chọn theo quy mô, nên chủ đề nhỏ đang tăng mạnh không bị bỏ sót. Mọi chủ đề dùng chung một mẫu số N_t, nên thị phần của chúng so sánh được với nhau.`,
   },
   {
     kind: "table",
     columns: ["Mã subfield", "Tên trong OpenAlex", "Lớp"],
     rows: scopeRows("Lõi (thuộc lĩnh vực Computer Science)", "Liên quan"),
+  },
+  {
+    kind: "paragraph",
+    text: "**Lớp 3, chủ đề ứng dụng.** Một số mảng CNTT nằm ở lĩnh vực khác (tin sinh học, tin học y tế, e-learning, fintech, IoT). Lấy cả lĩnh vực con của chúng thì phần lớn bài không phải CNTT, nên phạm vi chỉ lấy từng chủ đề mà máy tính là nội dung chính. Bảng dưới là danh sách khởi đầu do nhóm dự án chọn; lọc theo lĩnh vực con của các chủ đề này không có trên trang Xu hướng, vì sẽ kéo cả lĩnh vực con ra ngoài phạm vi.",
+  },
+  {
+    kind: "table",
+    columns: ["Mã chủ đề", "Tên trong OpenAlex", "Lĩnh vực con gốc"],
+    rows: TREND_DOC_APPLICATION_TOPICS.map((topic) => [topic.id, topic.name, topic.subfield]),
   },
   {
     kind: "callout",
@@ -278,12 +417,21 @@ export const trendScopeBlocksEn: DocsBlock[] = [
   { kind: "heading", id: "it-scope", text: "Scope: the Information Technology disciplines" },
   {
     kind: "paragraph",
-    text: `LumiGap analyses trends **inside the Information Technology disciplines** only. The scope is ${TREND_DOC_SCOPE.length} OpenAlex subfields, holding ${C.scopeTopics} topics when it was defined. **Every** topic of the scope is tested, with no selection by size, so a small topic that rises fast is not missed. All topics share one denominator N_t, so their shares can be compared with each other.`,
+    text: `LumiGap analyses trends **inside the Information Technology disciplines** only. The scope is ${TREND_DOC_SCOPE.length} OpenAlex subfields plus ${TREND_DOC_APPLICATION_TOPICS.length} single application topics (layer 3), ${C.scopeTopics} topics in all when it was defined. **Every** topic of the scope is tested, with no selection by size, so a small topic that rises fast is not missed. All topics share one denominator N_t, so their shares can be compared with each other.`,
   },
   {
     kind: "table",
     columns: ["Subfield id", "Name in OpenAlex", "Layer"],
     rows: scopeRows("Core (in the field Computer Science)", "Related"),
+  },
+  {
+    kind: "paragraph",
+    text: "**Layer 3, application topics.** Some IT areas sit in other fields (bioinformatics, health informatics, e-learning, fintech, IoT). Taking their whole subfields would bring in mostly non-IT papers, so the scope takes single topics whose main subject is computing. The table is the starting list chosen by the project team; the Trends page does not offer the subfields of these topics as filters, because that would pull the whole subfield into the scope.",
+  },
+  {
+    kind: "table",
+    columns: ["Topic id", "Name in OpenAlex", "Original subfield"],
+    rows: TREND_DOC_APPLICATION_TOPICS.map((topic) => [topic.id, topic.name, topic.subfield]),
   },
   {
     kind: "callout",
@@ -333,7 +481,7 @@ export const trendLifecycleBlocksVi: DocsBlock[] = [
   {
     kind: "callout",
     tone: "convention",
-    text: `Các ngưỡng trên **không có nguồn công bố**. Chúng được chọn ngày 2026-11-14 sau khi chạy trên toàn bộ ${C.scopeTopics} chủ đề của phạm vi (cửa sổ 2011–2025) và đối chiếu danh sách với các chủ đề quen thuộc: 71 chủ đề tăng, 12 bão hoà, 4 qua đỉnh (trong đó có ba chủ đề về COVID-19), 169 giảm, 53 ổn định. Ngưỡng peakRatio ≥ ${vi(C.nearPeak)} gần như không ảnh hưởng (từ 0,7 đến 0,9 chỉ đổi 13 thành 11 chủ đề bão hoà); ngưỡng |r_R| mới là ngưỡng quyết định (${vi(C.flatPct)} cho 12 chủ đề, 3 cho 20 chủ đề).`,
+    text: `Các ngưỡng trên **không có nguồn công bố**. Chúng được chọn ngày 2026-11-14 sau khi chạy trên toàn bộ ${C.calibrationTopics} chủ đề của phạm vi \`it-v1\` (cửa sổ 2011–2025) và đối chiếu danh sách với các chủ đề quen thuộc: 71 chủ đề tăng, 12 bão hoà, 4 qua đỉnh (trong đó có ba chủ đề về COVID-19), 169 giảm, 53 ổn định. Ngưỡng peakRatio ≥ ${vi(C.nearPeak)} gần như không ảnh hưởng (từ 0,7 đến 0,9 chỉ đổi 13 thành 11 chủ đề bão hoà); ngưỡng |r_R| mới là ngưỡng quyết định (${vi(C.flatPct)} cho 12 chủ đề, 3 cho 20 chủ đề).`,
   },
 ];
 
@@ -369,6 +517,6 @@ export const trendLifecycleBlocksEn: DocsBlock[] = [
   {
     kind: "callout",
     tone: "convention",
-    text: `These thresholds have **no published source**. They were chosen on 2026-11-14 after a run over all ${C.scopeTopics} topics of the scope (window 2011–2025), comparing the lists with well-known topics: 71 rising, 12 saturated, 4 past their peak (three of them about COVID-19), 169 declining, 53 stable. The threshold peakRatio ≥ ${C.nearPeak} hardly matters (from 0.7 to 0.9 it only moves 13 saturated topics to 11); |r_R| is the deciding one (${C.flatPct} gives 12 topics, 3 gives 20).`,
+    text: `These thresholds have **no published source**. They were chosen on 2026-11-14 after a run over all ${C.calibrationTopics} topics of scope \`it-v1\` (window 2011–2025), comparing the lists with well-known topics: 71 rising, 12 saturated, 4 past their peak (three of them about COVID-19), 169 declining, 53 stable. The threshold peakRatio ≥ ${C.nearPeak} hardly matters (from 0.7 to 0.9 it only moves 13 saturated topics to 11); |r_R| is the deciding one (${C.flatPct} gives 12 topics, 3 gives 20).`,
   },
 ];

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/utils/number_format.dart';
+import 'package:flutter_mobile/features/trends/components/trend_verdict_label.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:go_router/go_router.dart';
 
@@ -33,6 +35,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
   // Trends cover the Information Technology scope only, so the taxonomy filter
   // narrows by subfield; domain and field filters are not offered (as on the web).
   final List<String> _selectedSubfields = [];
+  final List<String> _selectedSizeBands = [];
 
   @override
   void initState() {
@@ -64,6 +67,10 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
     _selectedSubfields
       ..clear()
       ..addAll(widget.params.scopeFilters.subfieldIds);
+
+    _selectedSizeBands
+      ..clear()
+      ..addAll(widget.params.sizeBands);
   }
 
   void _updateParams() {
@@ -79,6 +86,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
       minPapers: _minPapers,
       scopeFilters: newFilters,
       sortBy: widget.params.sortBy,
+      sizeBands: List.of(_selectedSizeBands),
       limit: widget.params.limit,
     );
 
@@ -104,6 +112,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
       _selectedKinds.clear();
       _selectedOA.clear();
       _selectedSubfields.clear();
+      _selectedSizeBands.clear();
     });
     _updateParams();
   }
@@ -131,7 +140,8 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
 
   /// Names of the selected subfields (their ids when the facet list lacks them).
   List<String> _subfieldNames() {
-    final buckets = widget.overview.facets?.subfields ?? const <TrendFacetBucket>[];
+    final buckets =
+        widget.overview.facets?.subfields ?? const <TrendFacetBucket>[];
     return [
       for (final id in _selectedSubfields)
         buckets.where((b) => b.id == id).map((b) => b.name).firstOrNull ?? id,
@@ -146,12 +156,54 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
       for (var y = now - 30; y <= now; y++) y,
       ?_yearFrom,
       ?_yearTo,
-    }.toList()
-      ..sort();
+    }.toList()..sort();
   }
 
   String _routeWithQuery(String path, Map<String, String> queryParameters) {
     return Uri(path: path, queryParameters: queryParameters).toString();
+  }
+
+  /// Size bands: tertiles of total papers among the topics of the IT scope.
+  Widget _buildSizeBandChips(BuildContext context) {
+    final cutoffs = widget.overview.bandCutoffs;
+    if (cutoffs == null) return const SizedBox.shrink();
+    String range(String band) => switch (band) {
+      'small' => '≤ ${formatNumber(cutoffs.smallMax.round())}',
+      'medium' =>
+        '${formatNumber(cutoffs.smallMax.round())}–${formatNumber(cutoffs.mediumMax.round())}',
+      _ => '> ${formatNumber(cutoffs.mediumMax.round())}',
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          context.t('Topic size (papers in the window)'),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+            color: Color(0xFF94A3B8),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final band in trendSizeBands)
+              ChoiceChip(
+                label: Text(
+                  '${context.t(trendSizeBandLabel(band))} (${range(band)})',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                selected: _selectedSizeBands.contains(band),
+                selectedColor: const Color(0xFF06B6D4),
+                onSelected: (_) => _toggleFilter(_selectedSizeBands, band),
+              ),
+          ],
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
   }
 
   Widget _buildMultiSelectChips({
@@ -230,7 +282,11 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.shield, color: Color(0xFF06B6D4), size: 18),
+                        const Icon(
+                          Icons.shield,
+                          color: Color(0xFF06B6D4),
+                          size: 18,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           context.t('Current Scope Summary'),
@@ -252,7 +308,10 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  context.t('Publications in scope: {{totalPublications}} papers', {'totalPublications': totalPublications}),
+                  context.t(
+                    'Publications in scope: {{totalPublications}} papers',
+                    {'totalPublications': totalPublications},
+                  ),
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
@@ -262,7 +321,12 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                 if (_selectedSubfields.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
-                    context.t('Taxonomy path: {{path}}', {'path': [context.t('Information Technology scope'), _subfieldNames().join(', ')].join(' ➔ ')}),
+                    context.t('Taxonomy path: {{path}}', {
+                      'path': [
+                        context.t('Information Technology scope'),
+                        _subfieldNames().join(', '),
+                      ].join(' ➔ '),
+                    }),
                     style: const TextStyle(
                       fontSize: 11,
                       color: Color(0xFF94A3B8),
@@ -273,7 +337,9 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                 const Divider(),
                 const SizedBox(height: 4),
                 Text(
-                  context.t('These filters change every Signals, Compare, Search, Report, and Explain result dynamically.'),
+                  context.t(
+                    'These filters change every Signals, Compare, Search, Report, and Explain result dynamically.',
+                  ),
                   style: const TextStyle(
                     fontSize: 11,
                     height: 1.4,
@@ -352,6 +418,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
 
         if (facets != null) ...[
           // Taxonomy selectors
+          _buildSizeBandChips(context),
           _buildMultiSelectChips(
             title: context.t('Taxonomy Subfields'),
             buckets: facets.subfields,
@@ -398,7 +465,10 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                 ),
                 title: Text(
                   context.t('Find signals in this scope'),
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 trailing: const Icon(Icons.chevron_right, size: 16),
                 onTap: widget.onGoToSignals,
@@ -408,7 +478,10 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                 leading: const Icon(Icons.search, color: Color(0xFF06B6D4)),
                 title: Text(
                   context.t('Search scoped papers'),
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 trailing: const Icon(Icons.chevron_right, size: 16),
                 onTap: () {
@@ -430,7 +503,10 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                 ),
                 title: Text(
                   context.t('Generate scoped report'),
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 trailing: const Icon(Icons.chevron_right, size: 16),
                 onTap: () {

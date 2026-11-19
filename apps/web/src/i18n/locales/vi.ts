@@ -34,6 +34,8 @@ import { projectMemberTranslations } from "./project-members";
 import { projectWorkspaceVi } from "./project-workspace";
 import { trendEvidenceViStrings } from "./trend-evidence";
 import { trendEdaViStrings } from "./trend-eda";
+import { trendCrossTopicViStrings } from "./trend-cross-topic";
+import { trendEmergingViStrings } from "./trend-emerging";
 import { trendScopeViStrings } from "./trend-scope";
 import { trendVerdictViStrings } from "./trend-verdict";
 import { trendResearchLinkViStrings } from "./trend-research-links";
@@ -54,6 +56,8 @@ export const vi: Record<keyof typeof en, string> = {
   ...trendEvidenceViStrings,
   ...trendVerdictViStrings,
   ...trendEdaViStrings,
+  ...trendCrossTopicViStrings,
+  ...trendEmergingViStrings,
   ...trendScopeViStrings,
   ...trendResearchLinkViStrings,
   ...trendPeriodsViStrings,

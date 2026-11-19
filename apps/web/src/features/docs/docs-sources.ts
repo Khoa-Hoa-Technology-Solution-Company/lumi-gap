@@ -28,6 +28,7 @@ export type DocsSourceId =
   | "joanes-gill-1998"
   | "hyndman-fan-1996"
   | "leys-2013"
+  | "tukey-1977"
   | "openalex-works"
   | "openalex-topics"
   | "openalex-group-by";
@@ -390,6 +391,84 @@ export const DOCS_SOURCES: Record<DocsSourceId, DocsSource> = {
       note: {
         vi: "Đã đối chiếu với toàn văn: MAD = b · trung vị(|x_i − trung vị|) với b = 1,4826; tiêu chí |x_i − M| / MAD > ngưỡng; các tác giả khuyến nghị ngưỡng 2,5 (\"by default, we suggest a threshold of 2.5\").",
         en: "Checked against the full text: MAD = b · median(|x_i − median|) with b = 1.4826; criterion |x_i − M| / MAD > threshold; the authors recommend 2.5 (\"by default, we suggest a threshold of 2.5\").",
+      },
+    },
+  },
+  "tukey-1977": {
+    id: "tukey-1977",
+    shortCite: "Tukey, 1977",
+    authors: "Tukey, J. W.",
+    year: 1977,
+    work: "Exploratory Data Analysis",
+    venue: "Addison-Wesley (ISBN 978-0-201-07616-5)",
+    url: "https://openlibrary.org/isbn/9780201076165",
+    role: "method-origin",
+    kind: "textbook",
+    roleNote: {
+      vi: "Nguồn gốc của biểu đồ hộp và của cận Tukey [Q1 − 1,5·IQR, Q3 + 1,5·IQR], dùng để đánh dấu chủ đề bất thường trong nhóm quy mô của nó.",
+      en: "Origin of the box plot and of the Tukey fences [Q1 − 1.5·IQR, Q3 + 1.5·IQR], used to flag anomalous topics within their size group.",
+    },
+    reliabilityNote: {
+      vi: "Giáo trình, không có DOI.",
+      en: "Textbook, no DOI.",
+    },
+    verification: {
+      status: "unverified",
+      method: "Publication details (author, year, publisher, ISBN)",
+      checkedOn: "2026-11-19",
+      note: {
+        vi: "Chưa xác minh nội dung: thông tin xuất bản lấy từ biểu ghi ISBN, chưa mở được chương về biểu đồ hộp để đối chiếu hệ số 1,5.",
+        en: "Content not verified: the publication details come from the ISBN record; the box-plot chapter could not be opened to check the factor 1.5.",
+      },
+    },
+  },
+  "rotolo-2015": {
+    id: "rotolo-2015",
+    shortCite: "Rotolo et al., 2015",
+    authors: "Rotolo, D., Hicks, D., & Martin, B. R.",
+    year: 2015,
+    work: "What is an emerging technology?",
+    venue: "Research Policy, 44(10), 1827–1843",
+    doi: "10.1016/j.respol.2015.06.006",
+    url: "https://doi.org/10.1016/j.respol.2015.06.006",
+    role: "method-origin",
+    kind: "peer-reviewed",
+    roleNote: {
+      vi: "Định nghĩa công nghệ mới nổi, trong đó có tính mới (novelty) và tăng trưởng nhanh; cơ sở của tiêu chí độ mới của tín hiệu mới nổi.",
+      en: "Definition of an emerging technology, including radical novelty and fast growth; the basis of the novelty criterion of emerging signals.",
+    },
+    verification: {
+      status: "unverified",
+      method: "Citation details supplied by the project team",
+      checkedOn: "2026-11-19",
+      note: {
+        vi: "Chưa xác minh: thông tin trích dẫn do nhóm dự án cung cấp, chưa đối chiếu bằng Crossref. Dự án chỉ mượn ý tưởng về tính mới; ngưỡng cụ thể là quy ước của dự án.",
+        en: "Not verified: the citation details were supplied by the project team and not yet checked against Crossref. The project only borrows the idea of novelty; the specific threshold is a project convention.",
+      },
+    },
+  },
+  "small-2014": {
+    id: "small-2014",
+    shortCite: "Small et al., 2014",
+    authors: "Small, H., Boyack, K. W., & Klavans, R.",
+    year: 2014,
+    work: "Identifying emerging topics in science and technology",
+    venue: "Research Policy, 43(8), 1450–1467",
+    doi: "10.1016/j.respol.2014.02.005",
+    url: "https://doi.org/10.1016/j.respol.2014.02.005",
+    role: "method-origin",
+    kind: "peer-reviewed",
+    roleNote: {
+      vi: "Cách nhận diện chủ đề mới nổi bằng so sánh giữa hai giai đoạn; cơ sở của việc so sánh thị phần từ khoá giữa giai đoạn trước và giai đoạn gần.",
+      en: "Identifying emerging topics by comparing two periods; the basis of comparing a keyword's share between the earlier and the recent period.",
+    },
+    verification: {
+      status: "unverified",
+      method: "Citation details supplied by the project team",
+      checkedOn: "2026-11-19",
+      note: {
+        vi: "Chưa xác minh: thông tin trích dẫn do nhóm dự án cung cấp, chưa đối chiếu bằng Crossref.",
+        en: "Not verified: the citation details were supplied by the project team and not yet checked against Crossref.",
       },
     },
   },

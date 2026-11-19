@@ -13,6 +13,7 @@ import { useI18n } from "@/i18n";
 import { formatPercent, hasCitationTotals, hasPpTop10, WORLD_AVERAGE_PP_TOP10, type TimelinePoint, type TrendMetricMode } from "../trend-impact";
 import { formatShiftCounts, isShiftSignificant } from "../trend-source";
 import { DataSourceBadge } from "./trend-data-source";
+import { CrossTopicSection } from "./cross-topic-section";
 import { TrendFigures, TrendHowLink, TrendIntro, TrendVerdictBadge, formatRelativeChange, verdictLabel } from "./trend-verdict-badge";
 import { buildTrendScopedUrl } from "../trend-navigation";
 import { DOCS_SECTIONS } from "@/features/docs";
@@ -614,6 +615,8 @@ export function OverviewTab({
           </div>
         </div>
       </div>
+
+      <CrossTopicSection analysis={data.crossTopic} getTopicTrendTarget={getTopicTrendTarget} />
     </div>
   );
 }
