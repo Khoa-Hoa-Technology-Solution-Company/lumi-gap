@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ArchiveRestore, ArrowLeft, Archive, CalendarClock, DatabaseZap, Pencil, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { BackfillRunsSection } from "@/features/catalog/components/backfill-runs
 import { StatusBadge } from "@/features/catalog/components/catalog-badges";
 import { apiErr, ErrorState } from "@/features/catalog/components/catalog-ui";
 import { EditTagDialog, RETAG_TOAST } from "@/features/catalog/components/tag-dialogs";
+import { TopicWatchControl } from "@/features/catalog/components/topic-watch-control";
 import { TagCampaignDialog } from "@/features/catalog/components/tag-campaign-dialog";
 import { TagCampaignsSection } from "@/features/catalog/components/tag-campaigns-section";
 import { TagPapersSection } from "@/features/catalog/components/tag-papers-section";
@@ -36,6 +37,19 @@ export function AdminTagDetailPage() {
   const update = useUpdateTag();
   const scheduleRefresh = useDelayedTagRefresh();
   const tag = query.data;
+
+  // "Create campaign" on a taxonomy node lands here with ?campaign=1: open the planner once, then drop the flag.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const wantsCampaign = searchParams.get("campaign") === "1";
+  useEffect(() => {
+    if (!wantsCampaign || !tag) return;
+    if (tag.status !== "archived") setCampaignOpen(true);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("campaign");
+      return next;
+    }, { replace: true });
+  }, [wantsCampaign, tag, setSearchParams]);
 
   async function retag() {
     if (!tag) return;
@@ -135,6 +149,7 @@ export function AdminTagDetailPage() {
 
           <TagRulesSection key={tag.id} tag={tag} />
           <TagPreviewSection tagId={tag.id} />
+          <TopicWatchControl targetKind="tag" targetId={tag.id} />
           <BackfillRunsSection targetKind="tag" targetId={tag.id} />
           <TagCampaignsSection tagId={tag.id} />
           <TagPapersSection tag={tag} />

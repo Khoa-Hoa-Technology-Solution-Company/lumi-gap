@@ -24,6 +24,7 @@ import {
   TableSkeletonRows,
 } from "@/features/catalog/components/catalog-ui";
 import { NodeDetailSheet } from "@/features/catalog/components/node-detail-sheet";
+import { TaxonomySyncCard } from "@/features/catalog/components/taxonomy-sync-card";
 import { useTaxonomyNodes, useTaxonomyStats } from "@/features/catalog/hooks/use-taxonomy";
 import { useI18n } from "@/i18n";
 
@@ -83,6 +84,8 @@ export function AdminTaxonomyPage() {
         title="Taxonomy"
         description="Browse the OpenAlex domain, field, subfield and topic tree, and curate aliases and visibility."
       />
+
+      <TaxonomySyncCard />
 
       <section aria-label={t("Taxonomy statistics")} className="space-y-3">
         {stats.isError ? (

@@ -2,7 +2,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   contributionCategories,
-  creditRoles,
+  creditRoleMetadata,
   inferContributionCategoryFromRoles,
   type ContributionArtifactLink,
   type ContributionCategoryKey,
@@ -21,9 +21,10 @@ import { useWorkspaceCommand, useWorkspaceResource } from "../hooks/use-workspac
 import { canLeaveWorkspace, WorkspaceArtifactPicker, WorkspaceError, WorkspaceLoading, WorkspacePager, useUnsavedWorkspace } from "./workspace-common";
 import { ContributionArtifactReference } from "./contribution-artifact-link";
 import { contributionDate } from "../utils/contribution-date";
+import { CreditRolePicker } from "./credit-role-picker";
 import { CONTRIBUTION_CATEGORY_META } from "../utils/contribution-percentage";
 
-export const creditLabels: Record<CreditRole, string> = { CONCEPTUALIZATION: "Conceptualization", DATA_CURATION: "Data curation", FORMAL_ANALYSIS: "Formal analysis", FUNDING_ACQUISITION: "Funding acquisition", INVESTIGATION: "Investigation", METHODOLOGY: "Methodology", PROJECT_ADMINISTRATION: "Project administration", RESOURCES: "Resources", SOFTWARE: "Software", SUPERVISION: "Supervision", VALIDATION: "Validation", VISUALIZATION: "Visualization", WRITING_ORIGINAL_DRAFT: "Writing - original draft", WRITING_REVIEW_EDITING: "Writing - review and editing" };
+export const creditLabels = Object.fromEntries(Object.entries(creditRoleMetadata).map(([code, metadata]) => [code, metadata.name])) as Record<CreditRole, string>;
 export const contributionStatusLabels: Record<string, string> = { DRAFT: "Draft", SUBMITTED: "Pending acknowledgement", ACCEPTED: "Acknowledged by a peer", NEEDS_CHANGES: "Changes requested", DISPUTED: "Disputed", SELF_RECORDED: "Self-recorded", CONFIRMED: "Legacy academic confirmation", PENDING_CONFIRMATION: "Legacy pending confirmation", REJECTED: "Legacy rejected" };
 const historyActionLabels: Record<string, string> = { CREATED: "Record created", CORRECTED: "Record corrected", SUBMITTED: "Submitted for acknowledgement", ACKNOWLEDGE: "Roles acknowledged", ACCEPT: "Acknowledged by a peer", NEEDS_CHANGES: "Changes requested", DISPUTE: "Disputed", PROPOSED: "Legacy pending confirmation", CONFIRMED: "Legacy academic confirmation", REJECTED: "Legacy rejected" };
 
@@ -36,7 +37,7 @@ function ContributionEditor({ projectId, currentUserId, existing, readOnly, clos
   const [refs, setRefs] = useState<ContributionArtifactLink[]>(existing?.evidenceRefs ?? []); const [link, setLink] = useState<WorkspaceLink | null>(null); const [reason, setReason] = useState("");
   const [taskSearch, setTaskSearch] = useState(""); const [taskId, setTaskId] = useState("");
   const tasks = useWorkspaceResource(projectId, "contribution-task-choices", () => workspaceApi.tasks(projectId, { q: taskSearch, page: 1, pageSize: 50 }), taskSearch, !mentorView);
-  const people = useWorkspaceResource(projectId, "contribution-people", () => workspaceApi.people(projectId), null, !mentorView);
+  const people = useWorkspaceResource(projectId, "contribution-people", () => contributionsApi.people(projectId));
   const scopes = useWorkspaceResource(projectId, "contribution-manuscript-choices", () => contributionsApi.research(projectId, { page:1, pageSize:1 }));
   const [scopeKey,setScopeKey] = useState("");
   const save = useWorkspaceCommand(projectId, (input: ContributionInput & { clientKey?: string; expectedVersion?: number; correctionReason?: string }) => contributionsApi.save(projectId, input, existing?.id));
@@ -53,7 +54,7 @@ function ContributionEditor({ projectId, currentUserId, existing, readOnly, clos
     <div className="coord-form-pair"><label>{t("Work date")}<input type="date" required max={contributionDate()} value={date} onChange={e => setDate(e.target.value)} /></label><label>{t("Source")}<select value={source} onChange={e => setSource(e.target.value as ContributionInput["source"])}><option value="MANUAL">{t("Offline or external work")}</option><option value="WORKSPACE">{t("Work in LumiGap")}</option></select></label></div>
     <fieldset><legend>{t("Participants and CRediT roles")}</legend>{[...roster.values()].map(p => {
       const selected = participants.find(v => v.userId === p.id);
-      return <div className="contribution-person" key={p.id}><label><input type="checkbox" checked={Boolean(selected)} disabled={p.id === currentUserId} onChange={e => setParticipants(e.target.checked ? [...participants, { userId: p.id, roles: [] }] : participants.filter(v => v.userId !== p.id))} />{p.name}</label>{selected && <div className="contribution-role-options">{creditRoles.map(role => <label key={role}><input type="checkbox" checked={selected.roles.includes(role)} onChange={e => setParticipants(participants.map(v => v.userId !== p.id ? v : { ...v, roles: e.target.checked ? [...v.roles, role] : v.roles.filter(r => r !== role) }))} />{t(creditLabels[role])}</label>)}</div>}</div>;
+      return <div className="contribution-person" key={p.id}><label><input type="checkbox" checked={Boolean(selected)} onChange={e => setParticipants(e.target.checked ? [...participants, { userId: p.id, roles: [] }] : participants.filter(v => v.userId !== p.id))} />{p.name}</label>{selected && <CreditRolePicker value={selected.roles} onChange={roles => { setParticipants(participants.map(v => v.userId === p.id ? { ...v, roles } : v)); setDirty(true); }} />}</div>;
     })}</fieldset>
     {people.isError && <WorkspaceError error={people.error} retry={() => void people.refetch()} />}
     <p className="contribution-note">{t("CRediT describes types of work, not percentages or authorship eligibility.")} <a href="https://credit.niso.org/contributor-roles/" target="_blank" rel="noreferrer">CRediT</a></p>
@@ -62,7 +63,8 @@ function ContributionEditor({ projectId, currentUserId, existing, readOnly, clos
     <Button type="button" size="sm" variant="outline" disabled={!scopeKey} onClick={()=>{const [kind,id]=scopeKey.split(":");const ref:ContributionArtifactLink={kind:kind==="DRAFT"?"MANUSCRIPT":"SUBMISSION",id:id!};if(!refs.some(r=>r.kind===ref.kind&&r.id===ref.id))setRefs([...refs,ref]);setScopeKey("");setDirty(true);}}>{t("Add evidence reference")}</Button>
     {scopes.isError && <WorkspaceError error={scopes.error} retry={()=>void scopes.refetch()}/>}
     {!mentorView && <><WorkspaceArtifactPicker projectId={projectId} value={link} onChange={setLink}/><Button type="button" size="sm" variant="outline" disabled={!link} onClick={()=>{if(link&&!refs.some(r=>r.id===link.id&&r.kind===link.kind))setRefs([...refs,link]);setLink(null);setDirty(true);}}>{t("Add evidence reference")}</Button>
-    <label>{t("Find a related task")}<input type="search" value={taskSearch} maxLength={200} onChange={e=>setTaskSearch(e.target.value)}/></label><label>{t("Related task")}<select value={taskId} onChange={e=>setTaskId(e.target.value)}><option value="">{t("Choose a task")}</option>{tasks.data?.items.map(task=><option key={task.id} value={task.id}>{task.title}</option>)}</select></label><Button type="button" variant="outline" size="sm" disabled={!taskId} onClick={()=>{if(!refs.some(r=>r.kind==="TASK"&&r.id===taskId))setRefs([...refs,{kind:"TASK",id:taskId}]);setTaskId("");setDirty(true);}}>{t("Link task deliverable")}</Button>{tasks.isError&&<WorkspaceError error={tasks.error} retry={()=>void tasks.refetch()}/>}</>}
+    <label>{t("Find a related task")}<input type="search" value={taskSearch} maxLength={200} onChange={e=>setTaskSearch(e.target.value)}/></label><label>{t("Related task")}<select aria-label={t("Related task")} value={taskId} onChange={e=>setTaskId(e.target.value)}><option value="">{t("Choose a task")}</option>{tasks.data?.items.map(task=><option key={task.id} value={task.id}>{task.title}</option>)}</select></label><Button type="button" variant="outline" size="sm" disabled={!taskId} onClick={()=>{if(!refs.some(r=>r.kind==="TASK"&&r.id===taskId))setRefs([...refs,{kind:"TASK",id:taskId}]);setTaskId("");setDirty(true);}}>{t("Link task deliverable")}</Button>{tasks.isError&&<WorkspaceError error={tasks.error} retry={()=>void tasks.refetch()}/>}</>}
+    {mentorView && <label>{t("Link my mentor feedback")}<select value="" onChange={event => { const feedback = people.data?.feedbackReferences?.find(item => item.id === event.target.value); if(feedback && !refs.some(ref=>ref.id===feedback.id && ref.kind===feedback.kind)) {setRefs([...refs,{kind:feedback.kind,id:feedback.id}]);setDirty(true);} }}><option value="">{t("Choose feedback evidence")}</option>{people.data?.feedbackReferences?.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}</select></label>}
     <ul>{refs.map((r, i) => <li key={`${r.kind}:${r.id}`}><ContributionArtifactReference projectId={projectId} link={r} /><Button type="button" size="sm" variant="ghost" onClick={() => { setRefs(refs.filter((_, index) => index !== i)); setDirty(true); }}>{t("Remove reference")}</Button></li>)}</ul>
     {existing && <label>{t("Correction reason")}<textarea required minLength={10} maxLength={1000} value={reason} onChange={e => setReason(e.target.value)} /></label>}
     {save.isError && <WorkspaceError error={save.error} />}
@@ -93,9 +95,9 @@ export function WorkDetail({ projectId, item, currentUserId, readOnly, edit }: {
   </article>;
 }
 
-export function WorkContributionsPanel({ projectId, currentUserId, readOnly, mentorView = false }: { projectId: string; currentUserId: string; readOnly: boolean; mentorView?: boolean }) {
+export function WorkContributionsPanel({ projectId, currentUserId, readOnly, mentorView = false, initialFilter = "TEAM" }: { projectId: string; currentUserId: string; readOnly: boolean; mentorView?: boolean; initialFilter?: string }) {
   const [routeParams] = useSearchParams();
-  const { t } = useI18n(); const [q, setQ] = useState(""); const [filter, setFilter] = useState("TEAM"); const [page, setPage] = useState(1); const [selected, setSelected] = useState<string | null>(routeParams.get("contributionId")); const [editor, setEditor] = useState<"new" | WorkContribution | null>(null);
+  const { t } = useI18n(); const [q, setQ] = useState(""); const [filter, setFilter] = useState(initialFilter); const [page, setPage] = useState(1); const [selected, setSelected] = useState<string | null>(routeParams.get("contributionId")); const [editor, setEditor] = useState<"new" | WorkContribution | null>(null);
   const list = useWorkspaceResource(projectId, "work-contributions", () => contributionsApi.work(projectId, { q, filter, page, pageSize: 20 }), { q, filter, page });
   const detail = useWorkspaceResource(projectId, "work-contribution-detail", () => contributionsApi.detail(projectId, selected!), selected, Boolean(selected));
   if (editor) return <ContributionEditor mentorView={mentorView} key={typeof editor === "string" ? "new" : `${editor.id}:${editor.version}`} projectId={projectId} currentUserId={list.data?.currentActorId ?? currentUserId} existing={typeof editor === "string" ? undefined : editor} readOnly={readOnly} close={() => setEditor(null)} saved={record => { setSelected(record.id); setEditor(null); }} />;

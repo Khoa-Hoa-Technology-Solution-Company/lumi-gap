@@ -13,7 +13,7 @@ const calls = vi.hoisted(() => ({ assist: vi.fn(), get: vi.fn(), cancel: vi.fn()
 vi.mock("../manuscripts.api", () => ({ manuscriptsApi: { assist: calls.assist, aiRun: calls.get, cancelAi: calls.cancel } }));
 let cleanup: (() => Promise<void>) | undefined;
 afterEach(async () => { await cleanup?.(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
-async function render(options: { repairRequest?: number; selectionLength?: number; repairCompiled?: boolean; sourceVersion?: number } = {}) {
+async function render(options: { repairRequest?: number; selectionLength?: number; repairCompiled?: boolean; sourceVersion?: number; onAccepted?: (runId: string, fileId: string, paperId?: string) => Promise<void> } = {}) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const doc = new Y.Doc(), text = doc.getText("source"); text.insert(0, "Original passage");
   const target = captureAiSelection("main", text, 0, text.length);
@@ -22,7 +22,7 @@ async function render(options: { repairRequest?: number; selectionLength?: numbe
   calls.assist.mockResolvedValue({ ...run, status: "queued", result: null }); calls.get.mockResolvedValue(run); calls.apply.mockResolvedValue(undefined);
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host), client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const capture = vi.fn(() => ({ target, input })), compile = vi.fn();
-  await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter><ManuscriptAi project="project" manuscript="draft" filename="main.tex" selectionLength={options.selectionLength ?? text.length} canWrite capture={capture} apply={calls.apply} repairRequest={options.repairRequest} onCompile={compile} canCompile repairCompiled={options.repairCompiled} sourceVersion={options.sourceVersion} /></MemoryRouter></QueryClientProvider>));
+  await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter><ManuscriptAi project="project" manuscript="draft" filename="main.tex" selectionLength={options.selectionLength ?? text.length} canWrite capture={capture} apply={calls.apply} onAccepted={options.onAccepted} repairRequest={options.repairRequest} onCompile={compile} canCompile repairCompiled={options.repairCompiled} sourceVersion={options.sourceVersion} /></MemoryRouter></QueryClientProvider>));
   cleanup = async () => { await act(async () => root.unmount()); client.clear(); doc.destroy(); host.remove(); };
   return { host, target, run, capture, compile };
 }
@@ -82,6 +82,22 @@ it("rejects a proposal without touching collaborative source", async () => {
   const { host } = await render(); await request(host);
   await act(async () => button(host, "Reject suggestion").click());
   expect(calls.apply).not.toHaveBeenCalled(); expect(host.querySelector(".writing-ai-result")).toBeNull();
+});
+it("records AI acceptance only after the human applies a proposal", async () => {
+  const accepted = vi.fn().mockImplementation(async () => { expect(calls.apply).toHaveBeenCalledTimes(1); });
+  const { host } = await render({ onAccepted: accepted }); await request(host);
+  expect(accepted).not.toHaveBeenCalled();
+  await act(async () => button(host, "Accept suggestion").click());
+  expect(accepted).toHaveBeenCalledWith("run", "main", undefined);
+  expect(calls.apply).toHaveBeenCalledTimes(1);
+});
+it("keeps an applied edit when acceptance recording fails and warns that disclosure is still needed", async () => {
+  const accepted = vi.fn().mockRejectedValue(new Error("Offline"));
+  const { host } = await render({ onAccepted: accepted }); await request(host);
+  await act(async () => button(host, "Accept suggestion").click());
+  expect(host.textContent).toContain("Applied to the editor");
+  expect(host.textContent).toContain("its AI acceptance record could not be saved");
+  expect(calls.apply).toHaveBeenCalledTimes(1);
 });
 it("asks for missing context without displaying an invalid-source error or an Accept action", async () => {
   const { host, run } = await render();

@@ -134,6 +134,8 @@ model AcademicProfile {
   institutionalEmail           String?   @map("institutional_email") @db.VarChar(320)
   institutionalEmailVerifiedAt DateTime? @map("institutional_email_verified_at") @db.Timestamptz(6)
   expertiseAreas               String[]  @default([]) @map("expertise_areas")
+  researchSpecializations      String[]  @default([]) @map("research_specializations")
+  researchClassification       Json      @default("{}") @map("research_classification")
   skills                       String[]  @default([])
   researchKeywords             String[]  @default([]) @map("research_keywords")
   supportAvailability          Json      @default("{}") @map("support_availability")

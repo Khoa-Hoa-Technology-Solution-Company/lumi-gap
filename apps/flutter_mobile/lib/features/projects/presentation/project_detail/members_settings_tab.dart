@@ -1,6 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/confirm_dialog.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_avatar.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -24,6 +30,10 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
   final _descController = TextEditingController();
   bool _adding = false;
   bool _saving = false;
+
+  /// Member being removed. One removal at a time: a second tap, on the
+  /// same row or another, waits for the first answer.
+  String? _removingId;
 
   @override
   void initState() {
@@ -52,8 +62,8 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
       _emailController.clear();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Invitation sent. They join once they accept it.'),
+          SnackBar(
+            content: Text(context.t('Invitation sent. They join once they accept it.')),
           ),
         );
       }
@@ -61,8 +71,8 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to send invitation: $e'),
-            backgroundColor: Colors.red,
+            content: Text(context.t('Failed to send invitation: {{e}}', {'e': context.t(failureMessageKey(e))})),
+            backgroundColor: context.lumi.error,
           ),
         );
       }
@@ -71,26 +81,42 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
     }
   }
 
-  Future<void> _removeMember(String memberId) async {
+  Future<void> _removeMember(ProjectMemberRef member) async {
+    if (_removingId != null) return;
+    setState(() => _removingId = member.id);
     try {
+      // Removing someone takes away their access: ask first.
+      final confirmed = await ConfirmDialog.show(
+        context,
+        title: context.t('Remove member'),
+        message: context.t(
+          'Remove {{name}} from this project? They will lose access to it.',
+          {'name': member.displayName},
+        ),
+        confirmText: context.t('Remove'),
+        isDestructive: true,
+      );
+      if (!(confirmed ?? false) || !mounted) return;
       await widget.ref
           .read(projectsApiProvider)
-          .removeMember(widget.project.id, memberId);
+          .removeMember(widget.project.id, member.id);
       widget.ref.invalidate(projectProvider(widget.project.id));
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Member removed.')));
+        ).showSnackBar(SnackBar(content: Text(context.t('Member removed.'))));
       }
     } on Object catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to remove member: $e'),
-            backgroundColor: Colors.red,
+            content: Text(context.t(failureMessageKey(e))),
+            backgroundColor: context.lumi.error,
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _removingId = null);
     }
   }
 
@@ -110,14 +136,14 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Workspace updated.')));
+        ).showSnackBar(SnackBar(content: Text(context.t('Workspace updated.'))));
       }
     } on Object catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Update failed: $e'),
-            backgroundColor: Colors.red,
+            content: Text(context.t('Update failed: {{e}}', {'e': context.t(failureMessageKey(e))})),
+            backgroundColor: context.lumi.error,
           ),
         );
       }
@@ -130,18 +156,18 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Workspace?'),
-        content: const Text(
-          'All papers and chat history in this workspace will be deleted forever.',
+        title: Text(context.t('Delete Workspace?')),
+        content: Text(
+          context.t('All papers and chat history in this workspace will be deleted forever.'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(context.t('Cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            child: Text(context.t('Delete'), style: TextStyle(color: context.lumi.error)),
           ),
         ],
       ),
@@ -155,14 +181,14 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
           context.pop();
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(const SnackBar(content: Text('Workspace deleted.')));
+          ).showSnackBar(SnackBar(content: Text(context.t('Workspace deleted.'))));
         }
       } on Object catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Failed to delete: $e'),
-              backgroundColor: Colors.red,
+              content: Text(context.t('Failed to delete: {{e}}', {'e': context.t(failureMessageKey(e))})),
+              backgroundColor: context.lumi.error,
             ),
           );
         }
@@ -178,10 +204,10 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
         // Section: Members
         ExpansionTile(
           initiallyExpanded: true,
-          leading: const Icon(Icons.people_outline, color: Color(0xFF22C55E)),
-          title: const Text(
-            'Workspace Members',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          leading: Icon(Icons.people_outline, color: context.lumi.primary),
+          title: Text(
+            context.t('Workspace Members'),
+            style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,),
           ),
           children: [
             Padding(
@@ -195,13 +221,13 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
                         child: TextField(
                           controller: _emailController,
                           decoration: InputDecoration(
-                            hintText: 'Enter User ID or Email',
+                            hintText: context.t('Enter User ID or Email'),
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 12,
                               vertical: 8,
                             ),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(8),
                             ),
                           ),
                         ),
@@ -209,26 +235,26 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
                       const SizedBox(width: 8),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF06B6D4),
+                          backgroundColor: context.lumi.primary,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                         ),
                         onPressed: _adding ? null : _addMember,
                         child: _adding
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 18,
                                 height: 18,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color: context.lumi.onPrimary,
                                 ),
                               )
-                            : const Text(
-                                'Add',
+                            : Text(
+                                context.t('Add'),
                                 style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
+                                  color: context.lumi.onPrimary,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                       ),
@@ -241,30 +267,36 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
                     itemCount: widget.project.members.length,
                     itemBuilder: (context, idx) {
                       final m = widget.project.members[idx];
-                      final isOwner = widget.project.ownerId == m.id;
+                      final isOwner = m.isOwnerOf(widget.project);
+                      // Only the owner manages members; the server would
+                      // refuse anyone else, so the button is not offered.
+                      final canRemove = !isOwner &&
+                          (widget.project.viewerIsOwner ?? false);
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: const CircleAvatar(child: Icon(Icons.person)),
+                        leading: LumiAvatar(name: m.displayName),
                         title: Text(
                           m.displayName,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                          style: context.type.bodyMedium!.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         subtitle: Text(
-                          isOwner ? 'Owner' : 'Member',
-                          style: const TextStyle(fontSize: 11),
+                          isOwner ? context.t('Owner') : context.t('Member'),
+                          style: context.type.bodySmall,
                         ),
-                        trailing: isOwner
+                        trailing: !canRemove
                             ? null
                             : IconButton(
-                                icon: const Icon(
-                                  Icons.remove_circle_outline,
-                                  color: Colors.red,
-                                  size: 18,
+                                tooltip: context.t('Remove member'),
+                                icon: Icon(
+                                  Icons.person_remove_outlined,
+                                  color: context.lumi.error,
+                                  size: 20,
                                 ),
-                                onPressed: () => _removeMember(m.id),
+                                onPressed: _removingId != null
+                                    ? null
+                                    : () => unawaited(_removeMember(m)),
                               ),
                       );
                     },
@@ -278,13 +310,13 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
 
         // Section: Workspace Settings
         ExpansionTile(
-          leading: const Icon(
+          leading: Icon(
             Icons.settings_outlined,
-            color: Color(0xFF94A3B8),
+            color: context.lumi.muted,
           ),
-          title: const Text(
-            'Workspace Settings',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          title: Text(
+            context.t('Workspace Settings'),
+            style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,),
           ),
           children: [
             Padding(
@@ -292,12 +324,11 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Workspace Name',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      color: Color(0xFF94A3B8),
+                  Text(
+                    context.t('Workspace Name'),
+                    style: context.type.bodySmall!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: context.lumi.muted,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -305,17 +336,16 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
                     controller: _titleController,
                     decoration: InputDecoration(
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Description',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      color: Color(0xFF94A3B8),
+                  Text(
+                    context.t('Description'),
+                    style: context.type.bodySmall!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: context.lumi.muted,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -324,7 +354,7 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
                     maxLines: 3,
                     decoration: InputDecoration(
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                     ),
                   ),
@@ -334,37 +364,36 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
                     height: 48,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF06B6D4),
+                        backgroundColor: context.lumi.primary,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                       ),
                       onPressed: _saving ? null : _save,
                       child: _saving
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Colors.white,
+                                color: context.lumi.onPrimary,
                               ),
                             )
-                          : const Text(
-                              'Save Settings',
+                          : Text(
+                              context.t('Save Settings'),
                               style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
+                                color: context.lumi.onPrimary,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                     ),
                   ),
                   const Divider(height: 32),
-                  const Text(
-                    'Danger Zone',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      color: Color(0xFFEF4444),
+                  Text(
+                    context.t('Danger Zone'),
+                    style: context.type.bodySmall!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: context.lumi.error,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -373,17 +402,17 @@ class _MembersSettingsTabState extends State<ProjectMembersSettingsTab> {
                     height: 48,
                     child: OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red),
+                        foregroundColor: context.lumi.error,
+                        side: BorderSide(color: context.lumi.error),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                       ),
                       onPressed: _delete,
                       icon: const Icon(Icons.delete_forever),
-                      label: const Text(
-                        'Delete Workspace',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                      label: Text(
+                        context.t('Delete Workspace'),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),

@@ -1,6 +1,11 @@
 import { registrationEn } from "./registration";
 import { mentorWorkspaceEn } from "./mentor-workspace";
 import { scientificReviewEn } from "./scientific-review";
+import { mentorJourneyEn } from "./mentor-journey";
+import { academicConnectionsEn } from "./academic-connections";
+import { screeningQueueEn } from "./screening-queue";
+import { mentorApplicantsEn } from "./mentor-applicants";
+import { manuscriptIntegrityEn } from "./manuscript-integrity";
 import { submissionWorkflowStrings } from "./submission-workflow";
 import { confirmationsEn } from "./confirmations";
 import { researchTasksEn } from "./research-tasks";
@@ -43,6 +48,8 @@ export const en = {
   ...manuscriptsEn,
   ...researchWorkflowStrings,
   ...workspaceCoordinationStrings,
+  ...mentorApplicantsEn,
+  ...manuscriptIntegrityEn,
   ...academicSupportEn,
   ...scientificReviewEn,
   ...trustSafetyRagStrings,
@@ -1861,5 +1868,10 @@ export const en = {
   "Left": "Left",
   "Center": "Center",
   "Right": "Right",
+  ...academicConnectionsEn,
+  ...screeningQueueEn,
+  ...mentorJourneyEn,
+  ...creditAttributionEn,
   ...submissionWorkflowStrings,
 } as const;
+import { creditAttributionEn } from "./credit-attribution";

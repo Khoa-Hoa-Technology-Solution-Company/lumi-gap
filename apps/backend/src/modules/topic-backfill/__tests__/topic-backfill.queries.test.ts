@@ -77,8 +77,8 @@ describe("buildTagQueries", () => {
     expect(queries.map((q) => q.filterExpression)).toEqual([
       "topics.id:T1|T2,has_abstract:true",
       "topics.subfield.id:1702,has_abstract:true",
-      "topics.field.id:17,has_abstract:true",
-      "topics.domain.id:3,has_abstract:true",
+      "primary_topic.field.id:17,has_abstract:true",
+      "primary_topic.domain.id:3,has_abstract:true",
     ]);
     expect(queries.every((q) => q.sort === "cited_by_count:desc")).toBe(true);
   });

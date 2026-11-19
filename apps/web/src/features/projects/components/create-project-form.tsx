@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { CreateProjectRequest, ResearchApproach } from "@trend/shared-types";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Check, Globe2, GraduationCap, LockKeyhole, Plus, Search, ShieldCheck, User, Users, X, ArrowRight } from "lucide-react";
+import { Check, GraduationCap, LockKeyhole, Plus, Search, ShieldCheck, User, Users, X, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,8 @@ import { useAuthStore } from "@/stores/auth-store";
 import { academicSupportApi } from "../api/academic-support.api";
 import { projectsApi } from "../api/projects.api";
 import { useCreateProject } from "../hooks/use-projects";
+
+import { ResearchClassificationFields } from "@/features/academic-profile/components/research-classification-fields";
 
 const DEFAULT_RESEARCH_FIELDS = [
   "Artificial Intelligence",
@@ -67,7 +69,8 @@ interface Draft {
   description: string;
   keywordsInput: string;
   researchApproach: ResearchApproach;
-  visibility: "PRIVATE" | "PUBLIC";
+  visibility: "PRIVATE";
+  researchClassification?: CreateProjectRequest["researchClassification"];
   teamMode: TeamMode;
   invitedMembers: QueuedInvite[];
   mentorMode: MentorMode;
@@ -136,6 +139,9 @@ function readDraft(key: string): Draft {
     const parsed: unknown = JSON.parse(sessionStorage.getItem(key) || "null");
     if (parsed && typeof parsed === "object") {
       const value = parsed as Record<string, unknown>;
+      if (value.step === undefined && typeof value.title === "string" && value.title.length <= 100 && typeof value.description === "string" && value.description.length <= 5000 && typeof value.idempotencyKey === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.idempotencyKey) && Array.isArray(value.researchAreas) && value.researchAreas.every(area => typeof area === "string" && area.length <= 120)) {
+        return { ...defaultDraft(), title: value.title, description: value.description, researchField: value.researchAreas[0] as string || DEFAULT_RESEARCH_FIELDS[0]!, researchApproach: ["UNDECIDED","EXPLORATORY","LITERATURE_REVIEW","EMPIRICAL"].includes(String(value.researchApproach)) ? value.researchApproach as ResearchApproach : "UNDECIDED", idempotencyKey: value.idempotencyKey, visibility: "PRIVATE" };
+      }
       if (
         (value.step === 1 || value.step === 2)
         && typeof value.title === "string" && value.title.length <= 100
@@ -163,7 +169,8 @@ function readDraft(key: string): Draft {
           description: value.description,
           keywordsInput: value.keywordsInput,
           researchApproach: value.researchApproach as ResearchApproach,
-          visibility: value.visibility,
+          visibility: "PRIVATE",
+          ...(value.researchClassification && typeof value.researchClassification === "object" ? { researchClassification: value.researchClassification as Draft["researchClassification"] } : {}),
           teamMode: value.teamMode,
           invitedMembers: value.invitedMembers,
           mentorMode: value.mentorMode,
@@ -286,7 +293,8 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
       researchAreas: areas,
       ...(parsedKeywords.length ? { keywords: parsedKeywords } : {}),
       researchApproach: draft.researchApproach,
-      visibility: draft.visibility,
+      visibility: "PRIVATE",
+      ...(draft.researchClassification ? { researchClassification: draft.researchClassification } : {}),
       idempotencyKey: draft.idempotencyKey,
     };
   };
@@ -519,6 +527,8 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
                 ) : null}
               </div>
 
+              <details className="project-form-optional"><summary>{t("Research direction (optional)")}</summary><div className="pt-4"><ResearchClassificationFields value={draft.researchClassification} onChange={researchClassification => change({ researchClassification })} /></div></details>
+
               <fieldset className="space-y-2.5 pt-1">
                 <legend className="text-sm font-medium text-foreground">{t("Project goal")}</legend>
                 <div className="space-y-2">
@@ -538,32 +548,7 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
                 </div>
               </fieldset>
 
-              <div className="rounded-2xl border border-border/80 bg-muted/30 px-4 py-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    {draft.visibility === "PRIVATE" ? (
-                      <LockKeyhole className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    ) : (
-                      <Globe2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    )}
-                    <span>{t(draft.visibility === "PRIVATE" ? "Privacy: Private" : "Privacy: Public summary")}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => change({ visibility: draft.visibility === "PRIVATE" ? "PUBLIC" : "PRIVATE" })}
-                    className="text-xs font-medium text-muted-foreground hover:text-foreground underline underline-offset-4"
-                  >
-                    {t("Change")}
-                  </button>
-                </div>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {t(
-                    draft.visibility === "PRIVATE"
-                      ? "Only you and authorized people can view the project content. You can change this later."
-                      : "Publishes only the title and research field. Project content stays private and can be changed later.",
-                  )}
-                </p>
-              </div>
+              <div className="rounded-2xl border border-border/80 bg-muted/30 px-4 py-3"><div className="flex items-center gap-2 text-sm font-semibold text-foreground"><LockKeyhole className="h-4 w-4 text-muted-foreground" aria-hidden="true" /><span>{t("Privacy: Private")}</span></div><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("Your project starts private. Invite people when you are ready.")}</p></div>
             </fieldset>
 
             <div className="pt-2">
@@ -903,31 +888,7 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
                 ) : null}
               </section>
 
-              {/* Privacy card */}
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 px-4 py-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  {draft.visibility === "PRIVATE" ? (
-                    <LockKeyhole className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  ) : (
-                    <Globe2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground">
-                      {t(draft.visibility === "PRIVATE" ? "Private project" : "Public summary")}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {t(draft.visibility === "PRIVATE" ? "Only authorized people can access" : "Publishes the title and research areas.")}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => change({ visibility: draft.visibility === "PRIVATE" ? "PUBLIC" : "PRIVATE" })}
-                  className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900"
-                >
-                  {draft.visibility === "PRIVATE" ? "Private" : "Public"}
-                </button>
-              </div>
+              <div className="flex items-center gap-3 rounded-2xl border border-border/80 px-4 py-3"><LockKeyhole className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /><div><p className="text-sm font-semibold text-foreground">{t("Private project")}</p><p className="text-xs text-muted-foreground">{t("Your project starts private. Invite people when you are ready.")}</p></div></div>
 
               {/* Configuration summary */}
               <div className="rounded-2xl border border-border/80 bg-muted/20 p-4 space-y-1.5 text-sm">

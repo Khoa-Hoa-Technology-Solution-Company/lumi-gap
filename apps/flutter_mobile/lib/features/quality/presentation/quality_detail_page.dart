@@ -95,7 +95,7 @@ class _CriterionSection extends StatelessWidget {
         if (showHeading)
           Padding(
             padding: const EdgeInsets.only(top: 20),
-            child: Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            child: Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
           ),
         if (def != null && def.question.isNotEmpty) ...[
           QualitySectionTitle(s.question),
@@ -214,7 +214,7 @@ class QualityRubricPage extends ConsumerWidget {
           for (final c in rubric.criteria) ...[
             Padding(
               padding: const EdgeInsets.only(top: 20),
-              child: Text(c.title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+              child: Text(c.title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
             ),
             Text(c.question, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.35)),
             const SizedBox(height: 6),

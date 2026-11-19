@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_mobile/core/constants/api_routes.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/network/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,7 +27,7 @@ class AppNotification {
   factory AppNotification.fromJson(Map<String, dynamic> json) {
     return AppNotification(
       id: (json['id'] ?? json['_id'] ?? '').toString(),
-      title: (json['title'] ?? 'Notification').toString(),
+      title: (json['title'] ?? trNow('Notification')).toString(),
       message: (json['message'] ?? '').toString(),
       type: json['type']?.toString(),
       targetKind: json['targetKind']?.toString(),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/features/quality/data/quality_models.dart';
 import 'package:flutter_mobile/features/quality/presentation/quality_strings.dart';
 import 'package:flutter_mobile/features/quality/presentation/quality_widgets.dart';
@@ -24,7 +25,7 @@ class QualityProjectResult extends StatelessWidget {
         Row(
           children: [
             Chip(
-              label: Text(s.verdict(a.verdict), style: const TextStyle(fontWeight: FontWeight.bold)),
+              label: Text(s.verdict(a.verdict), style: const TextStyle(fontWeight: FontWeight.w600)),
               backgroundColor: scheme.primaryContainer,
             ),
           ],
@@ -78,11 +79,11 @@ class QualityProjectResult extends StatelessWidget {
             ),
         ],
         QualitySectionTitle(s.screening),
-        Text(s.suggestion(screening.suggestion), style: const TextStyle(fontWeight: FontWeight.bold)),
+        Text(s.suggestion(screening.suggestion), style: const TextStyle(fontWeight: FontWeight.w600)),
         if (screening.reason.isNotEmpty) Text(screening.reason, style: const TextStyle(height: 1.35)),
         if (screening.criteria.isNotEmpty) ...[
           const SizedBox(height: 6),
-          Text(s.yourCriteria, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+          Text(s.yourCriteria, style: context.type.bodySmall!.copyWith(color: scheme.onSurfaceVariant)),
           for (final c in screening.criteria) Text('• $c', style: const TextStyle(height: 1.35)),
         ],
         if (a.actions.isNotEmpty) ...[

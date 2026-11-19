@@ -1,4 +1,4 @@
-import type { CorpusValidationRun, CorpusValidationRunState } from "@trend/shared-types";
+import type { CorpusValidationRun, CorpusValidationRunState, SyncOptions } from "@trend/shared-types";
 import { api } from "@/services/api-client";
 import { API_ROUTES } from "@/constants";
 
@@ -93,6 +93,10 @@ export const adminApi = {
   async triggerSync(input: TriggerSyncInput) {
     const res = await api.post(API_ROUTES.admin.sync, input);
     return res.data.data as { jobId: string; status: string };
+  },
+  async getSyncOptions() {
+    const res = await api.get(API_ROUTES.admin.syncOptions);
+    return res.data.data as SyncOptions;
   },
   async listRuns() {
     const res = await api.get(API_ROUTES.admin.syncRuns);

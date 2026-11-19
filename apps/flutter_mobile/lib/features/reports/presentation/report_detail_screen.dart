@@ -1,12 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
+import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
+import 'package:flutter_mobile/features/gaps/presentation/gap_card.dart';
 import 'package:flutter_mobile/features/quality/presentation/quality_panel.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
+import 'package:flutter_mobile/features/reports/presentation/report_builder/report_status.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+/// One report: what it answers, its text, the papers it rests on and the
+/// gaps it found.
 class ReportDetailScreen extends ConsumerWidget {
   const ReportDetailScreen({required this.id, super.key});
 
@@ -15,151 +25,224 @@ class ReportDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final query = ref.watch(reportProvider(id));
+    final Widget body;
+    if (query.hasValue) {
+      body = _ReportBody(report: query.requireValue, id: id);
+    } else if (query.hasError) {
+      body = LumiErrorState(
+        message: context.t(failureMessageKey(query.error!)),
+        retrying: query.isLoading,
+        onRetry: () => ref.invalidate(reportProvider(id)),
+      );
+    } else {
+      body = const LumiPageSkeleton(height: 140);
+    }
     return Scaffold(
-      appBar: AppBar(title: const Text('Report Detail')),
-      body: query.when(
-        data: (report) => ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(report.topic ?? report.query, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Chip(label: Text(report.status)),
-            if (report.errorMessage != null) Text(report.errorMessage!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            const SizedBox(height: 16),
-            MarkdownBody(data: report.markdown ?? 'No markdown yet. Keep the report worker running and refresh later.'),
-            const Divider(height: 32),
-            Text('Grounding papers', style: Theme.of(context).textTheme.titleLarge),
-            ...report.groundingPapers.map((paper) => ListTile(title: Text(paper.title), subtitle: Text('${paper.publicationYear}'), onTap: () => context.push('/paper/${paper.id}'))),
-            const Divider(height: 32),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Identified Research Gaps', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                GestureDetector(
-                  onTap: () => context.push('/gaps?topic=${Uri.encodeComponent(report.topic ?? report.query)}'),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'View Gaps Board',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF06B6D4),
-                        ),
-                      ),
-                      SizedBox(width: 2),
-                      Icon(Icons.chevron_right, size: 14, color: Color(0xFF06B6D4)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ...report.researchGaps.map((gap) {
-              final isDark = Theme.of(context).brightness == Brightness.dark;
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1A2332) : Colors.white,
-                  border: Border.all(
-                    color: isDark ? const Color(0xFF26334A) : const Color(0xFFE2E8F0),
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.lightbulb_outline, size: 16, color: Color(0xFF06B6D4)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            gap.title,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      gap.description,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF64748B),
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _ConfidenceBar(value: gap.confidence),
-                  ],
-                ),
-              );
-            }),
-            const Divider(height: 32),
-            QualityPanel(targetKind: 'report', targetId: id),
-          ],
-        ),
-        loading: () => const AppLoading(fullScreen: true, message: 'Loading report...'),
-        error: (error, _) => AppErrorState(message: error.toString()),
+      appBar: AppBar(
+        title: Text(context.t('Report Detail')),
+        actions: [
+          _ReportBookmarkButton(reportId: id),
+          const SizedBox(width: 4),
+        ],
       ),
+      body: body,
     );
   }
 }
 
-class _ConfidenceBar extends StatelessWidget {
-  const _ConfidenceBar({required this.value});
-  final double value;
+class _ReportBody extends StatelessWidget {
+  const _ReportBody({required this.report, required this.id});
+
+  final AnalyticalReport report;
+  final String id;
 
   @override
   Widget build(BuildContext context) {
-    final pct = (value * 100).round();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final lumi = context.lumi;
+    final state = ReportState.parse(report.status);
+    final markdown = report.markdown?.trim() ?? '';
+    final topic = report.topic ?? report.query;
 
-    final color = value >= 0.7
-        ? const Color(0xFF10B981)
-        : value >= 0.4
-            ? const Color(0xFFF59E0B)
-            : const Color(0xFFEF4444);
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return ListView(
+      padding: const EdgeInsets.all(16),
       children: [
-        Container(
-          width: 80,
-          height: 6,
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF26334A) : const Color(0xFFE2E8F0),
-            borderRadius: BorderRadius.circular(3),
+        LumiCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(topic, style: theme.textTheme.titleLarge),
+              if (report.topic != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  report.query,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: lumi.foregroundSecondary,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              ReportStatusLabel(status: report.status),
+              if (state == ReportState.failed) ...[
+                const SizedBox(height: 8),
+                Text(
+                  (report.errorMessage ?? '').trim().isEmpty
+                      ? context.t('The report could not be generated.')
+                      : report.errorMessage!,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: lumi.error,
+                  ),
+                ),
+              ],
+            ],
           ),
-          alignment: Alignment.centerLeft,
-          child: FractionallySizedBox(
-            widthFactor: value.clamp(0.0, 1.0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(3),
+        ),
+        const SizedBox(height: 16),
+        if (markdown.isNotEmpty)
+          LumiCard(
+            child: MarkdownBody(
+              data: markdown,
+              selectable: true,
+              styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                p: theme.textTheme.bodyLarge?.copyWith(
+                  height: 1.6,
+                  color: lumi.foreground,
+                ),
               ),
             ),
+          )
+        else if (state.inProgress)
+          Text(
+            context.t(
+              'Background worker is compiling bibliography and writing analysis...',
+            ),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: lumi.foregroundSecondary,
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          '$pct% confidence',
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF94A3B8),
+        if (report.groundingPapers.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          LumiSectionHeader(title: context.t('Grounding papers')),
+          LumiCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                for (final paper in report.groundingPapers)
+                  ListTile(
+                    title: Text(
+                      paper.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: paper.publicationYear > 0
+                        ? Text('${paper.publicationYear}')
+                        : null,
+                    trailing: Icon(Icons.chevron_right, color: lumi.muted),
+                    onTap: () => unawaited(context.push('/paper/${paper.id}')),
+                  ),
+              ],
+            ),
           ),
-        ),
+        ],
+        if (report.researchGaps.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          LumiSectionHeader(
+            title: context.t('Identified Research Gaps'),
+            actionLabel: context.t('View Gaps Board'),
+            onAction: () => unawaited(
+              context.push('/gaps?topic=${Uri.encodeComponent(topic)}'),
+            ),
+          ),
+          for (final gap in report.researchGaps)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: LumiCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(gap.title, style: theme.textTheme.titleSmall),
+                    if (gap.description.trim().isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        gap.description,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: lumi.foregroundSecondary,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    GapConfidenceBar(value: gap.confidence),
+                  ],
+                ),
+              ),
+            ),
+        ],
+        const SizedBox(height: 24),
+        QualityPanel(targetKind: 'report', targetId: id),
       ],
+    );
+  }
+}
+
+/// Save / unsave this report, as on the web report page. The icon shows the
+/// server's state; one request at a time.
+class _ReportBookmarkButton extends ConsumerStatefulWidget {
+  const _ReportBookmarkButton({required this.reportId});
+
+  final String reportId;
+
+  @override
+  ConsumerState<_ReportBookmarkButton> createState() =>
+      _ReportBookmarkButtonState();
+}
+
+class _ReportBookmarkButtonState extends ConsumerState<_ReportBookmarkButton> {
+  bool _busy = false;
+
+  BookmarkTarget get _target => BookmarkTarget('report', widget.reportId);
+
+  Future<void> _toggle(BookmarkStatus? status) async {
+    if (_busy || status == null) return;
+    setState(() => _busy = true);
+    final container = ProviderScope.containerOf(context, listen: false);
+    try {
+      final api = container.read(bookmarksApiProvider);
+      if (status.bookmarked && status.bookmarkId != null) {
+        await api.delete(status.bookmarkId!);
+      } else {
+        await api.create(targetKind: 'report', targetId: widget.reportId);
+      }
+    } on Object catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.t(failureMessageKey(e))),
+            backgroundColor: context.lumi.error,
+          ),
+        );
+      }
+    } finally {
+      container
+        ..invalidate(bookmarkStatusProvider(_target))
+        ..invalidate(bookmarksProvider);
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = ref.watch(bookmarkStatusProvider(_target)).value;
+    final saved = status?.bookmarked ?? false;
+    return IconButton(
+      tooltip: saved ? context.t('Remove bookmark') : context.t('Bookmark'),
+      isSelected: saved,
+      onPressed: _busy || status == null
+          ? null
+          : () => unawaited(_toggle(status)),
+      icon: Icon(
+        saved ? Icons.bookmark : Icons.bookmark_border,
+        color: saved ? context.lumi.primary : null,
+      ),
     );
   }
 }

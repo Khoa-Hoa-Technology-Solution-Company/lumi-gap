@@ -17,6 +17,7 @@ export interface NotificationItem {
   contributionEvaluationId?: string;
   manuscriptId?: string;
   manuscriptSnapshotId?: string;
+  integrityRecordId?: string;
   /** TREND_VERDICT_CHANGED: the followed topic (and its OpenAlex id) whose verdict changed. */
   trendTopic?: string;
   trendTopicId?: string;

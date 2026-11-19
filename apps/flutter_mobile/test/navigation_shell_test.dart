@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/core/theme/theme_provider.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/explore/presentation/explore_screen.dart';
+import 'package:flutter_mobile/features/home/data/home_api.dart';
+import 'package:flutter_mobile/features/home/data/home_models.dart';
 import 'package:flutter_mobile/features/home/presentation/app_shell_screen.dart';
 import 'package:flutter_mobile/features/notifications/data/notifications_api.dart';
 import 'package:flutter_mobile/features/profile/presentation/profile_screen.dart';
@@ -12,6 +16,7 @@ import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'i18n_support.dart';
 
 class _SignedOutAuth extends AuthController {
   @override
@@ -50,6 +55,14 @@ GoRouter _buildRouter() {
           StatefulShellBranch(
             routes: [
               GoRoute(
+                path: '/community',
+                builder: (_, _) => stub('tab-community'),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
                 path: '/profile',
                 builder: (_, _) => const ProfileScreen(),
               ),
@@ -75,11 +88,18 @@ Future<GoRouter> _pumpApp(WidgetTester tester) async {
         authControllerProvider.overrideWith(_SignedOutAuth.new),
         notificationsProvider.overrideWith((ref) async => <AppNotification>[]),
         bookmarksProvider.overrideWith((ref) async => <Bookmark>[]),
+        // Explore shows trending topics from the home overview.
+        homeOverviewProvider.overrideWith(
+          (ref) async => const HomeOverview(topics: [], recentPapers: []),
+        ),
         reportsProvider.overrideWith(
           (ref, params) async => const ReportsList(reports: [], total: 0),
         ),
       ],
       child: MaterialApp.router(
+        locale: AppLocale.vi.locale,
+        supportedLocales: AppLocale.supportedLocales,
+        localizationsDelegates: appLocalizationsDelegates,
         theme: AppTheme.lightTheme,
         routerConfig: router,
       ),
@@ -93,11 +113,13 @@ Finder _tab(String label) =>
     find.descendant(of: find.byType(NavigationBar), matching: find.text(label));
 
 void main() {
-  testWidgets('shows exactly 4 labelled destinations', (tester) async {
+  testWidgets('shows exactly 5 labelled destinations (Material 3 maximum)', (
+    tester,
+  ) async {
     await _pumpApp(tester);
 
-    expect(find.byType(NavigationDestination), findsNWidgets(4));
-    for (final label in ['Trang chủ', 'Khám phá', 'Dự án', 'Hồ sơ']) {
+    expect(find.byType(NavigationDestination), findsNWidgets(5));
+    for (final label in ['Trang chủ', 'Khám phá', 'Dự án', 'Cộng đồng', 'Hồ sơ']) {
       expect(_tab(label), findsOneWidget);
     }
     // Notifications moved to the bell; no "Alerts"/"Bookmarks" tab remains.
@@ -111,15 +133,19 @@ void main() {
 
     await tester.tap(_tab('Khám phá'));
     await tester.pumpAndSettle();
-    expect(find.text('Công cụ phân tích'), findsOneWidget);
+    expect(find.text('Tìm bài báo, từ khóa…'), findsOneWidget);
 
     await tester.tap(_tab('Dự án'));
     await tester.pumpAndSettle();
     expect(find.text('tab-projects'), findsOneWidget);
 
+    await tester.tap(_tab('Cộng đồng'));
+    await tester.pumpAndSettle();
+    expect(find.text('tab-community'), findsOneWidget);
+
     await tester.tap(_tab('Hồ sơ'));
     await tester.pumpAndSettle();
-    expect(find.text('ACTIVITY'), findsOneWidget);
+    expect(find.text(vi('Activity')), findsOneWidget);
 
     await tester.tap(_tab('Trang chủ'));
     await tester.pumpAndSettle();
@@ -140,24 +166,16 @@ void main() {
     expect(find.text('tab-projects'), findsNothing);
   });
 
-  testWidgets('Explore: search box opens /search and entries are >= 48dp', (
-    tester,
-  ) async {
+  testWidgets(
+      'Explore is for finding papers: the search box opens /search, and the '
+      'analysis tools are not listed a second time', (tester) async {
     await _pumpApp(tester);
     await tester.tap(_tab('Khám phá'));
     await tester.pumpAndSettle();
 
-    for (final entry in ExploreScreen.entries) {
-      final tile = find.widgetWithText(ListTile, entry.title);
-      expect(tile, findsOneWidget);
-      expect(tester.getSize(tile).height, greaterThanOrEqualTo(48));
-    }
-    expect(ExploreScreen.entries.map((e) => e.route).toSet(), {
-      '/trends',
-      '/reports',
-      '/gaps',
-      '/rankings',
-    });
+    // Their one entry is the shortcut row on Home (home_screen_test).
+    expect(find.text('Công cụ phân tích'), findsNothing);
+    expect(find.text(vi('Leaderboard')), findsNothing);
 
     await tester.tap(find.text('Tìm bài báo, từ khóa…'));
     await tester.pumpAndSettle();
@@ -171,9 +189,10 @@ void main() {
     await tester.tap(_tab('Hồ sơ'));
     await tester.pumpAndSettle();
 
+    // The menu row, not the "Bookmarks" counter above it.
     final row = find.descendant(
-      of: find.byType(Card),
-      matching: find.text('Bookmarks'),
+      of: find.byType(LumiRowGroup),
+      matching: find.text(vi('Bookmarks')),
     );
     await tester.scrollUntilVisible(row, 200);
     await tester.pumpAndSettle();

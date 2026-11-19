@@ -39,6 +39,7 @@ vi.mock("@/features/catalog/hooks/use-tags", async (importOriginal) => ({
 vi.mock("@/features/catalog/components/tag-rules-section", () => ({ TagRulesSection: () => <section>rules</section> }));
 vi.mock("@/features/catalog/components/tag-preview-section", () => ({ TagPreviewSection: () => <section>preview</section> }));
 vi.mock("@/features/catalog/components/tag-papers-section", () => ({ TagPapersSection: () => <section>papers</section> }));
+vi.mock("@/features/catalog/components/topic-watch-control", () => ({ TopicWatchControl: () => <section>follow</section> }));
 
 import { AdminKeywordsPage } from "../keywords";
 import { AdminTagDetailPage } from "../tag-detail";
@@ -138,9 +139,10 @@ describe("tag detail fetch action", () => {
     const sections = Array.from(container.querySelectorAll("main > section")).map((item) => item.textContent);
     expect(sections[0]).toBe("rules");
     expect(sections[1]).toBe("preview");
-    expect(sections[2]).toContain("OpenAlex imports");
-    expect(sections[3]).toContain("OpenAlex campaigns");
-    expect(sections[4]).toBe("papers");
+    expect(sections[2]).toBe("follow");
+    expect(sections[3]).toContain("OpenAlex imports");
+    expect(sections[4]).toContain("OpenAlex campaigns");
+    expect(sections[5]).toBe("papers");
     expect(mocks.campaignList).toHaveBeenCalledWith("t1");
   });
 

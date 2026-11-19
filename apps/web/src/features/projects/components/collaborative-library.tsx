@@ -16,7 +16,7 @@ import { PaperNotesDialog } from "./paper-notes-dialog";
 import "../screening.css";
 import "../collaborative-library.css";
 
-const states: Record<string, string> = { WAITING_FULLTEXT: "Chờ toàn văn", NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", BACKGROUND: "Tài liệu nền", EXCLUDED: "Đã loại", CLOSED_UNRESOLVED: "Đã đóng — Không đạt đồng thuận" };
+const states: Record<string, string> = { WAITING_FULLTEXT: "Chờ toàn văn", NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", BACKGROUND: "Tài liệu nền", EXCLUDED: "Đã loại" };
 
 export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId: string; readOnly: boolean; onAdd?: () => void }) {
   const [params, setParams] = useSearchParams();

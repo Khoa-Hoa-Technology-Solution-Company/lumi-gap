@@ -46,9 +46,10 @@ export function ScreeningCaseControls({ projectId, roundId, data, onSaved }: { p
       </div>
       <ScreeningStatusBadge tone={screeningStatusTone({ caseStatus: data.status })}>{caseStatusLabels[data.status] ?? data.status}</ScreeningStatusBadge>
     </div>
+    {data.adjudicationBlockedReason && <p role="status" className="text-sm text-muted-foreground">{data.adjudicationBlockedReason}</p>}
     {data.canStart && <Button variant="outline" disabled={command.isPending} onClick={() => void run({ action: "START", expectedCaseVersion: data.version })}>Bắt đầu xem xét</Button>}
     {data.lockedAt && <p className="text-xs text-muted-foreground">Hồ sơ đã khóa lúc {new Date(data.lockedAt).toLocaleString("vi-VN")}. Ý kiến hai bên và nguồn gốc được giữ trong lịch sử.</p>}
-    {!data.canStatement && text && <div role="status" className="space-y-2 text-sm"><p>Hồ sơ đã khóa. Nội dung chưa gửi của bạn được giữ để tham khảo.</p><p className="whitespace-pre-wrap rounded-md border p-3">{text}</p></div>}
+    {!data.canStatement && text && <div role="status" className="space-y-2 text-sm"><p>{data.adjudicationBlockedReason || "Hồ sơ đã khóa."} Nội dung chưa gửi của bạn được giữ để tham khảo.</p><p className="whitespace-pre-wrap rounded-md border p-3">{text}</p></div>}
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-semibold">Ý kiến hai bên</h2>
         {data.canStatement && <p className="text-xs text-muted-foreground">Hạn gửi: {new Date(data.deadline).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}</p>}

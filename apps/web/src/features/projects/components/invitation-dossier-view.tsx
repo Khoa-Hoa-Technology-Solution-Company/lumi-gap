@@ -606,4 +606,3 @@ export function InvitationDossierView({
     </div>
   );
 }
-

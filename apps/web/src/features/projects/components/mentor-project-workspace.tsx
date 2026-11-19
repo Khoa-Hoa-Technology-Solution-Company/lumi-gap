@@ -11,6 +11,8 @@ import { ResearchContributionsPanel } from "./research-contributions-panel";
 import { WorkContributionsPanel } from "./work-contributions";
 import { useI18n } from "@/i18n";
 import { MentorRoleAssignments } from "./mentor-role-assignments";
+import "../project-workspace.css";
+import "../workspace-coordination.css";
 
 export function MentorProjectNav({ contributions = false }: { contributions?: boolean }) {
   const [params, setParams] = useSearchParams();
@@ -33,20 +35,20 @@ export function MentorProjectWorkspace({ data, standalone = false, embedded = fa
   const ownPolicy = data.policies.find(p => p.mentorId === data.viewerId && p.policy.effective);
   const contributionAccess = Boolean(ownPolicy?.policy.permissions.includes("CONTRIBUTIONS_VIEW"));
   const statuses: Record<string, string> = { PLANNING: "Đang lập kế hoạch", ACTIVE: "Đang thực hiện", COMPLETED: "Đã hoàn thành", ARCHIVED: "Đã lưu trữ" };
-  if (params.get("tab") === "contributions") return <div className="project-workspace" data-no-i18n><div className="project-page-width py-6 space-y-4">
+  if (params.get("tab") === "contributions") return <div className="project-workspace coord-mentor-page" data-no-i18n><div className="project-page-width py-6 space-y-4">
     {standalone && <MentorProjectNav contributions={contributionAccess} />}
     {params.get("contributionTab")==="declarations" ? <><Button asChild variant="ghost"><Link to={href(`/projects/${data.projectId}?tab=contributions`)}>← {t("researchContribution.research")}</Link></Button><WorkContributionsPanel projectId={data.projectId} currentUserId={data.viewerId} readOnly={data.readOnly} mentorView /></> : <ResearchContributionsPanel projectId={data.projectId} />}
   </div></div>;
-  if (params.get("tab") === "tasks") return <div className="project-workspace" data-no-i18n><div className="project-page-width py-6 space-y-4">
+  if (params.get("tab") === "tasks") return <div className="project-workspace coord-mentor-page" data-no-i18n><div className="project-page-width py-6 space-y-4">
     {standalone && <MentorProjectNav contributions={contributionAccess} />}
     <MentorProjectTasks key={`${data.projectId}:${data.viewerId}`} projectId={data.projectId} readOnly={data.readOnly} />
   </div></div>;
-  if (chat) return <div className="project-workspace" data-no-i18n><div className="project-page-width py-6 space-y-4 coord-discussions">
+  if (chat) return <div className="project-workspace coord-mentor-page" data-no-i18n><div className="project-page-width py-6 space-y-4 coord-discussions">
     {standalone && <MentorProjectNav contributions={contributionAccess} />}
     <WorkspaceHeading title="Trò chuyện nhóm" description={data.title} />
     <ProjectDiscussionPanel projectId={data.projectId} paperCount={0} mentorView />
   </div></div>;
-  return <div className="project-workspace" data-no-i18n>
+  return <div className="project-workspace coord-mentor-page" data-no-i18n>
     <div className="project-page-width space-y-6 py-6">
       <header className="space-y-2 border-b pb-5">
         <Link to={embedded ? "/mentor-workspace?view=projects" : "/academic-support?view=active"} className="text-sm text-muted-foreground hover:text-primary">Nhóm đang cố vấn</Link>
@@ -68,6 +70,7 @@ export function MentorProjectWorkspace({ data, standalone = false, embedded = fa
           <ul className="mt-3 divide-y">{data.basics?.team.map(person => <li key={person.id} className="flex items-center justify-between gap-3 py-3 text-sm"><span className="min-w-0 break-words font-medium">{person.name}</span><span className="shrink-0 text-xs text-muted-foreground">{person.role === "OWNER" ? "Chủ dự án" : "Thành viên"}</span></li>)}</ul>
         </section>
       </div>
+      <details><summary className="cursor-pointer text-sm font-medium">Ghi nhận và xác nhận đóng góp nghiên cứu của tôi</summary><div className="mt-4"><WorkContributionsPanel mentorView projectId={data.projectId} currentUserId={data.viewerId} readOnly={data.readOnly} /></div></details>
     </div>
   </div>;
 }

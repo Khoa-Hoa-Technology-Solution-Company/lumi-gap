@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1560" height="1754" viewBox="0 0 1560 1754" font-family="Arial">
+<rect width="1560" height="1754" fill="white"/>
+<text x="780.0" y="42" font-size="26" font-weight="bold" text-anchor="middle">Overall business flow of LumiGap (UML activity diagram)</text>
+<rect x="30" y="70" width="300" height="1654" fill="#FFFFFF" stroke="#8EA9C9" stroke-width="1.5"/>
+<rect x="30" y="70" width="300" height="44" fill="#DCE6F2" stroke="#8EA9C9" stroke-width="1.5"/>
+<text x="180.0" y="99" font-size="18" font-weight="bold" text-anchor="middle">Researcher / Student</text>
+<rect x="330" y="70" width="300" height="1654" fill="#FBFCFE" stroke="#8EA9C9" stroke-width="1.5"/>
+<rect x="330" y="70" width="300" height="44" fill="#DCE6F2" stroke="#8EA9C9" stroke-width="1.5"/>
+<text x="480.0" y="99" font-size="18" font-weight="bold" text-anchor="middle">LumiGap</text>
+<rect x="630" y="70" width="300" height="1654" fill="#FFFFFF" stroke="#8EA9C9" stroke-width="1.5"/>
+<rect x="630" y="70" width="300" height="44" fill="#DCE6F2" stroke="#8EA9C9" stroke-width="1.5"/>
+<text x="780.0" y="99" font-size="18" font-weight="bold" text-anchor="middle">Gap validation expert</text>
+<rect x="930" y="70" width="300" height="1654" fill="#FBFCFE" stroke="#8EA9C9" stroke-width="1.5"/>
+<rect x="930" y="70" width="300" height="44" fill="#DCE6F2" stroke="#8EA9C9" stroke-width="1.5"/>
+<text x="1080.0" y="99" font-size="18" font-weight="bold" text-anchor="middle">Lecturer / Reviewer</text>
+<rect x="1230" y="70" width="300" height="1654" fill="#FFFFFF" stroke="#8EA9C9" stroke-width="1.5"/>
+<rect x="1230" y="70" width="300" height="44" fill="#DCE6F2" stroke="#8EA9C9" stroke-width="1.5"/>
+<text x="1380.0" y="99" font-size="18" font-weight="bold" text-anchor="middle">Administrator</text>
+<polyline points="180.0,189.0 180.0,239.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="180.0,239.0 174.0,227.0 186.0,227.0" fill="#44546A"/>
+<polyline points="180.0,297.0 180.0,311.0 480.0,311.0 480.0,329.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="480.0,329.0 474.0,317.0 486.0,317.0" fill="#44546A"/>
+<polyline points="380.0,360.0 180.0,360.0 180.0,423.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="180.0,423.0 174.0,411.0 186.0,411.0" fill="#44546A"/>
+<text x="240.0" y="352.6" font-size="13" text-anchor="start" fill="#7A2E0E">[no]</text>
+<polyline points="298.0,452.0 410.0,452.0 410.0,369.5" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="410.0,369.5 404.0,381.5 416.0,381.5" fill="#44546A"/>
+<polyline points="480.0,391.0 480.0,515.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="480.0,515.0 474.0,503.0 486.0,503.0" fill="#44546A"/>
+<text x="488.0" y="409.6" font-size="13" text-anchor="start" fill="#7A2E0E">[yes]</text>
+<polyline points="480.0,573.0 480.0,587.0 180.0,587.0 180.0,607.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="180.0,607.0 174.0,595.0 186.0,595.0" fill="#44546A"/>
+<polyline points="180.0,665.0 180.0,679.0 480.0,679.0 480.0,699.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="480.0,699.0 474.0,687.0 486.0,687.0" fill="#44546A"/>
+<polyline points="480.0,757.0 480.0,771.0 180.0,771.0 180.0,791.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="180.0,791.0 174.0,779.0 186.0,779.0" fill="#44546A"/>
+<polyline points="180.0,849.0 180.0,863.0 780.0,863.0 780.0,883.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="780.0,883.0 774.0,871.0 786.0,871.0" fill="#44546A"/>
+<polyline points="780.0,941.0 780.0,955.0 480.0,955.0 480.0,973.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="480.0,973.0 474.0,961.0 486.0,961.0" fill="#44546A"/>
+<polyline points="380.0,1004.0 44.0,1004.0 44.0,636.0 62.0,636.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="62.0,636.0 50.0,630.0 50.0,642.0" fill="#44546A"/>
+<text x="50.0" y="996.5" font-size="13" text-anchor="start" fill="#7A2E0E">[refine / rejected]</text>
+<polyline points="480.0,1035.0 480.0,1096.0 298.0,1096.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="298.0,1096.0 310.0,1090.0 310.0,1102.0" fill="#44546A"/>
+<text x="488.0" y="1057.5" font-size="13" text-anchor="start" fill="#7A2E0E">[yes]</text>
+<polyline points="180.0,1125.0 180.0,1159.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="180.0,1159.0 174.0,1147.0 186.0,1147.0" fill="#44546A"/>
+<polyline points="180.0,1217.0 180.0,1231.0 480.0,1231.0 480.0,1249.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="480.0,1249.0 474.0,1237.0 486.0,1237.0" fill="#44546A"/>
+<polyline points="380.0,1280.0 44.0,1280.0 44.0,1188.0 62.0,1188.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="62.0,1188.0 50.0,1182.0 50.0,1194.0" fill="#44546A"/>
+<text x="50.0" y="1272.5" font-size="13" text-anchor="start" fill="#7A2E0E">[no: choose another reviewer]</text>
+<polyline points="580.0,1280.0 1020.0,1280.0 1020.0,1343.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="1020.0,1343.0 1014.0,1331.0 1026.0,1331.0" fill="#44546A"/>
+<text x="600.0" y="1272.5" font-size="13" text-anchor="start" fill="#7A2E0E">[yes]</text>
+<polyline points="1080.0,1401.0 1080.0,1433.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="1080.0,1433.0 1074.0,1421.0 1086.0,1421.0" fill="#44546A"/>
+<polyline points="980.0,1464.0 180.0,1464.0 180.0,1527.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="180.0,1527.0 174.0,1515.0 186.0,1515.0" fill="#44546A"/>
+<text x="540.0" y="1456.5" font-size="13" text-anchor="start" fill="#7A2E0E">[yes]</text>
+<polyline points="298.0,1556.0 932.0,1556.0 932.0,1372.0 962.0,1372.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="962.0,1372.0 950.0,1366.0 950.0,1378.0" fill="#44546A"/>
+<polyline points="1080.0,1495.0 1080.0,1633.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="1080.0,1633.0 1074.0,1621.0 1086.0,1621.0" fill="#44546A"/>
+<text x="1088.0" y="1513.5" font-size="13" text-anchor="start" fill="#7A2E0E">[no: review completed]</text>
+<polyline points="1080.0,757.0 1080.0,771.0 1380.0,771.0 1380.0,791.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="1380.0,791.0 1374.0,779.0 1386.0,779.0" fill="#44546A"/>
+<polyline points="1380.0,849.0 1380.0,863.0 1080.0,863.0 1080.0,883.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="1080.0,883.0 1074.0,871.0 1086.0,871.0" fill="#44546A"/>
+<text x="1380.0" y="867.5" font-size="13" text-anchor="start" fill="#7A2E0E">[approved]</text>
+<polyline points="1080.0,941.0 1080.0,1343.0" fill="none" stroke="#44546A" stroke-width="1.8"/>
+<polygon points="1080.0,1343.0 1074.0,1331.0 1086.0,1331.0" fill="#44546A"/>
+<circle cx="180.0" cy="176.0" r="13" fill="#222"/>
+<rect x="62.0" y="239.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="180.0" y="264.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Search papers and</text>
+<text x="180.0" y="282.2" font-size="15" text-anchor="middle" fill="#1A1A1A">preview evidence</text>
+<polygon points="480.0,329.0 580.0,360.0 480.0,391.0 380.0,360.0" fill="#FFF4E5" stroke="#C55A11" stroke-width="1.6"/>
+<text x="480.0" y="356.8" font-size="13" text-anchor="middle" fill="#1A1A1A">Enough credits?</text>
+<text x="480.0" y="372.4" font-size="13" text-anchor="middle" fill="#1A1A1A">(BR-03, BR-04)</text>
+<rect x="62.0" y="423.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="180.0" y="448.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Top up credits through</text>
+<text x="180.0" y="466.2" font-size="15" text-anchor="middle" fill="#1A1A1A">PayOS (supporting)</text>
+<rect x="362.0" y="515.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="480.0" y="540.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Generate evidence-grounded</text>
+<text x="480.0" y="558.2" font-size="15" text-anchor="middle" fill="#1A1A1A">report (WF-01, BR-06, BR-07)</text>
+<rect x="62.0" y="607.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="180.0" y="632.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Run gap analysis</text>
+<text x="180.0" y="650.2" font-size="15" text-anchor="middle" fill="#1A1A1A">on the scope</text>
+<rect x="362.0" y="699.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="480.0" y="724.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Analyse gaps with supporting</text>
+<text x="480.0" y="742.2" font-size="15" text-anchor="middle" fill="#1A1A1A">and counter evidence (BR-08)</text>
+<rect x="62.0" y="791.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="180.0" y="816.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Request expert</text>
+<text x="180.0" y="834.2" font-size="15" text-anchor="middle" fill="#1A1A1A">validation</text>
+<rect x="662.0" y="883.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="780.0" y="908.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Vote on the gap</text>
+<text x="780.0" y="926.2" font-size="15" text-anchor="middle" fill="#1A1A1A">(BR-09, quorum 2)</text>
+<polygon points="480.0,973.0 580.0,1004.0 480.0,1035.0 380.0,1004.0" fill="#FFF4E5" stroke="#C55A11" stroke-width="1.6"/>
+<text x="480.0" y="1008.5" font-size="13" text-anchor="middle" fill="#1A1A1A">Gap validated?</text>
+<rect x="62.0" y="1067.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="180.0" y="1092.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Create project and write</text>
+<text x="180.0" y="1110.2" font-size="15" text-anchor="middle" fill="#1A1A1A">the manuscript (BR-10)</text>
+<rect x="62.0" y="1159.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="180.0" y="1184.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Submit manuscript and</text>
+<text x="180.0" y="1202.2" font-size="15" text-anchor="middle" fill="#1A1A1A">request peer review (WF-03)</text>
+<polygon points="480.0,1249.0 580.0,1280.0 480.0,1311.0 380.0,1280.0" fill="#FFF4E5" stroke="#C55A11" stroke-width="1.6"/>
+<text x="480.0" y="1276.8" font-size="13" text-anchor="middle" fill="#1A1A1A">Reviewer eligible?</text>
+<text x="480.0" y="1292.3" font-size="13" text-anchor="middle" fill="#1A1A1A">(BR-12)</text>
+<rect x="962.0" y="699.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1080.0" y="724.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Submit position</text>
+<text x="1080.0" y="742.2" font-size="15" text-anchor="middle" fill="#1A1A1A">evidence (WF-04)</text>
+<rect x="1262.0" y="791.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1380.0" y="816.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Decide verification</text>
+<text x="1380.0" y="834.2" font-size="15" text-anchor="middle" fill="#1A1A1A">(BR-13)</text>
+<rect x="962.0" y="883.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1080.0" y="908.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Verified lecturer:</text>
+<text x="1080.0" y="926.2" font-size="15" text-anchor="middle" fill="#1A1A1A">review opportunities open</text>
+<rect x="962.0" y="1343.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1080.0" y="1368.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Accept request and review</text>
+<text x="1080.0" y="1386.2" font-size="15" text-anchor="middle" fill="#1A1A1A">with the rubric version</text>
+<polygon points="1080.0,1433.0 1180.0,1464.0 1080.0,1495.0 980.0,1464.0" fill="#FFF4E5" stroke="#C55A11" stroke-width="1.6"/>
+<text x="1080.0" y="1460.8" font-size="13" text-anchor="middle" fill="#1A1A1A">Revision</text>
+<text x="1080.0" y="1476.3" font-size="13" text-anchor="middle" fill="#1A1A1A">requested?</text>
+<rect x="62.0" y="1527.0" width="236" height="58" rx="14" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="180.0" y="1552.2" font-size="15" text-anchor="middle" fill="#1A1A1A">Revise and resubmit</text>
+<text x="180.0" y="1570.2" font-size="15" text-anchor="middle" fill="#1A1A1A">(new immutable revision)</text>
+<circle cx="1080.0" cy="1648.0" r="15" fill="white" stroke="#222" stroke-width="2"/><circle cx="1080.0" cy="1648.0" r="9" fill="#222"/>
+<text x="30" y="1740" font-size="13" fill="#555">BR codes at decisions refer to Report 3 section 3. Detailed flows: core workflows WF-01..WF-04 and the supporting credit top-up flow. WF-04 (lecturer verification) runs independently and is a precondition for formal review.</text>
+</svg>

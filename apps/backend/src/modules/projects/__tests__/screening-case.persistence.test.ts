@@ -26,7 +26,7 @@ describe.skipIf(!enabled).sequential("sealed packets and direct adjudication on 
   afterAll(disconnectPostgres);
   async function fixture(options: { preferred?: string | null; candidates?: string[]; reviewers?: string[]; proposer?: string; discuss?: boolean; criteria?: boolean; coordinators?: string[]; submitted?: number; unsure?: boolean } = {}) {
     const p = await createProjectFixture({ data: { title: "Adjudication fixture", ownerId: owner, status: "ACTIVE" } });
-    await db.projectMember.createMany({ data: [...new Set([a, b, proposer, ...options.candidates ?? [candidate]])].filter(id => id !== owner).map(userId => ({ projectId: p.id, userId })) });
+    await db.projectMember.createMany({ data: [...new Set([...options.reviewers ?? [a, b], proposer, ...options.candidates ?? [candidate]])].filter(id => id !== owner).map(userId => ({ projectId: p.id, userId })) });
     const paper = await db.paper.create({ data: { title: "Independent population study", abstractText: "The study examines human university participants.", publicationYear: 2025, primaryProvider: "user", dataStatus: "active" } });
     await db.projectPaper.create({ data: { projectId: p.id, paperId: paper.id, addedById: options.proposer ?? proposer } });
     await service.configure(p.id, owner, { preferredAdjudicatorId: options.preferred ?? null, adjudicationCoordinatorIds: options.coordinators ?? [], statementWindowHours: 48, expectedVersion: 0, requiredReviewers: 2, consensusPolicy: "UNANIMOUS", aiAssisted: false, reviewMode: "INDEPENDENT", inclusionCriteria: ["University participants"], exclusionCriteria: options.criteria === false ? [] : ["Wrong population"], researchQuestions: ["Does the method help university students?"], stages: ["TITLE_ABSTRACT"], clientKey: randomUUID() });
@@ -52,6 +52,72 @@ describe.skipIf(!enabled).sequential("sealed packets and direct adjudication on 
     return cases.act(f.id, actor, f.roundId, { action: "STATEMENT", caseId: v.id, expectedPacketVersion: v.packetVersion, expectedStatementRevision: v.statements.find(s => s.reviewerId === actor)!.revision, text, useExisting, clientKey: randomUUID() });
   }
   async function ready(f: Fixture) { await open(f); for (const reviewer of f.reviewers) await statement(f, reviewer); }
+
+  async function twoPersonFixture() {
+    const f = await fixture({ reviewers: [owner, a], candidates: [] });
+    // The original proposer and other former members have left; only the two reviewers remain.
+    await db.projectMember.updateMany({ where: { projectId: f.id, userId: { notIn: f.reviewers } }, data: { status: "LEFT" } });
+    expect(await db.projectMember.count({ where: { projectId: f.id, status: "ACTIVE" } })).toBe(2);
+    return f;
+  }
+
+  it("assigns immediately while both statements remain sealed and blocks an early decision", async () => {
+    const f = await fixture(); await open(f);
+    const assigned = (await view(f, candidate)).case!;
+    expect(assigned).toMatchObject({ status: "COLLECTING", ready: false, lockedAt: null, canStart: false, canResolve: false, canRespond: false, invitation: { userId: candidate, status: "ASSIGNED" } });
+    expect((await service.detail(f.id, a, f.roundId)).adjudicationCase?.assignedAdjudicator?.id).toBe(candidate);
+    expect((await service.detail(f.id, b, f.roundId)).adjudicationCase?.assignedAdjudicator?.id).toBe(candidate);
+    await expect(resolve(f)).rejects.toMatchObject({ statusCode: 403 });
+    await statement(f, a, "Private opinion not yet shared with the adjudicator", false);
+    const partial = await view(f, candidate);
+    expect(JSON.stringify(partial)).not.toContain("Private opinion not yet shared with the adjudicator");
+    expect(partial.case?.canResolve).toBe(false);
+    await statement(f, b);
+    expect((await view(f, candidate)).case).toMatchObject({ ready: true, canResolve: true, invitation: { id: assigned.invitation!.id } });
+    await view(f, candidate);
+    expect(await db.notification.count({ where: { userId: candidate, eventKey: { startsWith: `SCREENING:CASE:${assigned.id}:READY:` } } })).toBe(1);
+    expect(await db.screeningReview.count({ where: { projectId: f.id } })).toBe(2);
+  });
+
+  it("blocks both reviewers in a two-person team without creating a case, then enables it after a third member joins", async () => {
+    const f = await twoPersonFixture();
+    for (const reviewer of f.reviewers) {
+      expect(await service.detail(f.id, reviewer, f.roundId)).toMatchObject({ canRequestAdjudication: false, adjudicationBlockedReason: expect.stringContaining("ít nhất 3") });
+      await expect(open(f, reviewer)).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining("ít nhất 3") });
+    }
+    expect(await db.screeningAdjudicationCase.count({ where: { roundId: f.roundId } })).toBe(0);
+    expect(await db.screeningAdjudicationInvitation.count({ where: { projectId: f.id } })).toBe(0);
+    await db.projectMember.create({ data: { projectId: f.id, userId: candidate } });
+    expect((await service.detail(f.id, owner, f.roundId)).canRequestAdjudication).toBe(true);
+    await open(f, owner);
+    const next = (await view(f, owner)).case!;
+    expect(next).toMatchObject({ status: "COLLECTING", invitation: { userId: candidate, status: "ASSIGNED" } });
+    for (const reviewer of f.reviewers) await statement(f, reviewer);
+    expect((await view(f, candidate)).case?.canResolve).toBe(true);
+    expect(await db.screeningAdjudicationInvitation.count({ where: { caseId: next.id } })).toBe(1);
+    expect(await db.screeningReview.count({ where: { projectId: f.id } })).toBe(2);
+  });
+
+  it("an accepted mentor does not bypass the three-member minimum and cannot decide if the team shrinks again", async () => {
+    const f = await twoPersonFixture();
+    const mentor = await db.user.create({ data: { email: `two-person-mentor-${randomUUID()}@example.org`, fullName: "Independent accepted mentor", emailVerifiedAt: new Date(), onboardingCompletedAt: new Date() } });
+    await db.academicProfile.create({ data: { userId: mentor.id, academicRole: "LECTURER", primaryPosition: "LECTURER", roleVerificationStatus: "VERIFIED", positionStatus: "VERIFIED", supportAvailability: { enabled: true } } });
+    await db.project.update({ where: { id: f.id }, data: { mentorshipSummary: "Public research abstract for a two-person team seeking independent methodological guidance", mentorshipNeeds: "Methodology", mentorshipDiscovery: "SEEKING_MENTOR" } });
+    const request = await mentors.request(f.id, owner, { mentorUserId: mentor.id, mentorRole: "PRIMARY", message: "Please advise our research methods", idempotencyKey: randomUUID(), access: { preset: "ADVISOR", permissions: [...mentorPresets.ADVISOR], expiresAt: null } });
+    await mentors.accept(f.id, request.id, mentor.id, "Accepted", request.accessPolicy?.version);
+    await expect(open(f, owner)).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining("ít nhất 3") });
+    expect(await db.screeningAdjudicationCase.count({ where: { roundId: f.roundId } })).toBe(0);
+    await db.projectMember.update({ where: { projectId_userId: { projectId: f.id, userId: proposer } }, data: { status: "ACTIVE" } });
+    await open(f, owner);
+    expect((await view(f, mentor.id)).case).toMatchObject({ status: "COLLECTING", invitation: { userId: mentor.id, role: "PRIMARY_MENTOR", status: "ASSIGNED" }, canRespond: false, canResolve: false });
+    for (const reviewer of f.reviewers) await statement(f, reviewer);
+    expect((await view(f, mentor.id)).case?.canResolve).toBe(true);
+    await db.projectMember.update({ where: { projectId_userId: { projectId: f.id, userId: proposer } }, data: { status: "LEFT" } });
+    expect((await view(f, mentor.id)).case).toMatchObject({ canResolve: false, canStart: false, adjudicationBlockedReason: expect.stringContaining("ít nhất 3") });
+    await expect(resolve(f, mentor.id)).rejects.toMatchObject({ statusCode: 403 });
+    expect(await service.adjudicationTasks(f.id, mentor.id)).toEqual([expect.objectContaining({ taskStatus: "BLOCKED" })]);
+    expect(await db.screeningFinalDecision.count({ where: { roundId: f.roundId } })).toBe(0);
+  });
   it("projects one submitted ballot into history and only the other unfinished assignment into tasks", async () => {
     const f = await fixture({ submitted: 1, discuss: false });
     const first = await service.workspaceSummary(f.id, a), secondReviewer = await service.workspaceSummary(f.id, b);
@@ -181,7 +247,7 @@ describe.skipIf(!enabled).sequential("sealed packets and direct adjudication on 
     expect(r).toMatchObject({ canRequestAdjudication: true, discussionReady: false });
     await open(f, actor);
     const updated = await service.detail(f.id, actor, f.roundId);
-    expect(updated).toMatchObject({ canRequestAdjudication: false, adjudicationCase: { ready: false, status: "COLLECTING", assignedAdjudicator: null } });
+    expect(updated).toMatchObject({ canRequestAdjudication: false, adjudicationCase: { ready: false, status: "COLLECTING", assignedAdjudicator: { id: candidate } } });
     const other = await service.detail(f.id, f.reviewers.find(id => id !== actor)!, f.roundId);
     expect(other.adjudicationCase).toEqual(updated.adjudicationCase);
     expect(other.canRequestAdjudication).toBe(false);
@@ -226,24 +292,28 @@ describe.skipIf(!enabled).sequential("sealed packets and direct adjudication on 
     expect(results[0].caseId).toBe(results[1].caseId);
     expect(await cases.request(f.id, a, f.roundId, payload)).toEqual(results[0]);
     expect(await db.screeningAdjudicationCase.count({ where: { roundId: f.roundId, active: true } })).toBe(1);
-    expect(await db.screeningAdjudicationInvitation.count({ where: { caseId: results[0].caseId } })).toBe(0);
+    expect(await db.screeningAdjudicationInvitation.count({ where: { caseId: results[0].caseId, status: "ASSIGNED" } })).toBe(1);
     expect((await view(f)).case?.requestedByIds.sort()).toEqual([a, b].sort());
     await expect(cases.request(f.id, a, f.roundId, { ...payload, reason: "A different request" })).rejects.toMatchObject({ statusCode: 409 });
   });
-  it("ties need an independent coordinator; the first requester and reviewer Owner cannot choose", async () => {
+  it("samples a tied eligibility tier automatically; the requester and reviewer Owner cannot choose", async () => {
     const f = await fixture({ candidates: [candidate, second], reviewers: [owner, a] }); await open(f, owner); for (const reviewer of f.reviewers) await statement(f, reviewer);
     const v = (await view(f, owner)).case!;
-    expect(v.status).toBe("WAITING_ASSIGNMENT"); expect(v.canCoordinate).toBe(false);
+    expect(v.status).toBe("ASSIGNED"); expect(v.canCoordinate).toBe(false);
+    expect([candidate, second]).toContain(v.invitation?.userId);
     await expect(cases.act(f.id, owner, f.roundId, { action: "SELECT", caseId: v.id, candidateId: candidate, reason: "I want to choose this candidate", expectedCaseVersion: v.version, clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 403 });
     await expect(service.finalizer(f.id, owner, f.roundId, { expectedVersion: (await service.detail(f.id, owner, f.roundId)).version, finalizerId: owner, reason: "Owner cannot override independence", confirmed: true, clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
   });
-  it("coordinator selects only the highest tied rank and records the reason", async () => {
+  it("records the sampled eligibility tier, keeps the assignee stable and rejects manual replacement", async () => {
     const f = await fixture({ candidates: [candidate, second] }); await open(f); await statement(f, a); await statement(f, b);
-    const v = (await view(f, owner)).case!; expect(v.candidates.map(p => p.id).sort()).toEqual([candidate, second].sort());
-    await expect(cases.act(f.id, owner, f.roundId, { action: "SELECT", caseId: v.id, candidateId: owner, reason: "Cannot jump ahead of independent members", expectedCaseVersion: v.version, clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
-    await cases.act(f.id, owner, f.roundId, { action: "SELECT", caseId: v.id, candidateId: second, reason: "Assigned based on the registered methodology", expectedCaseVersion: v.version, clientKey: randomUUID() });
-    expect((await view(f)).case?.invitation?.userId).toBe(second);
-    expect(JSON.stringify(await service.history(f.id, owner, f.roundId))).toContain("registered methodology");
+    const v = (await view(f, owner)).case!;
+    expect([candidate, second]).toContain(v.invitation?.userId);
+    expect(v.candidates).toEqual([]);
+    await expect(cases.act(f.id, owner, f.roundId, { action: "SELECT", caseId: v.id, candidateId: owner, reason: "Cannot override the automatic assignment", expectedCaseVersion: v.version, clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 403 });
+    expect((await view(f)).case?.invitation?.id).toBe(v.invitation?.id);
+    const event = await db.screeningAudit.findFirstOrThrow({ where: { roundId: f.roundId, type: "ADJUDICATION_DIRECT_ASSIGNED" } });
+    expect(event.details).toMatchObject({ selection: { method: "RANDOM_ELIGIBLE", candidateIds: expect.arrayContaining([candidate, second]) } });
+    expect(await db.screeningAdjudicationInvitation.count({ where: { caseId: v.id, status: "ASSIGNED" } })).toBe(1);
   });
   it("predesignated eligible person has priority; reviewers and proposer are excluded", async () => {
     const f = await fixture({ preferred: owner, candidates: [candidate, second] }); await ready(f);
@@ -285,7 +355,7 @@ describe.skipIf(!enabled).sequential("sealed packets and direct adjudication on 
   it("deadline permits adjudication without fabricating silence as consent", async () => {
     const f = await fixture(); await open(f);
     await statement(f, a);
-    await expect(view(f, candidate)).rejects.toMatchObject({ statusCode: 404 });
+    expect((await view(f, candidate)).case).toMatchObject({ ready: false, canResolve: false });
     await db.screeningAdjudicationCase.updateMany({ where: { roundId: f.roundId }, data: { deadline: new Date(Date.now() - 1000) } });
     await maintainScreeningCases((await view(f, a)).case!.id);
     const v = await view(f, candidate);
@@ -357,10 +427,10 @@ describe.skipIf(!enabled).sequential("sealed packets and direct adjudication on 
     await expect(db.screeningAdjudicationCase.create({ data })).rejects.toMatchObject({ code: "P2002" });
     await expect(db.screeningAdjudicationInvitation.create({ data: { projectId: f.id, caseId: existing.id, userId: second, role: "MEMBER", status: "ASSIGNED" } })).rejects.toMatchObject({ code: "P2002" });
   });
-  it("no third-party access during collection, no three-person chat, full packet after assignment", async () => {
+  it("only the assigned third party sees the packet during collection, with no three-person chat", async () => {
     const f = await fixture(); await open(f);
-    await expect(view(f, candidate)).rejects.toMatchObject({ statusCode: 404 });
-    expect(await service.adjudicationTasks(f.id, candidate)).toEqual([]);
+    expect((await view(f, candidate)).case).toMatchObject({ ready: false, canResolve: false });
+    expect(await service.adjudicationTasks(f.id, candidate)).toEqual([expect.objectContaining({ taskStatus: "BLOCKED" })]);
     await expect(view(f, second)).rejects.toMatchObject({ statusCode: 404 });
     await expect(service.comment(f.id, a, f.roundId, { comment: "Advocacy after opening the case", clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
     await statement(f, a); await statement(f, b);
@@ -432,7 +502,7 @@ describe.skipIf(!enabled).sequential("sealed packets and direct adjudication on 
     const r = await service.detail(f.id, b, f.roundId);
     await service.reassess(f.id, b, f.roundId, { expectedRevision: r.version, decision: "INCLUDE", reason: "After discussion I verified the correct population", confirmed: true, clientKey: randomUUID() });
     expect((await view(f, a)).case).toMatchObject({ status: "CANCELLED_AS_RESOLVED", active: false });
-    expect(await db.screeningAdjudicationInvitation.count({ where: { projectId: f.id, status: "REVOKED" } })).toBe(0);
+    expect(await db.screeningAdjudicationInvitation.count({ where: { projectId: f.id, status: "REVOKED" } })).toBe(1);
     expect(await db.screeningFinalDecision.count({ where: { roundId: f.roundId } })).toBe(1);
   });
   it("conflict report pauses the case and only an independent coordinator can replace the candidate", async () => {
@@ -506,15 +576,14 @@ describe.skipIf(!enabled).sequential("sealed packets and direct adjudication on 
     expect((await service.detail(f.id, a, f.roundId)).settings.preferredAdjudicatorId).toBe(owner);
   });
 
-  it("preserves an old invitation as history and promotes it only after both statements seal", async () => {
+  it("promotes an old invitation to direct assignment without waiting for statements or fabricating acceptance", async () => {
     const f = await fixture(); await open(f);
     const v = (await view(f)).case!;
-    const invitation = await db.screeningAdjudicationInvitation.create({ data: { projectId: f.id, caseId: v.id, userId: candidate, role: "MEMBER", status: "SENT" } });
+    const invitation = await db.screeningAdjudicationInvitation.update({ where: { id: v.invitation!.id }, data: { status: "SENT" } });
     await db.screeningAdjudicationCase.update({ where: { id: v.id }, data: { status: "INVITED" } });
     const collecting = await view(f);
-    expect(collecting.case).toMatchObject({ status: "COLLECTING", lockedAt: null, invitation: null });
-    expect(collecting.case?.invitations[0]).toMatchObject({ id: invitation.id, status: "SENT" });
-    await expect(view(f, candidate)).rejects.toMatchObject({ statusCode: 404 });
+    expect(collecting.case).toMatchObject({ status: "COLLECTING", lockedAt: null, invitation: { id: invitation.id, status: "ASSIGNED", respondedAt: null } });
+    expect((await view(f, candidate)).case).toMatchObject({ canResolve: false, canStart: false });
     await statement(f, a); await statement(f, b);
     expect((await view(f, candidate)).case?.invitation).toMatchObject({ id: invitation.id, status: "ASSIGNED", respondedAt: null });
     expect(await db.screeningAdjudicationInvitation.count({ where: { caseId: v.id } })).toBe(1);

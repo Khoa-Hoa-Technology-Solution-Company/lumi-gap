@@ -70,4 +70,3 @@ it("displays pending supervisor invitations alongside active mentors in Members 
   expect(container.textContent).toContain("Pending");
   expect(container.textContent).not.toContain("Your project has no active mentor yet.");
 });
-

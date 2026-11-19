@@ -1,7 +1,15 @@
 import { expect, it } from "vitest";
 import { screeningChoiceTone, screeningStatusTone } from "../screening-status";
+import { workPaperStatus } from "../my-work-model";
 
 it.each([
+  ["CONSENSUS_REQUIRED", "Cần thảo luận"], ["CONSENSUS_IN_PROGRESS", "Đang thảo luận"],
+] as const)("uses the same %s label on work/history cards", (status, label) => {
+  expect(workPaperStatus({ paperId: "paper", roundId: "round", title: "Study", status })).toBe(label);
+});
+
+it.each([
+  ["CONSENSUS_REQUIRED", "dispute"], ["CONSENSUS_IN_PROGRESS", "dispute"],
   ["NOT_REVIEWED", "neutral"], ["IN_REVIEW", "attention"], ["WAITING_REVIEWER", "neutral"],
   ["WAITING_FULLTEXT", "neutral"], ["AWAITING_FINALIZATION", "neutral"], ["BACKGROUND", "neutral"],
   ["NEEDS_RESOLUTION", "dispute"], ["CONFLICT", "dispute"], ["NEEDS_MORE_INFO", "warning"],

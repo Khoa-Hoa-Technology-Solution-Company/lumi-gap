@@ -4,6 +4,7 @@ import type {
   AcademicFeaturedWorkKind,
   AdminAcademicVerificationItem,
   AcademicIdentityLink,
+  OrcidConnectionAvailability,
   AcademicIdentityProvider,
   AcademicIdentityVisibility,
   AcademicVerificationListResponse,
@@ -74,6 +75,16 @@ export const academicProfileApi = {
   async update(input: UpdateAcademicProfileDetailsRequest): Promise<AcademicProfile> {
     const response = await api.patch(API_ROUTES.academicProfiles.me, input);
     return response.data.data;
+  },
+  async orcidAvailability(): Promise<OrcidConnectionAvailability> {
+    const value = (await api.get(API_ROUTES.academicProfiles.orcid)).data.data;
+    return { configured: value.configured, environment: value.environment === "production" || value.environment === "PRODUCTION" ? "PRODUCTION" : "SANDBOX" };
+  },
+  async startOrcid(): Promise<{ authorizationUrl: string; state: string }> {
+    return (await api.post(`${API_ROUTES.academicProfiles.orcid}/start`, {})).data.data;
+  },
+  async completeOrcid(input: { state: string; code?: string; error?: string }): Promise<{ cancelled: boolean; identity?: AcademicIdentityLink }> {
+    return (await api.post(`${API_ROUTES.academicProfiles.orcid}/callback`, input)).data.data;
   },
   async listAcademicIdentities(): Promise<AcademicIdentityLink[]> {
     const response = await api.get(API_ROUTES.academicProfiles.academicIdentities);

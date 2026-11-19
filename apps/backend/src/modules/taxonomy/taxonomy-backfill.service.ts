@@ -2,7 +2,7 @@ import { Prisma } from "../../generated/prisma/client.js";
 import type { PrismaClient } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
-import { normalizeTerm, type TaxonomyLevel } from "./taxonomy.normalize.js";
+import { isAcronym, keywordMatchCandidates, keywordMatchKey, normalizeTerm, type TaxonomyLevel } from "./taxonomy.normalize.js";
 
 export interface TaxonomyBackfillSummary { nodesCreated: number; topicLinks: number; keywordsCreated: number; keywordLinks: number }
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -61,6 +61,24 @@ async function resolveKeywordIds(db: Db, display: Map<string, string>): Promise<
   if (missing.length) {
     const byAlias = await db.$queryRaw<AliasRow[]>(Prisma.sql`SELECT id::text AS id, normalized_name, status, merged_into_id::text AS merged_into_id, aliases FROM keywords WHERE aliases && ${missing}::text[] ORDER BY normalized_name`);
     for (const row of byAlias) for (const alias of row.aliases) if (missing.includes(alias) && !rows.has(alias)) rows.set(alias, row);
+    missing = wanted.filter((term) => !rows.has(term));
+  }
+
+  if (missing.length) {
+    // Spelling variants (plural, spacing, hyphens) resolve to the existing keyword and are kept as its alias.
+    const keys = new Map(missing.filter((term) => !isAcronym(display.get(term) ?? "")).map((term) => [term, keywordMatchKey(term)]));
+    const candidates = [...new Set([...keys.values()].flatMap(keywordMatchCandidates))];
+    const similar = await db.$queryRaw<(KeywordRow & { paper_count: number })[]>(Prisma.sql`SELECT id::text AS id, normalized_name, status, merged_into_id::text AS merged_into_id, paper_count FROM keywords WHERE replace(normalized_name, ' ', '') = ANY(${candidates}::text[]) AND status <> 'hidden' ORDER BY paper_count DESC, normalized_name`);
+    const aliasAdds = new Map<string, string[]>();
+    for (const term of keys.keys()) {
+      const match = similar.find((row) => keywordMatchKey(row.normalized_name) === keys.get(term));
+      if (!match) continue;
+      rows.set(term, match);
+      aliasAdds.set(match.id, [...(aliasAdds.get(match.id) ?? []), term]);
+    }
+    for (const [id, aliases] of aliasAdds) {
+      await db.$executeRaw(Prisma.sql`UPDATE keywords SET aliases = ARRAY(SELECT DISTINCT unnest(aliases || ${aliases}::text[])) WHERE id = ${id}::uuid`);
+    }
     missing = wanted.filter((term) => !rows.has(term));
   }
 

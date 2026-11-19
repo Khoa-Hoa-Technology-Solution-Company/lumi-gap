@@ -465,4 +465,3 @@ export function InvitationDossierForm({
     </div>
   );
 }
-

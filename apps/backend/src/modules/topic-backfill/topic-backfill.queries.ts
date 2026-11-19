@@ -29,12 +29,17 @@ export const TAG_FILTER_VALUES_PER_QUERY = 50;
 /** A tag with many keyword rules is sampled, not crawled: each keyword is a separate phrase query. */
 export const MAX_TAG_KEYWORD_QUERIES = 5;
 
-/** OpenAlex filter attribute per taxonomy level. */
+/**
+ * OpenAlex filter attribute per taxonomy level. A topic or subfield matches any of a work's topics (up to three), so a
+ * narrow entry also finds works that touch it. A field or domain matches the primary topic only: across "any topic"
+ * a broad entry claims works that are mainly about something else (Computer Science: about 14M works), and the
+ * domain planner and the OpenAlex preflight already count by primary topic.
+ */
 const LEVEL_FILTER = {
   topic: "topics.id",
   subfield: "topics.subfield.id",
-  field: "topics.field.id",
-  domain: "topics.domain.id",
+  field: "primary_topic.field.id",
+  domain: "primary_topic.domain.id",
 } as const;
 type NodeLevel = keyof typeof LEVEL_FILTER;
 const LEVEL_ORDER: readonly NodeLevel[] = ["topic", "subfield", "field", "domain"];

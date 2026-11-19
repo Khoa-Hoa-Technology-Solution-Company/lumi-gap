@@ -1,3 +1,4 @@
+import { mountOrcidOauthRoutes } from "./orcid-oauth.routes.js";
 import { Router } from "express";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { optionalAuth, requireAuth, requireVerifiedAuth, requireSystemRole } from "../../common/middleware/auth.js";
@@ -24,8 +25,6 @@ import {
   FeaturedWorkOptionsQuerySchema,
   EvidenceUploadSchema,
   VerificationStatusQuerySchema,
-  OrcidConnectStartSchema,
-  OrcidConnectCallbackSchema,
 } from "./dto/academic-profile.schema.js";
 
 const verificationRequestLimiter = createRateLimiter("academic-profiles:verificationRequestLimiter", {
@@ -83,34 +82,8 @@ const avatarUploadLimiter = createRateLimiter("academic-profiles:avatarUploadLim
   message: { success: false, message: "Too many profile photo uploads. Please try again tomorrow." },
 });
 
-const orcidConnectLimiter = createRateLimiter("academic-profiles:orcidConnectLimiter", {
-  windowMs: 15 * 60 * 1000,
-  limit: 15,
-  keyGenerator: (req) => req.user!.sub,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  message: { success: false, message: "Too many ORCID connection attempts. Please try again later." },
-});
-
-const orcidCallbackLimiter = createRateLimiter("academic-profiles:orcidCallbackLimiter", {
-  windowMs: 15 * 60 * 1000,
-  limit: 20,
-  keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous",
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  message: { success: false, message: "Too many ORCID callback attempts. Please try again later." },
-});
-
-const orcidDisconnectLimiter = createRateLimiter("academic-profiles:orcidDisconnectLimiter", {
-  windowMs: 15 * 60 * 1000,
-  limit: 15,
-  keyGenerator: (req) => req.user!.sub,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  message: { success: false, message: "Too many ORCID disconnect requests. Please try again later." },
-});
-
 export const academicProfileRouter: Router = Router();
+mountOrcidOauthRoutes(academicProfileRouter);
 academicProfileRouter.get("/me", requireAuth, academicProfileController.mine);
 academicProfileRouter.get("/me/featured-work-options", requireVerifiedAuth, validate(FeaturedWorkOptionsQuerySchema, "query"), academicProfileController.featuredWorkOptions);
 academicProfileRouter.patch("/me", requireAuth, validate(UpdateAcademicProfileDetailsSchema), academicProfileController.updateMine);
@@ -118,12 +91,6 @@ academicProfileRouter.get("/me/academic-identities", requireAuth, academicProfil
 academicProfileRouter.post("/me/academic-identities", requireAuth, validate(CreateAcademicIdentityLinkSchema), academicProfileController.createAcademicIdentity);
 academicProfileRouter.patch("/me/academic-identities/:identityId", requireAuth, validate(AcademicIdentityLinkParamsSchema, "params"), validate(UpdateAcademicIdentityLinkSchema), academicProfileController.updateAcademicIdentity);
 academicProfileRouter.delete("/me/academic-identities/:identityId", requireAuth, validate(AcademicIdentityLinkParamsSchema, "params"), academicProfileController.deleteAcademicIdentity);
-academicProfileRouter.get("/me/orcid", requireAuth, academicProfileController.orcidStatus);
-academicProfileRouter.get("/me/orcid/connect", requireAuth, orcidConnectLimiter, validate(OrcidConnectStartSchema, "query"), academicProfileController.startOrcidConnection);
-academicProfileRouter.post("/me/orcid/connect", requireAuth, orcidConnectLimiter, validate(OrcidConnectStartSchema), academicProfileController.startOrcidConnection);
-academicProfileRouter.post("/me/orcid/callback", requireAuth, orcidCallbackLimiter, validate(OrcidConnectCallbackSchema), academicProfileController.completeOrcidConnection);
-academicProfileRouter.delete("/me/orcid", requireAuth, orcidDisconnectLimiter, academicProfileController.disconnectOrcid);
-academicProfileRouter.get("/orcid/callback", orcidCallbackLimiter, validate(OrcidConnectCallbackSchema, "query"), academicProfileController.orcidCallbackRedirect);
 academicProfileRouter.patch("/me/public-handle", requireAuth, publicHandleLimiter, validate(UpdatePublicHandleSchema), academicProfileController.setPublicHandle);
 academicProfileRouter.post("/me/avatar", requireAuth, avatarUploadLimiter, uploadProfileAvatar, academicProfileController.uploadAvatar);
 academicProfileRouter.delete("/me/avatar", requireAuth, academicProfileController.removeAvatar);

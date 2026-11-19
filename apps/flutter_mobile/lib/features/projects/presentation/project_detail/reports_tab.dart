@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -29,20 +32,20 @@ class ProjectReportsTab extends StatelessWidget {
             width: double.infinity,
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF06B6D4),
+                backgroundColor: context.lumi.primary,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
               onPressed: () => unawaited(
                 context.push('/reports?create=true&projectId=$projectId'),
               ),
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text(
-                'Generate RAG Report',
+              icon: Icon(Icons.add, color: context.lumi.onPrimary),
+              label: Text(
+                context.t('Generate Report'),
                 style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+                  color: context.lumi.onPrimary,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -52,10 +55,10 @@ class ProjectReportsTab extends StatelessWidget {
           child: query.when(
             data: (data) {
               if (data.reports.isEmpty) {
-                return const Center(
+                return Center(
                   child: Text(
-                    'No analytical reports generated yet.',
-                    style: TextStyle(fontStyle: FontStyle.italic),
+                    context.t('No analytical reports generated yet.'),
+                    style: const TextStyle(fontStyle: FontStyle.italic),
                   ),
                 );
               }
@@ -68,29 +71,27 @@ class ProjectReportsTab extends StatelessWidget {
                     elevation: 0,
                     margin: const EdgeInsets.only(bottom: 10),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(8),
                       side: BorderSide(color: Theme.of(context).dividerColor),
                     ),
                     child: ListTile(
                       title: Text(
-                        report.topic ?? 'Dataset report',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                        report.topic ?? context.t('Dataset report'),
+                        style: context.type.bodyMedium!.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       subtitle: Text(
                         report.query,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11),
+                        style: context.type.bodySmall,
                       ),
                       trailing: Text(
                         report.status.toUpperCase(),
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF06B6D4),
+                        style: context.type.bodySmall!.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: context.lumi.primary,
                         ),
                       ),
                       onTap: () =>
@@ -103,8 +104,8 @@ class ProjectReportsTab extends StatelessWidget {
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (err, _) => Center(
               child: Text(
-                'Error loading reports: $err',
-                style: const TextStyle(color: Colors.red),
+                context.t('Error loading reports: {{err}}', {'err': err}),
+                style: TextStyle(color: context.lumi.error),
               ),
             ),
           ),

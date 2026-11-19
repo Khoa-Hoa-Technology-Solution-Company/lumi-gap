@@ -11,17 +11,23 @@ import { ErrorState, formatDateTime } from "./catalog-ui";
 
 export const BACKFILL_RUNS_SHOWN = 5;
 
-/** The latest imports for one catalogue entry, newest first; refreshes the catalogue queries once a live run ends. */
-export function BackfillRunsSection({ targetKind, targetId, embedded = false }: {
-  targetKind: TopicBackfillTargetKind;
-  targetId: string;
+/**
+ * The latest imports, newest first: for one catalogue entry, or for every entry when no target is given (then each
+ * row names its entry). Refreshes the catalogue queries once a live run ends.
+ */
+export function BackfillRunsSection({ targetKind, targetId, embedded = false, limit = BACKFILL_RUNS_SHOWN }: {
+  targetKind?: TopicBackfillTargetKind;
+  targetId?: string;
   /** Inside a sheet: no card chrome and a smaller heading. */
   embedded?: boolean;
+  limit?: number;
 }) {
   const { t } = useI18n();
-  const runs = useTopicBackfillRuns({ targetKind, targetId, page: 1, pageSize: BACKFILL_RUNS_SHOWN });
+  const runs = useTopicBackfillRuns({ targetKind, targetId, page: 1, pageSize: limit });
   const refreshCatalog = useRefreshCatalog();
-  const list = runs.data?.data.slice(0, BACKFILL_RUNS_SHOWN);
+  const list = runs.data?.data.slice(0, limit);
+  const showTarget = !targetId;
+  const headingId = `backfill-runs-heading-${targetId ?? "all"}`;
 
   // Papers, counts and previews change when an import adds papers: refresh once a run seen live has ended.
   const live = useRef(new Set<string>());
@@ -38,13 +44,15 @@ export function BackfillRunsSection({ targetKind, targetId, embedded = false }: 
   return (
     <section
       className={cn("space-y-3", !embedded && "rounded-xl border bg-card p-4 sm:p-6")}
-      aria-labelledby={`backfill-runs-heading-${targetId}`}
+      aria-labelledby={headingId}
     >
       <div>
-        <Heading id={`backfill-runs-heading-${targetId}`} className={embedded ? "text-sm font-medium" : "text-lg font-semibold"}>
+        <Heading id={headingId} className={embedded ? "text-sm font-medium" : "text-lg font-semibold"}>
           {t("OpenAlex imports")}
         </Heading>
-        <p className="text-sm text-muted-foreground">{t("The latest imports of new papers from OpenAlex.")}</p>
+        <p className="text-sm text-muted-foreground">
+          {showTarget ? t("The latest imports started from the catalogue, newest first.") : t("The latest imports of new papers from OpenAlex.")}
+        </p>
       </div>
 
       {runs.isError ? (
@@ -58,14 +66,21 @@ export function BackfillRunsSection({ targetKind, targetId, embedded = false }: 
         <p className="text-sm text-muted-foreground">{t("No imports yet.")}</p>
       ) : (
         <ul className="space-y-2">
-          {list.map((run) => <BackfillRunItem key={run.id} run={run} />)}
+          {list.map((run) => <BackfillRunItem key={run.id} run={run} showTarget={showTarget} />)}
         </ul>
       )}
     </section>
   );
 }
 
-function BackfillRunItem({ run }: { run: TopicBackfillRun }) {
+const TARGET_KIND_LABELS: Record<TopicBackfillTargetKind, string> = {
+  topic: "Topic",
+  subfield: "Subfield",
+  keyword: "Keyword",
+  tag: "Tag",
+};
+
+function BackfillRunItem({ run, showTarget }: { run: TopicBackfillRun; showTarget: boolean }) {
   const { t } = useI18n();
   const stats: Array<[string, string]> = [
     [t("Started"), formatDateTime(run.startedAt)],
@@ -77,6 +92,11 @@ function BackfillRunItem({ run }: { run: TopicBackfillRun }) {
   ];
   return (
     <li className="space-y-2 rounded-lg border p-3 text-sm" data-testid="backfill-run">
+      {showTarget ? (
+        <p className="break-words font-medium">
+          {run.targetName} <span className="text-xs font-normal text-muted-foreground">· {t(TARGET_KIND_LABELS[run.targetKind])}</span>
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <BackfillStateBadge state={run.state} />
         <span className="text-xs text-muted-foreground">

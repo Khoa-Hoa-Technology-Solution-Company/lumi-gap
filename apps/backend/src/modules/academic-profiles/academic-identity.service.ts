@@ -9,6 +9,7 @@ import type {
 import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
+import { cancelPendingOrcid } from "./orcid-oauth-state.js";
 import { auditService } from "../audit/audit.service.js";
 import {
   AcademicIdentityLinkSchema,
@@ -60,7 +61,7 @@ function normalizeIdentifier(provider: AcademicIdentityProvider, value: string |
   if (/^[a-z][a-z\d+.-]*:/i.test(trimmed) && !/^https?:\/\//i.test(trimmed)) {
     throw AppError.badRequest("Academic identity identifiers cannot use unsupported URL schemes");
   }
-  if (provider === "ORCID") return trimmed.replace(/^https?:\/\/orcid\.org\//i, "").replace(/\/$/, "").toUpperCase();
+  if (provider === "ORCID") return trimmed.replace(/^https?:\/\/(?:sandbox\.)?orcid\.org\//i, "").replace(/\/$/, "").toUpperCase();
   if (provider === "OPENALEX") return trimmed.replace(/^https?:\/\/openalex\.org\//i, "").replace(/\/$/, "").toUpperCase();
   return trimmed;
 }
@@ -159,6 +160,7 @@ export const academicIdentityService = {
       return mapAcademicIdentity(created);
     } catch (error) {
       if (isUniqueViolation(error)) throw AppError.conflict("This academic identity is already linked");
+      if (error && typeof error === "object" && "code" in error && error.code === "P2025") throw AppError.conflict("Your academic identity changed. Please reload and try again.");
       throw error;
     }
   },
@@ -194,7 +196,7 @@ export const academicIdentityService = {
     if (duplicate) throw AppError.conflict("This academic identity is already linked");
     try {
       const updated = await getPrisma().academicIdentityLink.update({
-        where: { id: identity.id },
+        where: { id: identity.id, userId: user.id, updatedAt: identity.updatedAt },
         data: {
           provider: normalized.provider,
           label: normalized.label,
@@ -208,34 +210,21 @@ export const academicIdentityService = {
       return mapAcademicIdentity(updated);
     } catch (error) {
       if (isUniqueViolation(error)) throw AppError.conflict("This academic identity is already linked");
+      if (error && typeof error === "object" && "code" in error && error.code === "P2025") throw AppError.conflict("Your academic identity changed. Please reload and try again.");
       throw error;
     }
   },
 
   async remove(userId: string, identityId: string): Promise<void> {
     const { user, identity } = await ownedIdentity(userId, identityId);
-    const prisma = getPrisma();
-    await prisma.academicIdentityLink.delete({ where: { id: identity.id } });
-    if (identity.provider === "ORCID" && prisma.academicProfile?.updateMany) {
-      await prisma.academicProfile.updateMany({
-        where: { userId: user.id },
-        data: { orcidStatus: "NOT_SUBMITTED" },
+    if (identity.provider === "ORCID") {
+      await getPrisma().$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id}::uuid FOR NO KEY UPDATE`;
+        await cancelPendingOrcid(user.id);
+        await tx.academicIdentityLink.delete({ where: { id: identity.id, userId: user.id } });
       });
-    }
-    await auditService.log("academic_profile.identity.deleted", {
-      userId: user.id,
-      targetTableName: "academic_identity_links",
-      targetRecordId: identity.id,
-      details: { provider: identity.provider, verificationStatus: identity.verificationStatus },
-    });
-    if (identity.provider === "ORCID" && identity.verificationStatus === "PROVIDER_CONNECTED") {
-      await auditService.log("academic_profile.orcid.disconnected", {
-        userId: user.id,
-        targetTableName: "academic_identity_links",
-        targetRecordId: identity.id,
-        details: { provider: "ORCID", identifier: identity.identifier },
-      });
-    }
+    } else await getPrisma().academicIdentityLink.delete({ where: { id: identity.id } });
+    await auditService.log(identity.provider === "ORCID" && identity.verificationStatus === "PROVIDER_CONNECTED" ? "academic_profile.orcid.disconnected" : "academic_profile.identity.deleted", { userId: user.id, targetTableName: "academic_identity_links", targetRecordId: identity.id, details: { provider: identity.provider } });
   },
 };
 

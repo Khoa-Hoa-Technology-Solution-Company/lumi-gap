@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { researchClassificationSchema } from "../../taxonomy/research-classification.schema.js";
 import { ACADEMIC_BIOGRAPHY_MAX_CHARACTERS, ACADEMIC_BIOGRAPHY_MAX_WORDS, countAcademicBiographyWords } from "@trend/shared-types";
 import { objectIdSchema, paginationSchema } from "../../../common/validation/database-id.js";
 import { isValidPublicHandle, isValidResolvablePublicHandle, normalizePublicHandle } from "../public-handle.js";
@@ -35,7 +36,7 @@ const httpsUrl = z.string().url().max(500).refine((value) => new URL(value).prot
 });
 
 export function isValidOrcid(value: string): boolean {
-  const normalized = value.replace(/^https?:\/\/orcid\.org\//i, "").toUpperCase();
+  const normalized = value.replace(/^https?:\/\/(?:sandbox\.)?orcid\.org\//i, "").toUpperCase();
   if (!/^\d{4}-\d{4}-\d{4}-[\dX]{4}$/.test(normalized)) return false;
   const chars = normalized.replaceAll("-", "");
   let total = 0;
@@ -58,6 +59,7 @@ const availabilitySchema = <T extends z.ZodTypeAny>(typeSchema: T) => z.object({
   enabled: z.boolean(),
   types: z.array(typeSchema).max(20).transform((items) => [...new Set(items)]),
   preferredTopics: normalizeList(30),
+  preferredTopicIds: z.array(z.string().uuid()).max(10).optional(),
   note: optionalText(1000),
 }).strict();
 
@@ -83,7 +85,7 @@ const externalIdentitySchema = z.object({
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid ORCID checksum" });
     }
     if (identity.profileUrl && new URL(identity.profileUrl).hostname.toLowerCase() !== "orcid.org") {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "ORCID URLs must use orcid.org" });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "ORCID URLs must use orcid.org or sandbox.orcid.org" });
     }
   }
   if (identity.provider === "GITHUB" && identity.profileUrl
@@ -152,8 +154,8 @@ function validateAcademicIdentityLink(value: z.infer<typeof academicIdentityLink
   if (value.provider === "ORCID") {
     const candidate = identifier ?? value.profileUrl ?? "";
     if (!isValidOrcid(candidate)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["identifier"], message: "Invalid ORCID checksum" });
-    if (profileUrl && profileUrl.hostname.toLowerCase() !== "orcid.org") {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["profileUrl"], message: "ORCID URLs must use orcid.org" });
+    if (profileUrl && !["orcid.org", "sandbox.orcid.org"].includes(profileUrl.hostname.toLowerCase())) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["profileUrl"], message: "ORCID URLs must use orcid.org or sandbox.orcid.org" });
     }
   }
   if (value.provider === "OPENALEX") {
@@ -247,6 +249,8 @@ export const UpdateAcademicProfileDetailsSchema = z.object({
   affiliation: affiliationSchema.optional(),
   researchInterests: normalizeList(30).optional(),
   expertiseAreas: normalizeList(30).optional(),
+  researchClassification: researchClassificationSchema.optional(),
+  researchSpecializations: normalizeList(30).optional(),
   skills: normalizeList(40).optional(),
   researchKeywords: normalizeList(40).optional(),
   externalIdentities: z.array(externalIdentitySchema).max(8).refine(
@@ -257,7 +261,7 @@ export const UpdateAcademicProfileDetailsSchema = z.object({
     const keys = items.map((item) => item.paperId ?? item.projectId ?? item.submissionId ?? item.reportId ?? item.gapId ?? item.doi?.toLowerCase() ?? item.title?.toLowerCase());
     return new Set(keys).size === keys.length;
   }, "Featured works must be unique").optional(),
-  supportAvailability: availabilitySchema(supportTypes).optional(),
+  supportAvailability: availabilitySchema(supportTypes).extend({ requestedEnabled: z.boolean().optional() }).optional(),
   reviewAvailability: reviewAvailabilitySchema.optional(),
 
   // Compatibility fields accepted from clients released with the first MVP.

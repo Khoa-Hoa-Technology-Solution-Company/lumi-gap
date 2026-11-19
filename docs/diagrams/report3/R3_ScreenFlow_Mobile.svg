@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900" font-family="Arial">
+<rect width="1500" height="900" fill="white"/>
+<text x="750.0" y="40" font-size="24" font-weight="bold" text-anchor="middle">Screen flow: LumiGap mobile app (Flutter)</text>
+<rect x="30" y="90" width="200" height="60" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="130.0" y="114" font-size="15" text-anchor="middle" font-weight="bold">Splash</text>
+<text x="130.0" y="134" font-size="12" text-anchor="middle" fill="#444">/splash</text>
+<rect x="30" y="200" width="200" height="60" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="130.0" y="224" font-size="15" text-anchor="middle" font-weight="bold">Login</text>
+<text x="130.0" y="244" font-size="12" text-anchor="middle" fill="#444">/login</text>
+<rect x="30" y="300" width="200" height="60" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="130.0" y="324" font-size="15" text-anchor="middle" font-weight="bold">Register</text>
+<text x="130.0" y="344" font-size="12" text-anchor="middle" fill="#444">/register</text>
+<rect x="30" y="400" width="200" height="60" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="130.0" y="424" font-size="15" text-anchor="middle" font-weight="bold">Forgot password</text>
+<text x="130.0" y="444" font-size="12" text-anchor="middle" fill="#444">/forgot-password</text>
+<line x1="130" y1="150" x2="130" y2="200" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="130,200 135.0,188.0 125.0,188.0" fill="#44546A"/>
+<text x="136.0" y="169.0" font-size="12" fill="#7A2E0E">no session</text>
+<line x1="130" y1="260" x2="130" y2="300" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="130,300 135.0,288.0 125.0,288.0" fill="#44546A"/>
+<line x1="130" y1="360" x2="130" y2="400" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="130,400 135.0,388.0 125.0,388.0" fill="#44546A"/>
+<rect x="290" y="80" width="1180" height="90" rx="12" fill="#FFF4E5" stroke="#C55A11" stroke-width="1.6"/>
+<text x="880" y="102" font-size="14" text-anchor="middle" fill="#7A2E0E" font-weight="bold">App shell: bottom navigation with 4 tabs</text>
+<rect x="320" y="112" width="250" height="50" rx="10" fill="#FFFFFF" stroke="#C55A11" stroke-width="1.6"/>
+<text x="445.0" y="136" font-size="15" text-anchor="middle" font-weight="bold">Home</text>
+<text x="445.0" y="156" font-size="12" text-anchor="middle" fill="#444">/</text>
+<rect x="610" y="112" width="250" height="50" rx="10" fill="#FFFFFF" stroke="#C55A11" stroke-width="1.6"/>
+<text x="735.0" y="136" font-size="15" text-anchor="middle" font-weight="bold">Explore</text>
+<text x="735.0" y="156" font-size="12" text-anchor="middle" fill="#444">/explore</text>
+<rect x="900" y="112" width="250" height="50" rx="10" fill="#FFFFFF" stroke="#C55A11" stroke-width="1.6"/>
+<text x="1025.0" y="136" font-size="15" text-anchor="middle" font-weight="bold">Projects</text>
+<text x="1025.0" y="156" font-size="12" text-anchor="middle" fill="#444">/projects</text>
+<rect x="1190" y="112" width="250" height="50" rx="10" fill="#FFFFFF" stroke="#C55A11" stroke-width="1.6"/>
+<text x="1315.0" y="136" font-size="15" text-anchor="middle" font-weight="bold">Profile</text>
+<text x="1315.0" y="156" font-size="12" text-anchor="middle" fill="#444">/profile</text>
+<line x1="230" y1="120" x2="320" y2="135" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="320,135 309.0,128.1 307.3,138.0" fill="#44546A"/>
+<text x="236" y="112" font-size="12" fill="#7A2E0E">signed in</text>
+<line x1="230" y1="230" x2="290" y2="150" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="290,150 278.8,156.6 286.8,162.6" fill="#44546A"/>
+<line x1="445" y1="162" x2="445" y2="186" stroke="#44546A" stroke-width="1.6"/>
+<line x1="334" y1="186" x2="445" y2="186" stroke="#44546A" stroke-width="1.6"/>
+<line x1="334" y1="186" x2="334" y2="526" stroke="#44546A" stroke-width="1.6"/>
+<rect x="360" y="210" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="465.0" y="234" font-size="15" text-anchor="middle" font-weight="normal">Reports</text>
+<text x="465.0" y="254" font-size="12" text-anchor="middle" fill="#444">/reports</text>
+<line x1="334" y1="241" x2="360" y2="241" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="360,241 348.0,236.0 348.0,246.0" fill="#44546A"/>
+<rect x="360" y="305" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="465.0" y="329" font-size="15" text-anchor="middle" font-weight="normal">Report detail</text>
+<text x="465.0" y="349" font-size="12" text-anchor="middle" fill="#444">/report/:id</text>
+<line x1="334" y1="336" x2="360" y2="336" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="360,336 348.0,331.0 348.0,341.0" fill="#44546A"/>
+<rect x="360" y="400" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="465.0" y="424" font-size="15" text-anchor="middle" font-weight="normal">Research gaps</text>
+<text x="465.0" y="444" font-size="12" text-anchor="middle" fill="#444">/gaps</text>
+<line x1="334" y1="431" x2="360" y2="431" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="360,431 348.0,426.0 348.0,436.0" fill="#44546A"/>
+<rect x="360" y="495" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="465.0" y="519" font-size="15" text-anchor="middle" font-weight="normal">Notifications</text>
+<text x="465.0" y="539" font-size="12" text-anchor="middle" fill="#444">/notifications</text>
+<line x1="334" y1="526" x2="360" y2="526" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="360,526 348.0,521.0 348.0,531.0" fill="#44546A"/>
+<line x1="735" y1="162" x2="735" y2="186" stroke="#44546A" stroke-width="1.6"/>
+<line x1="624" y1="186" x2="735" y2="186" stroke="#44546A" stroke-width="1.6"/>
+<line x1="624" y1="186" x2="624" y2="526" stroke="#44546A" stroke-width="1.6"/>
+<rect x="650" y="210" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="755.0" y="234" font-size="15" text-anchor="middle" font-weight="normal">Search</text>
+<text x="755.0" y="254" font-size="12" text-anchor="middle" fill="#444">/search</text>
+<line x1="624" y1="241" x2="650" y2="241" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="650,241 638.0,236.0 638.0,246.0" fill="#44546A"/>
+<rect x="650" y="305" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="755.0" y="329" font-size="15" text-anchor="middle" font-weight="normal">Keyword</text>
+<text x="755.0" y="349" font-size="12" text-anchor="middle" fill="#444">/keyword/:keyword</text>
+<line x1="624" y1="336" x2="650" y2="336" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="650,336 638.0,331.0 638.0,341.0" fill="#44546A"/>
+<rect x="650" y="400" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="755.0" y="424" font-size="15" text-anchor="middle" font-weight="normal">Paper detail</text>
+<text x="755.0" y="444" font-size="12" text-anchor="middle" fill="#444">/paper/:id</text>
+<line x1="624" y1="431" x2="650" y2="431" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="650,431 638.0,426.0 638.0,436.0" fill="#44546A"/>
+<rect x="650" y="495" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="755.0" y="519" font-size="15" text-anchor="middle" font-weight="normal">Trends</text>
+<text x="755.0" y="539" font-size="12" text-anchor="middle" fill="#444">/trends</text>
+<line x1="624" y1="526" x2="650" y2="526" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="650,526 638.0,521.0 638.0,531.0" fill="#44546A"/>
+<line x1="1025" y1="162" x2="1025" y2="186" stroke="#44546A" stroke-width="1.6"/>
+<line x1="914" y1="186" x2="1025" y2="186" stroke="#44546A" stroke-width="1.6"/>
+<line x1="914" y1="186" x2="914" y2="336" stroke="#44546A" stroke-width="1.6"/>
+<rect x="940" y="210" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1045.0" y="234" font-size="15" text-anchor="middle" font-weight="normal">Project detail</text>
+<text x="1045.0" y="254" font-size="12" text-anchor="middle" fill="#444">/project/:id</text>
+<line x1="914" y1="241" x2="940" y2="241" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="940,241 928.0,236.0 928.0,246.0" fill="#44546A"/>
+<rect x="940" y="305" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1045.0" y="329" font-size="15" text-anchor="middle" font-weight="normal">Team chat (SSE)</text>
+<text x="1045.0" y="349" font-size="12" text-anchor="middle" fill="#444">inside project detail</text>
+<line x1="914" y1="336" x2="940" y2="336" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="940,336 928.0,331.0 928.0,341.0" fill="#44546A"/>
+<line x1="1315" y1="162" x2="1315" y2="186" stroke="#44546A" stroke-width="1.6"/>
+<line x1="1204" y1="186" x2="1315" y2="186" stroke="#44546A" stroke-width="1.6"/>
+<line x1="1204" y1="186" x2="1204" y2="716" stroke="#44546A" stroke-width="1.6"/>
+<rect x="1230" y="210" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1335.0" y="234" font-size="15" text-anchor="middle" font-weight="normal">Account</text>
+<text x="1335.0" y="254" font-size="12" text-anchor="middle" fill="#444">/account</text>
+<line x1="1204" y1="241" x2="1230" y2="241" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="1230,241 1218.0,236.0 1218.0,246.0" fill="#44546A"/>
+<rect x="1230" y="305" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1335.0" y="329" font-size="15" text-anchor="middle" font-weight="normal">Bookmarks</text>
+<text x="1335.0" y="349" font-size="12" text-anchor="middle" fill="#444">/bookmarks</text>
+<line x1="1204" y1="336" x2="1230" y2="336" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="1230,336 1218.0,331.0 1218.0,341.0" fill="#44546A"/>
+<rect x="1230" y="400" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1335.0" y="424" font-size="15" text-anchor="middle" font-weight="normal">Rankings</text>
+<text x="1335.0" y="444" font-size="12" text-anchor="middle" fill="#444">/rankings</text>
+<line x1="1204" y1="431" x2="1230" y2="431" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="1230,431 1218.0,426.0 1218.0,436.0" fill="#44546A"/>
+<rect x="1230" y="495" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1335.0" y="519" font-size="15" text-anchor="middle" font-weight="normal">My papers</text>
+<text x="1335.0" y="539" font-size="12" text-anchor="middle" fill="#444">/my-papers</text>
+<line x1="1204" y1="526" x2="1230" y2="526" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="1230,526 1218.0,521.0 1218.0,531.0" fill="#44546A"/>
+<rect x="1230" y="590" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1335.0" y="614" font-size="15" text-anchor="middle" font-weight="normal">Submit paper</text>
+<text x="1335.0" y="634" font-size="12" text-anchor="middle" fill="#444">/submit-paper</text>
+<line x1="1204" y1="621" x2="1230" y2="621" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="1230,621 1218.0,616.0 1218.0,626.0" fill="#44546A"/>
+<rect x="1230" y="685" width="210" height="62" rx="10" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1335.0" y="709" font-size="15" text-anchor="middle" font-weight="normal">Admin sync (admin only)</text>
+<text x="1335.0" y="729" font-size="12" text-anchor="middle" fill="#444">/admin/sync</text>
+<line x1="1204" y1="716" x2="1230" y2="716" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="1230,716 1218.0,711.0 1218.0,721.0" fill="#44546A"/>
+<text x="30" y="860" font-size="13" fill="#555">Links to screens that the mobile app does not have open the web app at WEB_ORIGIN (default https://lumigap.uk). Child screens are grouped under the tab they are usually opened from.</text>
+<text x="30" y="882" font-size="13" fill="#555">Source: apps/flutter_mobile/lib/core/router/app_router.dart on main 0be3737. They are top-level routes, so most can also be opened from other screens.</text>
+</svg>

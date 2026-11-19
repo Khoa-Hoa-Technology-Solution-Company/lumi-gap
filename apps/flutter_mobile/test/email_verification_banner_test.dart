@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/auth/data/auth_api.dart';
@@ -31,6 +32,9 @@ Future<void> _pumpBanner(
         authApiProvider.overrideWithValue(api),
       ],
       child: MaterialApp(
+        locale: AppLocale.vi.locale,
+        supportedLocales: AppLocale.supportedLocales,
+        localizationsDelegates: appLocalizationsDelegates,
         theme: AppTheme.lightTheme,
         home: const Scaffold(body: EmailVerificationBanner()),
       ),
@@ -113,6 +117,9 @@ void main() {
               ),
             ],
             child: MaterialApp(
+              locale: AppLocale.vi.locale,
+              supportedLocales: AppLocale.supportedLocales,
+              localizationsDelegates: appLocalizationsDelegates,
               theme: AppTheme.lightTheme,
               home: const ProfileScreen(),
             ),

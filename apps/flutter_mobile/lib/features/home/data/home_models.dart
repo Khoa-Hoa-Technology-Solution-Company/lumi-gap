@@ -1,5 +1,7 @@
+import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/features/trends/data/trend_classification.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart'
-    show YearlyCount;
+    show RisingKeyword, YearlyCount;
 
 // Hand-written, forgiving parsers for GET /home/overview and /home/research
 // (shapes: packages/shared-types/src/home.ts). Unknown fields are ignored,
@@ -70,15 +72,22 @@ class HomeSection<T> {
 }
 
 enum HomeWorkflowStage {
-  collection('Thu thập'),
-  screening('Sàng lọc'),
-  evidence('Bằng chứng'),
-  gaps('Khoảng trống'),
-  revision('Chỉnh sửa'),
-  unknown('Đang thực hiện');
+  collection,
+  screening,
+  evidence,
+  gaps,
+  revision,
+  unknown;
 
-  const HomeWorkflowStage(this.label);
-  final String label;
+  /// English key; show with `context.t(stage.label)`.
+  String get label => switch (this) {
+    collection => tk('Collection'),
+    screening => tk('Screening'),
+    evidence => tk('Evidence'),
+    gaps => tk('Gaps'),
+    revision => tk('Revision'),
+    unknown => tk('In progress'),
+  };
 }
 
 enum HomeAttentionType {
@@ -93,13 +102,18 @@ enum HomeAttentionType {
 }
 
 enum HomeRecommendationReason {
-  interest('Theo chủ đề bạn quan tâm'),
-  project('Liên quan dự án của bạn'),
-  recent('Mới xuất bản'),
-  unknown('Gợi ý cho bạn');
+  interest,
+  project,
+  recent,
+  unknown;
 
-  const HomeRecommendationReason(this.label);
-  final String label;
+  /// English key; show with `context.t(reason.label)`.
+  String get label => switch (this) {
+    interest => tk('Based on your interests'),
+    project => tk('Related to your projects'),
+    recent => tk('Recently published'),
+    unknown => tk('Suggested for you'),
+  };
 }
 
 class HomeResearchWorkspace {
@@ -254,9 +268,8 @@ class HomeRecommendedPaper {
   /// Why it was suggested, from the API (the matching topic or field).
   final String? reasonLabel;
 
-  /// Chip text: the API's `reasonLabel` when present, otherwise derived from
-  /// [reason] ("Theo chủ đề bạn quan tâm", "Liên quan dự án của bạn",
-  /// "Mới xuất bản").
+  /// Chip text: the API's `reasonLabel` when present, otherwise the English
+  /// key of [reason] ("Based on your interests", ...), shown with `context.t`.
   String get chipText => reasonLabel ?? reason.label;
 }
 
@@ -273,6 +286,7 @@ List<String> _authorNames(Object? raw) {
 
 /// "A, B, C et al." for more than three authors.
 String formatAuthors(List<String> authors) => authors.length > 3
+    // i18n-ignore: "et al." is the citation convention in both languages
     ? '${authors.take(3).join(', ')} et al.'
     : authors.join(', ');
 
@@ -404,52 +418,44 @@ class HomeRecentPaper {
 }
 
 /// GET /home/overview (public; guests get the same trends and papers).
-/// Trend verdict from the API (`classification.verdict`, Mann-Kendall test on
-/// the yearly share, same wording as the web). Unknown or missing values are
-/// `insufficient`: we never invent a direction the API did not conclude.
-enum TrendVerdict {
-  rising,
-  declining,
-  stable,
-  insufficient;
-
-  static TrendVerdict parse(Object? raw) {
-    if (raw is String) {
-      for (final v in values) {
-        if (v.name == raw) return v;
-      }
-    }
-    return TrendVerdict.insufficient;
-  }
-}
-
 class HomeTrendTopic {
   const HomeTrendTopic({
     required this.topic,
     required this.yearlyBreakdown,
-    required this.verdict,
+    this.classification = TrendClassification.none,
+    this.totalPapers = 0,
   });
 
   static HomeTrendTopic? fromJson(Json j) {
     final topic = _str(j['topic'] ?? j['topicName']);
     if (topic == null) return null;
-    final classification = j['classification'];
     return HomeTrendTopic(
       topic: topic,
       yearlyBreakdown: _items(j['yearlyBreakdown'], YearlyCount.fromJson),
-      verdict: TrendVerdict.parse(
-        classification is Json ? classification['verdict'] : null,
-      ),
+      classification: TrendClassification.fromJson(j['classification']),
+      totalPapers: (j['totalPapers'] as num?)?.toInt() ?? 0,
     );
   }
 
   final String topic;
   final List<YearlyCount> yearlyBreakdown;
-  final TrendVerdict verdict;
+
+  /// The API's verdict: the label, the order and the % per year come from
+  /// here only.
+  final TrendClassification classification;
+
+  /// Papers on the topic in the window; 0 when the API did not say.
+  final int totalPapers;
+
+  TrendVerdict get verdict => classification.verdict;
 }
 
 class HomeOverview {
-  const HomeOverview({required this.topics, required this.recentPapers});
+  const HomeOverview({
+    required this.topics,
+    required this.recentPapers,
+    this.risingKeywords = const [],
+  });
 
   factory HomeOverview.fromJson(Json json) {
     final trends = json['trends'];
@@ -458,9 +464,21 @@ class HomeOverview {
           ? _items(trends['topics'], HomeTrendTopic.fromJson)
           : const [],
       recentPapers: _items(json['recentPapers'], HomeRecentPaper.fromJson),
+      risingKeywords: trends is Json
+          ? [
+              for (final k
+                  in trends['risingKeywords'] as List<dynamic>? ?? const [])
+                if (k is Json && _str(k['keyword']) != null)
+                  RisingKeyword.fromJson(k),
+            ]
+          : const [],
     );
   }
 
   final List<HomeTrendTopic> topics;
   final List<HomeRecentPaper> recentPapers;
+
+  /// Keywords whose paper counts grew the most; growth is a raw-count
+  /// figure, shown as such, never as a trend verdict.
+  final List<RisingKeyword> risingKeywords;
 }

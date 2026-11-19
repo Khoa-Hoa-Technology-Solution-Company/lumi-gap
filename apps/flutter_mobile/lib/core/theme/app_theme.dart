@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 
@@ -78,6 +79,26 @@ class AppTheme {
         toolbarHeight: 64,
         titleTextStyle: text.headlineSmall,
         shape: Border(bottom: BorderSide(color: c.line)),
+        // Status bar icons follow the theme, not the bar colour: a bar with a
+        // transparent background would otherwise get light icons on a light
+        // page.
+        systemOverlayStyle:
+            isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      ),
+      // An "off" switch must still be seen: Material draws its track
+      // outline in `outline` (`line`), which in dark mode is the card
+      // border colour and vanished on a card.
+      switchTheme: SwitchThemeData(
+        trackOutlineColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? c.primary
+              : c.muted,
+        ),
+        thumbColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? c.onPrimary
+              : c.muted,
+        ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 80,

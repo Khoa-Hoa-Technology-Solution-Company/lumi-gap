@@ -1,84 +1,39 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@/i18n";
-import { useCompleteOrcidConnection } from "@/features/academic-profile/hooks/use-academic-profile";
-
-const SAFE_RETURN_PATHS = new Set([
-  "/profile",
-  "/profile?edit=link",
-  "/settings/profile",
-  "/onboarding/academic-profile",
-]);
+import { useAuthStore } from "@/stores/auth-store";
+import { academicProfileApi } from "@/features/academic-profile/api/academic-profile.api";
+import { orcidPendingKey } from "@/features/academic-profile/orcid-authorization";
 
 export function OrcidCallbackPage() {
-  const { t } = useI18n();
-  const navigate = useNavigate();
-  const completeOrcid = useCompleteOrcidConnection();
-  const [params] = useState(() => new URLSearchParams(window.location.search));
-  const [error, setError] = useState("");
-  const started = useRef(false);
-
+  const { t } = useI18n(), cache = useQueryClient(), userId = useAuthStore(state => state.user?.id);
+  const [parameters] = useState(() => new URLSearchParams(window.location.search));
+  const pending = useRef<{ state?: string; userId?: string; createdAt?: number } | null>();
+  const request = useRef<{ userId: string; promise: ReturnType<typeof academicProfileApi.completeOrcid> }>();
+  const [outcome, setOutcome] = useState<"pending" | "connected" | "cancelled" | "failed" | "duplicate">("pending");
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    // Strip authorization code and state from browser history immediately.
     window.history.replaceState(window.history.state, "", window.location.pathname);
-
-    const oauthError = params.get("error");
-    const code = params.get("code");
-    const state = params.get("state");
-
-    if (oauthError) {
-      void completeOrcid.mutateAsync({ error: oauthError, state: state ?? undefined }).catch(() => undefined);
-      setError(
-        oauthError === "access_denied"
-          ? t("ORCID authorization was cancelled.")
-          : t("Could not connect ORCID. Please try again."),
-      );
-      return;
+    if (pending.current === undefined) { try { pending.current = JSON.parse(sessionStorage.getItem(orcidPendingKey) ?? "null"); } catch { pending.current = null; } }
+    const state = parameters.get("state"), code = parameters.get("code"), error = parameters.get("error");
+    if (!userId || pending.current?.userId !== userId || pending.current.state !== state || !pending.current.createdAt || Date.now() - pending.current.createdAt >= 600000 || !state || parameters.getAll("state").length !== 1 || parameters.getAll("code").length > 1 || parameters.getAll("error").length > 1 || Boolean(code) === Boolean(error)) { setOutcome("failed"); return; }
+    if (!request.current) {
+      sessionStorage.removeItem(orcidPendingKey);
+      request.current = { userId, promise: academicProfileApi.completeOrcid({ state, ...(error ? { error } : { code: code! }) }) };
     }
-
-    if (!code || !state) {
-      setError(t("ORCID connection expired. Please try connecting again."));
-      return;
-    }
-
+    if (request.current.userId !== userId) { setOutcome("failed"); return; }
     let live = true;
-    void completeOrcid
-      .mutateAsync({ code, state })
-      .then((result) => {
-        if (!live) return;
-        const target = SAFE_RETURN_PATHS.has(result.returnTo) ? result.returnTo : "/profile";
-        const separator = target.includes("?") ? "&" : "?";
-        navigate(`${target}${separator}orcid=connected`, { replace: true });
-      })
-      .catch((err: unknown) => {
-        if (!live) return;
-        const response = err as { response?: { data?: { error?: { message?: string } } } };
-        setError(response.response?.data?.error?.message ?? t("Could not connect ORCID. Please try again."));
-      });
-
-    return () => {
-      live = false;
-    };
-  }, [completeOrcid, navigate, params, t]);
-
-  return (
-    <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center gap-4 p-6" data-no-i18n>
-      <h1 className="text-xl font-semibold">{t("ORCID connection")}</h1>
-      {error ? (
-        <>
-          <p role="alert" className="text-sm text-destructive">{error}</p>
-          <Link to="/profile" className="text-sm font-medium underline underline-offset-4">
-            {t("Back to profile")}
-          </Link>
-        </>
-      ) : (
-        <p role="status" className="text-sm text-muted-foreground">
-          {t("Connecting ORCID…")}
-        </p>
-      )}
-    </main>
-  );
+    void request.current.promise.then(async result => {
+      await cache.invalidateQueries({ queryKey: ["academic-profile"] });
+      if (live) setOutcome(result.cancelled ? "cancelled" : "connected");
+    }).catch(error => { if (live) setOutcome(error?.response?.status === 409 ? "duplicate" : "failed"); });
+    return () => { live = false; };
+  }, [cache, parameters, userId]);
+  const labels = {
+    pending: "Completing ORCID connection…", connected: "ORCID connected. You can manage its visibility in your academic profile.",
+    cancelled: "ORCID authorization was cancelled. Your existing profile is unchanged.",
+    failed: "ORCID connection failed or expired. Return to your profile and try again with the original LumiGap account.",
+    duplicate: "ORCID is already linked or your profile changed. Review your identities and start again.",
+  };
+  return <main className="mx-auto flex min-h-[60vh] max-w-lg flex-col justify-center gap-4 p-6" data-no-i18n><h1 className="text-xl font-semibold">{t("ORCID account connection")}</h1><p role={outcome === "failed" || outcome === "duplicate" ? "alert" : "status"}>{t(labels[outcome])}</p><p className="text-sm text-muted-foreground">{t("ORCID ownership does not verify lecturer status, affiliation or research expertise.")}</p><Link className="text-primary underline" to="/profile">{t("Back to academic profile")}</Link></main>;
 }
-

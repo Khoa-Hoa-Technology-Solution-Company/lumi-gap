@@ -1,6 +1,11 @@
 import { registrationVi } from "./registration";
 import { mentorWorkspaceVi } from "./mentor-workspace";
 import { scientificReviewVi } from "./scientific-review";
+import { mentorJourneyVi } from "./mentor-journey";
+import { academicConnectionsVi } from "./academic-connections";
+import { screeningQueueVi } from "./screening-queue";
+import { mentorApplicantsVi } from "./mentor-applicants";
+import { manuscriptIntegrityVi } from "./manuscript-integrity";
 import { submissionWorkflowVi } from "./submission-workflow";
 import { confirmationsVi } from "./confirmations";
 import { researchTasksVi } from "./research-tasks";
@@ -334,6 +339,8 @@ export const vi: Record<keyof typeof en, string> = {
     "Saved": "Đã lưu",
     "Save": "Lưu",
   }),
+  ...mentorApplicantsVi,
+  ...manuscriptIntegrityVi,
   ...academicSupportVi,
   ...scientificReviewVi,
   ...academicProfileStrings.vi,
@@ -2537,5 +2544,10 @@ export const vi: Record<keyof typeof en, string> = {
   "Left": "Trái",
   "Center": "Giữa",
   "Right": "Phải",
+  ...academicConnectionsVi,
+  ...screeningQueueVi,
+  ...mentorJourneyVi,
+  ...creditAttributionVi,
   ...submissionWorkflowVi,
 };
+import { creditAttributionVi } from "./credit-attribution";

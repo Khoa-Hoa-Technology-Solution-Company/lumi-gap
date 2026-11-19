@@ -28,4 +28,3 @@ CREATE UNIQUE INDEX IF NOT EXISTS "academic_identity_links_verified_orcid_unique
   WHERE "provider" = 'ORCID'
     AND "verification_status" = 'PROVIDER_CONNECTED'
     AND "identifier" IS NOT NULL;
-

@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/features/quality/data/quality_models.dart';
 import 'package:flutter_mobile/features/quality/presentation/quality_strings.dart';
 
@@ -14,7 +15,7 @@ class QualitySectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 16, bottom: 6),
-      child: Text(text, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+      child: Text(text, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -32,7 +33,7 @@ class QualityNotice extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(8)),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -61,13 +62,12 @@ class QualityScoreLabel extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: has ? scheme.primaryContainer : scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         has ? '$score/5' : s.insufficient,
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
+        style: context.type.bodySmall!.copyWith(
+          fontWeight: FontWeight.w600,
           color: has ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
         ),
       ),
@@ -98,7 +98,7 @@ class QualityCriterionRow extends StatelessWidget {
     final finding = assessment?.finding ?? '';
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(8),
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 56),
         child: Padding(
@@ -118,7 +118,7 @@ class QualityCriterionRow extends StatelessWidget {
                           finding,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13, height: 1.3),
+                          style: context.type.bodyMedium!.copyWith(color: theme.colorScheme.onSurfaceVariant, height: 1.3),
                         ),
                       ),
                   ],
@@ -159,7 +159,7 @@ class QualityQuoteTile extends StatelessWidget {
           if (sourceTitle.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text(sourceTitle, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+              child: Text(sourceTitle, style: context.type.bodySmall!.copyWith(color: scheme.onSurfaceVariant)),
             ),
         ],
       ),
@@ -183,7 +183,7 @@ class QualityActionTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(s.priority(action.priority), style: TextStyle(fontSize: 11, color: scheme.primary, fontWeight: FontWeight.bold)),
+            Text(s.priority(action.priority), style: context.type.bodySmall!.copyWith(color: scheme.primary, fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
             Text(action.action, style: const TextStyle(fontWeight: FontWeight.w600, height: 1.35)),
             if (action.why.isNotEmpty) ...[
@@ -216,7 +216,7 @@ class _FactLine extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+          Text(label, style: context.type.bodySmall!.copyWith(color: scheme.onSurfaceVariant)),
           Text(
             fact.hasValue ? fact.value! : s.notStated,
             style: TextStyle(
@@ -226,7 +226,7 @@ class _FactLine extends StatelessWidget {
             ),
           ),
           if (fact.unverified)
-            Text(s.unverifiedQuote, style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: scheme.onSurfaceVariant)),
+            Text(s.unverifiedQuote, style: context.type.bodySmall!.copyWith(fontStyle: FontStyle.italic, color: scheme.onSurfaceVariant)),
         ],
       ),
     );
@@ -272,7 +272,7 @@ class _FactList extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+          Text(label, style: context.type.bodySmall!.copyWith(color: scheme.onSurfaceVariant)),
           for (final f in facts)
             Padding(
               padding: const EdgeInsets.only(top: 2),
@@ -286,7 +286,7 @@ class _FactList extends StatelessWidget {
                       children: [
                         Text(f.value ?? '', style: const TextStyle(height: 1.35)),
                         if (f.unverified)
-                          Text(s.unverifiedQuote, style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: scheme.onSurfaceVariant)),
+                          Text(s.unverifiedQuote, style: context.type.bodySmall!.copyWith(fontStyle: FontStyle.italic, color: scheme.onSurfaceVariant)),
                       ],
                     ),
                   ),

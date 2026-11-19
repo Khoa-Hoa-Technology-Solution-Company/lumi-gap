@@ -4,6 +4,13 @@ This runbook operates the metadata-only OpenAlex campaign. It does not enqueue
 embeddings; embedding begins only after metadata volume and vector capacity are
 approved.
 
+**Scope.** The planner endpoint below samples all four OpenAlex domains in
+proportion and cannot be limited to one of them. It has no admin page and is
+meant for a corpus-scale load only. To import one domain, field, topic or
+keyword set, plan a tag campaign instead: open the node on the Taxonomy page and
+choose "Create campaign" (domain or field), or open the tag and choose "Plan
+campaign", then start it from the campaign list on the tag page.
+
 ## Preconditions
 
 1. `DATABASE_URL` points at the PostgreSQL database that has all Prisma migrations applied
@@ -13,8 +20,9 @@ approved.
 3. Redis is reachable and below its request quota. A campaign start enqueues a
    BullMQ job; a quota error pauses the campaign rather than allowing it to run
    without a worker.
-4. An ingest worker is running (see Worker Runtime). In Docker it is the opt-in
-   `worker-openalex-ingest` service (`docker compose --profile ingest up -d --build`).
+4. An ingest worker is running (see Worker Runtime). In Docker it is the
+   `worker-openalex-ingest` service, which starts with the stack and stays idle
+   without `OPENALEX_API_KEY`.
 
 The raw OpenAlex `language` value is preserved for the UI; ingested papers use a
 neutral `textSearchLanguage` (`"none"`) for full-text search

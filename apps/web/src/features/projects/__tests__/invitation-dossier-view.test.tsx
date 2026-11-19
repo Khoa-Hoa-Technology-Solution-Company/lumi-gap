@@ -215,4 +215,3 @@ it("falls back cleanly when rendering a legacy invitation without a dossier snap
   expect(container.textContent).toContain("Legacy Student");
   expect(container.textContent).toContain("Legacy invitation note");
 });
-

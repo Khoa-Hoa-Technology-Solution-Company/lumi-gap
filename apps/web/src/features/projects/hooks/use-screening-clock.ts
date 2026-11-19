@@ -6,7 +6,7 @@ export function useScreeningClock(summary: ScreeningWorkspaceSummary | undefined
   const [now, setNow] = useState(Date.now);
   const callback = useRef(refetch);
   callback.current = refetch;
-  const deadlines = [...summary?.myActiveClaims.map(c => c.dueAt) ?? [], ...summary?.myTrackedDisputes?.filter(d => d.needsMyStatement).map(d => d.deadline) ?? []]
+  const deadlines = [...summary?.workPapers?.filter(p => ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS"].includes(p.status)).map(p => p.consensusDeadline) ?? [],...summary?.automaticTasks?.filter(t => !t.endedAt).map(t => t.dueAt) ?? [],...summary?.myActiveClaims.map(c => c.dueAt) ?? [], ...summary?.myTrackedDisputes?.filter(d => d.needsMyStatement).map(d => d.deadline) ?? []]
     .filter((d): d is string => Boolean(d)).sort().join(",");
   useEffect(() => {
     let previous = Date.now();

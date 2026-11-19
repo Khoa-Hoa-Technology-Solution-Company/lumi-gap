@@ -43,4 +43,3 @@ export function buildLiteratureViewParams(current: URLSearchParams, nextView: st
   }
   return next;
 }
-

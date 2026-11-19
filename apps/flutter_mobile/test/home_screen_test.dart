@@ -1,15 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/web_href.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_data.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/home/data/home_api.dart';
 import 'package:flutter_mobile/features/home/data/home_models.dart';
 import 'package:flutter_mobile/features/home/presentation/home_screen.dart';
 import 'package:flutter_mobile/features/notifications/data/notifications_api.dart';
+import 'package:flutter_mobile/features/trends/components/trend_verdict.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -161,6 +164,7 @@ Future<void> _pump(
   _Harness h, {
   double height = 4000,
   double width = 412,
+  AppLocale locale = AppLocale.vi,
 }) async {
   // A very tall window so the lazy ListView builds every section at once.
   tester.view
@@ -185,6 +189,16 @@ Future<void> _pump(
         builder: (_, _) => const Scaffold(body: Text('projects-tab')),
       ),
       GoRoute(
+        path: '/review-requests/:id',
+        builder: (_, s) =>
+            Scaffold(body: Text('review-request-${s.pathParameters['id']}')),
+      ),
+      GoRoute(
+        path: '/forum/post/:id',
+        builder: (_, s) =>
+            Scaffold(body: Text('forum-post-${s.pathParameters['id']}')),
+      ),
+      GoRoute(
         path: '/trends',
         builder: (_, _) => const Scaffold(body: Text('trends-screen')),
       ),
@@ -192,6 +206,11 @@ Future<void> _pump(
         path: '/notifications',
         builder: (_, _) => const Scaffold(body: Text('notifications-screen')),
       ),
+      for (final path in ['/search', '/gaps', '/reports', '/rankings'])
+        GoRoute(
+          path: path,
+          builder: (_, _) => Scaffold(body: Text('screen$path')),
+        ),
     ],
   );
   await tester.pumpWidget(
@@ -218,6 +237,9 @@ Future<void> _pump(
         }),
       ],
       child: MaterialApp.router(
+        locale: locale.locale,
+        supportedLocales: AppLocale.supportedLocales,
+        localizationsDelegates: appLocalizationsDelegates,
         theme: AppTheme.lightTheme,
         routerConfig: h.router,
       ),
@@ -245,7 +267,8 @@ void main() {
     expect(find.text('Sàng lọc bài báo đang chờ'), findsOneWidget);
     expect(find.text('Tiếp tục nghiên cứu'), findsOneWidget);
     expect(find.text('Học liên kết trong y tế'), findsOneWidget);
-    expect(find.text('Sàng lọc'), findsOneWidget, reason: 'stage chip');
+    // The stage leads the project row's summary line.
+    expect(find.textContaining('Sàng lọc ·'), findsOneWidget);
     await _scrollTo(
       tester,
       find.text('Federated Learning for Medical Imaging'),
@@ -253,8 +276,7 @@ void main() {
     expect(find.text('federated learning'), findsOneWidget);
     expect(find.text('Liên quan dự án của bạn'), findsNothing);
     await _scrollTo(tester, find.text('Retrieval-Augmented Generation'));
-    expect(find.text('Tăng'), findsOneWidget);
-    await _scrollTo(tester, find.text('Một bài báo mới'));
+    expect(find.text('Đang tăng'), findsOneWidget);
     await _scrollTo(tester, find.text('Cách đánh giá bộ dữ liệu y tế?'));
     expect(find.text(_unavailableText), findsNothing);
   });
@@ -300,8 +322,9 @@ void main() {
       'topic': name,
       'growthRatePct': growth,
       'yearlyBreakdown': [
-        {'year': 2024, 'count': 1},
-        {'year': 2025, 'count': 2},
+        {'year': 2023, 'count': 1},
+        {'year': 2024, 'count': 2},
+        {'year': 2025, 'count': 4},
       ],
       'classification': ?classification,
     };
@@ -326,44 +349,88 @@ void main() {
       await tester.pumpAndSettle();
       const lumi = LumiColors.light;
 
+      // The pill: the icon in the verdict colour, the word in the text
+      // colour (a coloured word on its tint is not readable enough).
       void expectLabel(String text, IconData icon, Color color) {
         expect(find.text(text), findsOneWidget, reason: text);
-        final row = find
-            .ancestor(of: find.text(text), matching: find.byType(Row))
+        final pill = find
+            .ancestor(of: find.text(text), matching: find.byType(TrendVerdictPill))
             .first;
         final iconWidget = tester.widget<Icon>(
-          find.descendant(of: row, matching: find.byIcon(icon)),
+          find.descendant(of: pill, matching: find.byIcon(icon)),
         );
         expect(iconWidget.color, color, reason: text);
         expect(
           tester.widget<Text>(find.text(text)).style?.color,
-          color,
+          lumi.foreground,
           reason: text,
         );
       }
 
-      expectLabel('Tăng', Icons.arrow_upward, lumi.success);
-      expectLabel('Giảm', Icons.arrow_downward, lumi.error);
-      expectLabel('Ổn định', Icons.arrow_forward, lumi.muted);
-      expectLabel('Chưa đủ dữ liệu', Icons.remove, lumi.muted);
+      expectLabel('Đang tăng', Icons.trending_up, lumi.success);
+      expectLabel('Đang giảm', Icons.trending_down, lumi.error);
+      expectLabel('Ổn định', Icons.trending_flat, lumi.muted);
+      expectLabel('Chưa đủ dữ liệu', Icons.help_outline, lumi.muted);
     });
 
+    const allInsufficientCaption =
+        'Chưa đủ dữ liệu theo năm để biết các chủ đề này đang tăng hay giảm.';
+
     testWidgets(
-      'a topic without classification reads "Chưa đủ dữ liệu", no arrow',
+      'when no topic has a verdict the section says so once, no row label',
       (tester) async {
         final h = _Harness(
           overview: () async => HomeOverview.fromJson(
-            _overview(topics: [topic('Chủ đề E', null, growth: 500)]),
+            _overview(
+              topics: [
+                // No classification at all, and an explicit "insufficient".
+                topic('Chủ đề E', null, growth: 500),
+                topic('Chủ đề F', {'verdict': 'insufficient'}, growth: 500),
+              ],
+            ),
           ),
         );
         await _pump(tester, h);
         await tester.pumpAndSettle();
 
+        expect(find.text(allInsufficientCaption), findsOneWidget);
+        expect(find.text('Chủ đề E'), findsOneWidget);
+        expect(find.text('Chủ đề F'), findsOneWidget);
+        // Not repeated on every row, and growth alone never earns an arrow.
+        expect(find.text('Chưa đủ dữ liệu'), findsNothing);
+        expect(find.text('Đang tăng'), findsNothing);
+        expect(find.byIcon(Icons.help_outline), findsNothing);
+        expect(find.byIcon(Icons.trending_up), findsNothing);
+        expect(find.byIcon(Icons.trending_down), findsNothing);
+        expect(find.byIcon(Icons.trending_flat), findsNothing);
+        // Raw counts of an untested corpus are not drawn as a trend line.
+        expect(find.byType(LumiSparkline), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'one topic with a verdict brings the row labels back, caption gone',
+      (tester) async {
+        final h = _Harness(
+          overview: () async => HomeOverview.fromJson(
+            _overview(
+              topics: [
+                topic('Chủ đề E', null),
+                topic('Chủ đề G', {'verdict': 'rising'}),
+              ],
+            ),
+          ),
+        );
+        await _pump(tester, h);
+        await tester.pumpAndSettle();
+
+        expect(find.text(allInsufficientCaption), findsNothing);
         expect(find.text('Chưa đủ dữ liệu'), findsOneWidget);
-        expect(find.text('Tăng'), findsNothing);
-        expect(find.byIcon(Icons.arrow_upward), findsNothing);
-        expect(find.byIcon(Icons.arrow_downward), findsNothing);
-        expect(find.byIcon(Icons.arrow_forward), findsNothing);
+        expect(find.text('Đang tăng'), findsOneWidget);
+        // Only the tested topic gets a line, and only it has a % per year.
+        expect(find.byType(LumiSparkline), findsOneWidget);
+        expect(find.textContaining('mỗi năm'), findsNothing,
+            reason: 'no relativeChangePct in the fixture');
       },
     );
   });
@@ -401,7 +468,6 @@ void main() {
       find.text('Federated Learning for Medical Imaging'),
     );
     await _scrollTo(tester, find.text('Retrieval-Augmented Generation'));
-    await _scrollTo(tester, find.text('Một bài báo mới'));
   });
 
   testWidgets('unavailable workspace hides attention and projects only', (
@@ -416,7 +482,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Sàng lọc bài báo đang chờ'), findsNothing);
-    expect(find.text(_unavailableText), findsAtLeastNWidgets(2));
+    // "To do" only appears with something in it; projects says it failed.
+    expect(find.text('Việc cần làm'), findsNothing);
+    expect(find.text(_unavailableText), findsOneWidget);
     await _scrollTo(
       tester,
       find.text('Federated Learning for Medical Imaging'),
@@ -431,9 +499,10 @@ void main() {
     await _pump(tester, h);
     await tester.pumpAndSettle();
 
-    expect(find.text(_unavailableText), findsAtLeastNWidgets(4));
+    // Projects, suggestions and community; "To do" stays hidden.
+    expect(find.text(_unavailableText), findsAtLeastNWidgets(2));
+    expect(find.text('Việc cần làm'), findsNothing);
     await _scrollTo(tester, find.text('Retrieval-Augmented Generation'));
-    await _scrollTo(tester, find.text('Một bài báo mới'));
   });
 
   testWidgets('overview request failing does not break the research sections', (
@@ -448,8 +517,8 @@ void main() {
     await _scrollTo(tester, find.text('Cách đánh giá bộ dữ liệu y tế?'));
     expect(
       find.text(_unavailableText),
-      findsNWidgets(2),
-      reason: 'trends + recent papers',
+      findsOneWidget,
+      reason: 'trends only: the newest papers are on Explore',
     );
   });
 
@@ -468,8 +537,10 @@ void main() {
     expect(find.bySemanticsLabel('Đang tải'), findsWidgets);
     expect(find.text('Sàng lọc bài báo đang chờ'), findsNothing);
     expect(find.text(_unavailableText), findsNothing);
-    // Headers are visible straight away.
-    expect(find.text('Việc cần làm'), findsOneWidget);
+    // Headers are visible straight away ("To do" waits for something to
+    // show).
+    expect(find.text('Tiếp tục nghiên cứu'), findsOneWidget);
+    expect(find.text('Việc cần làm'), findsNothing);
 
     research.complete(HomeResearchOverview.fromJson(_research()));
     overview.complete(HomeOverview.fromJson(_overview()));
@@ -495,11 +566,16 @@ void main() {
     await _pump(tester, h);
     await tester.pumpAndSettle();
 
-    expect(find.text('Bạn không có việc nào cần xử lý.'), findsOneWidget);
+    // Sections that only show content take no room when empty.
+    expect(find.text('Việc cần làm'), findsNothing);
+    expect(find.text('Bạn không có việc nào cần xử lý.'), findsNothing);
+    expect(find.text('Chưa có dữ liệu xu hướng.'), findsNothing);
+    expect(find.text('Chưa có bài báo mới.'), findsNothing);
+    expect(find.text('Chưa có hoạt động cộng đồng nào.'), findsNothing);
+    // Those with a way to fill them still say how.
     expect(find.textContaining('Chưa có dự án nào'), findsOneWidget);
-    await _scrollTo(tester, find.text('Chưa có hoạt động cộng đồng nào.'));
-    expect(find.text('Chưa có dữ liệu xu hướng.'), findsOneWidget);
-    expect(find.text('Chưa có bài báo mới.'), findsOneWidget);
+    expect(find.text('Mở Dự án'), findsWidgets);
+    await _scrollTo(tester, find.textContaining('Chưa có gợi ý'));
     expect(find.text(_unavailableText), findsNothing);
   });
 
@@ -560,7 +636,7 @@ void main() {
       expect(find.text('project-p1'), findsOneWidget);
     });
 
-    testWidgets('attention row without a mobile screen opens the web page', (
+    testWidgets('a review request opens in the app, not the browser', (
       tester,
     ) async {
       final h = _Harness();
@@ -570,11 +646,11 @@ void main() {
       await tester.tap(find.text('Lời mời tham gia dự án'));
       await tester.pumpAndSettle();
 
-      expect(h.opened, [Uri.parse('https://lumigap.uk/review-requests/77')]);
-      expect(find.text('project-p1'), findsNothing);
+      expect(find.text('review-request-77'), findsOneWidget);
+      expect(h.opened, isEmpty);
     });
 
-    testWidgets('community topic opens the forum page on the web', (
+    testWidgets('community topic opens the discussion in the app', (
       tester,
     ) async {
       final h = _Harness();
@@ -585,9 +661,8 @@ void main() {
       await tester.tap(find.text('Cách đánh giá bộ dữ liệu y tế?'));
       await tester.pumpAndSettle();
 
-      expect(h.opened, [
-        Uri.parse('https://lumigap.uk/forum/danh-gia-bo-du-lieu'),
-      ]);
+      expect(find.text('forum-post-danh-gia-bo-du-lieu'), findsOneWidget);
+      expect(h.opened, isEmpty);
     });
 
     testWidgets('an off-site href is never opened', (tester) async {
@@ -644,28 +719,89 @@ void main() {
     });
   });
 
-  testWidgets('survives system text scale 1.3 at 320dp without overflow', (
-    tester,
-  ) async {
-    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
-    addTearDown(tester.platformDispatcher.clearAllTestValues);
-
-    final h = _Harness();
-    await _pump(tester, h, width: 320, height: 900);
-    await tester.pumpAndSettle();
-
-    final scaler = MediaQuery.textScalerOf(
-      tester.element(find.byType(HomeScreen)),
-    );
-    expect(scaler.scale(10), closeTo(13, 0.01), reason: 'scale really applied');
-
-    for (final text in [
-      'Retrieval-Augmented Generation',
-      'Một bài báo mới',
-      'Cách đánh giá bộ dữ liệu y tế?',
+  testWidgets('the search box and the four shortcuts open their screens',
+      (tester) async {
+    for (final (label, screen) in [
+      ('Tìm bài báo, từ khóa…', 'screen/search'),
+      ('Xu hướng', 'trends-screen'),
+      ('Khoảng trống', 'screen/gaps'),
+      ('Báo cáo', 'screen/reports'),
+      ('Xếp hạng', 'screen/rankings'),
     ]) {
-      await _scrollTo(tester, find.text(text));
+      await _pump(tester, _Harness());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label).first);
+      await tester.pumpAndSettle();
+      expect(find.text(screen), findsOneWidget, reason: label);
     }
-    expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+      'a trending card shows the API figures: % per year and papers, and '
+      'rising topics come first', (tester) async {
+    Map<String, dynamic> t(String name, String verdict, double pct, int papers) => {
+          'topic': name,
+          'totalPapers': papers,
+          'yearlyBreakdown': [
+            {'year': 2023, 'count': 10},
+            {'year': 2024, 'count': 20},
+            {'year': 2025, 'count': 40},
+          ],
+          'classification': {'verdict': verdict, 'relativeChangePct': pct},
+        };
+    final h = _Harness(
+      overview: () async => HomeOverview.fromJson(
+        _overview(
+          topics: [
+            t('Chủ đề ổn định', 'stable', 0.4, 900),
+            t('Chủ đề tăng', 'rising', 138.6, 109071),
+          ],
+        ),
+      ),
+    );
+    await _pump(tester, h);
+    await tester.pumpAndSettle();
+    expect(find.text('+138.6%'), findsOneWidget);
+    expect(find.text('mỗi năm · 109,071 bài báo'), findsOneWidget);
+    // Rising first, whatever order the API sent.
+    expect(
+      tester.getTopLeft(find.text('Chủ đề tăng')).dx,
+      lessThan(tester.getTopLeft(find.text('Chủ đề ổn định')).dx),
+    );
+    await tester.tap(find.text('Chủ đề tăng'));
+    await tester.pumpAndSettle();
+    expect(find.text('trends-screen'), findsOneWidget);
+  });
+
+  for (final locale in AppLocale.values) {
+    testWidgets(
+      'survives system text scale 1.3 at 320dp without overflow '
+      '(${locale.code})',
+      (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+        addTearDown(tester.platformDispatcher.clearAllTestValues);
+
+        final h = _Harness();
+        await _pump(tester, h, width: 320, height: 900, locale: locale);
+        await tester.pumpAndSettle();
+
+        final scaler = MediaQuery.textScalerOf(
+          tester.element(find.byType(HomeScreen)),
+        );
+        expect(
+          scaler.scale(10),
+          closeTo(13, 0.01),
+          reason: 'scale really applied',
+        );
+
+        for (final text in [
+          'Retrieval-Augmented Generation',
+          'Cách đánh giá bộ dữ liệu y tế?',
+        ]) {
+          await _scrollTo(tester, find.text(text));
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

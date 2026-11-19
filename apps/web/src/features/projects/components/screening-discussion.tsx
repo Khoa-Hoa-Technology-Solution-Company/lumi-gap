@@ -96,7 +96,7 @@ export function ScreeningDiscussion({ projectId, round, people, readOnly, query,
   };
   return <div className="screening-discussion project-chat-surface">
     <div className="screening-discussion-context">
-      <h4>Trao đổi ({query.data?.pages[0]?.total ?? 0})</h4>
+      <h4>{round.consensus ? `${query.data?.pages[0]?.total ?? 0} tin nhắn` : `Trao đổi (${query.data?.pages[0]?.total ?? 0})`}</h4>
       <span role="status" className="screening-discussion-connection" data-live={live && !query.isError && !round.finalDecision}>
         <i aria-hidden="true" />{query.isError ? "Chưa cập nhật được" : round.finalDecision ? "Đã lưu trao đổi" : live ? "Trực tiếp" : "Cập nhật tự động"}
       </span>
@@ -120,7 +120,7 @@ export function ScreeningDiscussion({ projectId, round, people, readOnly, query,
                 const newDay = !previous || date.toDateString() !== new Date(previous.createdAt).toDateString();
                 return <div key={item.id} data-message-id={item.id}>
                   {newDay && <div className="project-chat-date"><time dateTime={item.createdAt}>{date.toLocaleDateString("vi-VN", { day: "numeric", month: "short", year: "numeric" })}</time></div>}
-                  <ProjectChatMessage own={own} author={`${name}${own ? " (Bạn)" : ""}`} createdAt={item.createdAt} locale="vi-VN" content={typeof item.details?.comment === "string" ? item.details.comment : "Nội dung đang được ẩn theo quy tắc đánh giá độc lập."} />
+                  <ProjectChatMessage showOwnAvatar={Boolean(round.consensus)} own={own} author={`${name}${own ? " (Bạn)" : ""}`} createdAt={item.createdAt} locale="vi-VN" content={typeof item.details?.comment === "string" ? item.details.comment : "Nội dung đang được ẩn theo quy tắc đánh giá độc lập."} />
                 </div>;
               })}
         </div>
@@ -129,7 +129,7 @@ export function ScreeningDiscussion({ projectId, round, people, readOnly, query,
       {query.isError && query.data && <ScreeningError error={query.error} retry={() => void query.refetch()} />}
       <ScreeningError error={command.error} />
       {canCompose ? <ProjectChatComposer value={draft} onChange={value => { setDraft(value); if (command.isError) command.reset(); }} onSend={() => void submit()} textareaRef={textareaRef} minLength={3}
-        disabled={query.isError || query.isLoading} pending={command.isPending} label="Tin nhắn trao đổi về bài báo" placeholder="Nhập trao đổi hoặc căn cứ…" sendLabel="Gửi" keyboardHint="Enter để gửi · Shift+Enter để xuống dòng" mobileHint="Trao đổi về bài báo" /> :
+        disabled={query.isError || query.isLoading} pending={command.isPending} label="Tin nhắn trao đổi về bài báo" placeholder="Nhập trao đổi hoặc căn cứ…" sendLabel={round.consensus ? "Gửi bình luận" : "Gửi"} keyboardHint="Enter để gửi · Shift+Enter để xuống dòng" mobileHint="Trao đổi về bài báo" /> :
         <p className="screening-discussion-readonly">{round.finalDecision ? "Vòng đánh giá đã kết thúc. Bạn có thể xem lại cuộc trao đổi giữa hai reviewer." : round.adjudicationCase ? "Hồ sơ phân xử đã mở. Mỗi Reviewer bổ sung ý kiến riêng trong hồ sơ." : round.hiddenReviews ? "Trao đổi mở sau khi công bố phiếu đánh giá." : "Bạn đang xem lịch sử trao đổi."}</p>}
     </div>
   </div>;

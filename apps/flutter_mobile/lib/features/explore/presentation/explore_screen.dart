@@ -1,140 +1,130 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/utils/number_format.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/core/widgets/notification_bell.dart';
+import 'package:flutter_mobile/core/widgets/paper_row.dart';
+import 'package:flutter_mobile/features/home/data/home_api.dart';
+import 'package:flutter_mobile/features/home/data/home_models.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-/// Explore tab: search entry on top, then the analysis tools.
-class ExploreScreen extends StatelessWidget {
+/// Explore: find and browse papers. The search box first, then the
+/// keywords that are moving and the newest papers. Home holds what is
+/// yours (to-dos, projects, suggestions) and the trending topics; the
+/// analysis tools have their one entry in Home's shortcut row.
+class ExploreScreen extends ConsumerWidget {
   const ExploreScreen({super.key});
 
-  static const entries = <ExploreEntry>[
-    ExploreEntry(
-      icon: Icons.trending_up,
-      title: 'Xu hướng',
-      description: 'Chủ đề đang tăng hoặc giảm theo năm',
-      route: '/trends',
-    ),
-    ExploreEntry(
-      icon: Icons.description_outlined,
-      title: 'Báo cáo',
-      description: 'Báo cáo phân tích có dẫn chứng',
-      route: '/reports',
-    ),
-    ExploreEntry(
-      icon: Icons.insights_outlined,
-      title: 'Khoảng trống nghiên cứu',
-      description: 'Hướng nghiên cứu còn bỏ ngỏ theo chủ đề',
-      route: '/gaps',
-    ),
-    ExploreEntry(
-      icon: Icons.emoji_events_outlined,
-      title: 'Bảng xếp hạng',
-      description: 'Thứ hạng và điểm đóng góp',
-      route: '/rankings',
-    ),
-  ];
+  /// How many keywords and new papers the tab shows.
+  static const int keywordLimit = 8;
+  static const int newPapersLimit = 10;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final lumi = context.lumi;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final overview = ref.watch(homeOverviewProvider);
+    void go(String path) => unawaited(context.push(path));
+
+    final List<Widget> sections;
+    if (overview.hasValue) {
+      sections = _sections(context, overview.requireValue, go);
+    } else if (overview.hasError) {
+      sections = [
+        LumiErrorState(
+          inline: true,
+          retrying: overview.isLoading,
+          onRetry: () => ref.invalidate(homeOverviewProvider),
+        ),
+      ];
+    } else {
+      sections = const [LumiSkeleton(rows: 4, height: 64)];
+    }
 
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('Khám phá', maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          context.t('Explore'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: const [NotificationBell(), SizedBox(width: 4)],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Semantics(
-            button: true,
-            label: 'Tìm kiếm bài báo',
-            excludeSemantics: true,
-            onTap: () => unawaited(context.push('/search')),
-            child: InkWell(
-              onTap: () => unawaited(context.push('/search')),
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 48),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: lumi.surface,
-                  border: Border.all(color: lumi.line),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.search, color: lumi.muted),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Tìm bài báo, từ khóa…',
-                        style: theme.textTheme.bodyLarge
-                            ?.copyWith(color: lumi.muted),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+      body: RefreshIndicator(
+        onRefresh: () async => ref.invalidate(homeOverviewProvider),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          children: [
+            LumiSearchButton(
+              hint: context.t('Search papers, keywords…'),
+              onPressed: () => go('/search'),
             ),
-          ),
-          const SizedBox(height: 24),
-          Text('Công cụ phân tích', style: theme.textTheme.titleLarge),
-          const SizedBox(height: 12),
-          for (final entry in entries) ...[
-            _ExploreTile(entry: entry),
-            const SizedBox(height: 12),
+            const SizedBox(height: 24),
+            ...sections,
           ],
-        ],
+        ),
       ),
     );
   }
-}
 
-class ExploreEntry {
-  const ExploreEntry({
-    required this.icon,
-    required this.title,
-    required this.description,
-    required this.route,
-  });
-  final IconData icon;
-  final String title;
-  final String description;
-  final String route;
-}
-
-class _ExploreTile extends StatelessWidget {
-  const _ExploreTile({required this.entry});
-  final ExploreEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final lumi = context.lumi;
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        minTileHeight: 64,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Icon(entry.icon, size: 24, color: lumi.foregroundSecondary),
-        title: Text(entry.title, style: theme.textTheme.titleMedium),
-        subtitle: Text(
-          entry.description,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: lumi.foregroundSecondary),
+  List<Widget> _sections(
+    BuildContext context,
+    HomeOverview data,
+    void Function(String) go,
+  ) {
+    final keywords = data.risingKeywords.take(keywordLimit).toList();
+    final papers = data.recentPapers.take(newPapersLimit).toList();
+    if (keywords.isEmpty && papers.isEmpty) {
+      return [
+        LumiEmptyState(
+          icon: Icons.travel_explore,
+          message: context.t('Nothing to explore yet. Search for a topic to start.'),
+          compact: true,
         ),
-        trailing: Icon(Icons.chevron_right, color: lumi.muted),
-        onTap: () => unawaited(context.push(entry.route)),
-      ),
-    );
+      ];
+    }
+    return [
+      if (keywords.isNotEmpty) ...[
+        LumiSectionHeader(title: context.t('Emerging Keywords')),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final k in keywords)
+              ActionChip(
+                label: Text(
+                  '${k.keyword}  ${formatSigned(k.growthRatePct, 0)}%',
+                ),
+                onPressed: () =>
+                    go('/search?q=${Uri.encodeComponent(k.keyword)}'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 28),
+      ],
+      if (papers.isNotEmpty) ...[
+        LumiSectionHeader(title: context.t('New papers')),
+        LumiRowGroup(
+          children: [
+            for (final p in papers)
+              PaperRow(
+                id: p.id,
+                title: p.title,
+                meta: [
+                  if (p.authors.isNotEmpty) formatAuthors(p.authors),
+                  if (p.venue != null && p.venue!.trim().isNotEmpty) p.venue!,
+                  if (p.year != null) '${p.year}',
+                ].join(' · '),
+                onTap: () => go('/paper/${p.id}'),
+              ),
+          ],
+        ),
+      ],
+    ];
   }
 }

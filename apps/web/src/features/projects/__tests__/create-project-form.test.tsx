@@ -57,6 +57,8 @@ afterEach(async () => { await act(async () => root.unmount()); client.clear(); c
 it("validates step 1 fields, advances to step 2 with private & exploratory defaults, and creates project", async () => {
   mocks.create.mockResolvedValue({ _id: "created" }); await render();
   expect(document.body.textContent).toContain("Step 1/2");
+  expect(document.querySelector('input[name="visibility"]')).toBeNull();
+  expect(document.body.textContent).not.toContain("Public summary");
   await act(async () => { submit(); });
   expect(mocks.create).not.toHaveBeenCalled();
   expect(document.querySelector("#project-title-error")?.textContent).toBe("Enter a project title.");
@@ -93,6 +95,18 @@ it("locks repeated clicks while the creation response is pending", async () => {
   expect(mocks.busy).toHaveBeenLastCalledWith(true);
   await act(async () => finish({ _id: "one" }));
   expect(mocks.busy).toHaveBeenLastCalledWith(false);
+});
+
+it.each([false, true])("restores an older public draft as private (submitted: %s)", async submitted => {
+  const idempotencyKey = crypto.randomUUID();
+  sessionStorage.setItem(draftKey, JSON.stringify({ title: "Saved idea", description: "Saved objective", visibility: "PUBLIC", researchAreas: [], researchApproach: "UNDECIDED", idempotencyKey, submitted }));
+  mocks.create.mockResolvedValue({ _id: "private-project" });
+  await render();
+  expect(document.querySelector<HTMLInputElement>("#project-create-title")?.value).toBe("Saved idea");
+  await fill("#project-create-keywords", "Evidence synthesis");
+  await act(async () => { submit(); });
+  await act(async () => { submit(); });
+  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ title: "Saved idea", description: "Saved objective", visibility: "PRIVATE", idempotencyKey }));
 });
 
 it("recovers the same request after a lost response and a form remount", async () => {
@@ -197,5 +211,5 @@ it("discards malformed stored input and does not forward unknown stored properti
   sessionStorage.setItem(draftKey, JSON.stringify({ step: 1, title: "Invalid storage", idempotencyKey: crypto.randomUUID(), visibility: "PUBLIC", researchApproach: {}, ownerId: "forged" }));
   await render();
   expect(document.querySelector<HTMLInputElement>("#project-create-title")?.value).toBe("");
-  expect(document.body.textContent).toContain("Privacy: Private");
+  expect(document.querySelector('input[name="visibility"]')).toBeNull();
 });

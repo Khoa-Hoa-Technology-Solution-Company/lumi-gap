@@ -24,7 +24,14 @@ interface CampaignPageJob {
  */
 async function main() {
   if (!env.OPENALEX_API_KEY) {
-    throw new Error("OPENALEX_API_KEY is required for the million-scale ingest worker");
+    // The worker is part of the default stack, so a missing key must not crash-loop the container. It stays idle and
+    // reports no heartbeat: the admin pages then show the ingest worker as offline, and campaigns cannot be planned.
+    logger.warn("OPENALEX_API_KEY is not set: the OpenAlex campaign worker is idle. Set the key and restart it to run campaigns");
+    const idle = setInterval(() => undefined, 60 * 60_000);
+    const stop = () => { clearInterval(idle); process.exit(0); };
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
+    return;
   }
 
   await connectPostgres();

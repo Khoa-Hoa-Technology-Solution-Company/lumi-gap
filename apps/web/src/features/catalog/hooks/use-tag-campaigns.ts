@@ -10,7 +10,7 @@ export const tagCampaignKeys = {
   preflight: (tagId: string) => [...tagKeys.all, "campaign-preflight", tagId] as const,
 };
 
-/** Only a running campaign changes by itself: a planned or paused one waits for an admin on the pipeline page. */
+/** Only a running campaign changes by itself: a planned or paused one waits for an admin to start it. */
 export function isRunningTagCampaign(campaign: Pick<TagCampaign, "state">): boolean {
   return campaign.state === "running";
 }

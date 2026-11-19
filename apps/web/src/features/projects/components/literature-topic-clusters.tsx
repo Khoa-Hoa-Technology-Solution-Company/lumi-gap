@@ -1096,4 +1096,3 @@ export function LiteratureTopicClustersView({
     </div>
   );
 }
-

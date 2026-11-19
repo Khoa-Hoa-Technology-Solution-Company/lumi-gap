@@ -28,9 +28,10 @@ vi.mock("@/stores/auth-store", () => ({
   useAuthStore: (select: (state: { user: { id: string } }) => unknown) => select({ user: { id: "user-123" } }),
 }));
 
-vi.mock("@/i18n", () => ({
-  useI18n: () => ({ language: "vi", t: (key: string) => key }),
-}));
+vi.mock("@/i18n", async () => {
+  const { screeningQueueVi } = await import("@/i18n/locales/screening-queue");
+  return { useI18n: () => ({ language: "vi", t: (key: string, values: Record<string, unknown> = {}) => (screeningQueueVi[key] ?? key).replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(values[name] ?? "")) }) };
+});
 
 describe("Task-First Papers Workspace Views", () => {
   let root: Root;
@@ -282,7 +283,9 @@ describe("Task-First Papers Workspace Views", () => {
     expect(container.textContent).toContain("Hàng đợi đánh giá");
     expect(container.textContent).toContain("1 bài cần người đánh giá");
     expect(container.textContent).toContain("Deep Learning for Systematic Reviews");
-    expect(container.textContent).toContain("1 người đã nhận · 1/2 phiếu đã gửi · Còn 1 suất");
+    expect(container.textContent).toContain("1/2 suất đã nhận");
+    expect(container.textContent).toContain("1/2 phiếu đã gửi");
+    expect(container.textContent).toContain("Còn 1 suất");
     expect(container.textContent).toContain("Nhận đánh giá");
     expect(container.textContent).toContain("Xem trước");
   });

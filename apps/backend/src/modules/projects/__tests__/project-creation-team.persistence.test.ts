@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { projectService } from "../project.service.js";
 import { hashOpaqueToken } from "../../auth/token.service.js";
@@ -61,6 +62,27 @@ describe.skipIf(!isolated).sequential("project creation and team integration (di
     const incomplete = await person("incomplete", "RESEARCHER", false), key = crypto.randomUUID();
     await expect(projectService.createProject({ title: "Not allowed", idempotencyKey: key }, incomplete)).rejects.toMatchObject({ code: "ONBOARDING_REQUIRED" });
     expect(await db.project.count({ where: { creationKey: key } })).toBe(0);
+  });
+
+  it("creates private projects even when older clients request public visibility", async () => {
+    for (const visibility of ["PUBLIC", "PUBLIC_SUMMARY", "INVITE_ONLY"] as const) {
+      const row = await projectService.createProject({ title: `Private by policy ${marker}`, visibility, idempotencyKey: crypto.randomUUID() }, owner);
+      projects.push(row._id);
+      expect(row).toMatchObject({ visibility: "PRIVATE", mentorshipDiscovery: "CLOSED" });
+      expect((await db.project.findUniqueOrThrow({ where: { id: row._id } })).visibility).toBe("PRIVATE");
+      await expect(projectService.getProjectById(row._id, outsider)).rejects.toMatchObject({ statusCode: 404 });
+    }
+  });
+
+  it("recovers an old public creation fingerprint without creating another project or altering its visibility", async () => {
+    const request = { title: `Legacy retry ${marker}`, idempotencyKey: crypto.randomUUID() };
+    const row = await projectService.createProject(request, owner); projects.push(row._id);
+    const legacyHash = createHash("sha256").update(JSON.stringify({ title: request.title, description: null, researchAreas: [], approach: "UNDECIDED", status: "PLANNING", visibility: "PUBLIC" })).digest("hex");
+    await db.project.update({ where: { id: row._id }, data: { visibility: "PUBLIC", creationRequestHash: legacyHash } });
+    const retried = await projectService.createProject({ ...request, visibility: "PRIVATE" }, owner);
+    expect(retried).toMatchObject({ _id: row._id, visibility: "PUBLIC" });
+    expect(await db.project.count({ where: { creationKey: request.idempotencyKey, createdById: owner } })).toBe(1);
+    await expect(projectService.createProject({ ...request, title: "Different request" }, owner)).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it("enforces owner-only mutations and prevents an orphaned project", async () => {

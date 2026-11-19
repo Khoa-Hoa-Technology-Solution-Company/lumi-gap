@@ -188,6 +188,10 @@ describe.skipIf(!enabled).sequential("research contributions from real PostgreSQ
     await db.mentorResourceShare.updateMany({where:{accessId:f.access.id},data:{revokedAt:new Date()}});
     await db.mentorAccess.update({where:{id:f.access.id},data:{permissions:["CONTRIBUTIONS_VIEW"]}});
     expect((await read(f.projectId,f.mentor,query.parse({}))).items[0]?.sourceId).toBe(r.hr.id);
+    const hidden = await db.submissionRevision.create({data:{submissionId:r.s.id,revisionNumber:2,uploadedById:f.owner,contentType:"MARKDOWN",contentSnapshot:"Not yet shared with this mentor",sizeBytes:30}});
+    await expect(work.save(f.projectId,f.mentor,{...claim(f),participants:[{userId:f.mentor,roles:["METHODOLOGY"]}],evidenceRefs:[{kind:"SUBMISSION_REVISION",id:hidden.id}]})).rejects.toMatchObject({statusCode:404});
+    const other = await fixture(), otherReview = await review(other);
+    await expect(work.save(f.projectId,f.mentor,{...claim(f),participants:[{userId:f.mentor,roles:["METHODOLOGY"]}],evidenceRefs:[{kind:"SUBMISSION",id:otherReview.s.id}]})).rejects.toMatchObject({statusCode:404});
     await db.reviewerAssignment.update({where:{id:r.assignment.id},data:{status:"revoked"}});
     expect((await read(f.projectId,f.mentor,query.parse({}))).items).toEqual([]);
     await db.mentorAccess.update({where:{id:f.access.id},data:{permissions:[]}});

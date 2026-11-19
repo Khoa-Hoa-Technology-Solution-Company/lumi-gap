@@ -69,11 +69,34 @@ class AuthApi {
     );
   }
 
-  Future<void> changePassword(String currentPassword, String newPassword) async {
+  /// PATCH /auth/me. Only what is passed is changed. A new institution also
+  /// updates the academic profile (backend); it cannot be cleared there.
+  Future<User> updateProfile({
+    String? institution,
+    List<String>? researchInterests,
+  }) async {
+    final response = await _client.dio.patch<Map<String, dynamic>>(
+      ApiRoutes.authMe,
+      data: {
+        'institution': ?institution,
+        'researchInterests': ?researchInterests,
+      },
+    );
+    final data = (response.data ?? {})['data'] as Map<String, dynamic>;
+    return User.fromJson(data['user'] as Map<String, dynamic>);
+  }
+
+  /// POST /auth/change-password. [currentPassword] is required by the API
+  /// only when the account already has one (not for a Google-only account).
+  /// On success every refresh token is revoked: this session ends too.
+  Future<void> changePassword({
+    required String newPassword,
+    String? currentPassword,
+  }) async {
     await _client.dio.post<void>(
       ApiRoutes.authChangePassword,
       data: {
-        'currentPassword': currentPassword,
+        'currentPassword': ?currentPassword,
         'newPassword': newPassword,
       },
     );

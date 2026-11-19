@@ -1,3 +1,4 @@
+import { MENTOR_TOPICS_JOB, mentorshipTopicSuggestions } from "../modules/projects/mentorship-topic-suggestions.service.js";
 import { Worker } from "bullmq";
 import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
 import { AppError } from "../common/exceptions/app-error.js";
@@ -133,7 +134,7 @@ async function main() {
   }
   const worker = new Worker(
     QUEUE_NAMES.aiJobs,
-    async (job) => job.name === SCREENING_AI_JOB ? screeningAiService.process(job.data.id as string) : job.name === MANUSCRIPT_WRITING_JOB ? manuscriptWritingService.process(job.data.runId as string) : job.name === CONTRIBUTION_EVALUATION_JOB ? contributionEvaluationService.process(job.data.runId as string) : job.name === PDF_IMPORT_JOB ? manuscriptPdfImport.process(job.id!) : job.name === MANUSCRIPT_AI_JOB ? manuscriptAiService.process(job.data.runId as string) : job.name === AI_PRE_REVIEW_JOB
+    async (job) => job.name === MENTOR_TOPICS_JOB ? mentorshipTopicSuggestions.process(job.data) : job.name === SCREENING_AI_JOB ? screeningAiService.process(job.data.id as string) : job.name === MANUSCRIPT_WRITING_JOB ? manuscriptWritingService.process(job.data.runId as string) : job.name === CONTRIBUTION_EVALUATION_JOB ? contributionEvaluationService.process(job.data.runId as string) : job.name === PDF_IMPORT_JOB ? manuscriptPdfImport.process(job.id!) : job.name === MANUSCRIPT_AI_JOB ? manuscriptAiService.process(job.data.runId as string) : job.name === AI_PRE_REVIEW_JOB
       ? submissionService.processAiPreReview(job.data as AiPreReviewJob)
       : job.name === QUALITY_EVALUATION_JOB
       ? qualityJobs.process(job.data as QualityEvaluationPayload)

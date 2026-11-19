@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { ArrowRight, Search, FileText } from "lucide-react";
 import { toast } from "sonner";
-import type { ScreeningEvaluationStatus } from "@trend/shared-types";
+import type { ScreeningEvaluationStatus, ScreeningClaimNextResult } from "@trend/shared-types";
 import { useResearchResource } from "../hooks/use-project-research";
 import { screeningApi } from "../api/screening.api";
 import { useScreeningCommand, ScreeningError } from "./screening-common";
@@ -29,18 +29,20 @@ export function MyWorkView({ projectId, readOnly, onOpenPaper, onSwitchView }: {
   const [adjudication, setAdjudication] = useState<{ roundId: string; section: string } | null>(null);
   const handleClaimNext = async () => {
     try {
-      let claimPaperId: string | null = null;
-      const ok = await command.run({}, async () => {
-        const res = (await screeningApi.claimNext(projectId)) as { paperId?: string | null } | null;
-        claimPaperId = res?.paperId ?? null;
-        return res;
+      let claimed: ScreeningClaimNextResult | undefined;
+      const ok = await command.run({ action: "claim-next" }, async clientKey => {
+        claimed = await screeningApi.claimNext(projectId, { clientKey });
+        return claimed;
       });
 
-      if (ok && claimPaperId) {
+      if (ok && claimed?.paperId && claimed.roundId) {
         toast.success("Đã nhận bài thành công! Giữ suất đánh giá trong 24 giờ.");
-        onOpenPaper(claimPaperId);
+        onOpenPaper(claimed.paperId, { roundId: claimed.roundId, section: "review" });
       } else if (ok) {
         toast.info("Không có bài báo nào đủ điều kiện trong hàng đợi hiện tại.");
+      } else {
+        await summaryQuery.refetch();
+        toast.error("Chưa thể nhận bài. Hàng đợi đã được cập nhật, bạn hãy thử lại.");
       }
     } catch {
       toast.error("Không thể nhận bài. Vui lòng thử lại.");

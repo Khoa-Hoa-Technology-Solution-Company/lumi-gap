@@ -3,7 +3,6 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
-import { AppError } from "../../../common/exceptions/app-error.js";
 
 const mocks = vi.hoisted(() => ({
   authenticated: true,
@@ -20,6 +19,7 @@ vi.mock("../orcid-oauth.service.js", () => ({
     environment: "sandbox",
     baseUrl: "https://sandbox.orcid.org",
   }),
+  orcidOauthService: { start: mocks.start, callback: mocks.complete },
   orcidOAuthService: {
     status: mocks.status,
     start: mocks.start,
@@ -42,6 +42,8 @@ vi.mock("../../../common/middleware/auth.js", () => ({
 vi.mock("../../../common/middleware/rate-limit.js", () => ({
   createRateLimiter: () => (_req: any, _res: any, next: () => void) => next(),
 }));
+
+vi.mock("../../auth/google-oidc.service.js", () => ({ resolveOAuthReturnOrigin: () => "http://localhost:8080" }));
 
 import { academicProfileRouter } from "../academic-profile.routes.js";
 
@@ -131,52 +133,30 @@ describe("ORCID OAuth Routes", () => {
     );
   });
 
-  it("returns 503 when GET /orcid/callback is called while ORCID is not configured", async () => {
+  it("forwards provider redirects to the authenticated frontend even when linking is disabled", async () => {
     mocks.configured = false;
-    const res = await fetch(`${origin}/orcid/callback?code=abc&state=${"a".repeat(32)}`, {
-      redirect: "manual",
-    });
-    expect(res.status).toBe(503);
+    const state = "a".repeat(43);
+    const res = await fetch(`${origin}/orcid/callback?code=abc&state=${state}`, { redirect: "manual" });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    const target = new URL(res.headers.get("location")!);
+    expect(target.origin).toBe("http://localhost:8080");
+    expect(target.pathname).toBe("/integrations/orcid/callback");
+    expect(target.searchParams.get("state")).toBe(state);
+    expect(target.searchParams.get("code")).toBe("abc");
+    expect(mocks.complete).not.toHaveBeenCalled();
   });
 
-  it("redirects GET /orcid/callback to /profile?orcid=connected on success and /profile?orcid_error=... on error", async () => {
-    const state = "s".repeat(32);
-    mocks.complete.mockResolvedValueOnce({
-      link: {
-        id: "22222222-2222-4222-8222-222222222222",
-        provider: "ORCID",
-        identifier: "0000-0002-1825-0097",
-        profileUrl: "https://orcid.org/0000-0002-1825-0097",
-        connectionMethod: "OAUTH",
-        status: "CONNECTED",
-        verificationStatus: "PROVIDER_CONNECTED",
-        visibility: "PUBLIC",
-        createdAt: "2026-11-07T00:00:00.000Z",
-        updatedAt: "2026-11-07T00:00:00.000Z",
-      },
-      returnTo: "/profile",
-      returnOrigin: "http://localhost:8080",
-    });
-
-    const successRes = await fetch(`${origin}/orcid/callback?code=auth-code&state=${state}`, {
-      redirect: "manual",
-    });
-    expect(successRes.status).toBe(302);
-    expect(successRes.headers.get("location")).toBe("http://localhost:8080/profile?orcid=connected");
-
-    mocks.complete.mockRejectedValueOnce(
-      AppError.conflict("This ORCID iD is already connected to another LumiGap account", {
-        returnOrigin: "http://localhost:8080",
-        returnTo: "/profile",
-      }),
-    );
-    const conflictRes = await fetch(`${origin}/orcid/callback?code=auth-code&state=${state}`, {
-      redirect: "manual",
-    });
-    expect(conflictRes.status).toBe(302);
-    expect(conflictRes.headers.get("location")).toBe(
-      "http://localhost:8080/profile?orcid_error=already_linked",
-    );
+  it("never links anonymously and validates callback fields before forwarding grant or denial", async () => {
+    mocks.authenticated = false;
+    const state = "s".repeat(43);
+    const denied = await fetch(`${origin}/orcid/callback?error=access_denied&state=${state}`, { redirect: "manual" });
+    expect(denied.status).toBe(302);
+    expect(new URL(denied.headers.get("location")!).searchParams.get("error")).toBe("access_denied");
+    expect(mocks.complete).not.toHaveBeenCalled();
+    for (const query of ["code=abc&state=short", `code=abc&state=${state}&userId=forged`, `code=abc&error=access_denied&state=${state}`]) {
+      expect((await fetch(`${origin}/orcid/callback?${query}`, { redirect: "manual" })).status).toBe(400);
+    }
+    expect(mocks.complete).not.toHaveBeenCalled();
   });
 });
-

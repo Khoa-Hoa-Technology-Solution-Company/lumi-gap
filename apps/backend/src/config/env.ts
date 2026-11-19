@@ -68,6 +68,15 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_CALLBACK_URL: z.string().default("http://localhost:4000/api/v1/auth/google/callback"),
 
+  ORCID_CLIENT_ID: optionalEnvString,
+  ORCID_CLIENT_SECRET: optionalEnvString,
+  ORCID_BASE_URL: z.preprocess(value => value === "" ? undefined : typeof value === "string" ? value.replace(/\/$/, "") : value, z.enum(["https://orcid.org", "https://sandbox.orcid.org"]).default("https://sandbox.orcid.org")),
+  ORCID_REDIRECT_URI: z.string().url().default("http://localhost:8080/integrations/orcid/callback").refine(value => {
+    const url = new URL(value);
+    return !url.username && !url.password && !url.search && !url.hash && url.pathname === "/integrations/orcid/callback"
+      && (url.protocol === "https:" || url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname));
+  }, "ORCID redirect must use HTTPS (or localhost HTTP) and /integrations/orcid/callback"),
+
   GITHUB_CLIENT_ID: optionalEnvString,
   GITHUB_CLIENT_SECRET: optionalEnvString,
   GITHUB_APP_SLUG: z.preprocess(value => value === "" ? undefined : value, z.string().regex(/^[a-z0-9][a-z0-9-]{0,99}$/).optional()),
@@ -77,21 +86,6 @@ const EnvSchema = z.object({
       && (url.protocol === "https:" || url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname));
   }, "GitHub callback must use HTTPS (or localhost HTTP) and /integrations/github/callback"),
   GITHUB_CONNECTION_ENCRYPTION_KEY: z.preprocess(value => value === "" ? undefined : value, z.string().min(32).optional()),
-
-  ORCID_CLIENT_ID: optionalEnvString,
-  ORCID_CLIENT_SECRET: optionalEnvString,
-  ORCID_BASE_URL: z.preprocess(
-    (value) => value === "" || value === undefined ? "https://sandbox.orcid.org" : String(value).trim().replace(/\/+$/, ""),
-    z.enum(["https://sandbox.orcid.org", "https://orcid.org"]),
-  ),
-  ORCID_REDIRECT_URI: z.preprocess(
-    (value) => value === "" ? undefined : value,
-    z.string().url().refine((value) => {
-      const url = new URL(value);
-      return !url.username && !url.password && !url.search && !url.hash
-        && (url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)));
-    }, "ORCID_REDIRECT_URI must use HTTPS (or localhost/127.0.0.1 HTTP) without credentials, query parameters, or fragments").optional(),
-  ),
 
   // Transactional email for security-sensitive verification messages. "log" is
   // an explicit local-development transport and is forbidden in production.
@@ -322,6 +316,14 @@ const EnvSchema = z.object({
   TAG_EMBEDDING_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.82),
   TAG_EMBEDDING_MAX_PAPERS: z.coerce.number().int().min(1).default(300),
 
+  // Daily topic watches (sync worker, on SYNC_CRON). One run imports at most TOPIC_WATCH_DAILY_MAX_PAPERS new papers
+  // (never more than EMBED_MAX_PAPERS_PER_RUN, or the embedding backlog would only grow) and reads at most
+  // SYNC_MAX_PAGES_PER_RUN pages, both shared across the enabled watches. A tracking window starts
+  // TOPIC_WATCH_OVERLAP_DAYS before the last completed one, because OpenAlex often lists a work days after its date.
+  TOPIC_WATCH_DAILY_MAX_PAPERS: z.coerce.number().int().min(1).default(500),
+  TOPIC_WATCH_OVERLAP_DAYS: z.coerce.number().int().min(0).default(7),
+  TOPIC_WATCH_DEFAULT_BACKLOG_PAPERS: z.coerce.number().int().min(0).default(1000),
+
   // On-demand topic backfill (topic-backfill worker). A run imports at most TOPIC_BACKFILL_DEFAULT_NEW_PAPERS papers the
   // corpus is missing (admins may ask for up to TOPIC_BACKFILL_MAX_NEW_PAPERS), reading at most TOPIC_BACKFILL_MAX_PAGES
   // OpenAlex pages. Below TOPIC_BACKFILL_THIN_MAX_PAPERS local papers, search offers signed-in users a backfill, limited
@@ -347,6 +349,9 @@ const EnvSchema = z.object({
   // team can demo before an admin user is seeded. Never enable in production.
   // (Plain z.coerce.boolean() is unsafe — "false" would coerce to true — so we
   //  parse an explicit "true"/"false" string instead.)
+  // Admin sync by free search text (POST /admin/sync). Off by default: imports should be planned from the catalogue
+  // (topic backfill, tag campaign, topic watch). Turn on only to debug the OpenAlex client.
+  SYNC_FREE_TEXT_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   SYNC_ADMIN_BYPASS: z
     .enum(["true", "false"])
     .default("false")

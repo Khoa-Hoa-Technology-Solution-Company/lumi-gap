@@ -163,4 +163,3 @@ describe("WorkspaceOverviewPanel", () => {
     expect(mocks.stage).toHaveBeenCalledWith("proj-1", { stage: "WRITING", expectedVersion: 3 });
   });
 });
-

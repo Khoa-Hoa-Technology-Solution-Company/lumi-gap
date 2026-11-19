@@ -1,5 +1,9 @@
 # Mời cố vấn và kiểm soát truy cập
 
+> Cập nhật 2026-11-06: [Hồ sơ ứng tuyển và đối chiếu bằng chứng](lecturer-applicant-matching.md). Đăng ký quan tâm mới không giữ chỗ; chỉ lời mời chính thức mới giữ vị trí và cần giảng viên chấp nhận. Các lời mời cũ giữ nguyên.
+
+> Cập nhật 2026-11-11: [Chuẩn hóa phân loại, chuyên môn và tìm cố vấn](mentor-discovery-journey.md). Phân loại dùng chung của dự án chỉ được thêm vào bản giới thiệu sau khi chủ dự án lưu duyệt nhu cầu cố vấn. Lời mời đã gửi giữ bản giới thiệu bất biến; thay đổi riêng trong dự án không tự mở rộng nội dung đã chia sẻ.
+
 ## Luồng sử dụng
 
 1. Chủ dự án mở **Tìm cố vấn**, chọn người và cấu hình quyền, nội dung chia sẻ, hạn truy cập trước khi gửi lời mời.

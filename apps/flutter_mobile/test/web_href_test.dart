@@ -1,3 +1,4 @@
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/utils/relative_time.dart';
 import 'package:flutter_mobile/core/utils/web_href.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,11 +57,28 @@ void main() {
       expect(mapWebHref('/projects/a%2Fb'), '/project/a%2Fb');
     });
 
+    test('community, reviews and invitations open their mobile screens', () {
+      expect(mapWebHref('/forum'), '/community');
+      expect(mapWebHref('/forum/my-post-slug'), '/forum/post/my-post-slug');
+      expect(mapWebHref('/forum/my-post-slug/4'), '/forum/post/my-post-slug',
+          reason: 'a reply number still opens the discussion');
+      expect(mapWebHref('/forum/category/methods'), '/community');
+      expect(mapWebHref('/communities'), '/community?view=communities');
+      expect(mapWebHref('/communities/nlp-vn'), '/communities/nlp-vn');
+      expect(mapWebHref('/reviews'), '/reviews');
+      expect(mapWebHref('/review-requests/77'), '/review-requests/77');
+      expect(mapWebHref('/invitations/tok_123'), '/invitations/tok_123');
+    });
+
     test('web-only paths have no mobile route', () {
-      expect(mapWebHref('/review-requests/77'), isNull);
+      // The review editor, forum and community tools stay on the web.
       expect(mapWebHref('/reviews/88'), isNull);
+      expect(mapWebHref('/forum/new'), isNull);
+      expect(mapWebHref('/forum/categories'), isNull);
+      expect(mapWebHref('/forum/moderation'), isNull);
+      expect(mapWebHref('/communities/new'), isNull);
+      expect(mapWebHref('/communities/nlp-vn/manage'), isNull);
       expect(mapWebHref('/academic-support'), isNull);
-      expect(mapWebHref('/forum/my-post-slug'), isNull);
       expect(
         mapWebHref('/projects/abc/members'),
         isNull,
@@ -119,46 +137,75 @@ void main() {
   });
 
   group('shellTabRoutes', () {
-    test('are the four root tabs', () {
-      expect(shellTabRoutes, {'/', '/explore', '/projects', '/profile'});
+    test('are the five root tabs', () {
+      expect(shellTabRoutes, {'/', '/explore', '/projects', '/community', '/profile'});
     });
   });
 
-  group('relativeTimeVi', () {
+  group('relativeTime (vi)', () {
     final now = DateTime.utc(2026, 11, 9, 12);
     test('minutes, hours, days, then a date', () {
-      expect(relativeTimeVi(now, now: now), 'Vừa xong');
+      expect(relativeTime(now, AppLocale.vi, now: now), 'Vừa xong');
       expect(
-        relativeTimeVi(now.subtract(const Duration(seconds: 59)), now: now),
+        relativeTime(
+          now.subtract(const Duration(seconds: 59)),
+          AppLocale.vi,
+          now: now,
+        ),
         'Vừa xong',
       );
       expect(
-        relativeTimeVi(now.subtract(const Duration(minutes: 20)), now: now),
+        relativeTime(
+          now.subtract(const Duration(minutes: 20)),
+          AppLocale.vi,
+          now: now,
+        ),
         '20 phút trước',
       );
       expect(
-        relativeTimeVi(now.subtract(const Duration(minutes: 59)), now: now),
+        relativeTime(
+          now.subtract(const Duration(minutes: 59)),
+          AppLocale.vi,
+          now: now,
+        ),
         '59 phút trước',
       );
       expect(
-        relativeTimeVi(now.subtract(const Duration(hours: 1)), now: now),
+        relativeTime(
+          now.subtract(const Duration(hours: 1)),
+          AppLocale.vi,
+          now: now,
+        ),
         '1 giờ trước',
       );
       expect(
-        relativeTimeVi(now.subtract(const Duration(hours: 23)), now: now),
+        relativeTime(
+          now.subtract(const Duration(hours: 23)),
+          AppLocale.vi,
+          now: now,
+        ),
         '23 giờ trước',
       );
       expect(
-        relativeTimeVi(now.subtract(const Duration(days: 2)), now: now),
+        relativeTime(
+          now.subtract(const Duration(days: 2)),
+          AppLocale.vi,
+          now: now,
+        ),
         '2 ngày trước',
       );
       expect(
-        relativeTimeVi(now.subtract(const Duration(days: 6)), now: now),
+        relativeTime(
+          now.subtract(const Duration(days: 6)),
+          AppLocale.vi,
+          now: now,
+        ),
         '6 ngày trước',
       );
       expect(
-        relativeTimeVi(
+        relativeTime(
           DateTime(2026, 10, 25, 9),
+          AppLocale.vi,
           now: DateTime(2026, 11, 9, 12),
         ),
         '25/10/2026',
@@ -167,7 +214,7 @@ void main() {
 
     test('a timestamp in the future reads as just now', () {
       expect(
-        relativeTimeVi(now.add(const Duration(hours: 3)), now: now),
+        relativeTime(now.add(const Duration(hours: 3)), AppLocale.vi, now: now),
         'Vừa xong',
       );
     });

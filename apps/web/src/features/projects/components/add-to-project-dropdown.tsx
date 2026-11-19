@@ -84,15 +84,15 @@ export function AddToProjectDropdown({ paperId, paper, children }: AddToProjectD
     triggerContent = children;
   } else {
     triggerContent = (
-      <Button 
-        variant="ghost" 
-        size="icon" 
+      <Button
+        variant="ghost"
+        size="icon"
         className={`h-8 w-8 rounded-full transition-colors ${
           isAlreadyInAnyProject
             ? "text-emerald-600 bg-emerald-50 hover:bg-emerald-100 hover:text-emerald-700 dark:text-emerald-400 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/50"
             : "text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30"
         }`}
-        title={isAlreadyInAnyProject ? (t("Đã thêm vào dự án") || "Đã thêm vào dự án") : (t("Add to Project") || "Thêm vào dự án")} 
+        title={isAlreadyInAnyProject ? (t("Đã thêm vào dự án") || "Đã thêm vào dự án") : (t("Add to Project") || "Thêm vào dự án")}
         onClick={(e) => e.stopPropagation()}
       >
         {isAlreadyInAnyProject ? (
@@ -114,7 +114,7 @@ export function AddToProjectDropdown({ paperId, paper, children }: AddToProjectD
           <FolderPlus className="w-3.5 h-3.5 mr-2" />
           {t("Add to Project") || "Thêm vào dự án"}
         </DropdownMenuLabel>
-        
+
         {isLoading ? (
           <div className="py-4 text-sm text-center text-slate-500 flex items-center justify-center">
             <Loader2 className="w-4 h-4 animate-spin mr-2" /> {t("Loading...") || "Đang tải dự án..."}
@@ -125,8 +125,8 @@ export function AddToProjectDropdown({ paperId, paper, children }: AddToProjectD
               const isAlreadyIn = checkProjectHasPaper(project);
               const paperCount = project.paperCount ?? project.papers?.length ?? 0;
               return (
-                <DropdownMenuItem 
-                  key={project._id} 
+                <DropdownMenuItem
+                  key={project._id}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (!isAlreadyIn) {
@@ -135,15 +135,15 @@ export function AddToProjectDropdown({ paperId, paper, children }: AddToProjectD
                   }}
                   disabled={addMutation.isPending || isAlreadyIn}
                   className={`rounded-lg py-2.5 px-3 transition-colors border border-transparent flex items-center justify-between gap-2 ${
-                    isAlreadyIn 
-                      ? "opacity-90 bg-slate-50/70 dark:bg-slate-900/50 cursor-default" 
+                    isAlreadyIn
+                      ? "opacity-90 bg-slate-50/70 dark:bg-slate-900/50 cursor-default"
                       : "cursor-pointer hover:bg-blue-50 hover:text-blue-700 dark:hover:bg-blue-900/30 dark:hover:text-blue-300 focus:bg-blue-50 focus:text-blue-700 dark:focus:bg-blue-900/30 dark:focus:text-blue-300"
                   }`}
                 >
                   <div className="flex items-center flex-1 min-w-0 gap-3 overflow-hidden">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                      isAlreadyIn 
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400" 
+                      isAlreadyIn
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
                         : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
                     }`}>
                       {isAlreadyIn ? <Check className="w-4 h-4" /> : <Folder className="w-4 h-4" />}

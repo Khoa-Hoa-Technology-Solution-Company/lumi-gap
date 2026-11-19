@@ -9,10 +9,11 @@ import type { AiSelection } from "./ai-selection";
 
 const labels: Record<ManuscriptAiAction, string> = { improve: "Improve academic writing", continue: "Continue writing", rewrite: "Rewrite", expand: "Expand", shorten: "Shorten", grammar: "Fix grammar", translate: "Translate", repair: "Find and fix LaTeX errors", explain: "Explain LaTeX", citations: "Find citations", custom: "Custom instruction" };
 const translationLanguages = ["Vietnamese", "English", "Japanese", "Korean", "Simplified Chinese", "French", "German", "Spanish", "Portuguese", "Thai"] as const;
-export function ManuscriptAi({ project, manuscript, filename, selectionLength, canWrite, capture, apply, repairRequest = 0, onCompile, canCompile = false, repairCompiled = false, sourceVersion }: {
+export function ManuscriptAi({ project, manuscript, filename, selectionLength, canWrite, capture, apply, onAccepted, repairRequest = 0, onCompile, canCompile = false, repairCompiled = false, sourceVersion }: {
   project: string; manuscript: string; filename: string; selectionLength: number; canWrite: boolean;
   capture: (wholeFileIfEmpty?: boolean) => { target: AiSelection; input: Pick<ManuscriptAiInput, "fileId" | "from" | "to" | "original"> };
   apply: (target: AiSelection, text: string, mode: "insert" | "replace", paperId?: string, sources?: ManuscriptAiResult["citations"], preserveReferences?: boolean) => Promise<void>;
+  onAccepted?: (runId: string, fileId: string, paperId?: string) => Promise<void>;
   repairRequest?: number; onCompile?: () => void; canCompile?: boolean; repairCompiled?: boolean; sourceVersion?: number;
 }) {
   const { t } = useI18n();
@@ -60,6 +61,10 @@ export function ManuscriptAi({ project, manuscript, filename, selectionLength, c
       else await apply(target, result.text, mode, undefined, result.citations);
       if (paperId) { insertedIds.current.add(paperId); if (alive.current) setInserted([...insertedIds.current]); }
       else { accepted.current = true; if (alive.current) setApplied(true); }
+      if (onAccepted && current) {
+        try { await onAccepted(current.id, target.fileId, paperId); }
+        catch { if (alive.current) setError(t("The edit was applied, but its AI acceptance record could not be saved. Disclose this use in the Research Integrity Center.")); }
+      }
     }
     catch { if (alive.current) setError(t("The source or permissions changed. Open the original file and request a new suggestion.")); }
     finally { operating.current = false; if (alive.current) setBusy(false); }

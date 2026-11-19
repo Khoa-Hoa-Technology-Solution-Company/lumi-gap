@@ -9,6 +9,7 @@ import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import {
   APPLY_ALL_TAGS_JOB, APPLY_TAG_JOB, tagAssignmentService, type ApplyTagJobData,
 } from "../modules/tags/tag-assignment.service.js";
+import { SYNC_TAXONOMY_JOB, taxonomyRefreshService } from "../modules/taxonomy/taxonomy-refresh.service.js";
 import { RECOMPUTE_FORUM_TOPICS_JOB, recomputeAllPostTopics, requeueIfVersionAdvanced, runVersionedRecompute } from "../modules/personalization/personalization-topics.service.js";
 
 enforcePostgresOnlyRuntime();
@@ -78,6 +79,11 @@ async function main() {
         logger.info({ jobId: job.id, passes: outcome.passes, capped: outcome.capped, ...outcome.result }, "forum topics recomputed");
         return { settledVersion: outcome.settledVersion, capped: outcome.capped, passes: outcome.passes };
       }
+      if (job.name === SYNC_TAXONOMY_JOB) {
+        const result = await taxonomyRefreshService.run();
+        logger.info({ jobId: job.id, ...result }, "taxonomy loaded from OpenAlex");
+        return result;
+      }
       logger.warn({ jobId: job.id, name: job.name }, "unknown tagging job ignored");
       return null;
     },
@@ -91,6 +97,7 @@ async function main() {
   worker.on("failed", (job, error) => logger.error({ jobId: job?.id, name: job?.name, error }, "tagging job failed"));
 
   await registerCron();
+  await taxonomyRefreshService.ensureLoaded();
   logger.info({ cron: env.TAGGING_CRON }, "tagging worker listening on tagging queue");
 
   const shutdown = async (signal: string) => {

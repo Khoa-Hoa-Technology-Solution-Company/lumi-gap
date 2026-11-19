@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/chat_messages.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/chat_mode.dart';
@@ -10,7 +14,6 @@ class ProjectChatPanel extends ConsumerWidget {
   const ProjectChatPanel({
     required this.projectId,
     required this.mode,
-    required this.ownerId,
     required this.paperCount,
     required this.controller,
     required this.onRefresh,
@@ -19,66 +22,38 @@ class ProjectChatPanel extends ConsumerWidget {
 
   final String projectId;
   final ProjectChatMode mode;
-  final String? ownerId;
   final int paperCount;
   final ScrollController controller;
   final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final title = switch (mode) {
-      ProjectChatMode.team => 'Team Chat',
-      ProjectChatMode.privateAi => 'My AI - Private',
-      ProjectChatMode.teamAi => 'Team AI Room - Shared',
-    };
     final subtitle = switch (mode) {
-      ProjectChatMode.team => 'Discuss with project members',
-      ProjectChatMode.privateAi => 'Only you can see this AI conversation',
+      ProjectChatMode.privateAi => context.t('Only you can see this AI conversation'),
       ProjectChatMode.teamAi =>
-        'AI answers are visible to every project member',
+        context.t('AI answers are visible to every project member'),
     };
 
-    final body = mode == ProjectChatMode.team
-        ? ref
-              .watch(projectTeamChatProvider(projectId))
-              .when(
-                data: (messages) => ProjectTeamMessages(
-                  projectId: projectId,
-                  messages: messages,
-                  ownerId: ownerId,
-                  controller: controller,
-                  onRefresh: onRefresh,
-                ),
-                loading: () =>
-                    const AppLoading(message: 'Loading team chat...'),
-                error: (error, _) => AppErrorState(
-                  message: error.toString(),
-                  onRetry: onRefresh,
-                ),
-              )
-        : ref
-              .watch(
-                projectChatProvider((
-                  projectId: projectId,
-                  scope: mode == ProjectChatMode.privateAi ? 'private' : 'team',
-                )),
-              )
-              .when(
-                data: (messages) => ProjectAiMessages(
-                  projectId: projectId,
-                  messages: messages,
-                  shared: mode == ProjectChatMode.teamAi,
-                  paperCount: paperCount,
-                  controller: controller,
-                  onRefresh: onRefresh,
-                ),
-                loading: () =>
-                    const AppLoading(message: 'Loading AI history...'),
-                error: (error, _) => AppErrorState(
-                  message: error.toString(),
-                  onRetry: onRefresh,
-                ),
-              );
+    final body = ref
+        .watch(
+          projectChatProvider((
+            projectId: projectId,
+            scope: mode == ProjectChatMode.privateAi ? 'private' : 'team',
+          )),
+        )
+        .when(
+          data: (messages) => ProjectAiMessages(
+            projectId: projectId,
+            messages: messages,
+            shared: mode == ProjectChatMode.teamAi,
+            paperCount: paperCount,
+            controller: controller,
+            onRefresh: onRefresh,
+          ),
+          loading: () => const LumiPageSkeleton(rows: 3, height: 72),
+          error: (error, _) =>
+              AppErrorState(message: context.t(failureMessageKey(error)), onRetry: onRefresh),
+        );
 
     final colors = Theme.of(context).colorScheme;
     return Container(
@@ -96,7 +71,8 @@ class ProjectChatPanel extends ConsumerWidget {
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(18, 10, 16, 10),
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
             decoration: BoxDecoration(
               color: colors.surface,
               border: Border(
@@ -107,94 +83,31 @@ class ProjectChatPanel extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: colors.primary.withValues(alpha: .1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    mode == ProjectChatMode.team
-                        ? Icons.forum_rounded
-                        : mode == ProjectChatMode.privateAi
-                        ? Icons.auto_awesome_rounded
-                        : Icons.smart_toy_rounded,
-                    size: 18,
-                    color: colors.primary,
-                  ),
+                Icon(
+                  mode == ProjectChatMode.privateAi
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                  size: 18,
+                  color: context.lumi.foregroundSecondary,
                 ),
-                const SizedBox(width: 11),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    subtitle,
+                    style: context.type.bodySmall!.copyWith(
+                      color: context.lumi.foregroundSecondary,
+                    ),
                   ),
                 ),
-                ProjectStatusPill(private: mode == ProjectChatMode.privateAi),
               ],
             ),
           ),
           Expanded(
             child: ColoredBox(
-              color: colors.surfaceContainerHighest.withValues(alpha: .18),
+              // The page colour: an ad-hoc tint here dropped the message
+              // times under 4.5:1.
+              color: context.lumi.background,
               child: body,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class ProjectStatusPill extends StatelessWidget {
-  const ProjectStatusPill({required this.private, super.key});
-
-  final bool private;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final color = private ? colors.primary : const Color(0xFF16845B);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .09),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            private ? Icons.lock_outline_rounded : Icons.circle,
-            size: private ? 13 : 8,
-            color: color,
-          ),
-          const SizedBox(width: 5),
-          Text(
-            private ? 'Private' : 'Live',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: color,
             ),
           ),
         ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/relative_time.dart';
 import 'package:flutter_mobile/features/home/data/home_models.dart';
@@ -22,6 +23,9 @@ class HomeCommunityList extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: homeCardDecoration(lumi),
       child: Column(
+        // Every row spans the card; otherwise a short row is centred and
+        // looks indented next to a long one.
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (var i = 0; i < items.length; i++) ...[
             if (i > 0) Divider(height: 1, color: lumi.line),
@@ -34,7 +38,12 @@ class HomeCommunityList extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(items[i].title, style: theme.textTheme.titleMedium),
+                      Text(
+                        items[i].title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium,
+                      ),
                       if (items[i].community != null)
                         Text(
                           items[i].community!,
@@ -58,7 +67,7 @@ class HomeCommunityList extends StatelessWidget {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                '${items[i].replyCount} trả lời',
+                                context.plural(items[i].replyCount, one: '{{count}} reply', other: '{{count}} replies'),
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: lumi.muted,
                                 ),
@@ -67,7 +76,7 @@ class HomeCommunityList extends StatelessWidget {
                           ),
                           if (items[i].occurredAt != null)
                             Text(
-                              relativeTimeVi(items[i].occurredAt!),
+                              relativeTime(items[i].occurredAt!, context.appLocale),
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: lumi.muted,
                               ),

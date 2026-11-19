@@ -36,6 +36,7 @@
     "eval:interests": "tsx scripts/interests-eval.ts",
     "personalization:backfill-topics": "tsx scripts/personalization-backfill-topics.ts",
     "taxonomy:sync": "tsx scripts/taxonomy-sync.ts",
+    "keywords:dedupe": "tsx scripts/keyword-dedupe.ts",
     "worker:sync": "tsx src/workers/sync.worker.ts",
     "worker:openalex-ingest": "tsx src/workers/openalex-ingest.worker.ts",
     "worker:corpus-validation": "tsx src/workers/corpus-validation.worker.ts",

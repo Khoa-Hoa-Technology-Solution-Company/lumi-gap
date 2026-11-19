@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
+import 'package:flutter_mobile/core/theme/app_typography.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/admin/data/admin_api.dart';
+import 'package:flutter_mobile/features/admin/presentation/admin_pipeline_tab.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,10 +20,12 @@ class AdminSyncScreen extends ConsumerStatefulWidget {
 }
 
 class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
-  final searchText = TextEditingController(text: 'large language models');
+  // Empty on purpose: a sync is costly, so its query is always typed.
+  final searchText = TextEditingController();
   final yearFrom = TextEditingController(text: '2020');
   final maxPages = TextEditingController(text: '1');
   bool _syncing = false;
+  bool _showSyncErrors = false;
   bool _embedding = false;
 
   @override
@@ -29,23 +37,33 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
   }
 
   Future<void> _sync() async {
+    if (_syncing) return;
+    final errors = syncFormErrors(
+      searchText: searchText.text,
+      yearFrom: yearFrom.text,
+      maxPages: maxPages.text,
+    );
+    if (errors.isNotEmpty) {
+      setState(() => _showSyncErrors = true);
+      return;
+    }
     setState(() => _syncing = true);
     try {
       await ref.read(adminApiProvider).triggerSync(
             searchText: searchText.text.trim(),
-            yearFrom: int.tryParse(yearFrom.text),
-            maxPages: int.tryParse(maxPages.text),
+            yearFrom: int.parse(yearFrom.text.trim()),
+            maxPages: int.parse(maxPages.text.trim()),
           );
       ref.invalidate(syncRunsProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sync run triggered successfully.')),
+          SnackBar(content: Text(context.t('Sync run triggered successfully.'))),
         );
       }
     } on Object catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to trigger sync: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(context.t('Failed to trigger sync: {{e}}', {'e': context.t(failureMessageKey(e))})), backgroundColor: context.lumi.error),
         );
       }
     } finally {
@@ -60,13 +78,13 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
       ref.invalidate(embeddingStatusProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Embedding calculation started.')),
+          SnackBar(content: Text(context.t('Embedding calculation started.'))),
         );
       }
     } on Object catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start embedding: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(context.t('Failed to start embedding: {{e}}', {'e': context.t(failureMessageKey(e))})), backgroundColor: context.lumi.error),
         );
       }
     } finally {
@@ -76,6 +94,15 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
 
   Widget _buildSyncTab(WidgetRef ref, ThemeData theme, bool isDark) {
     final runs = ref.watch(syncRunsProvider);
+    final errors = _showSyncErrors
+        ? syncFormErrors(
+            searchText: searchText.text,
+            yearFrom: yearFrom.text,
+            maxPages: maxPages.text,
+          )
+        : const <String, String>{};
+    String? err(String field) =>
+        errors[field] == null ? null : context.t(errors[field]!);
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -83,7 +110,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
         Card(
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(8),
             side: BorderSide(color: theme.dividerColor),
           ),
           child: Padding(
@@ -91,13 +118,16 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('TRIGGER NEW SYNC', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8))),
+                Text(context.t('New sync'), style: context.type.bodySmall!.copyWith( fontWeight: FontWeight.w600, color: context.lumi.muted)),
                 const SizedBox(height: 12),
                 TextField(
                   controller: searchText,
+                  onChanged: (_) {
+                    if (_showSyncErrors) setState(() {});
+                  },
                   decoration: InputDecoration(
-                    labelText: 'Search text (e.g. quantum computing)',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    labelText: context.t('Search text (e.g. quantum computing)'),
+                    errorText: err('searchText'),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -106,9 +136,12 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                     Expanded(
                       child: TextField(
                         controller: yearFrom,
+                        onChanged: (_) {
+                          if (_showSyncErrors) setState(() {});
+                        },
                         decoration: InputDecoration(
-                          labelText: 'Year from',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          labelText: context.t('Year from'),
+                          errorText: err('yearFrom'),
                         ),
                         keyboardType: TextInputType.number,
                       ),
@@ -117,9 +150,12 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                     Expanded(
                       child: TextField(
                         controller: maxPages,
+                        onChanged: (_) {
+                          if (_showSyncErrors) setState(() {});
+                        },
                         decoration: InputDecoration(
-                          labelText: 'Max pages',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          labelText: context.t('Max pages'),
+                          errorText: err('maxPages'),
                         ),
                         keyboardType: TextInputType.number,
                       ),
@@ -132,14 +168,14 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                   height: 48,
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF06B6D4),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      backgroundColor: context.lumi.primary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     onPressed: _syncing ? null : _sync,
                     icon: _syncing
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.sync, color: Colors.white),
-                    label: const Text('Start OpenAlex Sync', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: context.lumi.surface))
+                        : Icon(Icons.sync, color: context.lumi.surface),
+                    label: Text(context.t('Start OpenAlex Sync'), style: TextStyle(color: context.lumi.onPrimary, fontWeight: FontWeight.w600)),
                   ),
                 ),
               ],
@@ -147,54 +183,47 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        const Text('Sync Runs History', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        Text(context.t('Sync Runs History'), style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,)),
         const SizedBox(height: 10),
         runs.when(
           data: (items) => Column(
             children: items.map((run) {
-              final statusColor = run.status == 'completed'
-                  ? const Color(0xFF10B981)
-                  : run.status == 'failed'
-                      ? const Color(0xFFEF4444)
-                      : const Color(0xFFF59E0B);
+              final (statusKey, statusTone) = syncRunStatus(run.status);
+              // The shared chip: its tone pairs are contrast-tested.
+              final chipTone = switch (statusTone) {
+                SyncRunTone.success => LumiChipTone.success,
+                SyncRunTone.error => LumiChipTone.error,
+                SyncRunTone.active => LumiChipTone.primary,
+                SyncRunTone.neutral => LumiChipTone.neutral,
+              };
 
               return Card(
                 elevation: 0,
                 margin: const EdgeInsets.only(bottom: 12),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(8),
                   side: BorderSide(color: theme.dividerColor),
                 ),
                 child: ListTile(
-                  title: Text(run.searchText, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  title: Text(run.searchText, style: const TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 4),
-                      Text('Fetched: ${run.totalFetched} · Inserted: ${run.totalInserted}'),
+                      Text(context.t('Fetched: {{totalFetched}} · Inserted: {{totalInserted}}', {'totalFetched': run.totalFetched, 'totalInserted': run.totalInserted})),
                       if (run.errorMessage != null) ...[
                         const SizedBox(height: 4),
-                        Text(run.errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 11)),
+                        Text(run.errorMessage!, style: context.type.bodySmall!.copyWith(color: context.lumi.error,)),
                       ],
                     ],
                   ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      run.status.toUpperCase(),
-                      style: TextStyle(color: statusColor, fontSize: 9, fontWeight: FontWeight.bold),
-                    ),
-                  ),
+                  trailing: LumiChip(label: context.t(statusKey), tone: chipTone),
                 ),
               );
             }).toList(),
           ),
-          loading: () => const AppLoading(message: 'Loading runs...'),
-          error: (error, _) => AppErrorState(message: error.toString()),
+          loading: () => const LumiSkeleton(rows: 3),
+          error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
         ),
       ],
     );
@@ -216,7 +245,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                 Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(8),
                     side: BorderSide(color: theme.dividerColor),
                   ),
                   child: Padding(
@@ -224,20 +253,20 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('EMBEDDING CALCULATIONS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8))),
+                        Text(context.t('Embeddings'), style: context.type.bodySmall!.copyWith( fontWeight: FontWeight.w600, color: context.lumi.muted)),
                         const SizedBox(height: 16),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Embedding Coverage', style: TextStyle(fontWeight: FontWeight.bold)),
-                            Text('${pct.toStringAsFixed(1)}%', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF06B6D4))),
+                            Text(context.t('Embedding Coverage'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                            Text('${pct.toStringAsFixed(1)}%', style: TextStyle(fontWeight: FontWeight.w600, color: context.lumi.primary)),
                           ],
                         ),
                         const SizedBox(height: 8),
                         LinearProgressIndicator(
                           value: pct / 100,
                           backgroundColor: theme.dividerColor,
-                          color: const Color(0xFF06B6D4),
+                          color: context.lumi.primary,
                           minHeight: 8,
                           borderRadius: BorderRadius.circular(4),
                         ),
@@ -247,23 +276,23 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                           children: [
                             Column(
                               children: [
-                                const Text('Analyzable', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                                Text(context.t('Analyzable'), style: context.type.bodySmall!.copyWith( color: context.lumi.muted)),
                                 const SizedBox(height: 4),
-                                Text('${status.analyzable}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                Text('${status.analyzable}', style: context.type.bodyLarge!.copyWith( fontWeight: FontWeight.w600)),
                               ],
                             ),
                             Column(
                               children: [
-                                const Text('Embedded', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                                Text(context.t('Embedded'), style: context.type.bodySmall!.copyWith( color: context.lumi.muted)),
                                 const SizedBox(height: 4),
-                                Text('${status.embedded}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
+                                Text('${status.embedded}', style: context.type.bodyLarge!.copyWith( fontWeight: FontWeight.w600, color: context.lumi.success)),
                               ],
                             ),
                             Column(
                               children: [
-                                const Text('Pending', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                                Text(context.t('Pending'), style: context.type.bodySmall!.copyWith( color: context.lumi.muted)),
                                 const SizedBox(height: 4),
-                                Text('${status.pending}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFFF59E0B))),
+                                Text('${status.pending}', style: context.type.bodyLarge!.copyWith( fontWeight: FontWeight.w600, color: context.lumi.warning)),
                               ],
                             ),
                           ],
@@ -274,12 +303,12 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                           height: 48,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF8B5CF6),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              backgroundColor: context.lumi.primary,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
                             onPressed: _embedding ? null : _triggerEmbedding,
-                            icon: const Icon(Icons.bolt, color: Colors.white),
-                            label: const Text('Trigger Embedding Job', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            icon: Icon(Icons.memory_outlined, color: context.lumi.onPrimary),
+                            label: Text(context.t('Trigger Embedding Job'), style: TextStyle(color: context.lumi.onPrimary, fontWeight: FontWeight.w600)),
                           ),
                         ),
                       ],
@@ -289,151 +318,10 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
               ],
             );
           },
-          loading: () => const AppLoading(message: 'Loading embedding status...'),
-          error: (error, _) => AppErrorState(message: error.toString()),
+          loading: () => const LumiSkeleton(rows: 1, height: 220),
+          error: (error, _) => AppErrorState(message: context.t(failureMessageKey(error))),
         ),
       ],
-    );
-  }
-
-  Widget _buildPipelineTab(WidgetRef ref, ThemeData theme, bool isDark) {
-    final pipelineQuery = ref.watch(pipelineStatusProvider);
-
-    return pipelineQuery.when(
-      data: (status) {
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // General health cards
-            Row(
-              children: [
-                Expanded(
-                  child: Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: theme.dividerColor),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          Icon(
-                            status.redisOk ? Icons.check_circle : Icons.error,
-                            color: status.redisOk ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Redis Database', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                                Text(status.redisOk ? 'Connected' : 'Offline', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: theme.dividerColor),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.engineering, color: Color(0xFF06B6D4), size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Active Workers', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                                Text('${status.workers.alive} / ${status.workers.expected}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            const Text('Queue Worker Backlogs', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            const SizedBox(height: 10),
-            ...status.queues.map((q) {
-              return Card(
-                elevation: 0,
-                margin: const EdgeInsets.only(bottom: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: theme.dividerColor),
-                ),
-                child: ListTile(
-                  title: Text(q.label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  subtitle: Text('Waiting: ${q.waiting} · Active: ${q.active} · Failed: ${q.failed}'),
-                  trailing: q.isBacklogged
-                      ? const Icon(Icons.warning, color: Colors.orange, size: 20)
-                      : const Icon(Icons.check, color: Colors.green, size: 20),
-                ),
-              );
-            }),
-            const SizedBox(height: 20),
-
-            if (status.recommendations.isNotEmpty) ...[
-              const Text('Pipeline Diagnostics', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 10),
-              ...status.recommendations.map((rec) {
-                final color = rec.severity == 'critical'
-                    ? const Color(0xFFEF4444)
-                    : rec.severity == 'warning'
-                        ? const Color(0xFFF59E0B)
-                        : const Color(0xFF06B6D4);
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.08),
-                    border: Border.all(color: color.withValues(alpha: 0.2)),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.info_outline, color: color, size: 18),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(rec.title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: color)),
-                            const SizedBox(height: 2),
-                            Text(rec.description, style: const TextStyle(fontSize: 11)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            ],
-          ],
-        );
-      },
-      loading: () => const AppLoading(message: 'Loading pipeline status...'),
-      error: (error, _) => AppErrorState(message: error.toString()),
     );
   }
 
@@ -442,8 +330,8 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
     final user = ref.watch(currentUserProvider);
     if (user?.role != UserRole.admin) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Admin System Workbench')),
-        body: const Center(child: Text('Access denied. Admin role required.', style: TextStyle(color: Colors.red))),
+        appBar: AppBar(title: Text(context.t('Admin sync'))),
+        body: Center(child: Text(context.t('Access denied. Admin role required.'), style: TextStyle(color: context.lumi.error))),
       );
     }
 
@@ -453,19 +341,21 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF0F1B2D) : theme.scaffoldBackgroundColor,
+        // The theme's app bar: a transparent one made Android draw light
+        // status bar icons over the light page.
         appBar: AppBar(
-          title: const Text('System Workbench', style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          bottom: const TabBar(
-            indicatorColor: Color(0xFF06B6D4),
-            labelColor: Color(0xFF06B6D4),
-            unselectedLabelColor: Color(0xFF94A3B8),
+          title: Text(context.t('Admin sync')),
+          bottom: TabBar(
+            // Scrolls instead of clipping labels on a narrow screen.
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            indicatorColor: context.lumi.primary,
+            labelColor: context.lumi.primary,
+            unselectedLabelColor: context.lumi.muted,
             tabs: [
-              Tab(text: 'Sync Runs'),
-              Tab(text: 'Embeddings'),
-              Tab(text: 'Pipeline Health'),
+              Tab(text: context.t('Sync Runs')),
+              Tab(text: context.t('Embeddings')),
+              Tab(text: context.t('Pipeline Health')),
             ],
           ),
         ),
@@ -473,10 +363,47 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
           children: [
             _buildSyncTab(ref, theme, isDark),
             _buildEmbeddingsTab(ref, theme, isDark),
-            _buildPipelineTab(ref, theme, isDark),
+            const AdminPipelineTab(),
           ],
         ),
       ),
     );
   }
+}
+
+enum SyncRunTone { success, error, active, neutral }
+
+/// Label (an English key for `context.t`) and tone of a sync run status.
+/// The backend sends running, succeeded, failed or cancelled; anything else
+/// is shown as unknown rather than as a raw code.
+(String, SyncRunTone) syncRunStatus(String status) =>
+    switch (status.trim().toLowerCase()) {
+      'succeeded' || 'completed' => (tk('Succeeded'), SyncRunTone.success),
+      'failed' => (tk('Failed'), SyncRunTone.error),
+      'running' || 'queued' => (tk('Running'), SyncRunTone.active),
+      'cancelled' || 'canceled' => (tk('Cancelled'), SyncRunTone.neutral),
+      _ => (tk('Unknown'), SyncRunTone.neutral),
+    };
+
+/// Errors of the sync form, by field, as `context.t` keys. Same bounds as
+/// the API (`trigger-sync.schema.ts`); a field that does not parse is an
+/// error, never silently replaced by the server's default.
+Map<String, String> syncFormErrors({
+  required String searchText,
+  required String yearFrom,
+  required String maxPages,
+}) {
+  final errors = <String, String>{};
+  if (searchText.trim().isEmpty) {
+    errors['searchText'] = tk('Enter what to search for.');
+  }
+  final year = int.tryParse(yearFrom.trim());
+  if (year == null || year < 1900 || year > 2100) {
+    errors['yearFrom'] = tk('Enter a year between 1900 and 2100.');
+  }
+  final pages = int.tryParse(maxPages.trim());
+  if (pages == null || pages < 1 || pages > 50) {
+    errors['maxPages'] = tk('Enter a number from 1 to 50.');
+  }
+  return errors;
 }

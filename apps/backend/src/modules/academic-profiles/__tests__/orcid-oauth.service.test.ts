@@ -29,12 +29,11 @@ const mocks = vi.hoisted(() => {
         return "OK";
       }),
       get: vi.fn(async (key: string) => redisStore.get(key) ?? null),
-      eval: vi.fn(async (_script: string, _numKeys: number, key: string, expected: string) => {
-        if (redisStore.get(key) === expected) {
-          redisStore.delete(key);
-          return 1;
-        }
-        return 0;
+      getdel: vi.fn(async (key: string) => { const value=redisStore.get(key)??null;redisStore.delete(key);return value; }),
+      del: vi.fn(async (key: string) => Number(redisStore.delete(key))),
+      eval: vi.fn(async (script: string, numKeys: number, ...args: string[]) => {
+        if (numKeys===2 && script.includes("SET")) {redisStore.set(args[0]!,args[2]!);redisStore.set(args[1]!,args[3]!);return 1;}
+        if(redisStore.get(args[0]!)===args[1])return Number(redisStore.delete(args[0]!));return 0;
       }),
     },
     prisma: {
@@ -69,6 +68,7 @@ vi.mock("../../audit/audit.service.js", () => ({ auditService: { log: mocks.audi
 
 import { orcidOAuthService, resolveOrcidBaseUrl } from "../orcid-oauth.service.js";
 import { academicIdentityService } from "../academic-identity.service.js";
+const complete = (input: Parameters<typeof orcidOAuthService.complete>[0]) => orcidOAuthService.complete({ authenticatedUserId: USER_ID, authenticatedSessionId: SESSION_ID, ...input });
 
 function identityRow(overrides: Partial<Record<string, unknown>> = {}) {
   const now = new Date("2026-11-07T00:00:00.000Z");
@@ -78,7 +78,7 @@ function identityRow(overrides: Partial<Record<string, unknown>> = {}) {
     provider: "ORCID",
     label: null,
     identifier: VALID_ORCID,
-    profileUrl: `https://orcid.org/${VALID_ORCID}`,
+    profileUrl: `https://sandbox.orcid.org/${VALID_ORCID}`,
     connectionMethod: "OAUTH",
     status: "CONNECTED",
     verificationStatus: "PROVIDER_CONNECTED",
@@ -107,7 +107,7 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
 
     mocks.prisma.user.findUnique.mockImplementation(async ({ where }: { where: { id?: string } }) => {
       if (where.id === USER_ID || where.id === OTHER_USER_ID) {
-        return { id: where.id, accountStatus: "ACTIVE" };
+        return { id: where.id, isActive: true, accountStatus: "ACTIVE" };
       }
       return null;
     });
@@ -123,14 +123,12 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
   it("1. rejects unauthenticated or inactive users when starting ORCID linking", async () => {
     mocks.prisma.user.findUnique.mockResolvedValueOnce(null);
     await expect(orcidOAuthService.start(USER_ID, SESSION_ID)).rejects.toMatchObject({
-      statusCode: 404,
-      message: "Academic identity owner not found",
+      statusCode: 401,
     });
 
     mocks.prisma.user.findUnique.mockResolvedValueOnce({ id: USER_ID, accountStatus: "SUSPENDED" });
     await expect(orcidOAuthService.start(USER_ID, SESSION_ID)).rejects.toMatchObject({
-      statusCode: 404,
-      message: "Academic identity owner not found",
+      statusCode: 401,
     });
   });
 
@@ -142,6 +140,7 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     const status = await orcidOAuthService.status(USER_ID);
     expect(status).toEqual({
       configured: false,
+      baseUrl: "https://sandbox.orcid.org",
       environment: "sandbox",
       connected: false,
       link: null,
@@ -149,12 +148,12 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
 
     await expect(orcidOAuthService.start(USER_ID, SESSION_ID)).rejects.toMatchObject({
       statusCode: 503,
-      message: "ORCID connection is not configured",
+      message: "ORCID connection is not configured.",
     });
 
-    await expect(orcidOAuthService.complete({ code: "code-123", state: "state-12345678901234567890" })).rejects.toMatchObject({
+    await expect(complete({ code: "code-123", state: "state-12345678901234567890" })).rejects.toMatchObject({
       statusCode: 503,
-      message: "ORCID connection is not configured",
+      message: "ORCID connection is not configured.",
     });
   });
 
@@ -172,13 +171,7 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     expect(sandboxUrl.searchParams.get("redirect_uri")).toBe("http://localhost:4000/api/v1/academic-profiles/orcid/callback");
     expect(sandboxUrl.searchParams.get("state")).toBe(sandboxStart.state);
     expect(sandboxStart.state.length).toBeGreaterThanOrEqual(40);
-    expect(mocks.redis.set).toHaveBeenCalledWith(
-      expect.stringMatching(/^oauth:orcid:state:[a-f0-9]{64}$/),
-      expect.any(String),
-      "EX",
-      600,
-      "NX",
-    );
+    expect(mocks.redisStore.has(`oauth:orcid:state:${(await import("node:crypto")).createHash("sha256").update(sandboxStart.state).digest("hex")}`)).toBe(true);
 
     mocks.env.ORCID_BASE_URL = "https://orcid.org";
     const prodStart = await orcidOAuthService.start(USER_ID, SESSION_ID);
@@ -193,9 +186,8 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
-    await expect(orcidOAuthService.complete({ code: "auth-code-123" })).rejects.toMatchObject({
-      statusCode: 400,
-      message: "Missing ORCID authorization code or state",
+    await expect(complete({ code: "auth-code-123" })).rejects.toMatchObject({
+      name: "ZodError",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -205,13 +197,13 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     vi.stubGlobal("fetch", fetchSpy);
 
     await expect(
-      orcidOAuthService.complete({
+      complete({
         code: "auth-code-123",
-        state: "unknown-state-token-that-was-never-issued-12345",
+        state: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       }),
     ).rejects.toMatchObject({
-      statusCode: 400,
-      message: "ORCID authorization state is invalid, expired, or already used",
+      statusCode: 403,
+      message: "ORCID connection expired. Start again with the original LumiGap account.",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -224,13 +216,13 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     mocks.redisStore.clear(); // Simulate Redis TTL expiration
 
     await expect(
-      orcidOAuthService.complete({
+      complete({
         code: "auth-code-123",
         state: started.state,
       }),
     ).rejects.toMatchObject({
-      statusCode: 400,
-      message: "ORCID authorization state is invalid, expired, or already used",
+      statusCode: 403,
+      message: "ORCID connection expired. Start again with the original LumiGap account.",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -257,7 +249,7 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     const started = await orcidOAuthService.start(USER_ID, SESSION_ID);
 
     await expect(
-      orcidOAuthService.complete({
+      complete({
         code: "auth-code-123",
         state: started.state,
         authenticatedUserId: USER_ID,
@@ -272,15 +264,15 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     });
 
     await expect(
-      orcidOAuthService.complete({
+      complete({
         code: "auth-code-123",
         state: started.state,
         authenticatedUserId: USER_ID,
         authenticatedSessionId: SESSION_ID,
       }),
     ).rejects.toMatchObject({
-      statusCode: 400,
-      message: "ORCID authorization state is invalid, expired, or already used",
+      statusCode: 403,
+      message: "ORCID connection expired. Start again with the original LumiGap account.",
     });
   });
 
@@ -291,7 +283,7 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     const started = await orcidOAuthService.start(USER_ID, SESSION_ID);
 
     await expect(
-      orcidOAuthService.complete({
+      complete({
         code: "auth-code-123",
         state: started.state,
         authenticatedUserId: OTHER_USER_ID,
@@ -299,13 +291,13 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
       }),
     ).rejects.toMatchObject({
       statusCode: 403,
-      message: "ORCID authorization state belongs to a different LumiGap account",
+      message: "ORCID connection expired. Start again with the original LumiGap account.",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
 
     const started2 = await orcidOAuthService.start(USER_ID, SESSION_ID);
     await expect(
-      orcidOAuthService.complete({
+      complete({
         code: "auth-code-123",
         state: started2.state,
         authenticatedUserId: USER_ID,
@@ -313,7 +305,7 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
       }),
     ).rejects.toMatchObject({
       statusCode: 403,
-      message: "ORCID authorization state belongs to a different session",
+      message: "ORCID connection expired. Start again with the original LumiGap account.",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -325,7 +317,7 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     const started = await orcidOAuthService.start(USER_ID, SESSION_ID);
 
     await expect(
-      orcidOAuthService.complete({
+      complete({
         error: "access_denied",
         errorDescription: "User denied access",
         state: started.state,
@@ -355,12 +347,12 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     const started = await orcidOAuthService.start(USER_ID, SESSION_ID);
     let caughtError: Error | undefined;
     try {
-      await orcidOAuthService.complete({ code: "bad-code", state: started.state });
+      await complete({ code: "bad-code", state: started.state });
     } catch (err) {
       caughtError = err as Error;
     }
     expect(caughtError).toBeDefined();
-    expect(caughtError?.message).toBe("ORCID token exchange failed");
+    expect(caughtError?.message).toBe("ORCID could not confirm the connection. Please start again.");
     expect(JSON.stringify(caughtError)).not.toContain("secret-orcid-value-do-not-leak");
   });
 
@@ -372,9 +364,9 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
       ),
     );
     const started1 = await orcidOAuthService.start(USER_ID, SESSION_ID);
-    await expect(orcidOAuthService.complete({ code: "code-1", state: started1.state })).rejects.toMatchObject({
-      statusCode: 502,
-      message: "ORCID token response is missing required identity fields",
+    await expect(complete({ code: "code-1", state: started1.state })).rejects.toMatchObject({
+      statusCode: 503,
+      message: "ORCID could not confirm the connection. Please start again.",
     });
 
     vi.stubGlobal(
@@ -384,9 +376,9 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
       ),
     );
     const started2 = await orcidOAuthService.start(USER_ID, SESSION_ID);
-    await expect(orcidOAuthService.complete({ code: "code-2", state: started2.state })).rejects.toMatchObject({
-      statusCode: 502,
-      message: "ORCID token response is missing required identity fields",
+    await expect(complete({ code: "code-2", state: started2.state })).rejects.toMatchObject({
+      statusCode: 503,
+      message: "ORCID could not confirm the connection. Please start again.",
     });
   });
 
@@ -397,6 +389,7 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
         new Response(
           JSON.stringify({
             access_token: "tok-invalid-orcid",
+            token_type: "bearer", scope: "/authenticate",
             orcid: INVALID_CHECKSUM_ORCID,
           }),
           { status: 200 },
@@ -405,9 +398,9 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     );
 
     const started = await orcidOAuthService.start(USER_ID, SESSION_ID);
-    await expect(orcidOAuthService.complete({ code: "code-invalid", state: started.state })).rejects.toMatchObject({
-      statusCode: 502,
-      message: "ORCID returned an invalid researcher identifier",
+    await expect(complete({ code: "code-invalid", state: started.state })).rejects.toMatchObject({
+      statusCode: 503,
+      message: "ORCID could not confirm the connection. Please start again.",
     });
     expect(mocks.prisma.academicIdentityLink.create).not.toHaveBeenCalled();
   });
@@ -432,12 +425,12 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     mocks.prisma.academicIdentityLink.create.mockResolvedValue(
       identityRow({
         identifier: VALID_ORCID_X,
-        profileUrl: `https://orcid.org/${VALID_ORCID_X}`,
+        profileUrl: `https://sandbox.orcid.org/${VALID_ORCID_X}`,
       }),
     );
 
     const started = await orcidOAuthService.start(USER_ID, SESSION_ID, { returnTo: "/profile" });
-    const completed = await orcidOAuthService.complete({
+    const completed = await complete({
       code: "valid-auth-code",
       state: started.state,
       authenticatedUserId: USER_ID,
@@ -449,17 +442,17 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
         userId: USER_ID,
         provider: "ORCID",
         identifier: VALID_ORCID_X,
-        profileUrl: `https://orcid.org/${VALID_ORCID_X}`,
+        profileUrl: `https://sandbox.orcid.org/${VALID_ORCID_X}`,
         connectionMethod: "OAUTH",
         status: "CONNECTED",
         verificationStatus: "PROVIDER_CONNECTED",
-        visibility: "PUBLIC",
+        visibility: "PRIVATE",
       },
     });
     expect(completed.link).toMatchObject({
       provider: "ORCID",
       identifier: VALID_ORCID_X,
-      profileUrl: `https://orcid.org/${VALID_ORCID_X}`,
+      profileUrl: `https://sandbox.orcid.org/${VALID_ORCID_X}`,
       connectionMethod: "OAUTH",
       status: "CONNECTED",
       verificationStatus: "PROVIDER_CONNECTED",
@@ -469,13 +462,7 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
       expect.objectContaining({
         userId: USER_ID,
         targetRecordId: IDENTITY_ID,
-        details: expect.objectContaining({
-          provider: "ORCID",
-          identifier: VALID_ORCID_X,
-          connectionMethod: "OAUTH",
-          verificationStatus: "PROVIDER_CONNECTED",
-          upgradedFromManual: false,
-        }),
+        details: { environment: "SANDBOX" },
       }),
     );
     expect(JSON.stringify(mocks.auditLog.mock.calls)).not.toContain("sensitive-orcid-token-999");
@@ -490,6 +477,7 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
         new Response(
           JSON.stringify({
             access_token: "token-upgrade",
+            token_type: "bearer", scope: "/authenticate",
             orcid: VALID_ORCID,
           }),
           { status: 200 },
@@ -497,18 +485,8 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
       ),
     );
 
-    // First findFirst checks conflicting verified link on other users -> null
-    // Second findFirst checks existing link on the same user -> manual unverified row
-    mocks.prisma.academicIdentityLink.findFirst
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(
-        identityRow({
-          connectionMethod: "MANUAL",
-          status: "SELF_DECLARED",
-          verificationStatus: "UNVERIFIED",
-          visibility: "REGISTERED_USERS",
-        }),
-      );
+    const manual = identityRow({ connectionMethod: "MANUAL", status: "SELF_DECLARED", verificationStatus: "UNVERIFIED", visibility: "REGISTERED_USERS" });
+    mocks.prisma.academicIdentityLink.findFirst.mockImplementation(async ({ where }) => where.userId === USER_ID ? manual : null);
     mocks.prisma.academicIdentityLink.update.mockResolvedValueOnce(
       identityRow({
         connectionMethod: "OAUTH",
@@ -519,16 +497,16 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     );
 
     const started = await orcidOAuthService.start(USER_ID, SESSION_ID);
-    const completed = await orcidOAuthService.complete({
+    const completed = await complete({
       code: "upgrade-code",
       state: started.state,
     });
 
     expect(mocks.prisma.academicIdentityLink.update).toHaveBeenCalledWith({
-      where: { id: IDENTITY_ID },
+      where: { id: IDENTITY_ID, userId: USER_ID, updatedAt: manual.updatedAt },
       data: {
         identifier: VALID_ORCID,
-        profileUrl: `https://orcid.org/${VALID_ORCID}`,
+        profileUrl: `https://sandbox.orcid.org/${VALID_ORCID}`,
         connectionMethod: "OAUTH",
         status: "CONNECTED",
         verificationStatus: "PROVIDER_CONNECTED",
@@ -539,7 +517,7 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     expect(mocks.auditLog).toHaveBeenCalledWith(
       "academic_profile.orcid.connected",
       expect.objectContaining({
-        details: expect.objectContaining({ upgradedFromManual: true }),
+        details: { environment: "SANDBOX" },
       }),
     );
   });
@@ -551,6 +529,7 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
         new Response(
           JSON.stringify({
             access_token: "token-conflict",
+            token_type: "bearer", scope: "/authenticate",
             orcid: VALID_ORCID,
           }),
           { status: 200 },
@@ -558,37 +537,28 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
       ),
     );
 
-    // Case A: Another user already has a PROVIDER_CONNECTED link for this ORCID iD
-    mocks.prisma.academicIdentityLink.findFirst.mockResolvedValueOnce(
-      identityRow({
-        id: "other-link-id",
-        userId: OTHER_USER_ID,
-        connectionMethod: "OAUTH",
-        status: "CONNECTED",
-        verificationStatus: "PROVIDER_CONNECTED",
-      }),
-    );
+    // Only another user's verified link blocks the verified owner.
+    mocks.prisma.academicIdentityLink.findFirst.mockImplementation(async ({ where }) =>
+      where.userId === USER_ID ? null : identityRow({ id: "other-link-id", userId: OTHER_USER_ID }));
 
     const startedConflict = await orcidOAuthService.start(USER_ID, SESSION_ID);
     await expect(
-      orcidOAuthService.complete({
+      complete({
         code: "conflict-code",
         state: startedConflict.state,
       }),
     ).rejects.toMatchObject({
       statusCode: 409,
-      message: "This ORCID iD is already connected to another LumiGap account",
+      message: "This ORCID iD is already connected to another LumiGap account.",
     });
     expect(mocks.prisma.academicIdentityLink.create).not.toHaveBeenCalled();
 
     // Case B: Another user only had an UNVERIFIED manual claim -> query for PROVIDER_CONNECTED returns null, allowing real owner to connect
-    mocks.prisma.academicIdentityLink.findFirst
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null);
+    mocks.prisma.academicIdentityLink.findFirst.mockResolvedValue(null);
     mocks.prisma.academicIdentityLink.create.mockResolvedValueOnce(identityRow());
 
     const startedAllowed = await orcidOAuthService.start(USER_ID, SESSION_ID);
-    const linked = await orcidOAuthService.complete({
+    const linked = await complete({
       code: "real-owner-code",
       state: startedAllowed.state,
     });
@@ -630,12 +600,9 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     const disconnected = await orcidOAuthService.disconnect(USER_ID);
     expect(disconnected).toEqual({ disconnected: true });
     expect(mocks.prisma.academicIdentityLink.delete).toHaveBeenCalledWith({
-      where: { id: IDENTITY_ID },
+      where: { id: IDENTITY_ID, userId: USER_ID, updatedAt: identityRow().updatedAt },
     });
-    expect(mocks.prisma.academicProfile.updateMany).toHaveBeenCalledWith({
-      where: { userId: USER_ID },
-      data: { orcidStatus: "NOT_SUBMITTED" },
-    });
+    expect(mocks.prisma.academicProfile.updateMany).not.toHaveBeenCalled();
     expect(mocks.auditLog).toHaveBeenCalledWith(
       "academic_profile.orcid.disconnected",
       expect.objectContaining({
@@ -661,6 +628,7 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
         new Response(
           JSON.stringify({
             access_token: "token-student",
+            token_type: "bearer", scope: "/authenticate",
             orcid: VALID_ORCID,
           }),
           { status: 200 },
@@ -672,21 +640,13 @@ describe("ORCID OAuth 2.0 Service & Account Linking", () => {
     mocks.prisma.academicIdentityLink.create.mockResolvedValueOnce(identityRow());
 
     const started = await orcidOAuthService.start(USER_ID, SESSION_ID);
-    await orcidOAuthService.complete({
+    await complete({
       code: "student-code",
       state: started.state,
     });
 
-    expect(mocks.prisma.academicProfile.updateMany).toHaveBeenCalledTimes(1);
-    const profileUpdatePayload = mocks.prisma.academicProfile.updateMany.mock.calls[0]?.[0];
-    expect(profileUpdatePayload).toEqual({
-      where: { userId: USER_ID },
-      data: { orcidStatus: "VERIFIED" },
-    });
-    expect(profileUpdatePayload.data).not.toHaveProperty("academicRole");
-    expect(profileUpdatePayload.data).not.toHaveProperty("roleVerificationStatus");
-    expect(profileUpdatePayload.data).not.toHaveProperty("positionStatus");
-    expect(profileUpdatePayload.data).not.toHaveProperty("affiliationStatus");
-    expect(profileUpdatePayload.data).not.toHaveProperty("verificationStatus");
+    // Linking updates only the identity table, never academic role/position/affiliation.
+    expect(mocks.prisma.academicProfile.updateMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.academicIdentityLink.create).toHaveBeenCalledWith({ data: expect.objectContaining({ connectionMethod: "OAUTH", verificationStatus: "PROVIDER_CONNECTED" }) });
   });
 });

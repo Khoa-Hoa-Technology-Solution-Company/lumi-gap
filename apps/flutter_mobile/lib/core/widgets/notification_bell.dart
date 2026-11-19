@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/notifications/data/notifications_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,9 +13,10 @@ String? unreadBadgeText(int unread) {
   return unread > 9 ? '9+' : '$unread';
 }
 
-/// Screen-reader and tooltip text, e.g. "Thông báo, 3 chưa đọc".
-String notificationBellLabel(int unread) =>
-    unread <= 0 ? 'Thông báo' : 'Thông báo, $unread chưa đọc';
+/// Screen-reader and tooltip text, e.g. "Notifications, 3 unread".
+String notificationBellLabel(int unread, AppLocale locale) => unread <= 0
+    ? translate('Notifications', locale)
+    : translate('Notifications, {{count}} unread', locale, {'count': unread});
 
 /// Bell for the AppBar of the three main tabs. The count comes from the same
 /// [notificationsProvider] the notifications screen invalidates after marking
@@ -30,7 +32,7 @@ class NotificationBell extends ConsumerWidget {
         );
     final lumi = context.lumi;
     final text = unreadBadgeText(unread);
-    final label = notificationBellLabel(unread);
+    final label = notificationBellLabel(unread, context.appLocale);
 
     return Semantics(
       button: true,

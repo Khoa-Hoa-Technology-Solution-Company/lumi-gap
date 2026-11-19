@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/config/app_config.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Root tabs live in the shell: reach them with `go`, never `push`.
-const shellTabRoutes = {'/', '/explore', '/projects', '/profile'};
+const shellTabRoutes = {'/', '/explore', '/projects', '/community', '/profile'};
 
 /// Maps a **web** path from the API (for example `/projects/42?tab=papers`)
 /// to the matching **mobile** route, or null when mobile has no such screen
@@ -36,6 +37,27 @@ String? mapWebHref(String href) {
       if (segments.length == 1) {
         return uri.hasQuery ? '/search?${uri.query}' : '/search';
       }
+    case 'forum':
+      if (segments.length == 1) return '/community';
+      // A post is `/forum/:idOrSlug/:postNumber?` (app-routes.tsx);
+      // `/forum/new`, `/forum/categories`, … are web tools.
+      if (segments[1] == 'category') return '/community';
+      if ((segments.length == 2 || segments.length == 3) &&
+          !_forumWebOnly.contains(segments[1])) {
+        return '/forum/post/${id(segments[1])}';
+      }
+    case 'communities':
+      if (segments.length == 1) return '/community?view=communities';
+      if (segments.length == 2 && segments[1] != 'new') {
+        return '/communities/${id(segments[1])}';
+      }
+    case 'reviews':
+      // `/reviews/:assignmentId` is the review editor: web only.
+      if (segments.length == 1) return '/reviews';
+    case 'review-requests':
+      if (segments.length == 2) return '/review-requests/${id(segments[1])}';
+    case 'invitations':
+      if (segments.length == 2) return '/invitations/${id(segments[1])}';
   }
   return null;
 }
@@ -49,6 +71,9 @@ Uri? webUrlFor(String href, {String origin = AppConfig.webOrigin}) {
       : origin;
   return Uri.tryParse('$base$href');
 }
+
+/// Forum paths that are web pages, not posts.
+const _forumWebOnly = {'new', 'categories', 'moderation', 'copyright'};
 
 Uri? _parseSitePath(String href) {
   final value = href.trim();
@@ -67,6 +92,12 @@ final urlOpenerProvider = Provider<UrlOpener>(
   (ref) =>
       (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
 );
+
+/// Opens [href] in the browser even when the app has a screen for it: for
+/// "Continue on the web", where the work itself is web only.
+Future<void> openWebPage(BuildContext context, WidgetRef ref, String href) async {
+  await openWebPage(context, ref, href);
+}
 
 /// Opens a web [href]: the mobile screen when one exists, otherwise the web
 /// page in the browser. Shows a snackbar when neither is possible.
@@ -97,7 +128,7 @@ Future<void> openWebHref(
   }
   if (!opened && context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Không mở được liên kết.')),
+      SnackBar(content: Text(context.t('Could not open the link.'))),
     );
   }
 }

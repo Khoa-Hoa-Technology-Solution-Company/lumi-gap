@@ -16,7 +16,7 @@ import "../supervisor-invitation.css";
 
 type Lecturer = Pick<AvailableMentor, "_id" | "fullName"> & Partial<AvailableMentor>;
 type Draft = { summary: string; message: string; signature?: string; key?: string };
-type Props = { project: MentorPreview; mentor: Lecturer; onClose: () => void; onSent?: () => void; planned?: { candidate: MentorPlanCandidate; version: number } };
+type Props = { project: MentorPreview; mentor: Lecturer; onClose: () => void; onSent?: () => void; planned?: { candidate: MentorPlanCandidate; version: number }; application?: { id: string; version: number } };
 
 function recoverDraft(storageKey: string): Draft | undefined {
   try {
@@ -29,7 +29,7 @@ export function SupervisorInvitationForm(props: Props) {
   const actor = useAuthStore(s => s.user?.id);
   return <SupervisorInvitationFormInner key={`${actor}:${props.project.id}:${props.mentor._id}`} {...props} />;
 }
-function SupervisorInvitationFormInner({ project, mentor, onClose, onSent, planned }: Props) {
+function SupervisorInvitationFormInner({ project, mentor, onClose, onSent, planned, application }: Props) {
   const { t } = useI18n(), actor = useAuthStore(s => s.user?.id), cache = useQueryClient();
   const storageKey = `lumigap-supervisor-invite:${actor}:${project.id}:${mentor._id}`;
   const [initial] = useState(() => recoverDraft(storageKey));
@@ -53,7 +53,7 @@ function SupervisorInvitationFormInner({ project, mentor, onClose, onSent, plann
   };
   const context = settings.data?.invitationContext;
   const dossier: InvitationDossierInput = { presentation: "BRIEF", researchSummary: draft.summary.trim(), sharingConfirmed: true, expectations: { supportAreas: [] } };
-  const payload = { mentorRole: "UNASSIGNED" as const, attachmentIds: [], dossier, access: defaultMentorPolicy(), expectedPreviewToken: context?.token, ...(planned ? { candidateId: planned.candidate.id, expectedPlanVersion: planned.version } : {}) };
+  const payload = { ...(application ? { applicationId: application.id, expectedApplicationVersion: application.version } : {}), mentorRole: "UNASSIGNED" as const, attachmentIds: [], dossier, access: defaultMentorPolicy(), expectedPreviewToken: context?.token, ...(planned ? { candidateId: planned.candidate.id, expectedPlanVersion: planned.version } : {}) };
   const signature = JSON.stringify({ payload, message: draft.message.trim() });
   const send = useMutation({ mutationFn: async () => {
     if (useAuthStore.getState().user?.id !== actor) throw new Error("Your account changed. Reopen the invitation before continuing.");

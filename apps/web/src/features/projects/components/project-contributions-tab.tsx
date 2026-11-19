@@ -40,7 +40,7 @@ const memberActor = (member: IProjectMember) => typeof member.targetId === "stri
 const memberId = (member: IProjectMember) => typeof member.targetId === "string" ? member.targetId : member.targetId._id;
 
 function statusBadge(status: ProjectContributionProposal["status"]) {
-  if (status === "CONFIRMED") return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300">Verified</Badge>;
+  if (status === "CONFIRMED") return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300">Acknowledged</Badge>;
   if (status === "REJECTED") return <Badge variant="destructive">Rejected</Badge>;
   return <Badge variant="secondary">Pending confirmation</Badge>;
 }
@@ -121,7 +121,7 @@ export function ProjectContributionsTab({
           <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Propose project contribution</DialogTitle>
-              <DialogDescription>The proposal is not verified until the required counterparty confirms it.</DialogDescription>
+              <DialogDescription>The counterparty acknowledges this declaration. This is not scientific validation.</DialogDescription>
             </DialogHeader>
             <form onSubmit={submitProposal} className="space-y-5">
               <div className="space-y-2">
