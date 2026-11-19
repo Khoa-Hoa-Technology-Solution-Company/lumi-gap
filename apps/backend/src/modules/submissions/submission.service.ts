@@ -490,15 +490,23 @@ export const submissionService = {
     const users = await prisma.user.findMany({ where: { id: { in: [...new Set([...reviews.map((item) => item.reviewerId), ...visibleAssignments.map((item) => item.reviewerId)])] } }, select: { id: true, legacyMongoId: true, fullName: true, email: true, avatarUrl: true, role: true } });
     const userMap = new Map(users.map((item) => [item.id, item.fullName]));
     const versions = await prisma.submissionRevision.findMany({ where: { submissionId: submission.id, ...(allowed ? { id: { in: allowed } } : {}) }, orderBy: { revisionNumber: "desc" } });
-    const reviewDetails = await Promise.all(reviews.map(async (review) => ({ id: review.id, reviewerId: review.reviewerId, reviewerName: access === "blind" ? "Your review" : userMap.get(review.reviewerId) ?? "Reviewer", reviewerAcademicRole: review.reviewerAcademicRole, revisionId: review.revisionId, roundNumber: review.roundNumber, templateVersionId: review.templateVersionId, weightedScore: review.weightedScore, overallAssessment: review.overallAssessment, keyStrengths: review.keyStrengths, keyConcerns: review.keyConcerns, overallComment: review.overallComment, submittedAt: review.submittedAt, requestId: assignments.find((item) => item.id === review.assignmentId)?.reviewRequestId,
-      responses: await prisma.reviewResponse.findMany({ where: { reviewId: review.id } }),
-      requiredRevisions: await Promise.all((await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } })).map(async (item) => ({ ...item, responses: await prisma.reviewRevisionResponse.findMany({ where: { revisionItemId: item.id, ...(access === "blind" ? { status: { not: "DRAFT" } } : {}) }, orderBy: { createdAt: "asc" } }) }))),
-    })));
+    const reviewIds = reviews.map(review => review.id);
+    const [responses, revisionItems] = await Promise.all([
+      prisma.reviewResponse.findMany({ where: { reviewId: { in: reviewIds } } }),
+      prisma.reviewRevisionItem.findMany({ where: { reviewId: { in: reviewIds } }, orderBy: { position: "asc" } }),
+    ]);
+    const revisionResponses = await prisma.reviewRevisionResponse.findMany({ where: { revisionItemId: { in: revisionItems.map(item => item.id) }, ...(access === "blind" ? { status: { not: "DRAFT" } } : {}) }, orderBy: { createdAt: "asc" } });
+    const reviewDetails = reviews.map(review => ({ id: review.id, reviewerId: review.reviewerId, reviewerName: access === "blind" ? "Your review" : userMap.get(review.reviewerId) ?? "Reviewer", reviewerAcademicRole: review.reviewerAcademicRole, revisionId: review.revisionId, roundNumber: review.roundNumber, templateVersionId: review.templateVersionId, weightedScore: review.weightedScore, overallAssessment: review.overallAssessment, keyStrengths: review.keyStrengths, keyConcerns: review.keyConcerns, overallComment: review.overallComment, submittedAt: review.submittedAt, requestId: assignments.find(item => item.id === review.assignmentId)?.reviewRequestId,
+      responses: responses.filter(response => response.reviewId === review.id),
+      requiredRevisions: revisionItems.filter(item => item.reviewId === review.id).map(item => ({ ...item, responses: revisionResponses.filter(response => response.revisionItemId === item.id) })),
+    }));
     const [project, author] = await Promise.all([
       prisma.project.findUniqueOrThrow({ where: { id: submission.projectId } }),
       prisma.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId: actor.id } } }),
     ]);
     const writable = access === "full" && project.status !== "ARCHIVED";
+    const source = writable && submission.sourceManuscriptId ? await prisma.draftWorkspace.findFirst({ where: { id: submission.sourceManuscriptId, projectId: project.id, writingMode: "LATEX", archivedAt: null, deletedAt: null }, select: { id: true } }) : null;
+    const sourceManuscriptWritable = Boolean(source && (project.ownerId === actor.id || await prisma.projectMember.count({ where: { projectId: project.id, userId: actor.id, status: "ACTIVE" } })));
     const assignmentByRequest = new Map(visibleAssignments.flatMap((item) => item.reviewRequestId ? [[item.reviewRequestId, item] as const] : []));
     const revisionNumbers = new Map(versions.map((item) => [item.id, item.revisionNumber]));
     const mentorRequestIds = new Set(requests.filter(r=>r.origin === "MENTOR_GUIDANCE").map(r=>r.id));
@@ -510,7 +518,8 @@ export const submissionService = {
       try { await assertPeerReviewer(actor.id); await assertMentorReviewAccess(prisma, submission.projectId, actor.id, submission.id); }
       catch { canProvideFeedback = false; }
     }
-    return { canManage: await canManageSubmission(submission, actor.id, actorRole),
+    return {
+      sourceManuscriptWritable, canManage: await canManageSubmission(submission, actor.id, actorRole),
       canProvideFeedback,
       assignedMentor,
       canRunAiPreReview: writable && !AI_PRE_REVIEW_CLOSED_STATUSES.includes(submission.status) && Boolean(author || hasPermission(actorRole, "review:assign")),
@@ -519,11 +528,37 @@ export const submissionService = {
         const assignment = assignmentByRequest.get(request.id);
         const revisionNumber = revisionNumbers.get(request.artifactRevisionId);
         if (!assignment || revisionNumber === undefined) return [];
-        return [{ id: request.id, reviewerName: access === "blind" ? "Your review" : userMap.get(assignment.reviewerId) ?? "Reviewer", status: request.status === "REQUESTED" && request.expiresAt && request.expiresAt <= new Date() ? "EXPIRED" : request.status, revisionNumber, dueAt: request.dueAt, canView: request.requesterId === actor.id || assignment.reviewerId === actor.id }];
+        return [{
+          id: request.id,
+          reviewerId: access === "blind" ? undefined : assignment.reviewerId,
+          reviewerName: access === "blind" ? "Your review" : userMap.get(assignment.reviewerId) ?? "Reviewer",
+          status: request.status === "REQUESTED" && request.expiresAt && request.expiresAt <= new Date() ? "EXPIRED" : request.status,
+          revisionNumber,
+          revisionId: request.artifactRevisionId,
+          origin: request.origin,
+          createdAt: request.createdAt.toISOString(),
+          updatedAt: request.updatedAt.toISOString(),
+          dueAt: request.dueAt,
+          canView: request.requesterId === actor.id || assignment.reviewerId === actor.id,
+        }];
       }),
       openForReview: submission.openForReview, currentRevisionId: access === "blind" ? versions[0]?.id : submission.currentRevisionId, currentRevisionNumber: access === "blind" ? versions[0]?.revisionNumber : submission.currentRevisionNumber,
       latestReviewedRevisionId: versions.find((item) => reviews.some((review) => review.revisionId === item.id))?.id ?? null,
-      versions: versions.map((item) => ({ id: item.id, revisionNumber: item.revisionNumber, contentType: item.contentType, contentSnapshot: item.contentSnapshot, checksumSha256: item.checksumSha256, sizeBytes: item.sizeBytes, sourceRevisionId: item.sourceRevisionId, manuscriptSnapshotId: item.manuscriptSnapshotId, responseToReview: item.responseToReview, createdAt: item.createdAt, hasPdf: Boolean(item.storageUri), reviews: reviewDetails.filter((review) => review.revisionId === item.id) })),
+      versions: versions.map((item) => ({
+        id: item.id,
+        revisionNumber: item.revisionNumber,
+        contentType: item.contentType,
+        contentSnapshot: item.contentSnapshot,
+        checksumSha256: item.checksumSha256,
+        sizeBytes: item.sizeBytes,
+        originalFileName: access === "blind" ? null : item.originalFileName ?? null,
+        sourceRevisionId: item.sourceRevisionId,
+        manuscriptSnapshotId: item.manuscriptSnapshotId,
+        responseToReview: item.responseToReview,
+        createdAt: item.createdAt,
+        hasPdf: Boolean(item.storageUri),
+        reviews: reviewDetails.filter((review) => review.revisionId === item.id),
+      })),
       contributions: [...new Set(reviews.map((item) => item.reviewerId))].map((reviewerId) => ({ reviewerId, name: userMap.get(reviewerId) ?? "Reviewer", type: "REVIEW", status: assignments.some((item) => item.reviewerId === reviewerId && item.status === "accepted" && item.decision?.includes("revision")) ? "FOLLOWING_REVISION" : assignments.some((item) => item.reviewerId === reviewerId && ["assigned", "accepted"].includes(item.status)) ? "IN_REVIEW" : "COMPLETED", rounds: reviewDetails.filter((item) => item.reviewerId === reviewerId).map((item) => ({ reviewId: item.id, revisionId: item.revisionId, roundNumber: item.roundNumber, submittedAt: item.submittedAt, academicRole: item.reviewerAcademicRole })) })),
     };
   },

@@ -1,3 +1,4 @@
+import { submissionDetailVi } from "./submission-detail";
 import { registrationVi } from "./registration";
 import { mentorWorkspaceVi } from "./mentor-workspace";
 import { scientificReviewVi } from "./scientific-review";
@@ -2549,5 +2550,6 @@ export const vi: Record<keyof typeof en, string> = {
   ...mentorJourneyVi,
   ...creditAttributionVi,
   ...submissionWorkflowVi,
+  ...submissionDetailVi,
 };
 import { creditAttributionVi } from "./credit-attribution";

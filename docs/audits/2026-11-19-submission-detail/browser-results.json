@@ -1,0 +1,100 @@
+[
+  {
+    "name": "desktop",
+    "width": 1440,
+    "height": 900,
+    "pdfRequests": [
+      "/api/v1/submissions/qa-submission/revisions/qa-v2/download",
+      "/api/v1/submissions/qa-submission/revisions/qa-v1/download"
+    ],
+    "errors": []
+  },
+  {
+    "name": "tablet",
+    "width": 1024,
+    "height": 768,
+    "pdfRequests": [
+      "/api/v1/submissions/qa-submission/revisions/qa-v2/download"
+    ],
+    "errors": []
+  },
+  {
+    "name": "mobile",
+    "width": 390,
+    "height": 844,
+    "pdfRequests": [
+      "/api/v1/submissions/qa-submission/revisions/qa-v2/download"
+    ],
+    "errors": []
+  },
+  {
+    "name": "dark",
+    "width": 1440,
+    "height": 900,
+    "pdfRequests": [
+      "/api/v1/submissions/qa-submission/revisions/qa-v2/download"
+    ],
+    "errors": []
+  },
+  {
+    "name": "pending",
+    "width": 1440,
+    "height": 900,
+    "pdfRequests": [
+      "/api/v1/submissions/qa-submission/revisions/qa-v2/download"
+    ],
+    "errors": []
+  },
+  {
+    "name": "in-progress",
+    "width": 1440,
+    "height": 900,
+    "pdfRequests": [
+      "/api/v1/submissions/qa-submission/revisions/qa-v2/download"
+    ],
+    "errors": []
+  },
+  {
+    "name": "completed",
+    "width": 1440,
+    "height": 900,
+    "pdfRequests": [
+      "/api/v1/submissions/qa-submission/revisions/qa-v2/download"
+    ],
+    "errors": []
+  },
+  {
+    "name": "pdf-invalid",
+    "width": 1440,
+    "height": 900,
+    "pdfRequests": [
+      "/api/v1/submissions/qa-submission/revisions/qa-v2/download"
+    ],
+    "errors": []
+  },
+  {
+    "name": "pdf-error",
+    "width": 1440,
+    "height": 900,
+    "pdfRequests": [
+      "/api/v1/submissions/qa-submission/revisions/qa-v2/download"
+    ],
+    "errors": []
+  },
+  {
+    "name": "denied",
+    "width": 1440,
+    "height": 900,
+    "pdfRequests": [],
+    "errors": []
+  },
+  {
+    "name": "english",
+    "width": 1440,
+    "height": 900,
+    "pdfRequests": [
+      "/api/v1/submissions/qa-submission/revisions/qa-v2/download"
+    ],
+    "errors": []
+  }
+]
