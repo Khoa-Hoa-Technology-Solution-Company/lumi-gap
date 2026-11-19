@@ -17,7 +17,8 @@ import {
   buildCitationMetric,
   fillMissingCitationYears,
 } from "./trend.intelligence.js";
-import { computeMetrics, fillMissingYears, truncateToCompleteYears, yoyGrowthPct } from "./trend.formulas.js";
+import { fillMissingYears, truncateToCompleteYears } from "./trend.formulas.js";
+import { keywordShifts, risingShifts, splitPeriods } from "./trend.keywords.js";
 import { benjaminiHochberg } from "./trend.statistics.js";
 import { buildRecommendedComparisons, classifyTrend, compareByTotal, compareByTrend, countVerdicts, pageTopics, shareTrendStatistics } from "./trend.verdict.js";
 import type { TrendPeriodsQuery, TrendsOverviewQuery } from "./dto/trends.schema.js";
@@ -26,7 +27,7 @@ import { DEFAULT_PERIODS } from "./trend.openalex-periods.js";
 import { subYearPeriods } from "./trend.openalex-topics.js";
 
 const DEFAULT_WINDOW_YEARS = 5;
-const MIN_RISING_PREV_BASE = 2;
+const RISING_KEYWORDS_LIMIT = 10;
 
 type CountRow = { id: string | null; name: string | null; count: number };
 type YearRow = { year: number; count: number; totalCitations: number };
@@ -124,7 +125,7 @@ export async function getPostgresTrendsOverview(query: TrendsOverviewQuery): Pro
     yearTo,
   );
   const topics = buildTopics(topicRows, yearlyRows, yearFrom, yearTo, lastCompleteYear, query.minPapers, query.sortBy);
-  const risingKeywords = buildRisingKeywords(keywordRows, yearFrom, yearTo, lastCompleteYear);
+  const risingKeywords = buildRisingKeywords(keywordRows, yearlyTotalPapers, yearFrom, yearTo, lastCompleteYear);
   const totalPapersInWindow = yearlyRows.reduce((sum, row) => sum + Number(row.count), 0);
 
   const facets: TrendFacets = {
@@ -483,7 +484,6 @@ function buildTopics(
         ...(group.taxonomy ? { taxonomy: group.taxonomy } : {}),
         totalPapers,
         yearlyBreakdown,
-        ...computeMetrics(yearlyBreakdown, lastCompleteYear),
       },
       stats: shareTrendStatistics(shareSeries),
     });
@@ -497,39 +497,43 @@ function buildTopics(
   return topics;
 }
 
+/**
+ * Keywords whose share of the scope's papers rose between the earlier and the
+ * later half of the complete years: the same 2×2 log odds ratio test with BH
+ * correction as the OpenAlex overview (trend.keywords.ts), on local counts.
+ */
 function buildRisingKeywords(
   rows: KeywordYearRow[],
+  yearlyTotalPapers: YearlyCount[],
   yearFrom: number,
   yearTo: number,
   lastCompleteYear: number,
 ): RisingKeyword[] {
+  const halves = splitPeriods(yearlyTotalPapers.filter((row) => row.year <= lastCompleteYear && row.count > 0).map((row) => row.year));
+  if (!halves) return [];
+  const { periodA, periodB } = halves;
+  const totals = new Map(yearlyTotalPapers.map((row) => [row.year, row.count]));
+  const sum = (years: number[], counts: Map<number, number>) => years.reduce((total, year) => total + (counts.get(year) ?? 0), 0);
+
   const groups = new Map<string, Map<number, number>>();
   for (const row of rows) {
     const years = groups.get(row.keyword) ?? new Map<number, number>();
     years.set(row.year, Number(row.count));
     groups.set(row.keyword, years);
   }
-  return [...groups]
-    .map(([keyword, years]) => {
-      const yearlyBreakdown = fillMissingYears(
-        [...years].map(([year, count]) => ({ year, count })),
-        yearFrom,
-        yearTo,
-      );
-      const complete = truncateToCompleteYears(yearlyBreakdown, lastCompleteYear);
-      const prevBase = complete.length >= 2 ? complete.at(-2)?.count ?? 0 : 0;
-      return {
-        keyword,
-        totalPapers: yearlyBreakdown.reduce((sum, row) => sum + row.count, 0),
-        growthRatePct: yoyGrowthPct(complete),
-        yearlyBreakdown,
-        prevBase,
-      };
-    })
-    .filter((row) => row.growthRatePct > 0 && row.prevBase >= MIN_RISING_PREV_BASE)
-    .sort((a, b) => b.growthRatePct - a.growthRatePct || a.totalPapers - b.totalPapers)
-    .slice(0, 10)
-    .map(({ prevBase: _internal, ...row }) => row);
+  const shifts = keywordShifts(
+    [...groups].map(([term, years]) => ({ term, papersA: sum(periodA, years), papersB: sum(periodB, years) })),
+    sum(periodA, totals),
+    sum(periodB, totals),
+  );
+  const periods = {
+    periodA: { yearFrom: periodA[0]!, yearTo: periodA.at(-1)! },
+    periodB: { yearFrom: periodB[0]!, yearTo: periodB.at(-1)! },
+  };
+  return risingShifts(shifts, RISING_KEYWORDS_LIMIT).map((shift) => {
+    const yearlyBreakdown = fillMissingYears([...groups.get(shift.term)!].map(([year, count]) => ({ year, count })), yearFrom, yearTo);
+    return { keyword: shift.term, totalPapers: yearlyBreakdown.reduce((total, row) => total + row.count, 0), yearlyBreakdown, shift: { ...shift, ...periods } };
+  });
 }
 
 function toFacetBucket(row: CountRow): TrendFacetBucket {

@@ -18,11 +18,13 @@ import { deliverProjectInvitationEmail, recoverProjectInvitationEmails } from ".
 import { canDeliverWorkspaceNotification } from "../modules/projects/workspace-notification-access.js";
 import { deliverContributionsEmail } from "../modules/projects/contributions-mail.service.js";
 import { trendFollowService } from "../modules/trends/trend-follow.service.js";
+import { trendService } from "../modules/trends/trend.service.js";
 import { env } from "../config/env.js";
 
 enforcePostgresOnlyRuntime();
 
 const TREND_FOLLOW_JOB = "check-trend-follows";
+const TREND_WARM_JOB = "warm-trend-scope";
 
 interface NotificationJob {
   notificationId: string;
@@ -141,6 +143,11 @@ async function main() {
         logger.info({ jobId: job.id, ...result }, "followed trend topics checked");
         return;
       }
+      if (job.name === TREND_WARM_JOB) {
+        const result = await trendService.warmScope();
+        logger.info({ jobId: job.id, ...result }, "trend scope series warmed");
+        return;
+      }
       const { notificationId } = job.data as NotificationJob;
       logger.info({ jobId: job.id, notificationId, attempt: job.attemptsMade + 1 }, "notification push job received");
       await sendPush(notificationId);
@@ -155,6 +162,8 @@ async function main() {
 
   // Daily verdict check of followed trend topics. BullMQ dedups by repeat key, so restarts do not stack schedules.
   await notificationQueue.add(TREND_FOLLOW_JOB, {}, { repeat: { pattern: env.TREND_FOLLOW_CRON } });
+  // Keeps the trend overview fast: its per-topic series are re-fetched before their cache entries expire.
+  await notificationQueue.add(TREND_WARM_JOB, {}, { repeat: { pattern: env.TREND_WARM_CRON }, attempts: 2 });
 
   let maintenanceRunning = false;
   const maintenance = async () => {

@@ -7,10 +7,6 @@ type DatasetTrendTab = "overview" | "topics" | "dataset" | "compare" | "ai";
 interface DatasetScopeNextActionsProps {
   yearFrom: number;
   yearTo: number;
-  domainIds: string[];
-  domains: string[];
-  fieldIds: string[];
-  fields: string[];
   subfieldIds: string[];
   subfields: string[];
   topicIds: string[];
@@ -34,10 +30,6 @@ interface DatasetScopeNextActionsProps {
 export function DatasetScopeNextActions({
   yearFrom,
   yearTo,
-  domainIds,
-  domains,
-  fieldIds,
-  fields,
   subfieldIds,
   subfields,
   topicIds,
@@ -58,7 +50,7 @@ export function DatasetScopeNextActions({
   hasAnyFilter
 }: DatasetScopeNextActionsProps) {
 
-  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, { yearFrom, yearTo, domainIds, domains, fieldIds, fields, subfieldIds, subfields, topicIds, topicsFilter, paperKinds, openAccessStatuses, providers, sources, languages, citationBands });
+  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, { yearFrom, yearTo, subfieldIds, subfields, topicIds, topicsFilter, paperKinds, openAccessStatuses, providers, sources, languages, citationBands });
 
   const isDisabled = isUpdating || totalInWindow === 0;
 

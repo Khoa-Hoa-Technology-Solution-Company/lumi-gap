@@ -9,6 +9,7 @@ import {
   TrendCompareQuerySchema,
   TrendExplainBodySchema,
   TrendPeriodsQuerySchema,
+  TrendEmergingQuerySchema,
   TrendRelationshipQuerySchema,
   TrendTopicCandidatesQuerySchema,
   TrendsOverviewQuerySchema,
@@ -76,6 +77,18 @@ export const trendController = {
     }
 
     const data = await trendService.topicCandidates(parsed.data);
+    res.json({ success: true, data });
+  },
+
+  /** GET /api/v1/trends/emerging?limit=10 — emerging keyword signals of the IT scope. */
+  async emerging(req: Request, res: Response, next: NextFunction) {
+    const parsed = TrendEmergingQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      next(parsed.error);
+      return;
+    }
+
+    const data = await trendService.emerging(parsed.data);
     res.json({ success: true, data });
   },
 

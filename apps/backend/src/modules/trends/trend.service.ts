@@ -1,5 +1,6 @@
 import type { TrendExplanationResponse, TrendPossibleDriver } from "@trend/shared-types";
-import type { TrendCompareQuery, TrendExplainBody, TrendExplainHistoryQuery, TrendPeriodsQuery, TrendRelationshipQuery, TrendTopicCandidatesQuery, TopicTrendQuery, TrendsOverviewQuery } from "./dto/trends.schema.js";
+import { TrendsOverviewQuerySchema } from "./dto/trends.schema.js";
+import type { TrendCompareQuery, TrendEmergingQuery, TrendExplainBody, TrendExplainHistoryQuery, TrendPeriodsQuery, TrendRelationshipQuery, TrendTopicCandidatesQuery, TopicTrendQuery, TrendsOverviewQuery } from "./dto/trends.schema.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { hashKey } from "../../infrastructure/cache.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
@@ -10,14 +11,17 @@ import { cachedGenerateJSON } from "../llm/llm.run.js";
 import { aiModel } from "../user-ai/user-ai.runtime.js";
 import { buildAllowedTrendNumbers, buildTrendExplainPrompt, buildTrendMetricTrace, generateTrendExplanationWithRetry, pickRepresentativePapers, TREND_EXPLAIN_PROMPT_VERSION, TREND_EXPLAIN_SYSTEM_PROMPT, validateTrendExplanation } from "./trend-explain.prompt.js";
 import { computeTopicStatistics } from "./trend.evidence.js";
-import { computeMetrics, fillMissingYears } from "./trend.formulas.js";
-import { isOpenAlexBudgetAvailable, shortId } from "./trend.openalex-client.js";
+import { fillMissingYears } from "./trend.formulas.js";
+import { isOpenAlexBudgetAvailable, shortId, withOpenAlexRefresh } from "./trend.openalex-client.js";
+import { FULL_WINDOW_YEARS } from "./trend.verdict.js";
 import { getOpenAlexCompare, getOpenAlexRelationships, getOpenAlexTopicCandidates, getOpenAlexTopicDetail } from "./trend.openalex-detail.js";
+import { emptyEmerging, getOpenAlexEmerging } from "./trend.openalex-emerging.js";
 import { getOpenAlexTrendsOverview } from "./trend.openalex-overview.js";
 import { getOpenAlexTrendPeriods } from "./trend.openalex-periods.js";
 import { getPostgresTrendPeriods, getPostgresTrendsOverview } from "./trend.postgres.js";
 
-const WINDOW = 10;
+/** Default window: FULL_WINDOW_YEARS complete years plus the running one. */
+const WINDOW = FULL_WINDOW_YEARS;
 /** Papers listed on the topic detail page so the reader can go from the trend to its literature. */
 const TOP_PAPERS = 6;
 /** Overview scope the AI explanation is grounded on when the client does not send its own. */
@@ -111,7 +115,6 @@ async function topicDetail(topic: string, { span, papers, topics }: TopicRows) {
     citationTrend: citationSeries(papers, span.yearFrom, span.yearTo),
     facets: EMPTY_FACETS,
     lastCompleteYear: span.lastCompleteYear,
-    ...computeMetrics(yearlyBreakdown, span.lastCompleteYear),
     topJournals: [...journals].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ id: name, name, count })),
     topAuthors: authors,
     topKeywords: keywords,
@@ -142,7 +145,7 @@ async function topicWithRows(topic: string, query: TopicTrendQuery) {
   const local = await topicRows(topic, query);
   const detail = await preferOpenAlex("topic", () => getOpenAlexTopicDetail(topic, query), () => topicDetail(topic, local));
   const scope = detail.taxonomy ?? taxonomy(local.topics);
-  const statistics = await computeTopicStatistics({ topic, topicId: scope?.openalexTopicId ?? query.topicId, fieldId: scope?.fieldId, fieldName: scope?.fieldName, papers: local.papers, yearFrom: span.yearFrom, lastCompleteYear: span.lastCompleteYear });
+  const statistics = await computeTopicStatistics({ topic, topicId: scope?.openalexTopicId ?? query.topicId, fieldId: scope?.fieldId, fieldName: scope?.fieldName, subfieldId: scope?.subfieldId, papers: local.papers, yearFrom: span.yearFrom, yearTo: span.yearTo, lastCompleteYear: span.lastCompleteYear });
   const topPapers = [...local.papers]
     .sort((a, b) => b.citationCount - a.citationCount)
     .slice(0, TOP_PAPERS)
@@ -163,8 +166,25 @@ export const trendService = {
     return preferOpenAlex("overview", () => getOpenAlexTrendsOverview(query), () => getPostgresTrendsOverview(query));
   },
 
+  /**
+   * Re-fetches the default overview from OpenAlex, bypassing the cache read, so the yearly series of every topic of
+   * the IT scope are rewritten in the cache with a fresh lifetime (they do not depend on the window or the taxonomy
+   * filters). Run by the notification worker on TREND_WARM_CRON, which must be shorter than the 7-day cache lifetime.
+   * OpenAlex errors are thrown, not hidden behind the local fallback: a failed warm-up must show in the job log.
+   */
+  async warmScope() {
+    const startedAt = Date.now();
+    const overview = await withOpenAlexRefresh(() => getOpenAlexTrendsOverview(TrendsOverviewQuerySchema.parse({})));
+    return { scopeVersion: overview.scopeVersion, topics: overview.testedTopicCount, verdictCounts: overview.verdictCounts, durationMs: Date.now() - startedAt };
+  },
+
   periods(query: TrendPeriodsQuery) {
     return preferOpenAlex("periods", () => getOpenAlexTrendPeriods(query), () => getPostgresTrendPeriods(query));
+  },
+
+  /** Emerging keyword signals; the local corpus has no OpenAlex keywords, so its fallback is an empty list. */
+  emerging(query: TrendEmergingQuery) {
+    return preferOpenAlex("emerging", () => getOpenAlexEmerging(query), async () => emptyEmerging());
   },
 
   async topic(topic: string, query: TopicTrendQuery) {
@@ -185,7 +205,7 @@ export const trendService = {
     const topics = await Promise.all(
       [...new Set(query.topics)].map(async (topic) => {
         const detail = await this.topicDetailOnly(topic, query);
-        return { topic, taxonomy: detail.taxonomy, totalPapers: detail.totalPapers, yearlyBreakdown: detail.yearlyBreakdown, citationTrend: detail.citationTrend, momentum: detail.momentum, growthRatePct: detail.growthRatePct, cagr3yPct: detail.cagr3yPct };
+        return { topic, taxonomy: detail.taxonomy, totalPapers: detail.totalPapers, yearlyBreakdown: detail.yearlyBreakdown, citationTrend: detail.citationTrend };
       }),
     );
     return { ...span, topics, computedAt: new Date().toISOString() };
@@ -203,7 +223,7 @@ export const trendService = {
         .filter((row) => row._count._all >= query.minPapers)
         .map(async (row) => {
           const detail = await this.topicDetailOnly(row.topicName, span);
-          return { topic: row.topicName, taxonomy: detail.taxonomy, totalPapers: detail.totalPapers, yearlyBreakdown: detail.yearlyBreakdown, matchedBy: "topic" as const, momentum: detail.momentum, growthRatePct: detail.growthRatePct, cagr3yPct: detail.cagr3yPct };
+          return { topic: row.topicName, taxonomy: detail.taxonomy, totalPapers: detail.totalPapers, yearlyBreakdown: detail.yearlyBreakdown, matchedBy: "topic" as const };
         }),
     );
     return { query: query.q.trim(), ...span, totalCandidates: topics.length, topics, computedAt: new Date().toISOString() };

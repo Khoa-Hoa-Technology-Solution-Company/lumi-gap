@@ -21,22 +21,19 @@ TrendingTopic _topic(
   TrendConfidence? confidence,
   double growth = 10,
   int papers = 1234,
-}) =>
-    TrendingTopic(
-      topic: name,
-      momentum: 5,
-      growthRatePct: growth,
-      totalPapers: papers,
-      yearlyBreakdown: const [
-        YearlyCount(year: 2024, count: 1),
-        YearlyCount(year: 2025, count: 2),
-      ],
-      classification: TrendClassification(
-        verdict: verdict,
-        confidence: confidence,
-        relativeChangePct: change,
-      ),
-    );
+}) => TrendingTopic(
+  topic: name,
+  totalPapers: papers,
+  yearlyBreakdown: const [
+    YearlyCount(year: 2024, count: 1),
+    YearlyCount(year: 2025, count: 2),
+  ],
+  classification: TrendClassification(
+    verdict: verdict,
+    confidence: confidence,
+    relativeChangePct: change,
+  ),
+);
 
 Future<void> _pump(
   WidgetTester tester,
@@ -64,8 +61,9 @@ Future<void> _pump(
             ? AppTheme.darkTheme
             : AppTheme.lightTheme,
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context)
-              .copyWith(textScaler: TextScaler.linear(textScale)),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         ),
         home: scaffold ? Scaffold(body: child) : child,
@@ -114,10 +112,18 @@ void main() {
         _topic('rise-small', verdict: TrendVerdict.rising, change: 2),
         _topic('dec-big', verdict: TrendVerdict.declining, change: -8),
         _topic('rise-big', verdict: TrendVerdict.rising, change: 9),
-        _topic('rise-tie-b',
-            verdict: TrendVerdict.rising, change: 2, papers: 10),
-        _topic('rise-tie-a',
-            verdict: TrendVerdict.rising, change: 2, papers: 10),
+        _topic(
+          'rise-tie-b',
+          verdict: TrendVerdict.rising,
+          change: 2,
+          papers: 10,
+        ),
+        _topic(
+          'rise-tie-a',
+          verdict: TrendVerdict.rising,
+          change: 2,
+          papers: 10,
+        ),
       ]).map((t) => t.topic);
       expect(sorted, [
         'rise-big',
@@ -150,8 +156,9 @@ void main() {
       );
     });
 
-    testWidgets('nothing tested: said once, no verdicts, no % per year',
-        (tester) async {
+    testWidgets('nothing tested: said once, no verdicts, no % per year', (
+      tester,
+    ) async {
       await _pump(
         tester,
         TrendsSignalsTab(
@@ -184,8 +191,7 @@ void main() {
       expect(find.byType(TextButton), findsNothing);
     });
 
-    testWidgets('a row opens the topic sheet with its actions',
-        (tester) async {
+    testWidgets('a row opens the topic sheet with its actions', (tester) async {
       final explained = <String>[];
       final router = GoRouter(
         routes: [
@@ -223,8 +229,9 @@ void main() {
       expect(explained, ['Local topic']);
     });
 
-    testWidgets('a rising topic is featured with its verdict and change',
-        (tester) async {
+    testWidgets('a rising topic is featured with its verdict and change', (
+      tester,
+    ) async {
       await _pump(
         tester,
         TrendsSignalsTab(
@@ -259,8 +266,9 @@ void main() {
     });
 
     for (final locale in AppLocale.values) {
-      testWidgets('signal cards fit 320dp at text scale 1.3 (${locale.name})',
-          (tester) async {
+      testWidgets('signal cards fit 320dp at text scale 1.3 (${locale.name})', (
+        tester,
+      ) async {
         await _pump(
           tester,
           TrendsSignalsTab(
@@ -287,18 +295,17 @@ void main() {
     }
   });
 
-  testWidgets('compare: verdicts come from the overview, none is assumed',
-      (tester) async {
+  testWidgets('compare: verdicts come from the overview, none is assumed', (
+    tester,
+  ) async {
     TopicComparisonItem item(String name) => TopicComparisonItem(
-          topic: name,
-          momentum: 0,
-          growthRatePct: 0,
-          totalPapers: 10,
-          yearlyBreakdown: const [
-            YearlyCount(year: 2024, count: 1),
-            YearlyCount(year: 2025, count: 2),
-          ],
-        );
+      topic: name,
+      totalPapers: 10,
+      yearlyBreakdown: const [
+        YearlyCount(year: 2024, count: 1),
+        YearlyCount(year: 2025, count: 2),
+      ],
+    );
     await _pump(
       tester,
       SingleChildScrollView(
@@ -357,8 +364,9 @@ void main() {
 
   group('reports screen', () {
     for (final locale in AppLocale.values) {
-      testWidgets('opens without error and fills the form in ${locale.name}',
-          (tester) async {
+      testWidgets('opens without error and fills the form in ${locale.name}', (
+        tester,
+      ) async {
         // The app keeps this equal to the language on screen (see App);
         // a bare MaterialApp does not, so the test sets it.
         final previous = currentAppLocale;
@@ -389,8 +397,9 @@ void main() {
       });
     }
 
-    testWidgets('an empty question is refused under the field, nothing sent',
-        (tester) async {
+    testWidgets('an empty question is refused under the field, nothing sent', (
+      tester,
+    ) async {
       await _pump(
         tester,
         const ReportsScreen(),
@@ -461,11 +470,15 @@ void main() {
       expect(find.text('How do LLMs grade essays?'), findsOneWidget);
     });
 
-    testWidgets('a link with a topic opens the steps, filled in',
-        (tester) async {
+    testWidgets('a link with a topic opens the steps, filled in', (
+      tester,
+    ) async {
       await _pump(
         tester,
-        const ReportsScreen(initialTopic: 'Federated learning', startBuilding: true),
+        const ReportsScreen(
+          initialTopic: 'Federated learning',
+          startBuilding: true,
+        ),
         scaffold: false,
         overrides: [
           reportsProvider.overrideWith((ref, params) async => someReports),

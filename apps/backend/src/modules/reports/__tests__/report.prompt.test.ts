@@ -105,7 +105,7 @@ describe("REPORT_SYSTEM_PROMPT", () => {
 
 describe("report language resolution", () => {
   it("bumps prompt version when report language behavior changes", () => {
-    expect(PROMPT_VERSION).toBe("report-v7-trend-metrics");
+    expect(PROMPT_VERSION).toBe("report-v8-trend-verdict");
   });
 
   it("detects English from ASCII academic questions", () => {
@@ -174,13 +174,13 @@ describe("buildReportCacheKey", () => {
 });
 
 describe("trend metrics block", () => {
-  const trendMetrics = { topic: "LLM", yearFrom: 2020, yearTo: 2025, lastCompleteYear: 2024, totalPapers: 120, yearlyBreakdown: [{ year: 2024, count: 40 }], growthRatePct: 33.3, cagr3yPct: 41.2, momentum: 6.5 };
+  const trendMetrics = { topic: "LLM", yearFrom: 2020, yearTo: 2025, lastCompleteYear: 2024, totalPapers: 120, yearlyBreakdown: [{ year: 2024, count: 40 }], trend: { verdict: "rising", confidence: "high", relativeChangePct: 12.5, pValue: 0.004 } };
 
   it("adds the fenced block after the evidence when metrics are given", () => {
     const prompt = buildReportPrompt("q?", [paper()], { trendMetrics });
     expect(prompt).toContain("<<<TREND_METRICS>>>");
     expect(prompt).toContain("<<<END_TREND_METRICS>>>");
-    expect(prompt).toContain('"growthRatePct": 33.3');
+    expect(prompt).toContain('"relativeChangePct": 12.5');
     expect(prompt.indexOf("<<<TREND_METRICS>>>")).toBeGreaterThan(prompt.indexOf("EVIDENCE PAPERS"));
     expect(prompt.indexOf("<<<TREND_METRICS>>>")).toBeLessThan(prompt.indexOf("TASK:"));
   });

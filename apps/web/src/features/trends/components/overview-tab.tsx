@@ -13,6 +13,7 @@ import { useI18n } from "@/i18n";
 import { formatPercent, hasCitationTotals, hasPpTop10, WORLD_AVERAGE_PP_TOP10, type TimelinePoint, type TrendMetricMode } from "../trend-impact";
 import { formatShiftCounts, isShiftSignificant } from "../trend-source";
 import { DataSourceBadge } from "./trend-data-source";
+import { CrossTopicSection } from "./cross-topic-section";
 import { TrendFigures, TrendHowLink, TrendIntro, TrendVerdictBadge, formatRelativeChange, verdictLabel } from "./trend-verdict-badge";
 import { buildTrendScopedUrl } from "../trend-navigation";
 import { DOCS_SECTIONS } from "@/features/docs";
@@ -39,10 +40,6 @@ interface OverviewTabProps {
   scopeParams?: {
     yearFrom: number;
     yearTo: number;
-    domainIds: string[];
-    domains: string[];
-    fieldIds: string[];
-    fields: string[];
     subfieldIds: string[];
     subfields: string[];
     topicIds: string[];
@@ -61,23 +58,14 @@ type Translate = ReturnType<typeof useI18n>["t"];
 /** One-sentence reading of the emerging keyword. With the shift test the
  *  verdict comes from q; without it (local fallback) the small-base rule applies. */
 function describeKeywordInsight(keyword: RisingKeywordLike, t: Translate): string {
-  const shift = keyword.shift;
-  if (shift) {
-    const values = { keyword: keyword.keyword, counts: formatShiftCounts(shift) };
-    return isShiftSignificant(shift)
-      ? t("{{keyword}} is a clearly rising keyword ({{counts}} papers).", values)
-      : t("{{keyword}} is rising, but not clearly enough ({{counts}} papers), so treat it as exploratory.", values);
-  }
-  const values = { keyword: keyword.keyword, growth: formatSigned(keyword.growthRatePct, 1), count: keyword.totalPapers };
-  return keyword.totalPapers < 15
-    ? t("{{keyword}} is an early keyword signal ({{growth}}% growth), but it has only {{count}} papers, so treat it as exploratory.", values)
-    : t("{{keyword}} is an early keyword signal ({{growth}}% growth).", values);
+  const values = { keyword: keyword.keyword, counts: formatShiftCounts(keyword.shift) };
+  return isShiftSignificant(keyword.shift)
+    ? t("{{keyword}} is a clearly rising keyword ({{counts}} papers).", values)
+    : t("{{keyword}} is rising, but not clearly enough ({{counts}} papers), so treat it as exploratory.", values);
 }
 
 function describeKeywordDetail(keyword: RisingKeywordLike): string {
-  const shift = keyword.shift;
-  if (shift) return `${formatShiftCounts(shift)} papers`;
-  return `${formatSigned(keyword.growthRatePct, 1)}% growth · ${formatNumber(keyword.totalPapers)} papers`;
+  return `${formatShiftCounts(keyword.shift)} papers`;
 }
 
 /** Data-driven reading of the chart: the highest complete year of the series. */
@@ -173,12 +161,12 @@ export function OverviewTab({
     }
     let topicInsight = "";
     if (topRisingTopic?.classification) {
-      topicInsight = t("{{topic}} has the largest significant rise in its field share in this dataset ({{change}}).", {
+      topicInsight = t("{{topic}} has the largest significant rise in its share of publications in this dataset ({{change}}).", {
         topic: topRisingTopic.topic,
         change: formatRelativeChange(topRisingTopic.classification, t) ?? "",
       });
     } else {
-      topicInsight = t("No topic shows a statistically significant rise in its field share in this scope.");
+      topicInsight = t("No topic shows a statistically significant rise in its share of publications in this scope.");
     }
     let keywordInsight = "";
     if (fastestKeyword) {
@@ -627,6 +615,8 @@ export function OverviewTab({
           </div>
         </div>
       </div>
+
+      <CrossTopicSection analysis={data.crossTopic} getTopicTrendTarget={getTopicTrendTarget} />
     </div>
   );
 }
@@ -663,7 +653,7 @@ function TrendVerdictSummaryCard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-[10px] font-extrabold uppercase tracking-widest text-blue-600 dark:text-blue-400">{t("Trend verdicts in this scope")}</p>
-          <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">{t("Among the {{count}} topics tested (the largest overall and per field)", { count: formatNumber(tested) })}</p>
+          <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">{t("Among the {{count}} topics of the Information Technology scope", { count: formatNumber(tested) })}</p>
         </div>
         <TrendHowLink section={DOCS_SECTIONS.trendVerdict} anchor="rules" />
       </div>
@@ -707,7 +697,7 @@ function TrendVerdictSummaryCard({
           </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-400">
-            <p>{t("No topic shows a statistically significant rise in its field share in this scope.")}</p>
+            <p>{t("No topic shows a statistically significant rise in its share of publications in this scope.")}</p>
             <button type="button" onClick={onCompare} className="font-extrabold text-blue-700 hover:underline dark:text-blue-400">
               {t("Compare topics")} ➔
             </button>

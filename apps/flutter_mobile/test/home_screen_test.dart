@@ -320,7 +320,7 @@ void main() {
       num growth = 0,
     }) => {
       'topic': name,
-      'growthRatePct': growth,
+      'relativeChangePct': growth,
       'yearlyBreakdown': [
         {'year': 2023, 'count': 1},
         {'year': 2024, 'count': 2},
@@ -329,18 +329,65 @@ void main() {
       'classification': ?classification,
     };
 
-    testWidgets('all four verdicts, each with its own word, colour and icon', (
+    testWidgets(
+      'the four main verdicts, each with its own word, colour and icon',
+      (
+        tester,
+      ) async {
+        final h = _Harness(
+          overview: () async => HomeOverview.fromJson(
+            _overview(
+              topics: [
+                // Growth contradicts the verdict on purpose: only the verdict counts.
+                topic('Chủ đề A', {'verdict': 'rising'}, growth: -50),
+                topic('Chủ đề B', {'verdict': 'declining'}, growth: 300),
+                topic('Chủ đề C', {'verdict': 'stable'}, growth: 80),
+                topic('Chủ đề D', {'verdict': 'insufficient'}, growth: 80),
+              ],
+            ),
+          ),
+        );
+        await _pump(tester, h);
+        await tester.pumpAndSettle();
+        const lumi = LumiColors.light;
+
+        // The pill: the icon in the verdict colour, the word in the text
+        // colour (a coloured word on its tint is not readable enough).
+        void expectLabel(String text, IconData icon, Color color) {
+          expect(find.text(text), findsOneWidget, reason: text);
+          final pill = find
+              .ancestor(
+                of: find.text(text),
+                matching: find.byType(TrendVerdictPill),
+              )
+              .first;
+          final iconWidget = tester.widget<Icon>(
+            find.descendant(of: pill, matching: find.byIcon(icon)),
+          );
+          expect(iconWidget.color, color, reason: text);
+          expect(
+            tester.widget<Text>(find.text(text)).style?.color,
+            lumi.foreground,
+            reason: text,
+          );
+        }
+
+        expectLabel('Đang tăng', Icons.trending_up, lumi.success);
+        expectLabel('Đang giảm', Icons.trending_down, lumi.error);
+        expectLabel('Ổn định', Icons.trending_flat, lumi.muted);
+        expectLabel('Chưa đủ dữ liệu', Icons.help_outline, lumi.muted);
+      },
+    );
+
+    testWidgets('saturated and past its peak have their own word and icon', (
       tester,
     ) async {
       final h = _Harness(
         overview: () async => HomeOverview.fromJson(
           _overview(
             topics: [
-              // Growth contradicts the verdict on purpose: only the verdict counts.
-              topic('Chủ đề A', {'verdict': 'rising'}, growth: -50),
-              topic('Chủ đề B', {'verdict': 'declining'}, growth: 300),
-              topic('Chủ đề C', {'verdict': 'stable'}, growth: 80),
-              topic('Chủ đề D', {'verdict': 'insufficient'}, growth: 80),
+              topic('Chủ đề E', {'verdict': 'saturated'}, growth: -80),
+              topic('Chủ đề F', {'verdict': 'past_peak'}, growth: 90),
             ],
           ),
         ),
@@ -354,7 +401,10 @@ void main() {
       void expectLabel(String text, IconData icon, Color color) {
         expect(find.text(text), findsOneWidget, reason: text);
         final pill = find
-            .ancestor(of: find.text(text), matching: find.byType(TrendVerdictPill))
+            .ancestor(
+              of: find.text(text),
+              matching: find.byType(TrendVerdictPill),
+            )
             .first;
         final iconWidget = tester.widget<Icon>(
           find.descendant(of: pill, matching: find.byIcon(icon)),
@@ -367,10 +417,8 @@ void main() {
         );
       }
 
-      expectLabel('Đang tăng', Icons.trending_up, lumi.success);
-      expectLabel('Đang giảm', Icons.trending_down, lumi.error);
-      expectLabel('Ổn định', Icons.trending_flat, lumi.muted);
-      expectLabel('Chưa đủ dữ liệu', Icons.help_outline, lumi.muted);
+      expectLabel('Bão hoà', Icons.vertical_align_top, lumi.warning);
+      expectLabel('Qua đỉnh', Icons.south_east, lumi.warning);
     });
 
     const allInsufficientCaption =
@@ -429,8 +477,11 @@ void main() {
         expect(find.text('Đang tăng'), findsOneWidget);
         // Only the tested topic gets a line, and only it has a % per year.
         expect(find.byType(LumiSparkline), findsOneWidget);
-        expect(find.textContaining('mỗi năm'), findsNothing,
-            reason: 'no relativeChangePct in the fixture');
+        expect(
+          find.textContaining('mỗi năm'),
+          findsNothing,
+          reason: 'no relativeChangePct in the fixture',
+        );
       },
     );
   });
@@ -719,8 +770,9 @@ void main() {
     });
   });
 
-  testWidgets('the search box and the four shortcuts open their screens',
-      (tester) async {
+  testWidgets('the search box and the four shortcuts open their screens', (
+    tester,
+  ) async {
     for (final (label, screen) in [
       ('Tìm bài báo, từ khóa…', 'screen/search'),
       ('Xu hướng', 'trends-screen'),
@@ -737,41 +789,48 @@ void main() {
   });
 
   testWidgets(
-      'a trending card shows the API figures: % per year and papers, and '
-      'rising topics come first', (tester) async {
-    Map<String, dynamic> t(String name, String verdict, double pct, int papers) => {
-          'topic': name,
-          'totalPapers': papers,
-          'yearlyBreakdown': [
-            {'year': 2023, 'count': 10},
-            {'year': 2024, 'count': 20},
-            {'year': 2025, 'count': 40},
-          ],
-          'classification': {'verdict': verdict, 'relativeChangePct': pct},
-        };
-    final h = _Harness(
-      overview: () async => HomeOverview.fromJson(
-        _overview(
-          topics: [
-            t('Chủ đề ổn định', 'stable', 0.4, 900),
-            t('Chủ đề tăng', 'rising', 138.6, 109071),
-          ],
+    'a trending card shows the API figures: % per year and papers, and '
+    'rising topics come first',
+    (tester) async {
+      Map<String, dynamic> t(
+        String name,
+        String verdict,
+        double pct,
+        int papers,
+      ) => {
+        'topic': name,
+        'totalPapers': papers,
+        'yearlyBreakdown': [
+          {'year': 2023, 'count': 10},
+          {'year': 2024, 'count': 20},
+          {'year': 2025, 'count': 40},
+        ],
+        'classification': {'verdict': verdict, 'relativeChangePct': pct},
+      };
+      final h = _Harness(
+        overview: () async => HomeOverview.fromJson(
+          _overview(
+            topics: [
+              t('Chủ đề ổn định', 'stable', 0.4, 900),
+              t('Chủ đề tăng', 'rising', 138.6, 109071),
+            ],
+          ),
         ),
-      ),
-    );
-    await _pump(tester, h);
-    await tester.pumpAndSettle();
-    expect(find.text('+138.6%'), findsOneWidget);
-    expect(find.text('mỗi năm · 109,071 bài báo'), findsOneWidget);
-    // Rising first, whatever order the API sent.
-    expect(
-      tester.getTopLeft(find.text('Chủ đề tăng')).dx,
-      lessThan(tester.getTopLeft(find.text('Chủ đề ổn định')).dx),
-    );
-    await tester.tap(find.text('Chủ đề tăng'));
-    await tester.pumpAndSettle();
-    expect(find.text('trends-screen'), findsOneWidget);
-  });
+      );
+      await _pump(tester, h);
+      await tester.pumpAndSettle();
+      expect(find.text('+138.6%'), findsOneWidget);
+      expect(find.text('mỗi năm · 109,071 bài báo'), findsOneWidget);
+      // Rising first, whatever order the API sent.
+      expect(
+        tester.getTopLeft(find.text('Chủ đề tăng')).dx,
+        lessThan(tester.getTopLeft(find.text('Chủ đề ổn định')).dx),
+      );
+      await tester.tap(find.text('Chủ đề tăng'));
+      await tester.pumpAndSettle();
+      expect(find.text('trends-screen'), findsOneWidget);
+    },
+  );
 
   for (final locale in AppLocale.values) {
     testWidgets(

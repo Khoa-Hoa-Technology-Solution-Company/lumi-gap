@@ -22,7 +22,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "get_trends",
     description:
-      "Get the publication trend of a topic. statistics.classification.verdict (rising/declining/stable/insufficient) is the trend conclusion: a Mann-Kendall test on the topic's yearly share of its field, with Sen's slope. Also returns yearly paper counts and descriptive growth (YoY, CAGR), which are not the verdict.",
+      "Get the publication trend of a topic. statistics.classification.verdict (rising/saturated/past_peak/declining/stable/insufficient) is the trend conclusion: a Mann-Kendall test on the topic's yearly share of publications, with Sen's slope; saturated = rose but flat near its peak in recent years, past_peak = rose then fell far below its peak. Also returns yearly paper counts, which are descriptive and not the verdict.",
     parameters: {
       type: "object",
       properties: {

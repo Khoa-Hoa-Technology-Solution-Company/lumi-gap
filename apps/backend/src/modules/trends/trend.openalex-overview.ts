@@ -1,38 +1,44 @@
 import type {
   RisingKeyword,
-  TrendCandidateStrata,
   TrendFacetBucket,
   TrendTaxonomyCoverage,
-  TrendTermShift,
   TrendingTopic,
   TrendsOverview,
   YearlyCitationMetric,
   YearlyCount,
 } from "@trend/shared-types";
 import type { TrendsOverviewQuery } from "./dto/trends.schema.js";
-import { computeMetrics, fillMissingYears, truncateToCompleteYears, yoyGrowthPct } from "./trend.formulas.js";
+import { fillMissingYears } from "./trend.formulas.js";
+import { keywordShifts, risingShifts, splitPeriods } from "./trend.keywords.js";
 import { openAlexKeywordCounts } from "./trend.evidence.js";
 import { openAlexGroupBy, openAlexYearCounts, type OpenAlexGroup } from "./trend.openalex-client.js";
 import { buildOpenAlexScope, withScope, yearsClause, type OpenAlexScope } from "./trend.openalex-scope.js";
-import { buildShareTopics, runAll, selectTopicCandidates, yearPeriods } from "./trend.openalex-topics.js";
-import { benjaminiHochberg, logOddsRatio2x2 } from "./trend.statistics.js";
-import { buildRecommendedComparisons, compareByTotal, countVerdicts, compareByTrend, pageTopics } from "./trend.verdict.js";
+import { analyseCrossTopics } from "./trend.cross-topic.js";
+import { buildScopeShareTopics, groupByMerged, runAll, yearPeriods } from "./trend.openalex-topics.js";
+import { IT_SCOPE_VERSION, isItScopeSubfield, itScopeWorkClauses, widerThanItScope } from "./trend.scope.js";
+import { FULL_WINDOW_YEARS, buildRecommendedComparisons, compareByTotal, countVerdicts, compareByTrend, pageTopics } from "./trend.verdict.js";
 
 /**
- * GET /trends computed from OpenAlex aggregate counts over the whole OpenAlex
- * database (no work records are downloaded). Same response shape as the local
- * overview in trend.postgres.ts. OpenAlex errors are not caught here: the
- * caller falls back to the local overview so the two sources are never mixed.
+ * GET /trends computed from OpenAlex aggregate counts (no work records are
+ * downloaded). Same response shape as the local overview in trend.postgres.ts.
+ * OpenAlex errors are not caught here: the caller falls back to the local
+ * overview so the two sources are never mixed.
  *
- * Cost of an uncached default request (limit 10, no taxonomy filter): about
- * 100 OpenAlex requests (15 facet/series requests, one topic page per field
- * for the stratified candidates, per year one topic request per 100
- * candidates and one field-population request, the topic entity lookups,
- * keyword rankings plus their lookups and 10 keyword series). Every response
- * is cached for 7 days by the client.
+ * The overview is always about the IT scope (trend.scope.ts): every topic of
+ * the scope is tested against the yearly total of the scope, whatever the page
+ * shows. A subfield or topic filter only narrows what is listed and counted in
+ * the facets; domain and field filters are wider than the scope and are
+ * reported as ignored.
+ *
+ * Cost of an uncached request: one yearly series per topic of the scope (331
+ * for it-v1) plus about 40 facet, total and keyword requests. The topic and
+ * population series do not depend on the window and are cached for 7 days;
+ * the notification worker re-fetches them before they expire (TREND_WARM_CRON),
+ * so a user request normally only pays for the facets of its own window.
  */
 
-const DEFAULT_WINDOW_YEARS = 10;
+/** Keywords are ranked inside one filter clause; the core of the scope, the field Computer Science, stands in for the whole scope. */
+export const KEYWORD_SCOPE_CLAUSE = "primary_topic.field.id:17";
 const RISING_KEYWORDS_LIMIT = 10;
 
 const CITATION_BANDS = [
@@ -62,23 +68,25 @@ const LIMITS = { paperKinds: 30, openAccessStatuses: 30, topSources: 20, languag
 export async function getOpenAlexTrendsOverview(query: TrendsOverviewQuery): Promise<TrendsOverview> {
   const now = new Date();
   const yearTo = query.yearTo ?? now.getFullYear();
-  const yearFrom = query.yearFrom ?? yearTo - DEFAULT_WINDOW_YEARS;
+  const yearFrom = query.yearFrom ?? yearTo - FULL_WINDOW_YEARS;
   const lastCompleteYear = Math.min(yearTo, now.getFullYear() - 1);
   const scope = await buildOpenAlexScope(query);
   const years = yearsClause(yearFrom, yearTo);
-  const base = withScope(scope.filter, years);
+  // A subfield or topic filter lists a part of the scope; otherwise the page covers the whole scope, queried in its OR chunks.
+  const narrowed = scope.narrowestTaxonomy === "subfield" || scope.narrowestTaxonomy === "topic";
+  const bases = narrowed ? [withScope(scope.filter, years)] : itScopeWorkClauses().map((clause) => withScope(scope.nonTaxonomyFilter, clause, years));
+  const keywordFilter = narrowed ? scope.filter : withScope(scope.nonTaxonomyFilter, KEYWORD_SCOPE_CLAUSE);
 
-  // Phase 1: every request that only depends on the base filter.
-  const yearFilters = [
-    base,
-    withScope(base, "citation_normalized_percentile.is_in_top_10_percent:true"),
-    ...CITATION_BANDS.map((band) => withScope(base, band.filter)),
-  ];
+  // Phase 1: every request that only depends on the base filters.
+  const yearFilters = [undefined, "citation_normalized_percentile.is_in_top_10_percent:true", ...CITATION_BANDS.map((band) => band.filter)];
   const facetKeys = Object.keys(FACET_GROUP_BY) as Array<keyof typeof FACET_GROUP_BY>;
   const phase1 = await runAll<Map<number, number> | OpenAlexGroup[]>([
-    ...yearFilters.map((filter) => () => openAlexYearCounts(filter)),
-    ...facetKeys.map((facet) => () => openAlexGroupBy(base, FACET_GROUP_BY[facet]).then((page) => page.groups)),
+    ...yearFilters.map((suffix) => () => mergedYearCounts(bases.map((base) => withScope(base, suffix)))),
+    ...facetKeys.map((facet) => () => groupByMerged(bases, FACET_GROUP_BY[facet])),
+    // Keywords are tested inside keywordFilter, so their totals are the papers of that filter.
+    () => (narrowed ? Promise.resolve(new Map<number, number>()) : openAlexYearCounts(withScope(keywordFilter, years))),
   ]);
+  const keywordYears = phase1[phase1.length - 1] as Map<number, number>;
   const [baseYears, topCitedYears, ...bands] = phase1.slice(0, yearFilters.length) as [Map<number, number>, Map<number, number>, ...Array<Map<number, number>>];
   const groups = Object.fromEntries(facetKeys.map((facet, index) => [facet, phase1[yearFilters.length + index] as OpenAlexGroup[]])) as Record<
     keyof typeof FACET_GROUP_BY,
@@ -92,23 +100,28 @@ export async function getOpenAlexTrendsOverview(query: TrendsOverviewQuery): Pro
     return { year, count, totalCitations: null, avgCitations: null, topCitedCount, ppTop10Pct: count > 0 ? (topCitedCount / count) * 100 : null };
   });
 
-  const [{ topics, strata }, risingKeywords] = await Promise.all([
-    buildTopics(query, groups, scope, base, yearFrom, yearTo, lastCompleteYear),
-    buildRisingKeywords(scope.filter, base, yearlyTotalPapers, yearFrom, yearTo, lastCompleteYear),
+  const listed = narrowed ? new Set(groups.topics.map((group) => group.key.toUpperCase())) : null;
+  const keywordTotals = narrowed ? yearlyTotalPapers : fillMissingYears(toSeries(keywordYears), yearFrom, yearTo);
+  const [scopeTopics, risingKeywords] = await Promise.all([
+    buildScopeTopics(scope, yearFrom, yearTo, lastCompleteYear),
+    buildRisingKeywords(keywordFilter, withScope(keywordFilter, years), keywordTotals, yearFrom, yearTo, lastCompleteYear),
   ]);
+
+  // Topics compared with each other over the whole scope, before any filter, so their labels do not depend on it.
+  const cross = analyseCrossTopics(scopeTopics);
+  const topics = listTopics(scopeTopics, query, listed, cross?.labelsOf);
 
   return {
     dataSource: "openalex",
-    scopeNotice: scope.notice,
+    scopeVersion: IT_SCOPE_VERSION,
+    scopeNotice: narrowed ? scope.notice : { ignoredFilters: [...scope.notice.ignoredFilters, ...widerThanItScope(query)] },
     yearFrom,
     yearTo,
     lastCompleteYear,
     totalPapersInWindow,
-    // Candidate groups on the first (count-ordered) group_by page. OpenAlex
-    // returns at most 200 groups per page, so 200 means "at least 200".
-    uniqueTopicsInScope: groups.topics.length,
+    uniqueTopicsInScope: topics.length,
     testedTopicCount: topics.length,
-    candidateStrata: strata,
+    candidateStrata: null,
     verdictCounts: countVerdicts(topics),
     yearlyTotalPapers,
     citationTrend,
@@ -121,13 +134,15 @@ export async function getOpenAlexTrendsOverview(query: TrendsOverviewQuery): Pro
       citationBands: CITATION_BANDS.map(({ band }, index) => ({ id: band, name: band, count: sumCounts(bands[index] ?? new Map()) })).filter((row) => row.count > 0),
       domains: taxonomyBuckets(groups.domains, LIMITS.domains),
       fields: taxonomyBuckets(groups.fields, LIMITS.fields),
-      subfields: taxonomyBuckets(groups.subfields, LIMITS.subfields),
+      // A layer-3 topic's subfield holds more than that topic: filtering by it would leave the scope, so only layer 1–2 subfields are offered.
+      subfields: taxonomyBuckets(groups.subfields.filter((group) => isItScopeSubfield(group.key)), LIMITS.subfields),
       topics: taxonomyBuckets(groups.topics, LIMITS.topics),
     },
     taxonomyCoverage: taxonomyCoverage(totalPapersInWindow, groups.domains),
     recommendedComparisons: buildRecommendedComparisons(topics),
     ...pageTopics(topics, query),
     risingKeywords,
+    crossTopic: cross?.analysis ?? null,
     computedAt: now.toISOString(),
   };
 }
@@ -136,37 +151,50 @@ export async function getOpenAlexTrendsOverview(query: TrendsOverviewQuery): Pro
 // Topics
 // ---------------------------------------------------------------------------
 
-async function buildTopics(
-  query: TrendsOverviewQuery,
-  groups: Record<keyof typeof FACET_GROUP_BY, OpenAlexGroup[]>,
-  scope: OpenAlexScope,
-  base: string,
-  yearFrom: number,
-  yearTo: number,
-  lastCompleteYear: number,
-): Promise<{ topics: TrendingTopic[]; strata: TrendCandidateStrata | null }> {
-  const { candidates, strata } = await selectTopicCandidates({
-    scope,
-    base,
-    topicGroups: groups.topics,
-    fieldGroups: groups.fields,
-    subfieldGroups: groups.subfields,
-    minPapers: query.minPapers,
-  });
+type ScopeTopic = TrendingTopic & { id: string };
+
+/** Every topic of the IT scope, tested against the scope (BH across all of them). */
+async function buildScopeTopics(scope: OpenAlexScope, yearFrom: number, yearTo: number, lastCompleteYear: number): Promise<ScopeTopic[]> {
   const periods = yearPeriods(yearFrom, yearTo, lastCompleteYear);
-  const topics: TrendingTopic[] = (await buildShareTopics(scope, periods, candidates)).map((row) => {
+  return (await buildScopeShareTopics(scope.nonTaxonomyFilter, periods)).map((row) => {
     const yearlyBreakdown = periods.map((period, index) => ({ year: Number(period.key), count: row.counts[index] ?? 0 }));
     return {
+      id: row.id,
       topic: row.name,
       taxonomy: row.taxonomy,
       totalPapers: yearlyBreakdown.reduce((sum, item) => sum + item.count, 0),
       yearlyBreakdown,
-      ...computeMetrics(yearlyBreakdown, lastCompleteYear),
       classification: row.classification,
     };
   });
+}
+
+/**
+ * The topics the page lists: those of the subfield or topic filter (`listed`),
+ * with at least `minPapers` papers in the window, in the requested size bands,
+ * each with its cross-topic labels.
+ */
+function listTopics(
+  scopeTopics: ScopeTopic[],
+  query: TrendsOverviewQuery,
+  listed: Set<string> | null,
+  labelsOf: ((topic: TrendingTopic) => TrendingTopic["crossTopic"]) | undefined,
+): TrendingTopic[] {
+  const topics: TrendingTopic[] = scopeTopics
+    .filter((row) => (!listed || listed.has(row.id)) && row.totalPapers >= query.minPapers)
+    .map(({ id: _id, ...topic }) => (labelsOf ? { ...topic, crossTopic: labelsOf(topic) } : topic))
+    .filter((topic) => !query.sizeBands?.length || (topic.crossTopic !== undefined && query.sizeBands.includes(topic.crossTopic.sizeBand)));
   topics.sort(query.sortBy === "total" ? compareByTotal : compareByTrend);
-  return { topics, strata };
+  return topics;
+}
+
+/** Year counts of several disjoint filters, added up. */
+async function mergedYearCounts(filters: string[]): Promise<Map<number, number>> {
+  const parts = await Promise.all(filters.map((filter) => openAlexYearCounts(filter)));
+  if (parts.length === 1) return parts[0]!;
+  const total = new Map<number, number>();
+  for (const part of parts) for (const [year, count] of part) total.set(year, (total.get(year) ?? 0) + count);
+  return total;
 }
 
 // ---------------------------------------------------------------------------
@@ -187,36 +215,16 @@ async function buildRisingKeywords(
   yearTo: number,
   lastCompleteYear: number,
 ): Promise<RisingKeyword[]> {
-  const usable = yearlyTotalPapers.filter((row) => row.year <= lastCompleteYear && row.count > 0).map((row) => row.year);
-  if (usable.length < 2) return [];
-  const half = Math.floor(usable.length / 2);
-  const periodA = usable.slice(0, half);
-  const periodB = usable.slice(half);
+  const halves = splitPeriods(yearlyTotalPapers.filter((row) => row.year <= lastCompleteYear && row.count > 0).map((row) => row.year));
+  if (!halves) return [];
+  const { periodA, periodB } = halves;
   const totals = new Map(yearlyTotalPapers.map((row) => [row.year, row.count]));
   const totalA = periodA.reduce((sum, year) => sum + (totals.get(year) ?? 0), 0);
   const totalB = periodB.reduce((sum, year) => sum + (totals.get(year) ?? 0), 0);
 
   const rows = await openAlexKeywordCounts(scopeFilter, periodA, periodB);
   const keys = new Map(rows.map((row) => [row.term, row.key]));
-
-  const tested = rows.flatMap((row) => {
-    const result = logOddsRatio2x2({ withB: row.papersB, totalB, withA: row.papersA, totalA });
-    return result ? [{ row, result }] : [];
-  });
-  const qValues = benjaminiHochberg(tested.map((item) => item.result.pValue));
-  const shifts: TrendTermShift[] = tested.map(({ row, result }, index) => ({
-    term: row.term,
-    papersA: row.papersA,
-    papersB: row.papersB,
-    logOddsRatio: result.logOddsRatio,
-    z: result.z,
-    pValue: result.pValue,
-    qValue: qValues[index] ?? 1,
-  }));
-  const rising = shifts
-    .filter((shift) => shift.z > 0 && keys.has(shift.term))
-    .sort((a, b) => b.z - a.z)
-    .slice(0, RISING_KEYWORDS_LIMIT);
+  const rising = risingShifts(keywordShifts(rows, totalA, totalB), RISING_KEYWORDS_LIMIT);
 
   const series = await runAll(rising.map((shift) => () => openAlexYearCounts(withScope(base, `keywords.id:${keys.get(shift.term)}`))));
   const periods = {
@@ -228,7 +236,6 @@ async function buildRisingKeywords(
     return {
       keyword: shift.term,
       totalPapers: yearlyBreakdown.reduce((sum, row) => sum + row.count, 0),
-      growthRatePct: yoyGrowthPct(truncateToCompleteYears(yearlyBreakdown, lastCompleteYear)),
       yearlyBreakdown,
       shift: { ...shift, ...periods },
     };

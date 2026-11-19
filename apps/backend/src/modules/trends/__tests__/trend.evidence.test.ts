@@ -15,6 +15,7 @@ const prisma = vi.hoisted(() => ({ $queryRaw: vi.fn(), paperKeyword: { findMany:
 vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => prisma }));
 
 import { computeTopicStatistics } from "../trend.evidence.js";
+import { IT_SCOPE_VERSION } from "../trend.scope.js";
 
 const years = [2016, 2017, 2018, 2019, 2020, 2021];
 const topicCounts = new Map(years.map((year, i) => [year, 10 + i * 10]));
@@ -66,7 +67,12 @@ describe("computeTopicStatistics with OpenAlex counts", () => {
     expect(stats.classification.senSlope).toBeCloseTo(1, 10);
     expect(stats.classification.senSlopeCi95).not.toBeNull();
     expect(stats.impact[0]).toEqual({ year: 2016, papers: 10, topPapers: 2, ppTop10Pct: 20 });
-    expect(client.openAlexYearCounts).toHaveBeenCalledWith("type:article|review|preprint|conference-paper|book-chapter,primary_topic.id:T10028,publication_year:2016-2021");
+    // The topic series is fetched over the fixed span the overview uses, so both share one cached request.
+    expect(client.openAlexYearCounts).toHaveBeenCalledWith(`type:article|review|preprint|conference-paper|book-chapter,primary_topic.id:T10028,publication_year:1900-${new Date().getUTCFullYear()}`);
+    expect(stats.eda.share).toMatchObject({ n: 6, min: 1, max: 6 });
+    expect(stats.eda.trendLine!.slope).toBeCloseTo(1, 10);
+    expect(stats.eda.outlierYears).toEqual([]);
+    expect(stats.eda.recentWindow).toEqual({ yearFrom: 2017, yearTo: 2021 });
     expect(client.openAlexYearCounts).toHaveBeenCalledWith("type:article|review|preprint|conference-paper|book-chapter,primary_topic.field.id:17,publication_year:2016-2021");
     expect(client.openAlexGroupBy).toHaveBeenCalledWith("type:article|review|preprint|conference-paper|book-chapter,primary_topic.id:T10028,publication_year:2016-2018", "keywords.id");
 
@@ -75,6 +81,36 @@ describe("computeTopicStatistics with OpenAlex counts", () => {
     expect(shift.periodB).toEqual({ yearFrom: 2019, yearTo: 2021, papers: 150 });
     expect(shift.termsTested).toBe(2);
     expect(shift.falling[0]).toMatchObject({ term: "SVM", papersA: 30, papersB: 4 });
+  });
+
+  it("measures a topic of the IT scope against the whole scope", async () => {
+    client.openAlexGroupBy.mockResolvedValue({ groups: [], nextCursor: null });
+    client.openAlexYearCounts.mockImplementation(async (filter: string) => {
+      if (filter.includes("is_in_top_10_percent")) return topCounts;
+      // One request per chunk of scope subfields (10 + 6): each returns 1000 papers a year. The layer-3 chunks have none here.
+      if (filter.includes("primary_topic.subfield.id")) return fieldCounts;
+      if (/primary_topic\.id:T\d+\|/.test(filter)) return new Map();
+      return topicCounts;
+    });
+
+    const stats = await computeTopicStatistics({
+      topic: "Machine learning",
+      topicId: "T10028",
+      fieldId: "17",
+      fieldName: "Computer Science",
+      subfieldId: "https://openalex.org/subfields/1702",
+      papers: [],
+      yearFrom: 2016,
+      yearTo: 2022,
+      lastCompleteYear: 2021,
+    });
+
+    expect(stats.baseline).toEqual({ level: "scope", label: "Information Technology scope", scopeVersion: IT_SCOPE_VERSION });
+    // N_t = 1000 + 1000: the share is 10 / 2000 = 0.5% in 2016.
+    expect(stats.shareSeries[0]).toEqual({ year: 2016, count: 10, total: 2000, sharePct: 0.5 });
+    expect(client.openAlexYearCounts).not.toHaveBeenCalledWith(expect.stringContaining("primary_topic.field.id"));
+    expect(stats.classification.verdict).toBe("rising");
+    expect(stats.eda.excludedYears).toEqual([{ year: 2022, reason: "incomplete" }]);
   });
 
   it("gives a keyword missing from one period's ranking an exact count from its own query", async () => {

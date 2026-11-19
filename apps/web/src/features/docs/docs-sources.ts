@@ -25,6 +25,10 @@ export type DocsSourceId =
   | "haldane-1956"
   | "waltman-schreiber-2013"
   | "bornmann-2021"
+  | "joanes-gill-1998"
+  | "hyndman-fan-1996"
+  | "leys-2013"
+  | "tukey-1977"
   | "openalex-works"
   | "openalex-topics"
   | "openalex-group-by";
@@ -314,6 +318,159 @@ export const DOCS_SOURCES: Record<DocsSourceId, DocsSource> = {
       en: "Context: science grows by about 4.10% per year (doubling time 17.3 years), so raw paper counts almost always \"rise\".",
     },
     verification: { status: "verified", method: "Crossref (abstract)", checkedOn: CHECKED_ON },
+  },
+  "joanes-gill-1998": {
+    id: "joanes-gill-1998",
+    shortCite: "Joanes & Gill, 1998",
+    authors: "Joanes, D. N., & Gill, C. A.",
+    year: 1998,
+    work: "Comparing measures of sample skewness and kurtosis",
+    venue: "Journal of the Royal Statistical Society: Series D (The Statistician), 47(1), 183–189",
+    doi: "10.1111/1467-9884.00122",
+    url: "https://doi.org/10.1111/1467-9884.00122",
+    role: "method-origin",
+    kind: "peer-reviewed",
+    roleNote: {
+      vi: "Công thức độ lệch G1 và độ nhọn vượt G2 đã hiệu chỉnh cho mẫu nhỏ, dùng ở bước thống kê mô tả.",
+      en: "The small-sample adjusted skewness G1 and excess kurtosis G2 used in the descriptive step.",
+    },
+    verification: {
+      status: "verified",
+      method: "Crossref + full text (p. 184)",
+      checkedOn: "2026-11-17",
+      note: {
+        vi: "Đã đối chiếu với toàn văn, trang 184: g1 = m3 / m2^(3/2), g2 = m4 / m2² − 3; G1 = √(n(n−1)) / (n−2) · g1; G2 = (n−1) / ((n−2)(n−3)) · {(n+1)·g2 + 6}. Bài ghi G1, G2 là định nghĩa của SAS, SPSS và Excel.",
+        en: "Checked against the full text, p. 184: g1 = m3 / m2^(3/2), g2 = m4 / m2² − 3; G1 = √(n(n−1)) / (n−2) · g1; G2 = (n−1) / ((n−2)(n−3)) · {(n+1)·g2 + 6}. The paper states that G1 and G2 are the definitions used by SAS, SPSS and Excel.",
+      },
+    },
+  },
+  "hyndman-fan-1996": {
+    id: "hyndman-fan-1996",
+    shortCite: "Hyndman & Fan, 1996",
+    authors: "Hyndman, R. J., & Fan, Y.",
+    year: 1996,
+    work: "Sample Quantiles in Statistical Packages",
+    venue: "The American Statistician, 50(4), 361–365",
+    doi: "10.1080/00031305.1996.10473566",
+    url: "https://doi.org/10.1080/00031305.1996.10473566",
+    role: "method-origin",
+    kind: "peer-reviewed",
+    roleNote: {
+      vi: "Định nghĩa phân vị số 7 (nội suy tuyến tính tại vị trí (n − 1)·p), dùng cho trung vị và tứ phân vị.",
+      en: "Quantile definition 7 (linear interpolation at position (n − 1)·p), used for the median and the quartiles.",
+    },
+    verification: {
+      status: "verified",
+      method: "Crossref + full text (p. 363)",
+      checkedOn: "2026-11-17",
+      note: {
+        vi: "Đã đối chiếu với toàn văn, trang 363, Definition 7: p_k = (k − 1)/(n − 1), nội suy tuyến tính giữa các điểm (p_k, X_(k)); các đỉnh chia khoảng giá trị thành n − 1 đoạn.",
+        en: "Checked against the full text, p. 363, Definition 7: p_k = (k − 1)/(n − 1), linear interpolation between the points (p_k, X_(k)); the vertices divide the range into n − 1 intervals.",
+      },
+    },
+  },
+  "leys-2013": {
+    id: "leys-2013",
+    shortCite: "Leys et al., 2013",
+    authors: "Leys, C., Ley, C., Klein, O., Bernard, P., & Licata, L.",
+    year: 2013,
+    work: "Detecting outliers: Do not use standard deviation around the mean, use absolute deviation around the median",
+    venue: "Journal of Experimental Social Psychology, 49(4), 764–766",
+    doi: "10.1016/j.jesp.2013.03.013",
+    url: "https://doi.org/10.1016/j.jesp.2013.03.013",
+    role: "method-origin",
+    kind: "peer-reviewed",
+    roleNote: {
+      vi: "Phát hiện giá trị bất thường bằng độ lệch tuyệt đối trung vị (MAD) và ngưỡng 2,5, dùng để đánh dấu năm bất thường.",
+      en: "Outlier detection with the median absolute deviation (MAD) and the cut-off 2.5, used to flag anomalous years.",
+    },
+    verification: {
+      status: "verified",
+      method: "Crossref + full text (open-access copy, dipot.ulb.ac.be)",
+      checkedOn: "2026-11-16",
+      note: {
+        vi: "Đã đối chiếu với toàn văn: MAD = b · trung vị(|x_i − trung vị|) với b = 1,4826; tiêu chí |x_i − M| / MAD > ngưỡng; các tác giả khuyến nghị ngưỡng 2,5 (\"by default, we suggest a threshold of 2.5\").",
+        en: "Checked against the full text: MAD = b · median(|x_i − median|) with b = 1.4826; criterion |x_i − M| / MAD > threshold; the authors recommend 2.5 (\"by default, we suggest a threshold of 2.5\").",
+      },
+    },
+  },
+  "tukey-1977": {
+    id: "tukey-1977",
+    shortCite: "Tukey, 1977",
+    authors: "Tukey, J. W.",
+    year: 1977,
+    work: "Exploratory Data Analysis",
+    venue: "Addison-Wesley (ISBN 978-0-201-07616-5)",
+    url: "https://openlibrary.org/isbn/9780201076165",
+    role: "method-origin",
+    kind: "textbook",
+    roleNote: {
+      vi: "Nguồn gốc của biểu đồ hộp và của cận Tukey [Q1 − 1,5·IQR, Q3 + 1,5·IQR], dùng để đánh dấu chủ đề bất thường trong nhóm quy mô của nó.",
+      en: "Origin of the box plot and of the Tukey fences [Q1 − 1.5·IQR, Q3 + 1.5·IQR], used to flag anomalous topics within their size group.",
+    },
+    reliabilityNote: {
+      vi: "Giáo trình, không có DOI.",
+      en: "Textbook, no DOI.",
+    },
+    verification: {
+      status: "unverified",
+      method: "Publication details (author, year, publisher, ISBN)",
+      checkedOn: "2026-11-19",
+      note: {
+        vi: "Chưa xác minh nội dung: thông tin xuất bản lấy từ biểu ghi ISBN, chưa mở được chương về biểu đồ hộp để đối chiếu hệ số 1,5.",
+        en: "Content not verified: the publication details come from the ISBN record; the box-plot chapter could not be opened to check the factor 1.5.",
+      },
+    },
+  },
+  "rotolo-2015": {
+    id: "rotolo-2015",
+    shortCite: "Rotolo et al., 2015",
+    authors: "Rotolo, D., Hicks, D., & Martin, B. R.",
+    year: 2015,
+    work: "What is an emerging technology?",
+    venue: "Research Policy, 44(10), 1827–1843",
+    doi: "10.1016/j.respol.2015.06.006",
+    url: "https://doi.org/10.1016/j.respol.2015.06.006",
+    role: "method-origin",
+    kind: "peer-reviewed",
+    roleNote: {
+      vi: "Định nghĩa công nghệ mới nổi, trong đó có tính mới (novelty) và tăng trưởng nhanh; cơ sở của tiêu chí độ mới của tín hiệu mới nổi.",
+      en: "Definition of an emerging technology, including radical novelty and fast growth; the basis of the novelty criterion of emerging signals.",
+    },
+    verification: {
+      status: "unverified",
+      method: "Citation details supplied by the project team",
+      checkedOn: "2026-11-19",
+      note: {
+        vi: "Chưa xác minh: thông tin trích dẫn do nhóm dự án cung cấp, chưa đối chiếu bằng Crossref. Dự án chỉ mượn ý tưởng về tính mới; ngưỡng cụ thể là quy ước của dự án.",
+        en: "Not verified: the citation details were supplied by the project team and not yet checked against Crossref. The project only borrows the idea of novelty; the specific threshold is a project convention.",
+      },
+    },
+  },
+  "small-2014": {
+    id: "small-2014",
+    shortCite: "Small et al., 2014",
+    authors: "Small, H., Boyack, K. W., & Klavans, R.",
+    year: 2014,
+    work: "Identifying emerging topics in science and technology",
+    venue: "Research Policy, 43(8), 1450–1467",
+    doi: "10.1016/j.respol.2014.02.005",
+    url: "https://doi.org/10.1016/j.respol.2014.02.005",
+    role: "method-origin",
+    kind: "peer-reviewed",
+    roleNote: {
+      vi: "Cách nhận diện chủ đề mới nổi bằng so sánh giữa hai giai đoạn; cơ sở của việc so sánh thị phần từ khoá giữa giai đoạn trước và giai đoạn gần.",
+      en: "Identifying emerging topics by comparing two periods; the basis of comparing a keyword's share between the earlier and the recent period.",
+    },
+    verification: {
+      status: "unverified",
+      method: "Citation details supplied by the project team",
+      checkedOn: "2026-11-19",
+      note: {
+        vi: "Chưa xác minh: thông tin trích dẫn do nhóm dự án cung cấp, chưa đối chiếu bằng Crossref.",
+        en: "Not verified: the citation details were supplied by the project team and not yet checked against Crossref.",
+      },
+    },
   },
   "openalex-works": {
     id: "openalex-works",

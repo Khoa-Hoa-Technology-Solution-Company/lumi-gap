@@ -19,13 +19,9 @@ export function ActiveScopeChips({ activeChips, handleBucketClick }: ActiveScope
   // Enforce precise prefixes on display label
   const getDisplayLabel = (chip: ActiveChipItem) => {
     // Extract actual name by removing existing prefixes if present
-    const cleanName = chip.label.replace(/^(Domain|Field|Subfield|Topic|Paper|OA|Provider|Source|Citations):\s*/i, "");
+    const cleanName = chip.label.replace(/^(Subfield|Topic|Paper|OA|Provider|Source|Citations):\s*/i, "");
     
     switch (chip.facet) {
-      case "Domains":
-        return `Domain: ${cleanName}`;
-      case "Fields":
-        return `Field: ${cleanName}`;
       case "Subfields":
         return `Subfield: ${cleanName}`;
       case "Topics":
@@ -47,7 +43,7 @@ export function ActiveScopeChips({ activeChips, handleBucketClick }: ActiveScope
 
   // Group active chips by category group
   const groupedChips = {
-    taxonomy: activeChips.filter(c => ["Domains", "Fields", "Subfields", "Topics"].includes(c.facet)),
+    taxonomy: activeChips.filter(c => ["Subfields", "Topics"].includes(c.facet)),
     metadata: activeChips.filter(c => ["Paper Types", "Open Access", "Providers", "Top Sources", "Languages"].includes(c.facet)),
     impact: activeChips.filter(c => c.facet === "Citation Bands")
   };

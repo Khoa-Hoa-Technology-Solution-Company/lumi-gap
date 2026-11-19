@@ -3,6 +3,16 @@ import { DEFAULT_TREND_SORT, DEFAULT_TREND_YEAR_FROM, DEFAULT_TREND_YEAR_TO, typ
 /** Default of the "Min papers" control; the URL omits it. */
 export const DEFAULT_TREND_MIN_PAPERS = 2;
 
+/** Tabs of the trends page; the first one is the default and is left out of the URL. */
+export const TREND_TAB_IDS = ["overview", "topics", "periods", "dataset", "compare", "emerging", "ai"] as const;
+export type TrendTabId = (typeof TREND_TAB_IDS)[number];
+
+/** `?tab=` -> a tab; "scope" is the old name of "dataset", anything unknown opens the overview. */
+export function parseTrendTab(tab: string | null | undefined): TrendTabId {
+  if (tab === "scope") return "dataset";
+  return (TREND_TAB_IDS as readonly string[]).includes(tab ?? "") ? (tab as TrendTabId) : "overview";
+}
+
 /** Everything the trends page keeps in its URL, so a reload or a shared link restores the same view. */
 export interface TrendsPageUrlState {
   yearFrom: number;
@@ -29,13 +39,14 @@ export interface TrendsPageUrlState {
   sources: string[];
   languages: string[];
   citationBands: string[];
+  sizeBands: string[];
   selectedTopics: string[];
 }
 
 const LIST_KEYS = [
   "domains", "fields", "subfields", "topicsFilter",
   "domainIds", "fieldIds", "subfieldIds", "topicIds",
-  "paperKinds", "openAccessStatuses", "providers", "sources", "languages", "citationBands",
+  "paperKinds", "openAccessStatuses", "providers", "sources", "languages", "citationBands", "sizeBands",
 ] as const;
 
 /** URL search params of the trends page; values equal to their defaults are left out. */

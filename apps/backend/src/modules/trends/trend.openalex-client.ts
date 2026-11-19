@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { env } from "../../config/env.js";
 import { cache, hashKey } from "../../infrastructure/cache.js";
 import { logger } from "../../infrastructure/logger.js";
@@ -41,6 +42,17 @@ export class OpenAlexBudgetError extends Error {
 
 let budgetExhaustedUntil = 0;
 
+const refreshScope = new AsyncLocalStorage<true>();
+
+/**
+ * Runs `fn` with the cache read switched off: every OpenAlex request inside it is sent again and its cache entry
+ * rewritten with a fresh 7-day lifetime. Reading a cached entry does not extend its lifetime, so a warm-up that
+ * only read the cache would let the entries expire all the same. Used by the scheduled warm-up of the trend scope.
+ */
+export function withOpenAlexRefresh<T>(fn: () => Promise<T>): Promise<T> {
+  return refreshScope.run(true, fn);
+}
+
 export function isOpenAlexBudgetAvailable(): boolean {
   return Date.now() >= budgetExhaustedUntil;
 }
@@ -66,7 +78,7 @@ export async function openAlexGroupBy(filter: string, groupBy: string, cursor?: 
  */
 export async function openAlexGet<T>(path: string, params: Record<string, string>): Promise<T> {
   const cacheKey = `trends:openalex:${CACHE_VERSION}:${hashKey({ path, params })}`;
-  const cached = await cache.get<T>(cacheKey);
+  const cached = refreshScope.getStore() ? null : await cache.get<T>(cacheKey);
   if (cached) return cached;
   if (!isOpenAlexBudgetAvailable()) throw new OpenAlexBudgetError("OpenAlex daily budget reserved for sync");
 

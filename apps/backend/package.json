@@ -32,6 +32,7 @@
     "eval:community-suggest": "tsx scripts/community-suggest-eval.ts",
     "eval:gap-closure-retro": "tsx scripts/gap-closure-retro-eval.ts",
     "eval:gaps": "tsx scripts/gap-eval.ts",
+    "eval:trends": "tsx scripts/trends-eval.ts",
     "eval:search-tags": "tsx scripts/search-tags-eval.ts",
     "eval:interests": "tsx scripts/interests-eval.ts",
     "personalization:backfill-topics": "tsx scripts/personalization-backfill-topics.ts",

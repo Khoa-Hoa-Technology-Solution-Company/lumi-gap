@@ -150,6 +150,7 @@ export const API_ROUTES = {
     run: (id: string) => `/topic-backfill/runs/${encodeURIComponent(id)}`,
   },
   trends: {
+    emerging: "/trends/emerging",
     topic: (topic: string) => `/trends/${encodeURIComponent(topic)}`,
   },
   reports: {
