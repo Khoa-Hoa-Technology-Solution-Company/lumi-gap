@@ -14,10 +14,11 @@ mentorAccessRouter.get("/catalog", base, validate(s.mentorAccessPageSchema, "que
 mentorAccessRouter.get("/tasks", base, validate(s.mentorAccessPageSchema, "query"), c.tasks);
 mentorAccessRouter.put("/:accessId", writes, access, validate(s.configureMentorAccessSchema), c.configure);
 mentorAccessRouter.post("/:accessId/revoke", writes, access, validate(s.mentorAccessActionSchema), c.revoke);
-mentorAccessRouter.post("/:accessId/shares", writes, access, validate(s.mentorShareSchema.innerType().extend({ expectedVersion: z.number().int().positive() }).refine(v => v.kind !== "MANUSCRIPT" || Boolean(v.sectionKey), "Chọn phần bản thảo")), c.share);
+mentorAccessRouter.post("/:accessId/shares", writes, access, validate(s.mentorResourceWriteSchema), c.share);
+mentorAccessRouter.get("/:accessId/shares/:itemId/pdf", item, c.paperPdf);
 mentorAccessRouter.get("/:accessId/shares/:itemId", item, c.resource);
 mentorAccessRouter.post("/:accessId/shares/:itemId/revoke", writes, item, validate(s.mentorAccessActionSchema), c.unshare);
-mentorAccessRouter.get("/:accessId/feedback", access, validate(s.mentorAccessPageSchema, "query"), c.feedback);
+mentorAccessRouter.get("/:accessId/feedback", access, validate(s.mentorFeedbackPageSchema, "query"), c.feedback);
 mentorAccessRouter.post("/:accessId/feedback", writes, access, validate(s.mentorFeedbackSchema), c.comment);
 mentorAccessRouter.put("/:accessId/feedback/:itemId", writes, item, validate(s.mentorFeedbackStatusSchema), c.handle);
 mentorAccessRouter.get("/:accessId/history", access, validate(s.mentorAccessPageSchema, "query"), c.history);

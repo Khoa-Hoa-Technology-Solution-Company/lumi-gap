@@ -1,13 +1,14 @@
+import { MentorSharedPaper } from "./mentor-paper-sharing";
 import { automaticTaskStatuses } from "../my-work-model";
 import { caseStatusLabels } from "./screening-case-controls";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
-import { Check, Send, SlidersHorizontal, ShieldAlert, FileText, MessageSquare, MessagesSquare, ShieldCheck, CornerDownRight, Clock, Users, ExternalLink } from "lucide-react";
+import { AlertTriangle, FileText, Send, ShieldCheck, MessageSquare, MessagesSquare, CornerDownRight, Clock, Users, ExternalLink } from "lucide-react";
 import { useSubmissions } from "@/features/submissions";
 import { Badge } from "@/components/ui/badge";
-import { mentorPermissions, mentorPresets, creditRoles, type MentorAccessWorkspace as WorkspaceData, type MentorAccessPolicy, type MentorPolicyInput, type MentorPermission, type MentorResourceKind, type MentorShareInput, type MentorFeedback, type MentorAgreement } from "@trend/shared-types";
+import { mentorDefaultPermissions, creditRoles, type MentorAccessWorkspace as WorkspaceData, type MentorAccessPolicy, type MentorPolicyInput, type MentorPermission, type MentorResourceKind, type MentorFeedback, type MentorAgreement } from "@trend/shared-types";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -17,17 +18,12 @@ import { canLeaveWorkspace, useUnsavedWorkspace, WorkspaceLoading } from "./work
 import { MentorMessageThread } from "./mentor-message-thread";
 import "../mentor-access.css";
 
-const permissionLabels: Record<MentorPermission, string> = { OVERVIEW_VIEW: "Xem tổng quan đã chia sẻ", PAPERS_VIEW: "Xem bài báo đã chia sẻ", PAPERS_COMMENT: "Nhận xét bài báo", PAPERS_SUGGEST: "Đề xuất cho bài báo", GAPS_VIEW: "Xem gap đã chia sẻ", GAPS_COMMENT: "Nhận xét gap", GAPS_RECOMMEND: "Khuyến nghị gap", TASKS_VIEW: "Xem công việc và cột mốc đã chia sẻ", TASKS_SUGGEST: "Đề xuất thay đổi công việc", MANUSCRIPTS_VIEW: "Đọc phần bản thảo được chọn", MANUSCRIPTS_COMMENT: "Nhận xét phần bản thảo", MANUSCRIPTS_SUGGEST: "Đề xuất sửa phần bản thảo", MANUSCRIPTS_REVIEW: "Phản biện phần bản thảo", MENTOR_CHAT: "Trao đổi riêng với nhóm", SUBMISSIONS_VIEW: "Xem thông tin nộp bài đã chia sẻ", CONTRIBUTIONS_VIEW: "Xem đóng góp đã chia sẻ" };
 const kindLabels: Record<MentorResourceKind, string> = { OVERVIEW: "Tổng quan", PAPER: "Bài báo", GAP: "Cơ hội nghiên cứu", TASK: "Công việc", MILESTONE: "Cột mốc", MANUSCRIPT: "Phần bản thảo", SUBMISSION: "Nộp bài", CONTRIBUTION: "Đóng góp" };
 const sectionLabels: Record<string, string> = { abstract: "Tóm tắt", introduction: "Giới thiệu", methodology: "Phương pháp", results: "Kết quả", discussion: "Thảo luận", conclusion: "Kết luận", appendix: "Phụ lục được duyệt" };
-const presetLabels = { OBSERVER: "Observer · Quan sát", ADVISOR: "Advisor · Tư vấn", REVIEWER: "Reviewer · Phản biện" };
 const statusLabels: Record<string, string> = { PENDING: "Chờ xử lý", ACCEPTED: "Đã chấp nhận", REJECTED: "Đã từ chối", RESOLVED: "Đã giải quyết", PROPOSED: "Chờ thống nhất", WITHDRAWN: "Đã rút lại", CANCELLED: "Đã hủy", EXPIRED: "Hết hạn" };
 const roleLabels: Record<string, string> = { CONCEPTUALIZATION: "Hình thành ý tưởng", DATA_CURATION: "Quản lý dữ liệu", FORMAL_ANALYSIS: "Phân tích", FUNDING_ACQUISITION: "Huy động kinh phí", INVESTIGATION: "Thực hiện nghiên cứu", METHODOLOGY: "Phương pháp", PROJECT_ADMINISTRATION: "Điều phối", RESOURCES: "Nguồn lực", SOFTWARE: "Phần mềm", SUPERVISION: "Hướng dẫn", VALIDATION: "Kiểm chứng", VISUALIZATION: "Trực quan hóa", WRITING_ORIGINAL_DRAFT: "Viết bản đầu", WRITING_REVIEW_EDITING: "Rà soát và biên tập" };
 const denied = (error: unknown) => isAxiosError(error) && [401, 403, 404].includes(error.response?.status ?? 0);
-export function MentorPolicySummary({ policy }: { policy?: MentorAccessPolicy }) {
-  if (!policy) return null;
-  return <section data-no-i18n className="mentor-access-form"><strong>{presetLabels[policy.preset]} · Quy tắc v{policy.version}</strong><p>{policy.expiresAt ? `Hạn truy cập: ${new Date(policy.expiresAt).toLocaleString("vi-VN")}` : "Chưa đặt hạn truy cập"}. Chỉ đọc nội dung nhóm đã duyệt và chọn chia sẻ; không mở mã nguồn hoặc chat nội bộ.</p><details><summary>Xem {policy.permissions.length} quyền đề xuất</summary><ul>{policy.permissions.map(p => <li key={p}>{permissionLabels[p]}</li>)}</ul></details></section>;
-}
+export function MentorPolicySummary({ policy }: { policy?: MentorAccessPolicy }) { if (!policy) return null; return <p className="text-sm text-muted-foreground">Cố vấn chỉ xem tổng quan và nội dung được chia sẻ. Không có quyền sửa bản gốc hoặc quản trị dự án.</p>; }
 function AccessError({ error }: { error: unknown }) { if (!error) return null; const message = isAxiosError(error) ? error.response?.data?.error?.message : null; return <p role="alert" className="mentor-access-error">{typeof message === "string" && /[À-ỹĐđ]/.test(message) ? message : "Chưa thể thực hiện. Bản nháp vẫn được giữ, vui lòng thử lại."}</p>; }
 function useAccessCommand(projectId: string) {
   const cache = useQueryClient(), busy = useRef(false), attempt = useRef<{ text: string; key: string }>();
@@ -36,29 +32,9 @@ function useAccessCommand(projectId: string) {
   return { ...mutation, run };
 }
 function PageButtons({ page, hasNext, onPage }: { page: number; hasNext: boolean; onPage: (value: number) => void }) { if (page === 1 && !hasNext) return null; return <nav className="mentor-access-actions" aria-label="Phân trang"><Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => onPage(page - 1)}>Trang trước</Button><span>Trang {page}</span><Button type="button" variant="outline" size="sm" disabled={!hasNext} onClick={() => onPage(page + 1)}>Trang sau</Button></nav>; }
-export const defaultMentorPolicy = (): MentorPolicyInput => ({ preset: "ADVISOR", permissions: [...mentorPresets.ADVISOR], expiresAt: null, shares: [] });
-export function MentorPolicyFields({ projectId, value, onChange, disabled = false }: { projectId: string; value: MentorPolicyInput; onChange: (value: MentorPolicyInput) => void; disabled?: boolean }) {
-  const [adding, setAdding] = useState(false);
-  const baseline = useRef(JSON.stringify(value));
-  useUnsavedWorkspace(JSON.stringify(value) !== baseline.current);
-  return <div className="mentor-access-form" data-no-i18n><fieldset disabled={disabled}><label>Mức quyền<select value={value.preset} onChange={e => { const preset = e.target.value as MentorPolicyInput["preset"]; onChange({ ...value, preset, permissions: [...mentorPresets[preset]] }); }}>{Object.entries(presetLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-    <p>Quyền xem chỉ áp dụng cho nội dung được chọn bên dưới. Không cấp quyền quản trị, mã nguồn, chat nhóm hay chốt sàng lọc.</p>
-    <details><summary>Tùy chỉnh quyền chi tiết ({value.permissions.length})</summary><div className="mentor-permission-grid">{mentorPermissions.map(permission => <label className="mentor-access-check" key={permission}><input type="checkbox" checked={value.permissions.includes(permission)} onChange={e => { const view = permission.startsWith("PAPERS_") ? "PAPERS_VIEW" : permission.startsWith("GAPS_") ? "GAPS_VIEW" : permission.startsWith("TASKS_") ? "TASKS_VIEW" : permission.startsWith("MANUSCRIPTS_") ? "MANUSCRIPTS_VIEW" : permission; const next = e.target.checked ? [...new Set([...value.permissions, permission, view as MentorPermission])] : value.permissions.filter(p => p !== permission && (permission !== view || !p.startsWith(permission.split("_")[0] + "_"))); onChange({ ...value, permissions: next }); }} />{permissionLabels[permission]}</label>)}</div></details>
-    <label>Hạn truy cập (không bắt buộc)<input type="datetime-local" value={value.expiresAt ? localDate(value.expiresAt) : ""} onChange={e => onChange({ ...value, expiresAt: e.target.value ? new Date(e.target.value).toISOString() : null })} /></label>
-    <div><strong>Nội dung được chọn để chia sẻ</strong><p>Nội dung được mở sau khi hai bên chấp nhận. Danh sách dưới đây chỉ gồm mục được thêm trong lần cấu hình này. Mỗi bản chia sẻ giữ nguyên nội dung đã duyệt.</p>{value.shares?.map((s, i) => <div className="mentor-access-actions" key={i}><span>{kindLabels[s.kind]}: {s.title}{s.sectionKey ? ` · ${sectionLabels[s.sectionKey] ?? s.sectionKey}` : ""}</span><Button type="button" size="sm" variant="ghost" onClick={() => onChange({ ...value, shares: value.shares?.filter((_, n) => i !== n) })}>Bỏ chọn</Button></div>)}<Button type="button" variant="outline" disabled={disabled || (value.shares?.length ?? 0) >= 30} onClick={async () => { if (!adding || await canLeaveWorkspace()) setAdding(v => !v); }}>{adding ? "Đóng bộ chọn" : "Chọn tài nguyên hoặc phần bản thảo"}</Button></div></fieldset>
-    {adding && <ResourcePicker projectId={projectId} disabled={disabled} onAdd={share => { onChange({ ...value, shares: [...(value.shares ?? []).filter(s => !(s.kind === share.kind && s.resourceId === share.resourceId && s.sectionKey === share.sectionKey)), share] }); setAdding(false); }} />}
-  </div>;
-}
-function localDate(date: string) { const d = new Date(date); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
-function ResourcePicker({ projectId, disabled, onAdd }: { projectId: string; disabled: boolean; onAdd: (share: MentorShareInput) => void }) {
-  const actorId = useAuthStore(s => s.user?.id), [kind, setKind] = useState<MentorResourceKind>("PAPER"), [page, setPage] = useState(1), [search, setSearch] = useState(""), [q, setQ] = useState(""), [draft, setDraft] = useState<MentorShareInput | null>(null), [confirmed, setConfirmed] = useState(false);
-  const query = useQuery({ queryKey: ["mentor-access", actorId, projectId, "catalog", kind, page, q], queryFn: () => mentorAccessApi.catalog(projectId, kind, page, q) });
-  useUnsavedWorkspace(Boolean(draft));
-  return <section className="mentor-resource-picker"><h4>Chọn và duyệt nội dung chia sẻ</h4><div className="mentor-access-actions"><label>Loại tài nguyên<select disabled={disabled} value={kind} onChange={async e => { const next = e.target.value as MentorResourceKind; if (draft && !await canLeaveWorkspace()) return; setKind(next); setPage(1); setDraft(null); }}>{Object.entries(kindLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><input aria-label="Tìm tài nguyên để chia sẻ" disabled={disabled} value={search} onChange={e => setSearch(e.target.value)} maxLength={160} /><Button type="button" variant="outline" disabled={disabled} onClick={() => { setQ(search); setPage(1); }}>Tìm</Button></div>
-    <AccessError error={query.error} />{query.isLoading && <WorkspaceLoading />}{query.data?.items.length === 0 && <p>Chưa có tài nguyên phù hợp. Thêm tài nguyên trong dự án hoặc đổi loại.</p>}<ul className="mentor-resource-options">{query.data?.items.map(item => <li key={item.resourceId}><Button type="button" variant={draft?.resourceId === item.resourceId ? "secondary" : "ghost"} disabled={disabled} onClick={async () => { if (!draft || await canLeaveWorkspace()) { setDraft(item); setConfirmed(false); } }}>{item.title}</Button></li>)}</ul>{query.data && <PageButtons page={page} hasNext={query.data.hasNext} onPage={setPage} />}
-    {draft && <div className="mentor-access-form"><label>Tiêu đề hiển thị<input disabled={disabled} value={draft.title} maxLength={240} onChange={e => { setDraft({ ...draft, title: e.target.value }); setConfirmed(false); }} /></label>{kind === "MANUSCRIPT" && <><label>Phần bản thảo<select disabled={disabled} value={draft.sectionKey} onChange={e => { setDraft({ ...draft, sectionKey: e.target.value }); setConfirmed(false); }}><option value="">Chọn một phần</option>{["Tóm tắt", "Giới thiệu", "Phương pháp", "Kết quả", "Thảo luận", "Kết luận", "Phụ lục được duyệt"].map((label, i) => <option key={i} value={["abstract", "introduction", "methodology", "results", "discussion", "conclusion", "appendix"][i]}>{label}</option>)}</select></label><p>Chỉ dán nội dung hiển thị của phần đã chọn. Không lấy tự động toàn bản thảo, không dán mã LaTeX hoặc đường dẫn tài sản.</p></>}
-    <label>Nội dung hiển thị đã duyệt<textarea disabled={disabled} rows={7} value={draft.content} maxLength={50000} onChange={e => { setDraft({ ...draft, content: e.target.value }); setConfirmed(false); }} /></label><label className="mentor-access-check"><input type="checkbox" disabled={disabled} checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Tôi đã kiểm tra và đồng ý chỉ chia sẻ nội dung ở trên.</label><Button type="button" disabled={disabled || !confirmed || !draft.content.trim() || !draft.title.trim() || kind === "MANUSCRIPT" && !draft.sectionKey} onClick={() => onAdd(draft)}>Thêm vào danh sách chia sẻ</Button></div>}
-  </section>;
+export const defaultMentorPolicy = (): MentorPolicyInput => ({ preset: "ADVISOR", permissions: [...mentorDefaultPermissions], expiresAt: null, shares: [] });
+export function MentorPolicyFields(_props: { projectId: string; value: MentorPolicyInput; onChange: (value: MentorPolicyInput) => void; disabled?: boolean }) {
+ return <p className="text-sm text-muted-foreground">Sau khi chấp nhận, cố vấn có thể xem tổng quan và trao đổi với nhóm. Bài báo và phiên bản bản thảo chỉ được mở khi nhóm chủ động chia sẻ hoặc gửi góp ý.</p>;
 }
 
 type MentorWorkspaceMode = "manage" | "conversation" | "all";
@@ -66,19 +42,73 @@ function conversationHref(projectId: string, accessId: string, page: number) {
   const params = new URLSearchParams({ tab: "chat", channel: "mentors", mentorAccess: accessId, mentorPage: String(page) });
   return `/projects/${encodeURIComponent(projectId)}?${params}`;
 }
-export function MentorAccessWorkspace({ projectId, mentorView = false, mode = mentorView ? "all" : "manage" }: { projectId: string; mentorView?: boolean; mode?: MentorWorkspaceMode }) {
+function mentorInitials(name?: string) {
+  const clean = (name ?? "").replace(/\([^)]*\)/g, "").replace(/\b(TS|ThS|GS|PGS|Dr|Prof)\b\.?/gi, "").trim() || name || "";
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[parts.length - 2]![0] ?? ""}${parts[parts.length - 1]![0] ?? ""}`.toLocaleUpperCase("vi-VN");
+  return parts[0]?.slice(0, 2).toLocaleUpperCase("vi-VN") || "GV";
+}
+function policyPriority(entry: Entry): number {
+  if (entry.policy.effective && !entry.policy.revokedAt) return 0;
+  if (entry.invitationState === "ACCEPTED" && !entry.policy.revokedAt) return 1;
+  if (entry.invitationState === "PENDING" && !entry.policy.revokedAt) return 2;
+  return 3;
+}
+function policyStatusText(p: Entry): string {
+  if (p.policy.revokedAt) return "Đã thu hồi";
+  if (p.policy.effective) return "Đang hướng dẫn";
+  if (p.policy.expiresAt && new Date(p.policy.expiresAt) <= new Date()) return "Hết hạn truy cập";
+  if (p.invitationState === "PENDING") return "Chờ chấp nhận";
+  return statusLabels[p.invitationState] ?? "Chưa có quyền";
+}
+export function MentorAccessWorkspace({
+  projectId,
+  mentorView = false,
+  mode = mentorView ? "all" : "manage",
+  focusMentorId,
+  embedded = false,
+}: {
+  projectId: string;
+  mentorView?: boolean;
+  mode?: MentorWorkspaceMode;
+  focusMentorId?: string;
+  embedded?: boolean;
+}) {
   const [params] = useSearchParams();
   const requestedPage = Number(params.get("mentorPage"));
   const actorId = useAuthStore(s => s.user?.id), [selected, setSelected] = useState(params.get("mentorAccess") ?? ""), [page, setPage] = useState(mode === "conversation" && Number.isInteger(requestedPage) && requestedPage > 0 && requestedPage <= 10000 ? requestedPage : 1);
+  const [showInactive, setShowInactive] = useState(false);
   const query = useQuery({ queryKey: ["mentor-access", actorId, projectId, "workspace", page], queryFn: () => mentorAccessApi.workspace(projectId, page), retry: false, refetchInterval: 5000 });
   const forbidden = denied(query.error);
+
+  const rawPolicies = query.data
+    ? (mode === "conversation"
+        ? query.data.policies.filter(p => p.invitationState === "ACCEPTED" || p.policy.relationshipId)
+        : [...query.data.policies].sort((a, b) => policyPriority(a) - policyPriority(b)))
+    : [];
+
+  useEffect(() => {
+    if (!focusMentorId || !rawPolicies.length) return;
+    const target = rawPolicies.find(p => p.mentorId === focusMentorId);
+    if (target) setSelected(target.policy.id);
+  }, [focusMentorId, rawPolicies.length]);
+
   if (query.isLoading) return <WorkspaceLoading />;
-  if (!query.data || forbidden) return <section className="mentor-access-workspace" data-no-i18n><h2>Không gian cố vấn chưa khả dụng</h2><p>Cần lời mời được hai bên chấp nhận và quyền truy cập còn hiệu lực.</p><AccessError error={query.error} /><Button variant="outline" onClick={() => void query.refetch()}>Tải lại</Button></section>;
+  if (!query.data || forbidden) return <section className={`mentor-access-workspace ${embedded ? "is-embedded" : ""}`} data-no-i18n><h2>Không gian cố vấn chưa khả dụng</h2><p>Cần lời mời được hai bên chấp nhận và quyền truy cập còn hiệu lực.</p><AccessError error={query.error} /><Button variant="outline" onClick={() => void query.refetch()}>Tải lại</Button></section>;
   const data = query.data;
-  const policies = mode === "conversation" ? data.policies.filter(p => p.invitationState === "ACCEPTED" || p.policy.relationshipId) : data.policies;
-  const entry = selected ? policies.find(p => p.policy.id === selected) : policies[0];
-  return <section className={`mentor-access-workspace ${mode === "conversation" ? "mentor-conversation-workspace" : ""}`} data-no-i18n>
-    <header><h2>{mode === "conversation" ? "Nhóm và cố vấn" : mentorView ? data.title : "Quyền và nội dung chia sẻ"}</h2>{mode !== "conversation" && <p>{mentorView ? "Bạn chỉ xem được nội dung nhóm đã duyệt. Mã nguồn và cuộc trò chuyện nội bộ không được chia sẻ." : "Chọn quyền, nội dung và hạn truy cập riêng cho từng cố vấn. Lịch sử vẫn được giữ khi thu hồi."}</p>}</header>
+  const policies = rawPolicies;
+  const activePolicies = policies.filter(p => policyPriority(p) <= 2);
+  const inactivePolicies = policies.filter(p => policyPriority(p) > 2);
+  const visibleManagePolicies = mode === "manage" && !showInactive && activePolicies.length > 0 ? activePolicies : policies;
+  const entry = selected ? policies.find(p => p.policy.id === selected) : (visibleManagePolicies[0] ?? policies[0]);
+
+  return <section className={`mentor-access-workspace ${mode === "conversation" ? "mentor-conversation-workspace" : ""} ${embedded ? "is-embedded" : ""}`} data-no-i18n>
+    {!embedded && (
+      <header>
+        <h2>{mode === "conversation" ? "Nhóm và cố vấn" : mentorView ? data.title : "Tài liệu đã chia sẻ"}</h2>
+        {mode !== "conversation" && <p>{mentorView ? "Bạn chỉ xem được nội dung nhóm đã duyệt. Mã nguồn và cuộc trò chuyện nội bộ không được chia sẻ." : "Theo dõi bài báo đã chia sẻ và các phiên bản bản thảo đã gửi góp ý."}</p>}
+      </header>
+    )}
     <AccessError error={query.error} />
     {mentorView && mode !== "conversation" && (
       <div className="space-y-4">
@@ -86,13 +116,57 @@ export function MentorAccessWorkspace({ projectId, mentorView = false, mode = me
         <MentorAdjudicationTasks projectId={projectId} />
       </div>
     )}
-    {!policies.length ? <p>{mode === "conversation" ? "Chưa có cố vấn đã nhận hướng dẫn trên trang này. Khi lời mời được chấp nhận, nhóm có thể bắt đầu trao đổi tại đây." : "Chưa có quyền cố vấn. Chủ dự án có thể gửi lời mời trong mục Tìm cố vấn."}</p> : <>
-      {((!entry || policies.length > 1) || mode !== "conversation") && <label>{mode === "conversation" ? "Cuộc trò chuyện" : "Cố vấn và lời mời"}<select aria-label={mode === "conversation" ? "Chọn cố vấn để trao đổi" : "Chọn cố vấn để quản lý quyền"} value={entry?.policy.id ?? ""} onChange={async e => { const next = e.target.value; if (await canLeaveWorkspace()) setSelected(next); }}>
-        {!entry && <option value="" disabled>Chọn cố vấn trên trang này</option>}
-        {policies.map(p => <option key={p.policy.id} value={p.policy.id}>{mode === "conversation" ? `${p.mentorName}${p.policy.effective ? "" : " · Chỉ đọc"}` : `${p.mentorName} · ${statusLabels[p.invitationState]} · ${p.policy.revokedAt ? "Đã thu hồi" : p.policy.effective ? "Đang có quyền" : p.policy.expiresAt && new Date(p.policy.expiresAt) <= new Date() ? "Hết hạn truy cập" : "Chưa có quyền"}`}</option>)}
-      </select></label>}
+    {!policies.length ? <p className="text-xs text-muted-foreground">{mode === "conversation" ? "Chưa có cố vấn đã nhận hướng dẫn trên trang này. Khi lời mời được chấp nhận, nhóm có thể bắt đầu trao đổi tại đây." : "Chưa có quyền cố vấn. Chủ dự án có thể gửi lời mời trong mục Tìm cố vấn."}</p> : <>
+      {mode === "manage" ? (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Chọn cố vấn để quản lý quyền">
+            {visibleManagePolicies.map(p => {
+              const isSelected = p.policy.id === entry?.policy.id;
+              const isEffective = p.policy.effective && !p.policy.revokedAt;
+              const isPending = p.invitationState === "PENDING" && !p.policy.revokedAt;
+              return (
+                <button
+                  key={p.policy.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isSelected}
+                  onClick={async () => { if (await canLeaveWorkspace()) setSelected(p.policy.id); }}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    isSelected
+                      ? "border-primary/40 bg-background text-foreground shadow-2xs ring-1 ring-primary/15"
+                      : "border-border/70 bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  }`}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                      isEffective ? "bg-emerald-500" : isPending ? "bg-amber-500" : "bg-muted-foreground/45"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span className="max-w-[200px] truncate">{p.mentorName}</span>
+                  <span className="text-[11px] font-normal text-muted-foreground">· {policyStatusText(p)}</span>
+                </button>
+              );
+            })}
+          </div>
+          {inactivePolicies.length > 0 && activePolicies.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowInactive(v => !v)}
+              className="text-[11.5px] font-medium text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+            >
+              {showInactive ? "Ẩn lời mời đã hủy/thu hồi" : `+${inactivePolicies.length} lời mời đã hủy/thu hồi`}
+            </button>
+          )}
+        </div>
+      ) : (
+        ((!entry || policies.length > 1) || mode !== "conversation") && <label>{mode === "conversation" ? "Cuộc trò chuyện" : "Cố vấn và lời mời"}<select aria-label={mode === "conversation" ? "Chọn cố vấn để trao đổi" : "Chọn cố vấn để quản lý quyền"} value={entry?.policy.id ?? ""} onChange={async e => { const next = e.target.value; if (await canLeaveWorkspace()) setSelected(next); }}>
+          {!entry && <option value="" disabled>Chọn cố vấn trên trang này</option>}
+          {policies.map(p => <option key={p.policy.id} value={p.policy.id}>{mode === "conversation" ? `${p.mentorName}${p.policy.effective ? "" : " · Chỉ đọc"}` : `${p.mentorName} · ${statusLabels[p.invitationState]} · ${policyStatusText(p)}`}</option>)}
+        </select></label>
+      )}
       {mode === "conversation" && entry && <MentorChatParticipants entry={entry} basics={data.basics} />}
-      {entry && (mode === "conversation" ? <MentorConversationPanel key={entry.policy.id} projectId={projectId} entry={entry} readOnly={data.readOnly || !entry.policy.effective} actorId={data.viewerId} /> : <AccessEntry key={entry.policy.id} projectId={projectId} data={data} entry={entry} actorId={data.viewerId} showCollaboration={mode === "all"} page={page} />)}
+      {entry && (mode === "conversation" ? <MentorConversationPanel key={entry.policy.id} projectId={projectId} entry={entry} readOnly={data.readOnly || !entry.policy.effective} actorId={data.viewerId} /> : <AccessEntry key={entry.policy.id} projectId={projectId} data={data} entry={entry} actorId={data.viewerId} showCollaboration={mode === "all"} page={page} embedded={embedded} />)}
     </>}
     {selected && !entry && <p role="status">Cuộc trao đổi này không còn ở trang hiện tại hoặc bạn không còn quyền truy cập. Hãy chọn cố vấn hoặc chuyển trang.</p>}
     {!mentorView && mode === "conversation" && <Button asChild variant="link"><Link to={`/projects/${encodeURIComponent(projectId)}?tab=support`}>Tìm cố vấn và quản lý lời mời</Link></Button>}
@@ -171,134 +245,250 @@ export function MentorAdjudicationTasks({ projectId }: { projectId: string }) {
   const history = ledger.data?.filter(task => task.actionType === "ADJUDICATION" && task.endedAt).slice(0, 20) ?? [];
   return <section aria-label="Việc phân xử được giao" className="space-y-3 rounded-lg border p-4"><h3 className="font-semibold">Cần tôi phân xử</h3><AccessError error={query.error} />{query.isLoading ? <p role="status">Đang tải công việc…</p> : query.data?.length ? <ul className="space-y-3">{query.data.map(task => <li key={task.roundId} className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 last:border-0 last:pb-0"><div className="min-w-0 flex-1"><p className="break-words font-medium">{task.title}</p><p className="text-sm text-muted-foreground">{caseStatusLabels[task.caseStatus ?? ""] ?? "Cần phân xử"} · {task.phase === "FULL_TEXT" ? "Toàn văn" : "Tiêu đề / tóm tắt"}</p></div><Button asChild size="sm"><Link to={`/academic-support/projects/${encodeURIComponent(projectId)}/screening/${task.roundId}${task.automaticTaskId ? `?automaticTask=${task.automaticTaskId}&taskReturn=${encodeURIComponent(`/academic-support/projects/${encodeURIComponent(projectId)}`)}` : ""}`}>Mở hồ sơ phân xử</Link></Button></li>)}</ul> : !query.error && <p className="text-sm text-muted-foreground">Chưa có bài cần bạn phân xử.</p>}{history.length > 0 && <details><summary className="cursor-pointer text-sm">Công việc đã kết thúc ({history.length})</summary><ul className="space-y-3 pt-3">{history.map(task => <li key={task.id} className="text-sm"><Link className="font-medium text-primary underline" to={`/academic-support/projects/${encodeURIComponent(projectId)}/screening/${task.roundId}?automaticTask=${task.id}&taskReturn=${encodeURIComponent(`/academic-support/projects/${encodeURIComponent(projectId)}`)}`}>{task.title}</Link><p className="text-muted-foreground">{automaticTaskStatuses[task.status]} · {task.reason}</p></li>)}</ul></details>}</section>;
 }
-function AccessEntry({ projectId, data, entry, actorId, showCollaboration, page }: { projectId: string; data: WorkspaceData; entry: Entry; actorId: string; showCollaboration: boolean; page: number }) {
-  const [editing, setEditing] = useState(false), [sensitive, setSensitive] = useState<string | null>(null), [reason, setReason] = useState(""), [confirmed, setConfirmed] = useState(false);
-  const [baseVersion, setBaseVersion] = useState(entry.policy.version);
-  const command = useAccessCommand(projectId); useUnsavedWorkspace(Boolean(reason) || command.isPending);
-  const sensitiveAction = (shareId: string) => { setSensitive(shareId); setBaseVersion(entry.policy.version); setReason(""); setConfirmed(false); };
+const reviewResourceStatusMeta: Record<string, { label: string; className: string; dot: string }> = {
+  REQUESTED: { label: "Chờ phản hồi", className: "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300", dot: "bg-amber-500" },
+  ACCEPTED: { label: "Đã chấp nhận", className: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300", dot: "bg-blue-500" },
+  IN_REVIEW: { label: "Đang đánh giá", className: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300", dot: "bg-blue-500" },
+  REVISION_REQUESTED: { label: "Cần chỉnh sửa", className: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300", dot: "bg-rose-500" },
+  RESUBMITTED: { label: "Đã nộp lại", className: "border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300", dot: "bg-indigo-500" },
+  SUBMITTED: { label: "Đã có góp ý", className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500" },
+  COMPLETED: { label: "Đã hoàn tất", className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500" },
+  DECLINED: { label: "Đã từ chối", className: "border-border bg-muted/60 text-muted-foreground", dot: "bg-muted-foreground/50" },
+  CANCELLED: { label: "Đã hủy", className: "border-border bg-muted/60 text-muted-foreground", dot: "bg-muted-foreground/50" },
+};
+function AccessEntry({ projectId, data, entry, actorId, showCollaboration, page, embedded = false }: { projectId: string; data: WorkspaceData; entry: Entry; actorId: string; showCollaboration: boolean; page: number; embedded?: boolean }) {
+  const [revoke, setRevoke] = useState<string | null>(null), [revokeConfirmed, setRevokeConfirmed] = useState(false), command = useAccessCommand(projectId);
+  const openRevoke = (target: string) => { setRevokeConfirmed(false); setRevoke(target); };
+  const closeRevoke = () => { if (!command.isPending) { setRevoke(null); setRevokeConfirmed(false); } };
+  const targetShare = revoke && revoke !== "access" ? entry.shares.find(s => s.id === revoke) : undefined;
+  const totalSharedCount = entry.shares.length + (entry.reviewResources?.length ?? 0);
   return (
-    <div className="space-y-6">
-      <div className="mentor-advisor-card rounded-2xl border border-border/80 bg-card p-5 sm:p-6 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary font-bold text-lg ring-2 ring-primary/20 shadow-2xs">
-              {entry.mentorName.charAt(0) || "M"}
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-base sm:text-lg font-bold text-foreground">{entry.mentorName}</h3>
-                <Badge variant="outline" className="text-xs font-semibold py-0.5 px-2 bg-primary/5 text-primary border-primary/20">
-                  {presetLabels[entry.policy.preset]}
+    <div className="space-y-4">
+      <section className="rounded-xl border border-border/80 bg-card overflow-hidden divide-y divide-border/70">
+        <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-xs font-bold text-primary">
+              {entry.mentorAvatarUrl ? <img src={entry.mentorAvatarUrl} alt="" className="h-9 w-9 rounded-xl object-cover" /> : mentorInitials(entry.mentorName)}
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Link to={"/academics/" + entry.mentorId} target="_blank" rel="noopener noreferrer" className="truncate text-sm font-semibold text-foreground hover:underline">
+                  {entry.mentorName}
+                </Link>
+                <Badge
+                  variant="outline"
+                  className={`h-5 px-2 text-[11px] font-medium ${
+                    entry.policy.effective && !entry.policy.revokedAt
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                      : "border-border bg-muted/60 text-muted-foreground"
+                  }`}
+                >
+                  {policyStatusText(entry)}
                 </Badge>
-                {entry.policy.effective ? (
-                  <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-semibold py-0.5 px-2 flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Đang có quyền</span>
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary" className="text-xs">
-                    {entry.policy.revokedAt ? "Đã thu hồi" : "Chưa có quyền"}
-                  </Badge>
-                )}
               </div>
-              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
-                <strong className="font-semibold text-foreground">{presetLabels[entry.policy.preset]}</strong>
-                <span>·</span>
-                <span>Quy tắc v{entry.policy.version}</span>
-                <span>·</span>
-                <span>{entry.policy.expiresAt ? `Hạn: ${new Date(entry.policy.expiresAt).toLocaleString("vi-VN")}` : "Chưa đặt hạn truy cập"}</span>
+              <p className="!my-0.5 truncate text-xs text-muted-foreground">
+                {[
+                  entry.mentorInstitution,
+                  entry.mentorRole === "PRIMARY" ? "Cố vấn chính" : entry.mentorRole === "SECONDARY" ? "Cố vấn phụ" : null,
+                  entry.startedAt ? `Từ ${new Date(entry.startedAt).toLocaleDateString("vi-VN")}` : null,
+                ].filter(Boolean).join(" · ")}
               </p>
             </div>
           </div>
 
-          {data.canManage && !entry.policy.revokedAt && ["PENDING", "ACCEPTED"].includes(entry.invitationState) && (
-            <div className="flex items-center gap-2 flex-wrap self-start sm:self-center">
-              <Button variant="outline" size="sm" className="h-8.5 text-xs font-semibold gap-1.5 shadow-xs" disabled={data.readOnly} onClick={() => setEditing(true)}>
-                <SlidersHorizontal size={13} />
-                <span>Cấu hình quyền và chia sẻ</span>
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+            {!embedded && (
+              <>
+                <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" asChild>
+                  <Link to={conversationHref(projectId, entry.policy.id, page)}>
+                    <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
+                    Trao đổi
+                  </Link>
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs" asChild>
+                  <a href={"#resources-" + entry.policy.id}>Tài liệu đã chia sẻ</a>
+                </Button>
+              </>
+            )}
+            {data.canManage && !entry.policy.revokedAt && (
+              <Button size="sm" variant="ghost" className="h-8 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => openRevoke("access")}>
+                Kết thúc hướng dẫn
               </Button>
-              <Button variant="ghost" size="sm" className="h-8.5 text-xs font-medium text-destructive hover:bg-destructive/10" onClick={() => sensitiveAction("access")}>
-                <ShieldAlert size={13} />
-                <span>Thu hồi truy cập</span>
-              </Button>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </header>
 
-        <details className="mt-4 pt-3 border-t border-border/60 text-xs text-muted-foreground cursor-pointer group">
-          <summary className="font-semibold text-foreground hover:text-primary transition-colors flex items-center gap-1.5">
-            <span>Quyền được cấp ({entry.policy.permissions.length})</span>
-          </summary>
-          <ul className="mt-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 rounded-xl bg-muted/20 border border-border/50">
-            {entry.policy.permissions.map(p => (
-              <li key={p} className="flex items-center gap-2 text-foreground font-medium">
-                <Check size={13} className="text-emerald-600 shrink-0" />
-                <span>{permissionLabels[p]}</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      </div>
-
-      <div className="mentor-shared-section rounded-2xl border border-border/80 bg-card p-5 sm:p-6 shadow-xs">
-        <div className="flex items-center justify-between pb-3.5 border-b border-border/70 mb-3.5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600">
-              <FileText size={16} />
-            </div>
-            <div>
-              <h3 className="text-sm sm:text-base font-bold text-foreground">Nội dung đã chia sẻ</h3>
-              <p className="text-2xs text-muted-foreground">Tài nguyên được mở riêng cho cố vấn để nghiên cứu và phản biện.</p>
+        <div id={"resources-" + entry.policy.id} className="px-4 py-3.5 space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <FileText className="h-3.5 w-3.5 text-primary shrink-0" aria-hidden="true" />
+              <h3 className="!m-0 !text-xs font-semibold uppercase tracking-wide text-foreground/85">Tài liệu đã chia sẻ</h3>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+                {totalSharedCount}
+              </span>
             </div>
           </div>
-          <span className="text-xs font-semibold text-muted-foreground px-2 py-0.5 rounded-full bg-muted border border-border/50">
-            {entry.shares.filter(s => !s.revokedAt).length} mục
-          </span>
-        </div>
 
-        {!entry.shares.some(s => !s.revokedAt) ? (
-          <p className="text-xs sm:text-sm text-muted-foreground py-3 leading-relaxed">
-            Chưa có nội dung được chia sẻ. Quyền xem không tự mở toàn bộ tài liệu.
-          </p>
-        ) : (
-          <div className="mentor-shared-resources space-y-2.5">
-            {entry.shares.map(s => (
-              <article key={s.id} className="p-3.5 rounded-xl border border-border/70 bg-muted/20 hover:bg-muted/40 transition-colors flex items-start justify-between gap-3 shadow-2xs">
-                <div className="min-w-0 flex-1">
-                  <SharedResourceText projectId={projectId} accessId={entry.policy.id} version={entry.policy.version} resource={s} />
-                </div>
-                {data.canManage && !s.revokedAt && (
-                  <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive shrink-0 hover:bg-destructive/10" onClick={() => sensitiveAction(s.id)}>
-                    Ngừng chia sẻ mục này
+          {!totalSharedCount && (
+            <p className="!m-0 rounded-lg border border-dashed border-border/80 bg-muted/20 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+              Chưa có tài liệu nào được chia sẻ với cố vấn. Bạn có thể chia sẻ trực tiếp từ Thư viện hoặc gửi bản thảo để góp ý.
+            </p>
+          )}
+
+          {entry.shares.map(resource => (
+            <article key={resource.id} className="rounded-lg border border-border/75 bg-muted/15 px-3.5 py-2.5 space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="!m-0 text-[11.5px] text-muted-foreground">
+                  {kindLabels[resource.kind]} · {resource.accessMode ? (resource.accessMode === "VIEW" ? "Chỉ xem" : "Xem và góp ý") : "Theo quyền đã chia sẻ trước đây"} · {new Date(resource.createdAt).toLocaleDateString("vi-VN")}
+                </p>
+                {(resource.canUnshare ?? data.canManage) && !data.readOnly && (
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => openRevoke(resource.id)}>
+                    Ngừng chia sẻ
                   </Button>
                 )}
-              </article>
-            ))}
-          </div>
-        )}
-      </div>
+              </div>
+              {resource.kind === "PAPER" && resource.accessMode ? (
+                <MentorSharedPaper projectId={projectId} accessId={entry.policy.id} version={entry.policy.version} resource={resource} />
+              ) : (
+                <SharedResourceText projectId={projectId} accessId={entry.policy.id} version={entry.policy.version} resource={resource} />
+              )}
+            </article>
+          ))}
 
-      {editing && <PolicyDialog projectId={projectId} entry={entry} onClose={() => setEditing(false)} />}
-      {sensitive && (
-        <Dialog open onOpenChange={async open => { if (!open && !command.isPending && await canLeaveWorkspace()) { setSensitive(null); setReason(""); } }}>
-          <DialogContent closeLabel="Đóng" className="mentor-access-workspace" data-no-i18n>
-            <DialogTitle>{sensitive === "access" ? "Thu hồi quyền cố vấn" : "Ngừng chia sẻ nội dung"}</DialogTitle>
-            <DialogDescription>Quyền đọc và gửi mới sẽ bị chặn. Các bản ghi lịch sử vẫn được giữ để đối chiếu.</DialogDescription>
-            <form className="mentor-access-form space-y-3" onSubmit={async e => {
-              e.preventDefault(); const payload = { expectedVersion: baseVersion, reason, confirmed: true };
-              if (await command.run({ sensitive, ...payload }, () => sensitive === "access" ? mentorAccessApi.revoke(projectId, entry.policy.id, payload) : mentorAccessApi.unshare(projectId, entry.policy.id, sensitive, payload))) { setSensitive(null); setReason(""); }
-            }}>
-              <label>Lý do<textarea disabled={command.isPending} value={reason} onChange={e => setReason(e.target.value)} minLength={3} maxLength={1000} required /></label>
-              <label className="mentor-access-check"><input disabled={command.isPending} type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Tôi xác nhận thu hồi quyền.</label>
-              <AccessError error={command.error} />
-              {baseVersion !== entry.policy.version && <p>Dữ liệu đã thay đổi. Đóng hộp thoại và kiểm tra quyền mới trước khi tiếp tục.</p>}
-              <Button disabled={command.isPending || !confirmed || reason.trim().length < 3 || baseVersion !== entry.policy.version}>Xác nhận thu hồi</Button>
-            </form>
+          {entry.reviewResources?.map(resource => {
+            const st = reviewResourceStatusMeta[resource.status] ?? {
+              label: statusLabels[resource.status] ?? resource.status,
+              className: "border-border bg-muted/60 text-muted-foreground",
+              dot: "bg-muted-foreground/50",
+            };
+            const primaryTo = data.canManage
+              ? `/projects/${encodeURIComponent(projectId)}?tab=submissions&submission=${encodeURIComponent(resource.submissionId)}&revision=${encodeURIComponent(resource.revisionId)}`
+              : `/mentor-workspace?view=review-request&requestId=${encodeURIComponent(resource.id)}`;
+            const requestTo = data.canManage
+              ? `/review-requests/${encodeURIComponent(resource.id)}`
+              : `/mentor-workspace?view=review-request&requestId=${encodeURIComponent(resource.id)}`;
+            return (
+              <article key={resource.id} className="flex flex-col gap-2 rounded-lg border border-border/75 bg-background px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link className="truncate text-sm font-semibold text-foreground hover:text-primary hover:underline" to={primaryTo}>
+                      {resource.title}
+                    </Link>
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[11px] font-semibold">
+                      v{resource.revisionNumber}
+                    </Badge>
+                    <Badge variant="outline" className={`h-5 gap-1 px-2 text-[11px] font-medium ${st.className}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} aria-hidden="true" />
+                      {st.label}
+                    </Badge>
+                  </div>
+                  <p className="!m-0 text-xs text-muted-foreground">
+                    Bản thảo gửi góp ý · Ngày gửi {new Date(resource.createdAt).toLocaleDateString("vi-VN")}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                  <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" asChild>
+                    <Link to={primaryTo}>
+                      {data.canManage ? "Xem bản thảo" : "Mở yêu cầu"}
+                    </Link>
+                  </Button>
+                  {data.canManage && (
+                    <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground" asChild>
+                      <Link to={requestTo}>
+                        Chi tiết yêu cầu
+                        <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      {revoke && (
+        <Dialog open onOpenChange={v => { if (!v) closeRevoke(); }}>
+          <DialogContent className="max-w-md space-y-4" data-no-i18n>
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div className="min-w-0 space-y-1 pr-6">
+                <DialogTitle className="text-base leading-snug">
+                  {revoke === "access"
+                    ? `Kết thúc hướng dẫn với ${entry.mentorName}?`
+                    : `Ngừng chia sẻ tài liệu với ${entry.mentorName}?`}
+                </DialogTitle>
+                <DialogDescription className="text-xs leading-5">
+                  {revoke === "access"
+                    ? "Hành động này sẽ thu hồi quyền truy cập cố vấn hiện tại của giảng viên đối với dự án."
+                    : targetShare
+                      ? `Tài liệu: "${targetShare.title}".`
+                      : "Hành động này sẽ thu hồi quyền xem đối với mục tài liệu đã chia sẻ này."}
+                </DialogDescription>
+              </div>
+            </div>
+
+            <ul className="space-y-1.5 rounded-lg border border-border/80 bg-muted/25 px-3.5 py-2.5 text-xs leading-5 text-muted-foreground list-disc pl-7">
+              {revoke === "access" ? (
+                <>
+                  <li>Giảng viên sẽ không còn quyền truy cập các tài liệu đã chia sẻ và kênh trao đổi của dự án.</li>
+                  <li>Lịch sử góp ý, các bản thảo đã đánh giá và ghi nhận đóng góp học thuật luôn được giữ nguyên.</li>
+                </>
+              ) : (
+                <>
+                  <li>Giảng viên sẽ không thể mở lại tài liệu này từ danh sách tài liệu đã chia sẻ.</li>
+                  <li>Các yêu cầu đánh giá bản thảo và lịch sử góp ý trước đó không bị ảnh hưởng.</li>
+                </>
+              )}
+            </ul>
+
+            <label className="flex items-start gap-2.5 rounded-lg border border-border/80 bg-background px-3 py-2.5 text-xs leading-5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-destructive"
+                checked={revokeConfirmed}
+                disabled={command.isPending}
+                onChange={e => setRevokeConfirmed(e.target.checked)}
+              />
+              <span className="text-foreground">
+                {revoke === "access"
+                  ? `Tôi hiểu tác động trên và xác nhận kết thúc hướng dẫn với ${entry.mentorName}.`
+                  : "Tôi xác nhận ngừng chia sẻ tài liệu này với cố vấn."}
+              </span>
+            </label>
+
+            <AccessError error={command.error} />
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" size="sm" disabled={command.isPending} onClick={closeRevoke}>
+                Giữ nguyên
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={command.isPending || !revokeConfirmed}
+                onClick={async () => {
+                  const payload = {
+                    expectedVersion: entry.policy.version,
+                    confirmed: true,
+                    reason: revoke === "access" ? "Nhóm kết thúc hướng dẫn" : "Nhóm ngừng chia sẻ tài liệu",
+                  };
+                  if (await command.run({ revoke }, () => revoke === "access" ? mentorAccessApi.revoke(projectId, entry.policy.id, payload) : mentorAccessApi.unshare(projectId, entry.policy.id, revoke, payload))) {
+                    setRevoke(null);
+                    setRevokeConfirmed(false);
+                  }
+                }}
+              >
+                {revoke === "access" ? "Xác nhận kết thúc" : "Xác nhận ngừng chia sẻ"}
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       )}
-
-      {showCollaboration ? <MentorCollaboration projectId={projectId} entry={entry} readOnly={data.readOnly || !entry.policy.effective} canManage={data.canManage} actorId={actorId} /> : (entry.invitationState === "ACCEPTED" || entry.policy.relationshipId) && <div className="mentor-conversation-shortcut"><div><h3>Trao đổi với {entry.mentorName}</h3><p>Gửi câu hỏi và xem phản hồi tại kênh Với cố vấn, trong Trò chuyện nhóm.</p></div><Button asChild variant="outline"><Link to={conversationHref(projectId, entry.policy.id, page)}>Mở cuộc trao đổi</Link></Button></div>}
+      {showCollaboration ? <MentorCollaboration projectId={projectId} entry={entry} readOnly={data.readOnly || !entry.policy.effective} canManage={data.canManage} actorId={actorId} /> : null}
     </div>
   );
 }
@@ -309,11 +499,6 @@ function SharedResourceText({ projectId, accessId, version, resource }: { projec
   return <details open={open} onToggle={e => setOpen(e.currentTarget.open)}><summary>{kindLabels[resource.kind]} · {resource.title}{resource.sectionKey ? ` · ${packetRoundId ? "Gói phân xử" : sectionLabels[resource.sectionKey] ?? resource.sectionKey}` : ""}</summary>
     {open && <>{query.isLoading && <WorkspaceLoading />}<AccessError error={query.error} />{query.data && !denied(query.error) && <div>{packetRoundId ? <Link className="text-primary underline" to={`/academic-support/projects/${encodeURIComponent(projectId)}/screening/${encodeURIComponent(packetRoundId)}`}>Mở gói phân xử bài báo</Link> : <p className="mentor-shared-text">{query.data.content}</p>}</div>}<small>Được chia sẻ {new Date(resource.createdAt).toLocaleString("vi-VN")}</small></>}
   </details>;
-}
-function PolicyDialog({ projectId, entry, onClose }: { projectId: string; entry: Entry; onClose: () => void }) {
-  const [value, setValue] = useState<MentorPolicyInput>({ preset: entry.policy.preset, permissions: entry.policy.permissions, expiresAt: entry.policy.expiresAt, shares: [] }), [reason, setReason] = useState(""), [baseVersion, setBaseVersion] = useState(entry.policy.version);
-  const command = useAccessCommand(projectId); useUnsavedWorkspace(Boolean(reason || value.shares?.length) || JSON.stringify(value.permissions) !== JSON.stringify(entry.policy.permissions) || command.isPending);
-  return <Dialog open onOpenChange={async open => { if (!open && !command.isPending && await canLeaveWorkspace()) onClose(); }}><DialogContent closeLabel="Đóng" className="mentor-access-workspace mentor-policy-dialog" data-no-i18n><DialogTitle>Quyền và nội dung của {entry.mentorName}</DialogTitle><DialogDescription>Quyền thay đổi có hiệu lực ngay. Cố vấn không có quyền sửa bản gốc hoặc quản trị dự án.</DialogDescription><form onSubmit={async e => { e.preventDefault(); const input = { ...value, expectedVersion: baseVersion, reason }; if (await command.run(input, () => mentorAccessApi.configure(projectId, entry.policy.id, input))) { setReason(""); onClose(); } }}><MentorPolicyFields projectId={projectId} value={value} onChange={setValue} disabled={command.isPending} /><label className="mentor-access-form">Lý do thay đổi<textarea disabled={command.isPending} required minLength={3} maxLength={1000} value={reason} onChange={e => setReason(e.target.value)} /></label>{baseVersion !== entry.policy.version && <><p>Cấu hình đã thay đổi. Bản nháp vẫn được giữ; kiểm tra lại trước khi lưu.</p><Button type="button" variant="outline" onClick={async () => { if (await canLeaveWorkspace()) { setValue({ preset: entry.policy.preset, permissions: entry.policy.permissions, expiresAt: entry.policy.expiresAt, shares: [] }); setBaseVersion(entry.policy.version); } }}>Tải quyền hiện tại</Button></>}<AccessError error={command.error} /><Button disabled={command.isPending || reason.trim().length < 3 || baseVersion !== entry.policy.version}>Lưu quyền và nội dung đã duyệt</Button></form></DialogContent></Dialog>;
 }
 type FeedbackKind = MentorFeedback["kind"];
 function feedbackActions(kind: MentorResourceKind, permissions: readonly MentorPermission[], team: boolean): FeedbackKind[] {
@@ -340,7 +525,7 @@ function MentorCollaboration({ projectId, entry, readOnly, canManage, actorId, s
   const history = useQuery({ queryKey: [...queryKey, "history", historyPage], queryFn: () => mentorAccessApi.history(projectId, entry.policy.id, historyPage), retry: false, enabled: !conversationOnly });
   const agreements = useQuery({ queryKey: [...queryKey, "agreements", agreementPage], queryFn: () => mentorAccessApi.agreements(projectId, entry.policy.id, agreementPage), refetchInterval: 5000, retry: false, enabled: !conversationOnly });
   const team = actorId !== entry.mentorId, party = canManage || !team;
-  const resources = entry.shares.filter(s => !s.revokedAt && feedbackActions(s.kind, entry.policy.permissions, team).length);
+  const resources = entry.shares.filter(s => !s.revokedAt && !s.accessMode && feedbackActions(s.kind, entry.policy.permissions, team).length);
   const chat = team || entry.policy.permissions.includes("MENTOR_CHAT");
   const canWrite = !readOnly && (chat || resources.length > 0);
   const target = shareId || (chat ? "" : resources[0]?.id ?? "");
@@ -378,7 +563,7 @@ function MentorCollaboration({ projectId, entry, readOnly, canManage, actorId, s
           <span>Nguyên tắc bảo vệ dữ liệu nghiên cứu</span>
         </div>
         <p className="text-muted-foreground leading-relaxed pl-6">
-          Quyền trao đổi với cố vấn được cách ly riêng: không tự động mở quyền truy cập Thư viện bài báo, Bản thảo LaTeX hay Ma trận minh chứng. Nhóm toàn quyền chọn lọc từng tài liệu chia sẻ ở mục cấu hình phía trên.
+          Quyền trao đổi với cố vấn được cách ly riêng: không tự động mở quyền truy cập Thư viện bài báo, Bản thảo LaTeX hay Ma trận minh chứng. Nhóm chia sẻ bài báo tại Library hoặc gửi phiên bản bản thảo để góp ý.
         </p>
       </div>}
 

@@ -1,0 +1,12 @@
+{
+  "source": "full app routes + real API + isolated PostgreSQL; no component harness or mocked API responses",
+  "steps": [
+    "Mentor accepts invitation in the full application",
+    "Paper sharing recovers from a lost response without duplicate grants or notifications",
+    "Mentor reads the pinned PDF and persists paper feedback through the full workspace",
+    "Owner and mentor exchange persisted messages in both directions without a paper permission setup",
+    "Mentor opens the assigned review from the global queue and the student receives immutable version-bound feedback",
+    "Revocation removes the paper from the global inbox while feedback remains persisted"
+  ],
+  "pageErrors": []
+}

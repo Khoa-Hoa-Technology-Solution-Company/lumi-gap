@@ -1,5 +1,5 @@
 import {
-  mentorPresets,
+  mentorDefaultPermissions,
   type DossierAccessSummary,
   type DossierCompetencies,
   type DossierCompetencyItem,
@@ -450,7 +450,7 @@ function buildAccessSummary(
   const preset = livePolicy?.preset ?? inputAccess?.preset ?? "ADVISOR";
   const permissions: MentorPermission[] = livePolicy?.permissions
     ?? inputAccess?.permissions
-    ?? [...mentorPresets[preset]];
+    ?? [...mentorDefaultPermissions];
   if (!livePolicy && inputAccess?.permissions) validateMentorPermissions(inputAccess.permissions);
 
   const effectiveExpiresAt = livePolicy?.expiresAt ?? inputAccess?.expiresAt ?? null;

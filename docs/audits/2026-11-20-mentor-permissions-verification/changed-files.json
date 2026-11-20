@@ -1,0 +1,13 @@
+{
+  "note": "Audit-specific changes; earlier work and unrelated edits in shared files are retained.",
+  "files": [
+    "apps/backend/src/modules/submissions/submission.service.ts",
+    "apps/backend/src/modules/submissions/submission.routes.ts",
+    "apps/backend/src/modules/reviews/__tests__/mentor-review-workflow.persistence.test.ts",
+    "apps/backend/src/modules/projects/__tests__/mentor-permissions-audit.persistence.test.ts",
+    "apps/backend/src/modules/projects/__tests__/mentor-permissions.browser.ts",
+    "apps/backend/scripts/test-mentor-workspace.mjs",
+    "apps/web/src/pages/academics/academic-support.tsx",
+    "apps/web/src/i18n/locales/mentor-sharing.ts"
+  ]
+}

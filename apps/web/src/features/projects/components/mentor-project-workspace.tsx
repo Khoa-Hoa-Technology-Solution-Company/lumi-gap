@@ -1,3 +1,4 @@
+import { MentorAccessWorkspace } from "./mentor-access-workspace";
 import { Link, useSearchParams } from "react-router-dom";
 import { MessageSquare, Users } from "lucide-react";
 import type { MentorAccessWorkspace as Workspace } from "@trend/shared-types";
@@ -34,6 +35,7 @@ export function MentorProjectWorkspace({ data, standalone = false, embedded = fa
   const chat = params.get("tab") === "chat";
   const ownPolicy = data.policies.find(p => p.mentorId === data.viewerId && p.policy.effective);
   const contributionAccess = Boolean(ownPolicy?.policy.permissions.includes("CONTRIBUTIONS_VIEW"));
+  if (params.get("section") === "resources" || params.get("view") === "resources") return <MentorAccessWorkspace projectId={data.projectId} mentorView embedded />;
   const statuses: Record<string, string> = { PLANNING: "Đang lập kế hoạch", ACTIVE: "Đang thực hiện", COMPLETED: "Đã hoàn thành", ARCHIVED: "Đã lưu trữ" };
   if (params.get("tab") === "contributions") return <div className="project-workspace coord-mentor-page" data-no-i18n><div className="project-page-width py-6 space-y-4">
     {standalone && <MentorProjectNav contributions={contributionAccess} />}
@@ -51,7 +53,7 @@ export function MentorProjectWorkspace({ data, standalone = false, embedded = fa
   return <div className="project-workspace coord-mentor-page" data-no-i18n>
     <div className="project-page-width space-y-6 py-6">
       <header className="space-y-2 border-b pb-5">
-        <Link to={embedded ? "/mentor-workspace?view=projects" : "/academic-support?view=active"} className="text-sm text-muted-foreground hover:text-primary">Nhóm đang cố vấn</Link>
+        {!embedded && <Link to="/academic-support?view=active" className="text-sm text-muted-foreground hover:text-primary">Nhóm đang cố vấn</Link>}
         <div className="flex flex-wrap items-center gap-3"><h1 className="break-words text-2xl font-semibold">{data.title}</h1><span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">Không gian cố vấn</span></div>
         <p className="text-sm text-muted-foreground">{data.basics?.researchField}{data.basics?.researchField && data.basics.status ? " · " : ""}{statuses[data.basics?.status ?? ""] ?? ""}</p>
       </header>

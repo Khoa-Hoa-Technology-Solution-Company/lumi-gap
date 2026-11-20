@@ -1,3 +1,4 @@
+import { MentorSharedResourceInbox } from "@/features/projects/components/mentor-paper-sharing";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import {
@@ -268,7 +269,7 @@ export function MentorWorkspacePage() {
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const profile = useAcademicProfile();
   const [params, setParams] = useSearchParams();
-  const view = (["overview", "work", "projects", "incoming", "outgoing", "active", "history", "discover", "notifications", "project", "reviews", "templates", "template-builder", "review", "review-request", "review-entry"] as const).find(value => value === params.get("view")) ?? "overview";
+  const view = (["overview", "work", "projects", "incoming", "outgoing", "active", "history", "discover", "notifications", "project", "reviews", "templates", "template-builder", "review", "review-request", "review-entry", "resources"] as const).find(value => value === params.get("view")) ?? "overview";
   const dashboard = ["overview", "work", "projects"].includes(view);
   const breadcrumbKey = view === "project" ? "projects" : ["incoming", "outgoing", "active", "history"].includes(view) ? "invitations" : view === "discover" ? "discovery" : view;
   const breadcrumbLabel = ["reviews", "review", "review-request", "review-entry"].includes(view) ? t("Review Center") : ["templates", "template-builder"].includes(view) ? t("Review Templates") : t(`mentorWorkspace.${breadcrumbKey}`);
@@ -363,10 +364,34 @@ export function MentorWorkspacePage() {
               aria-label={t("Open navigation")} aria-expanded={mobileOpen} aria-controls="mentor-mobile-navigation">
               <Menu size={19} aria-hidden="true" />
             </Button>
-            <WorkspaceBreadcrumb className="mentor-shell-breadcrumb" items={[
-              { label: t("mentorWorkspace.title"), href: "/mentor-workspace" },
-              { label: breadcrumbLabel, active: true },
-            ]} />
+            <WorkspaceBreadcrumb className="mentor-shell-breadcrumb" items={(() => {
+              const root = { label: t("mentorWorkspace.title"), href: "/mentor-workspace" };
+              if (["review", "review-request", "review-entry"].includes(view)) {
+                return [
+                  root,
+                  { label: t("Review Center"), href: "/mentor-workspace?view=reviews" },
+                  { label: view === "review-request" ? "Chi tiết yêu cầu phản biện" : "Không gian phản biện", active: true },
+                ];
+              }
+              if (view === "template-builder") {
+                return [
+                  root,
+                  { label: t("Review Templates"), href: "/mentor-workspace?view=templates" },
+                  { label: params.get("templateId") ? "Chỉnh sửa mẫu" : "Tạo mẫu phản biện", active: true },
+                ];
+              }
+              if (view === "project") {
+                return [
+                  root,
+                  { label: t("mentorWorkspace.projects"), href: "/mentor-workspace?view=projects" },
+                  { label: "Không gian dự án", active: true },
+                ];
+              }
+              return [
+                root,
+                { label: breadcrumbLabel, active: true },
+              ];
+            })()} />
           </div>
           <div className="mentor-toolbar-actions">
             <ThemeToggle />
@@ -382,6 +407,7 @@ export function MentorWorkspacePage() {
               : view === "review" ? <div className="mentor-review-content"><EmbeddedReviewWorkspace key={params.get("assignmentId")} /></div>
               : view === "review-request" ? <div className="mentor-review-content"><EmbeddedReviewRequest key={params.get("requestId")} /></div>
               : view === "review-entry" ? <div className="mentor-review-content"><EmbeddedReviewEntry key={params.get("submissionId")} /></div>
+              : view === "resources" ? <MentorSharedResourceInbox />
               : view === "notifications" ? <EmbeddedNotifications embedded />
               : view === "project" ? <EmbeddedMentorProject embedded />
               : <EmbeddedAcademicSupport embedded />}

@@ -1,4 +1,6 @@
 .mentor-access-workspace { min-width: 0; color: hsl(var(--foreground)); margin-block: 1.5rem; }
+.mentor-access-workspace.is-embedded { margin-block: 0; }
+.mentor-access-workspace.is-embedded p { max-width: none; }
 .mentor-access-workspace h2 { font-size: 1.3rem; font-weight: 650; }
 .mentor-access-workspace h3 { font-size: 1.1rem; font-weight: 650; margin: 1.5rem 0 .75rem; }
 .mentor-access-workspace h4 { font-weight: 600; }

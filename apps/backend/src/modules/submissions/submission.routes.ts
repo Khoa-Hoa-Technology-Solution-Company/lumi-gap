@@ -211,6 +211,7 @@ submissionRouter.post("/:id/ai-pre-review", aiPreReviewLimiter, validate(submiss
 });
 
 submissionRouter.get("/:id/revisions/:revisionId/download", validate(revisionParamsSchema, "params"), async (req, res) => {
+  res.set({ "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" });
   const result = await submissionService.resolveDownload(String(req.params.id), String(req.params.revisionId), req.user!.sub, req.user!.role);
   if (result.kind === "redirect") {
     res.redirect(result.url);
@@ -218,7 +219,8 @@ submissionRouter.get("/:id/revisions/:revisionId/download", validate(revisionPar
   }
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
-  res.sendFile(result.path);
+  if (result.kind === "buffer") { res.send(result.content); return; }
+  res.sendFile(result.path, { cacheControl: false });
 });
 
 submissionRouter.post("/:id/reviewer-assignments", deprecatedForReviewRequests, requirePermission("review:assign"), validate(submissionParamsSchema, "params"), validate(assignSchema), async (req, res) => {

@@ -1,6 +1,7 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle } from "lucide-react";
 import type { MentorshipRequest } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,7 @@ export function MentorshipInvitationViewer(props: { projectId: string; requestId
 }
 function InvitationViewer({ projectId, requestId, currentProjectId, onClose }: { projectId: string; requestId: string; currentProjectId?: string; onClose: () => void }) {
   const { t } = useI18n(), userId = useAuthStore(state => state.user?.id), cache = useQueryClient(), lock = useRef(false);
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const key = ["academic-support", userId, "invitation-detail", projectId, requestId];
   const query = useQuery({ queryKey: key, queryFn: () => academicSupportApi.requestDetail(projectId, requestId), enabled: Boolean(userId), retry: false, staleTime: 0, refetchOnWindowFocus: false });
   const item = query.data;
@@ -31,6 +33,7 @@ function InvitationViewer({ projectId, requestId, currentProjectId, onClose }: {
     return academicSupportApi.respond(item, action, "");
   }, onSuccess: async (result: MentorshipRequest) => {
     if (useAuthStore.getState().user?.id !== userId) return;
+    setConfirmWithdraw(false);
     if (result?.kind === "REQUEST") cache.setQueryData(key, result);
     await Promise.all(["academic-support", "mentor-workspace", "notifications", "projects", "home-research"].map(group => cache.invalidateQueries({ queryKey: [group] })));
   }, onError: () => { void query.refetch(); } });
@@ -61,8 +64,30 @@ function InvitationViewer({ projectId, requestId, currentProjectId, onClose }: {
       </>}
       </div>
       </div>
+      {confirmWithdraw && pending && viewer === "SENDER" && item?.actions.cancel && (
+        <div role="alertdialog" aria-labelledby="withdraw-confirm-title" className="mx-6 mb-3 rounded-xl border border-destructive/35 bg-destructive/[0.06] p-3.5 text-xs space-y-2.5">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
+            <div className="space-y-1">
+              <p id="withdraw-confirm-title" className="font-semibold text-foreground">
+                {t("supervisor.withdrawConfirmTitle")}
+                {item.direction === "PROJECT_TO_LECTURER" && item.mentorUser.fullName ? ` (${item.mentorUser.fullName})` : ""}
+              </p>
+              <p className="leading-5 text-muted-foreground">{t("supervisor.withdrawConfirmBody")}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => setConfirmWithdraw(false)}>
+              {t("supervisor.withdrawKeep")}
+            </Button>
+            <Button size="sm" variant="destructive" disabled={mutation.isPending || query.isFetching} onClick={() => void act("cancel")}>
+              {t("supervisor.withdrawConfirm")}
+            </Button>
+          </div>
+        </div>
+      )}
       <footer className="mentor-invitation-viewer-footer"><Button variant="outline" disabled={mutation.isPending} onClick={onClose}>{t("Close")}</Button>
-        {!query.isError && pending && viewer === "SENDER" && item?.actions.cancel && <Button variant="outline" disabled={mutation.isPending || query.isFetching} onClick={() => void act("cancel")}>{t("supervisor.withdraw")}</Button>}
+        {!query.isError && pending && viewer === "SENDER" && item?.actions.cancel && !confirmWithdraw && <Button variant="outline" className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive" disabled={mutation.isPending || query.isFetching} onClick={() => setConfirmWithdraw(true)}>{t("supervisor.withdraw")}</Button>}
         {!query.isError && pending && viewer === "RECIPIENT" && <>{item?.actions.decline && <Button variant="outline" disabled={mutation.isPending || query.isFetching} onClick={() => void act("decline")}>{t("Decline")}</Button>}{item?.actions.accept && <Button disabled={mutation.isPending || query.isFetching} onClick={() => void act("accept")}>{t("supervisor.accept")}</Button>}</>}
         {!query.isError && !pending && viewer === "RECIPIENT" && item?.actions.openProject && !currentProjectId && <Button asChild><Link to={recipientMentor ? mentorWorkspaceDestination(`/academic-support/projects/${encodeURIComponent(projectId)}`) : `/projects/${encodeURIComponent(projectId)}?tab=support`}>{t("Open project")}</Link></Button>}
       </footer>

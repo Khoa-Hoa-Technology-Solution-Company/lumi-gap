@@ -1,3 +1,5 @@
+import { mentorAccessService } from "./mentor-access.service.js";
+import { mentorAccessPageSchema } from "./dto/mentor-access.schema.js";
 import { researchClassificationSchema } from "../taxonomy/research-classification.schema.js";
 import { mentorshipApplicationsRouter } from "./mentorship-applications.routes.js";
 import { mentorshipApplicationsService } from "./mentorship-applications.service.js";
@@ -93,6 +95,7 @@ projectRouter.patch("/academic-support/preferences", requireAuth, requireResearc
   validate(z.object({ acceptingMentorships: z.boolean().optional(), emailEnabled: z.boolean().optional(), locale: z.enum(["en", "vi"]).optional() }).strict()), async (req, res) => {
     res.json({ success: true, data: await projectMentorshipService.preferences(req.user!.sub, req.body) });
   });
+projectRouter.get("/academic-support/resources", requireAuth, requireResearchWorkflow, validate(mentorAccessPageSchema, "query"), async (req, res) => { res.set("Cache-Control", "private, no-store"); res.json({ success: true, data: await mentorAccessService.inbox(req.user!.sub, mentorAccessPageSchema.parse(req.query).page) }); });
 projectRouter.get("/academic-support/workspace", requireAuth, requireResearchWorkflow, validate(mentorWorkspaceQuerySchema, "query"), getMentorWorkspace);
 projectRouter.get("/academic-support/mine", requireAuth, requireResearchWorkflow, validate(academicSearchSchema, "query"), async (req, res) => {
   res.json({ success: true, data: await projectMentorshipService.mine(req.user!.sub, academicSearchSchema.parse(req.query)) });

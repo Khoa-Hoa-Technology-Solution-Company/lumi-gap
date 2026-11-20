@@ -100,13 +100,14 @@ export function SubmissionDetailPage({
   }, [selectedVersionId]);
 
   const data = submission.data;
-  const versions = history.data?.versions ?? [];
+  const visibleHistory = history.error ? undefined : history.data;
+  const versions = visibleHistory?.versions ?? [];
 
   const currentVersion: ResearchVersion = useMemo(() => {
     if (versions.length > 0) {
       const explicit = selectedVersionId ? versions.find((v) => v.id === selectedVersionId) : undefined;
       if (explicit) return explicit;
-      const current = versions.find((v) => v.id === (data?.currentRevisionId ?? history.data?.currentRevisionId));
+      const current = versions.find((v) => v.id === (data?.currentRevisionId ?? visibleHistory?.currentRevisionId));
       if (current) return current;
       return versions.reduce((latest, v) => (v.revisionNumber > latest.revisionNumber ? v : latest), versions[0]!);
     }
@@ -125,21 +126,21 @@ export function SubmissionDetailPage({
       reviews: [],
       createdAt: data?.updatedAt ?? new Date().toISOString(),
     };
-  }, [versions, selectedVersionId, data?.currentRevisionId, data?.currentRevisionNumber, data?.updatedAt, history.data?.currentRevisionId]);
+  }, [versions, selectedVersionId, data?.currentRevisionId, data?.currentRevisionNumber, data?.updatedAt, visibleHistory?.currentRevisionId]);
 
   const isLatestVersion =
-    !history.data?.currentRevisionId || currentVersion.id === history.data.currentRevisionId;
+    !visibleHistory?.currentRevisionId || currentVersion.id === visibleHistory.currentRevisionId;
 
   const reviewContext = useMemo(
     () =>
       resolveVersionReviewContext({
         submissionStatus: data?.status ?? "submitted",
-        history: history.data,
+        history: visibleHistory,
         version: currentVersion,
         isCurrentVersion: isLatestVersion,
         selectedMentorKey,
       }),
-    [data?.status, history.data, currentVersion, isLatestVersion, selectedMentorKey],
+    [data?.status, visibleHistory, currentVersion, isLatestVersion, selectedMentorKey],
   );
 
   if (submission.isLoading) {
@@ -180,23 +181,25 @@ export function SubmissionDetailPage({
     );
   }
 
+  if (selectedVersionId && visibleHistory && !versions.some(version => version.id === selectedVersionId)) return <section className="space-y-3 py-6" role="alert"><p>{t("Phiên bản này không còn khả dụng hoặc bạn không có quyền xem.")}</p><Button variant="outline" onClick={() => setSelectedVersionId(visibleHistory.currentRevisionId ?? "")}>{t("Xem phiên bản hiện có")}</Button></section>;
+
   const closedStatus = ["accepted", "rejected", "withdrawn"].includes(data.status);
-  const canRevise = !readOnly && history.data?.canManage === true && !closedStatus;
-  const canRequestReview = !readOnly && history.data?.canRequestReview === true && !closedStatus;
+  const canRevise = !readOnly && !history.error && visibleHistory?.canManage === true && !closedStatus;
+  const canRequestReview = !readOnly && !history.error && visibleHistory?.canRequestReview === true && !closedStatus;
   const canRunPreReview =
-    !readOnly &&
-    history.data?.canRunAiPreReview === true &&
+    !readOnly && !history.error &&
+    visibleHistory?.canRunAiPreReview === true &&
     !["completed", "accepted", "rejected", "withdrawn"].includes(data.status);
   const canProvideFeedback =
-    !readOnly && (history.data?.canProvideFeedback ?? (data as { canProvideFeedback?: boolean }).canProvideFeedback ?? false);
+    !readOnly && !history.error && (visibleHistory?.canProvideFeedback ?? (data as { canProvideFeedback?: boolean }).canProvideFeedback ?? false);
 
   const effectiveProjectId = projectId ?? data.projectId;
-  const editManuscriptUrl = data.sourceManuscriptId && effectiveProjectId
+  const editManuscriptUrl = visibleHistory?.sourceManuscriptWritable && data.sourceManuscriptId && effectiveProjectId
     ? `/projects/${encodeURIComponent(effectiveProjectId)}/manuscripts/${encodeURIComponent(data.sourceManuscriptId)}`
     : undefined;
 
   const hasMentorFlow = Boolean(
-    history.data?.assignedMentor ||
+    visibleHistory?.assignedMentor ||
     reviewContext.threads.length > 0 ||
     effectiveProjectId,
   );
@@ -206,10 +209,10 @@ export function SubmissionDetailPage({
     canProvideFeedback,
     canRevise,
     hasEditableSource: Boolean(editManuscriptUrl),
-    hasAssignedMentor: Boolean(history.data?.assignedMentor || reviewContext.threads.length > 0),
+    hasAssignedMentor: Boolean(visibleHistory?.assignedMentor || reviewContext.threads.length > 0),
     status: reviewContext.versionStatus,
     hasOpenReviewOnCurrentVersion: reviewContext.hasOpenReviewOnCurrentVersion,
-    currentRevisionNumber: history.data?.currentRevisionNumber ?? data.currentRevisionNumber ?? 1,
+    currentRevisionNumber: visibleHistory?.currentRevisionNumber ?? data.currentRevisionNumber ?? 1,
   });
 
   const researchDetails = [
@@ -240,7 +243,7 @@ export function SubmissionDetailPage({
   }
 
   function handleOpenSendOrRevision() {
-    if (history.data?.assignedMentor || (projectId && hasMentorFlow)) {
+    if (visibleHistory?.assignedMentor || (projectId && hasMentorFlow)) {
       setMentorSendOpen(true);
     } else {
       setShowRevision((v) => !v);
@@ -322,7 +325,7 @@ export function SubmissionDetailPage({
   const showOverflowPeerReviewOption = !projectId && canRequestReview;
   const hasOverflowMenu = showOverflowSendOption || showOverflowAiOption || showOverflowPeerReviewOption;
 
-  const contributions = history.data?.contributions ?? [];
+  const contributions = visibleHistory?.contributions ?? [];
 
   return (
     <div className={`submission-detail-shell min-w-0 ${projectId ? "py-2" : "mx-auto max-w-7xl px-4 py-6 sm:px-6"}`}>
@@ -668,7 +671,7 @@ export function SubmissionDetailPage({
             : `${pdfExpanded ? "lg:col-span-12" : "lg:col-span-8"} ${mobileTab === "feedback" ? "hidden lg:block" : "block"}`
             }`}
         >
-          <SubmissionDocumentViewer
+          {!history.error && <SubmissionDocumentViewer
             submissionId={id}
             submissionTitle={data.title}
             version={currentVersion}
@@ -676,7 +679,7 @@ export function SubmissionDetailPage({
             isLatestVersion={isLatestVersion}
             expanded={pdfExpanded}
             onToggleExpand={() => setPdfExpanded((prev) => !prev)}
-          />
+          />}
 
           {/* AI Pre-review (only shown when an AI result exists; clearly marked AI-only) */}
           <SubmissionAiPreReview
@@ -733,19 +736,14 @@ export function SubmissionDetailPage({
               activeThread={reviewContext.activeThread}
               onSelectMentor={setSelectedMentorKey}
               language={language}
-              canRevise={canRevise}
-              editManuscriptUrl={editManuscriptUrl}
-              onSendNextVersion={handleOpenSendOrRevision}
-              canProvideFeedback={canProvideFeedback}
-              onOpenMentorWorkspace={canProvideFeedback ? () => void handleOpenMentorWorkspace() : undefined}
             />
 
-            {history.data && (
+            {visibleHistory && (
               <SubmissionVersionPanel
                 embedded
                 submissionId={id}
                 submissionStatus={data.status}
-                history={history.data}
+                history={visibleHistory}
                 selectedVersionId={currentVersion.id}
                 onSelectVersion={setSelectedVersionId}
                 language={language}

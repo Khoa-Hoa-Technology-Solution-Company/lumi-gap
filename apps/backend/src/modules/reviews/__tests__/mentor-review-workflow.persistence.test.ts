@@ -1,3 +1,6 @@
+import * as knowledgeSource from "../../knowledge/knowledge.source.js";
+import { pdfStorageService } from "../../../infrastructure/pdf-storage.service.js";
+import { mentorAccessService } from "../../projects/mentor-access.service.js";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, writeFile, unlink, rmdir, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -110,6 +113,24 @@ describe.skipIf(!enabled).sequential("scoped mentor delivery and revision workfl
     const pdf = await fetch(`${base}/submissions/${submission}/revisions/${v1}/download`, { headers: headers(mentor) }); expect(pdf.status).toBe(200); expect(await pdf.text()).toContain("Pinned manuscript v1");
     expect((await fetch(`${base}/submissions/${submission}/revisions/${randomUUID()}/download`, { headers: headers(mentor) })).status).toBe(404);
     await expect(submissions.createVersion(submission, { content: "Unauthorized change", summary: "Try to edit", expectedRevisionNumber: 1 }, mentor, "user")).rejects.toMatchObject({ statusCode: 403 });
+    vi.mocked(pdfStorageService.getSignedDownloadUrl).mockResolvedValueOnce("https://storage.example.invalid/private-review.pdf?signature=fixture-only");
+    const privatePdf=await fetch(base+"/submissions/"+submission+"/revisions/"+v1+"/download",{headers:headers(mentor),redirect:"manual"});
+    expect(privatePdf.status).toBe(200);expect(privatePdf.headers.get("location")).toBeNull();
+    expect(privatePdf.headers.get("cache-control")).toBe("private, no-store");
+    expect(privatePdf.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await privatePdf.text()).toContain("Pinned manuscript v1");
+    vi.mocked(pdfStorageService.getSignedDownloadUrl).mockReset().mockResolvedValue(null);
+
+  });
+  it("keeps version-bound review access after a direct paper share is revoked", async () => {
+    const p=await db.paper.create({data:{title:"Independently shared paper",publicationYear:2026,primaryProvider:"user",abstractText:"Study methods"}});
+    await db.projectPaper.create({data:{projectId:project,paperId:p.id,addedById:owner}});
+    const access=await db.mentorAccess.findUniqueOrThrow({where:{id:policy}});
+    const shared=await mentorAccessService.share(project,owner,policy,{kind:"PAPER",resourceId:p.id,accessMode:"COMMENT",expectedVersion:access.version});
+    await mentorAccessService.unshare(project,owner,policy,shared.id,{expectedVersion:access.version+1,reason:"Stop direct sharing only",confirmed:true});
+    expect((await reviews.getReview(assignment,mentor)).artifactRevision!.id).toBe(v1);
+    expect((await db.reviewRequest.findUniqueOrThrow({where:{id:request}})).status).not.toBe("CANCELLED");
+    expect((await mentorAccessService.workspace(project,owner)).policies[0]!.reviewResources?.map(r=>r.revisionId)).toContain(v1);
   });
   it("requests changes, sends feedback notifications, and moves both queue projections to waiting", async () => {
     const payload = await input("MAJOR_REVISION", true);
@@ -268,4 +289,15 @@ describe.skipIf(!enabled).sequential("scoped mentor delivery and revision workfl
     console.log("Disposable UI API ready on 127.0.0.1:4001; finish via the local QA harness.");
     await new Promise<void>((resolve, reject) => { finishInteractive = resolve; const timeout = setTimeout(() => reject(Error("UI verification timed out")), 25 * 60000); timeout.unref(); });
   }, 26 * 60000);
+  it("rechecks a scoped reviewer after storage finishes and refuses a concurrently ended mentorship",async()=>{
+    const slowMentor=await user(true), p=await createProjectFixture({data:{ownerId:owner,title:"Slow storage authorization",status:"ACTIVE",mentorshipSummary:"A reproducible study requiring methodological review.",mentorshipNeeds:"Methods",mentorshipDiscovery:"SEEKING_MENTOR"}});
+    const invitation=await consent.request(p.id,owner,{mentorUserId:slowMentor,message:"Please guide our study methods",idempotencyKey:randomUUID()});await consent.accept(p.id,invitation.id,slowMentor,"Agreed",invitation.accessPolicy?.version);
+    const sent=await submissions.create({projectId:p.id,title:"Concurrent storage read",mentorId:slowMentor}, {buffer:Buffer.from("%PDF-1.4\nPinned manuscript v1\n%%EOF"),originalname:"read.pdf",size:40}, owner,"user");
+    const assigned=await db.reviewerAssignment.findFirstOrThrow({where:{submissionId:sent.submission.id,reviewerId:slowMentor}});await requests.accept(assigned.reviewRequestId!,slowMentor);
+    const relation=await db.mentorRelationship.findFirstOrThrow({where:{sourceRequestId:invitation.id}});
+    const reader=vi.spyOn(knowledgeSource,"readStoredPdf").mockImplementationOnce(async()=>{await consent.end(p.id,relation.id,owner);return Buffer.from("%PDF-1.4\nRevoked content must not be sent");});
+    try {const response=await fetch(base+"/submissions/"+sent.submission.id+"/revisions/"+sent.revision.id+"/download",{headers:headers(slowMentor),redirect:"manual"});expect([403,404]).toContain(response.status);expect(await response.text()).not.toContain("Revoked content must not be sent");expect(response.headers.get("cache-control")).toBe("private, no-store");}
+    finally {reader.mockRestore();}
+  });
+
 });
