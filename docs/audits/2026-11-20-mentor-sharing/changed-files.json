@@ -1,0 +1,32 @@
+{
+  "note": "Task-scoped files; existing unrelated edits in these files are preserved. This is not a staged commit.",
+  "files": [
+    "packages/shared-types/src/mentor-access.ts",
+    "apps/backend/prisma/mentor-access.prisma",
+    "apps/backend/prisma/migrations/20261120090000_mentor_paper_share_mode/migration.sql",
+    "apps/backend/scripts/test-mentor-workspace.mjs",
+    "apps/backend/src/modules/projects/mentor-access.service.ts",
+    "apps/backend/src/modules/projects/mentor-access.controller.ts",
+    "apps/backend/src/modules/projects/mentor-access.routes.ts",
+    "apps/backend/src/modules/projects/dto/mentor-access.schema.ts",
+    "apps/backend/src/modules/projects/mentorship-dossier.ts",
+    "apps/backend/src/modules/projects/project.routes.ts",
+    "apps/backend/src/modules/projects/__tests__/mentor-access.persistence.test.ts",
+    "apps/backend/src/modules/projects/__tests__/mentor-sharing.browser.ts",
+    "apps/backend/src/modules/reviews/__tests__/mentor-review-workflow.persistence.test.ts",
+    "apps/web/src/features/projects/components/mentor-paper-sharing.tsx",
+    "apps/web/src/features/projects/components/mentor-access-workspace.tsx",
+    "apps/web/src/features/projects/components/collaborative-library.tsx",
+    "apps/web/src/features/projects/components/mentor-project-workspace.tsx",
+    "apps/web/src/features/projects/api/mentor-access.api.ts",
+    "apps/web/src/features/projects/__tests__/mentor-paper-sharing.test.tsx",
+    "apps/web/src/pages/academics/academic-support.tsx",
+    "apps/web/src/pages/academics/mentor-workspace.tsx",
+    "apps/web/src/pages/submissions/submission-detail.tsx",
+    "apps/web/src/components/layout/app-single-sidebar.tsx",
+    "apps/web/src/features/notifications/utils/notification-destination.ts",
+    "apps/web/src/i18n/locales/mentor-sharing.ts",
+    "apps/web/src/i18n/locales/en.ts",
+    "apps/web/src/i18n/locales/vi.ts"
+  ]
+}

@@ -1,0 +1,27 @@
+$ tsc -b && node scripts/build.mjs
+src/features/manuscripts/manuscript-ai.tsx(55,256): error TS2339: Property 'id' does not exist on type 'never'.
+  The intersection 'ManuscriptReference & { reason: string; evidenceStatus: "PROJECT_SOURCE" | "REVIEWED_EVIDENCE"; support?: { quote: string; locator: string; kind: "ABSTRACT" | "REVIEWED_EXCERPT"; } | undefined; }' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/features/manuscripts/manuscript-ai.tsx(111,101): error TS2339: Property 'id' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,132): error TS2339: Property 'id' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,174): error TS2339: Property 'title' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,202): error TS2339: Property 'authors' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,224): error TS2339: Property 'year' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,239): error TS2339: Property 'year' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,265): error TS2339: Property 'reason' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,279): error TS2339: Property 'support' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,306): error TS2339: Property 'support' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,345): error TS2339: Property 'support' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,449): error TS2339: Property 'support' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,495): error TS2339: Property 'evidenceStatus' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,749): error TS2339: Property 'doi' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,770): error TS2339: Property 'doi' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,799): error TS2339: Property 'citationKey' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,916): error TS2339: Property 'id' does not exist on type 'never'.
+src/features/manuscripts/manuscript-ai.tsx(111,960): error TS2339: Property 'id' does not exist on type 'never'.
+src/features/manuscripts/manuscript-editor.tsx(317,104): error TS2339: Property 'id' does not exist on type 'never'.
+  The intersection 'ManuscriptReference & { reason: string; evidenceStatus: "PROJECT_SOURCE" | "REVIEWED_EVIDENCE"; support?: { quote: string; locator: string; kind: "ABSTRACT" | "REVIEWED_EXCERPT"; } | undefined; }' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/features/projects/components/mentor-match-evidence-dialog.tsx(49,23): error TS2339: Property 'institution' does not exist on type 'AvailableMentor'.
+src/features/projects/components/mentor-match-evidence-dialog.tsx(52,54): error TS2339: Property 'institution' does not exist on type 'AvailableMentor'.
+D:\lumi-gap\apps\web:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] web@0.1.0 build: `tsc -b && node scripts/build.mjs`
+Exit status 1

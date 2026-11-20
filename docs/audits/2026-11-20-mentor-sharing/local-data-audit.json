@@ -1,0 +1,55 @@
+{
+  "localDatabase": "lumigap_db",
+  "operation": "read-only audit",
+  "before": {
+    "shares": 0,
+    "feedback": 0,
+    "reviews": 1,
+    "migrations": 166
+  },
+  "after": {
+    "shares": 0,
+    "feedback": 0,
+    "reviews": 1,
+    "migrations": 166
+  },
+  "legacyPolicies": [
+    {
+      "preset": "ADVISOR",
+      "permissions": [
+        "MENTOR_CHAT"
+      ],
+      "count": 1
+    },
+    {
+      "preset": "ADVISOR",
+      "permissions": [
+        "OVERVIEW_VIEW",
+        "PAPERS_VIEW",
+        "PAPERS_COMMENT",
+        "PAPERS_SUGGEST",
+        "GAPS_VIEW",
+        "GAPS_COMMENT",
+        "GAPS_RECOMMEND",
+        "TASKS_VIEW",
+        "TASKS_SUGGEST",
+        "MANUSCRIPTS_VIEW",
+        "MANUSCRIPTS_COMMENT",
+        "MANUSCRIPTS_SUGGEST",
+        "MENTOR_CHAT",
+        "SUBMISSIONS_VIEW",
+        "CONTRIBUTIONS_VIEW"
+      ],
+      "count": 1
+    },
+    {
+      "preset": "ADVISOR",
+      "permissions": [],
+      "count": 8
+    }
+  ],
+  "duplicateOpenAlexGroups": 7,
+  "newColumnAlreadyExisted": false,
+  "appliedSql": null,
+  "migrationHistoryChanged": false
+}

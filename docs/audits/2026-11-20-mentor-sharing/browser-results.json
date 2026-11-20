@@ -1,0 +1,20 @@
+{
+  "source": "real isolated PostgreSQL + authenticated API + real React UI",
+  "desktop": [
+    1440,
+    900
+  ],
+  "mobile": [
+    390,
+    844
+  ],
+  "steps": [
+    "owner shares COMMENT",
+    "mentor reads and comments",
+    "owner downgrades VIEW",
+    "mentor sees preserved feedback without composer",
+    "owner revokes direct share",
+    "mentor inbox no longer contains resource"
+  ],
+  "pageErrors": []
+}

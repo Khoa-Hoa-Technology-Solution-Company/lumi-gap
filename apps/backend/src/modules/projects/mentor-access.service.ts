@@ -1,4 +1,8 @@
-import { mentorPresets, type MentorAssignedTask, type MentorAccessPage, type MentorAccessPolicy, type MentorPermission, type MentorPolicyInput, type MentorResourceKind, type MentorShareInput, type MentorAccessWorkspace } from "@trend/shared-types";
+import { mentorDefaultPermissions, type MentorAssignedTask, type MentorAccessPage, type MentorAccessPolicy, type MentorPermission, type MentorPolicyInput, type MentorResourceKind, type MentorShareInput, type MentorAccessWorkspace } from "@trend/shared-types";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
+import { workspaceId } from "./workspace-access.js";
+import { notificationService } from "../notifications/notification.service.js";
+import { dispatchMentorshipNotifications } from "./mentorship-notifications.js";
 import type { z } from "zod";
 import type { MentorshipRequest } from "../../generated/prisma/client.js";
 import { AppError } from "../../common/exceptions/app-error.js";
@@ -20,15 +24,16 @@ export async function mentorAccessEvent(tx: WorkspaceDb, access: Access, actorId
 }
 export async function effectiveMentorAccess(tx: WorkspaceDb, row: Access) {
   if (row.revokedAt || row.expiresAt && row.expiresAt <= new Date() || !row.relationshipId) return false;
-  const [relationship, user, profile] = await Promise.all([
+  const [relationship, user, profile, invitation] = await Promise.all([
     tx.mentorRelationship.count({ where: { id: row.relationshipId, projectId: row.projectId, mentorUserId: row.mentorUserId, status: "ACTIVE" } }),
     tx.user.findUnique({ where: { id: row.mentorUserId }, select: { isActive: true, accountStatus: true, emailVerifiedAt: true } }),
     tx.academicProfile.findUnique({ where: { userId: row.mentorUserId }, select: { academicRole: true, roleVerificationStatus: true, positionStatus: true } }),
+    tx.mentorshipRequest.count({ where: { id: row.requestId, projectId: row.projectId, mentorUserId: row.mentorUserId, status: "ACCEPTED" } }),
   ]);
-  return Boolean(relationship) && isVerifiedLecturer(user, profile);
+  return Boolean(relationship && invitation) && isVerifiedLecturer(user, profile);
 }
-export async function mentorPolicyDto(tx: WorkspaceDb, row: Access): Promise<MentorAccessPolicy> {
-  return { id: row.id, requestId: row.requestId, relationshipId: row.relationshipId, version: row.version, preset: row.preset as MentorAccessPolicy["preset"], permissions: row.permissions as MentorPermission[], expiresAt: row.expiresAt?.toISOString() ?? null, revokedAt: row.revokedAt?.toISOString() ?? null, effective: await effectiveMentorAccess(tx, row) };
+export async function mentorPolicyDto(tx: WorkspaceDb, row: Access, knownEffective?: boolean): Promise<MentorAccessPolicy> {
+  return { id: row.id, requestId: row.requestId, relationshipId: row.relationshipId, version: row.version, preset: row.preset as MentorAccessPolicy["preset"], permissions: row.permissions as MentorPermission[], expiresAt: row.expiresAt?.toISOString() ?? null, revokedAt: row.revokedAt?.toISOString() ?? null, effective: knownEffective ?? await effectiveMentorAccess(tx, row) };
 }
 const policyDto = mentorPolicyDto;
 export function validateMentorPermissions(permissions: readonly MentorPermission[]) {
@@ -50,7 +55,14 @@ async function configurable(c: WorkspaceContext, row: Access) {
   if (!["PENDING", "ACCEPTED"].includes(request.status) || request.status === "PENDING" && request.expiresAt && request.expiresAt <= new Date()) throw AppError.conflict("Lời mời đã đóng hoặc hết hạn. Cần lời mời mới");
 }
 const requirePermission = (c: WorkspaceContext, row: Access, permission: MentorPermission) => { if (!c.role && !row.permissions.includes(permission)) throw AppError.forbidden("Chưa được cấp quyền cho thao tác này"); };
-const shareDto = (row: Awaited<ReturnType<WorkspaceDb["mentorResourceShare"]["findMany"]>>[number]) => ({ id: row.id, kind: row.kind as MentorResourceKind, resourceId: row.resourceId, sectionKey: row.sectionKey, title: row.title, content: row.content, createdAt: row.createdAt.toISOString(), revokedAt: row.revokedAt?.toISOString() ?? null });
+const shareDto = (row: Awaited<ReturnType<WorkspaceDb["mentorResourceShare"]["findMany"]>>[number]) => ({ id: row.id, kind: row.kind as MentorResourceKind, resourceId: row.resourceId, sectionKey: row.sectionKey, title: row.title, content: row.content, createdAt: row.createdAt.toISOString(), revokedAt: row.revokedAt?.toISOString() ?? null, hasPdf: Boolean(row.sourceFileId), accessMode: row.accessMode as "VIEW" | "COMMENT" | null });
+
+export function canReadMentorShare(row: Pick<Access, "permissions">, share: { kind: string; accessMode?: string | null }) {
+  return share.kind === "PAPER" && ["VIEW", "COMMENT"].includes(share.accessMode ?? "") || row.permissions.includes(mentorViewPermission[share.kind as MentorResourceKind]);
+}
+export function canCommentMentorShare(row: Pick<Access, "permissions">, share: { kind: string; accessMode?: string | null }) {
+  return share.kind === "PAPER" && (share.accessMode ? share.accessMode === "COMMENT" : row.permissions.includes("PAPERS_COMMENT"));
+}
 
 async function assertResource(tx: WorkspaceDb, projectId: string, input: MentorShareInput) {
   const { kind, resourceId } = input;
@@ -76,7 +88,7 @@ export async function publishMentorShare(tx: WorkspaceDb, row: Access, actorId: 
   return shareDto(share);
 }
 export async function initializeMentorAccess(tx: WorkspaceDb, request: MentorshipRequest, ownerId: string, input?: MentorPolicyInput) {
-  const settings = input ?? { preset: "ADVISOR", permissions: [...mentorPresets.ADVISOR], expiresAt: null };
+  const settings = input ?? { preset: "ADVISOR", permissions: [...mentorDefaultPermissions], expiresAt: null };
   validateMentorPermissions(settings.permissions); validateExpiry(settings.expiresAt);
   const row = await tx.mentorAccess.create({ data: { projectId: request.projectId, requestId: request.id, mentorUserId: request.mentorUserId, configuredById: ownerId, preset: settings.preset, permissions: settings.permissions, expiresAt: settings.expiresAt ? new Date(settings.expiresAt) : null } });
   await mentorAccessEvent(tx, row, request.requestedBy, "ACCESS_PROPOSED", { preset: row.preset, permissions: row.permissions, expiresAt: row.expiresAt, initialInput: input ?? null });
@@ -86,6 +98,40 @@ export async function initializeMentorAccess(tx: WorkspaceDb, request: Mentorshi
 
 const scoped = <T>(project: string, actor: string, write: boolean, run: (c: WorkspaceContext) => Promise<T>) => withWorkspace(project, actor, { write, mentor: true, mentorScope: "SHARED_RESOURCES" }, run);
 export const mentorAccessService = {
+  async sharePaper(project: string, actor: string, id: string, input: z.infer<typeof schemas.mentorPaperShareSchema>) {
+    const result = await scoped(project, actor, true, async c => {
+      if (!c.role) throw AppError.forbidden("Chỉ thành viên nhóm được chia sẻ tài liệu");
+      writable(c); const row = await scopedAccess(c, id);
+      if (!await effectiveMentorAccess(c.tx, row)) throw AppError.conflict("Chọn cố vấn đã chấp nhận và đang hướng dẫn");
+      await assertResource(c.tx, c.project.id, { kind: "PAPER", resourceId: input.resourceId, sectionKey: "", title: "Paper", content: "Paper" });
+      const current = await c.tx.mentorResourceShare.findFirst({ where: { accessId: id, projectId: c.project.id, kind: "PAPER", resourceId: input.resourceId, sectionKey: "", revokedAt: null } });
+      if (current?.accessMode === input.accessMode) return shareDto(current);
+      expectWorkspaceVersion(row.version, input.expectedVersion);
+      const paper = await c.tx.paper.findUniqueOrThrow({ where: { id: input.resourceId }, select: { title: true, abstractText: true, doi: true } });
+      if (!current && await c.tx.mentorResourceShare.count({ where: { accessId: id, revokedAt: null } }) >= 100) throw AppError.conflict("Tối đa 100 tài liệu đang chia sẻ cho mỗi cố vấn");
+      const data = { title: paper.title.slice(0,240), content: [paper.abstractText, paper.doi].filter(Boolean).join("\n\n").slice(0,50000) || paper.title.slice(0,50000), accessMode: input.accessMode };
+      const sourceFile = current ? null : await c.tx.projectPaperFile.findFirst({ where: { projectId: c.project.id, paperId: input.resourceId }, orderBy: [{createdAt:"desc"},{id:"desc"}], select:{id:true} });
+      const share = current ? await c.tx.mentorResourceShare.update({ where: { id: current.id }, data: { accessMode: input.accessMode } }) : await c.tx.mentorResourceShare.create({ data: { projectId: c.project.id, accessId: id, kind: "PAPER", resourceId: input.resourceId, sectionKey: "", sharedById: c.actorId, sourceFileId: sourceFile?.id ?? null, ...data } });
+      await c.tx.mentorAccess.update({ where: { id }, data: { version: { increment: 1 } } });
+      await mentorAccessEvent(c.tx, row, c.actorId, current ? "PERMISSION_CHANGED" : "RESOURCE_SHARED", { shareId: share.id, kind: "PAPER", resourceId: input.resourceId, previous: current?.accessMode ?? null, next: input.accessMode });
+      await notificationService.create({ userId: row.mentorUserId, type: "MENTOR_RESOURCE_SHARED", title: "Tài liệu được chia sẻ", message: "Nhóm đã chia sẻ một bài báo. Mở Tài liệu đã chia sẻ để xem.", targetKind: "project", targetId: c.project.id, eventKey: "MENTORSHIP_RESOURCE:" + share.id + ":" + (row.version + 1), emailStatus: "SKIPPED" }, c.tx);
+      return shareDto(share);
+    });
+    await dispatchMentorshipNotifications(); return result;
+  },
+  async inbox(actor: string, page = 1) {
+    const db = getPrisma(), person = await db.user.findUnique({ where: workspaceId(actor), select: { id: true, isActive: true, accountStatus: true, emailVerifiedAt: true } });
+    const profile = person ? await db.academicProfile.findUnique({ where: { userId: person.id }, select: { academicRole: true, roleVerificationStatus: true, positionStatus: true } }) : null;
+    if (!person || !isVerifiedLecturer(person, profile)) throw AppError.forbidden("Cần tài khoản giảng viên đã xác minh");
+    const relations = await db.mentorRelationship.findMany({ where: { mentorUserId: person.id, status: "ACTIVE" }, select: { id: true, projectId: true } });
+    const projects = await db.project.findMany({ where: { id: { in: relations.map(r => r.projectId) }, deletedAt: null }, select: { id: true, title: true } });
+    const accepted = await db.mentorshipRequest.findMany({ where: { projectId: { in: projects.map(p => p.id) }, mentorUserId: person.id, status: "ACCEPTED" }, select: { id: true } });
+    const policies = await db.mentorAccess.findMany({ where: { requestId: { in: accepted.map(r => r.id) }, mentorUserId: person.id, projectId: { in: projects.map(p => p.id) }, relationshipId: { in: relations.map(r => r.id) }, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } });
+    const where = { revokedAt: null, OR: policies.map(policy => ({ accessId: policy.id, OR: [{ kind: { in: (Object.keys(mentorViewPermission) as MentorResourceKind[]).filter(kind => policy.permissions.includes(mentorViewPermission[kind])) } }, { kind: "PAPER", accessMode: { in: ["VIEW", "COMMENT"] } }] })) };
+    const [rows,total] = await Promise.all([db.mentorResourceShare.findMany({ where, ...paging(page), orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, projectId: true, accessId: true, kind: true, resourceId: true, sectionKey: true, title: true, accessMode: true, createdAt: true, revokedAt: true } }), db.mentorResourceShare.count({where})]);
+    const items = rows.map(share => ({ id: share.id, projectId: share.projectId, projectTitle: projects.find(p => p.id === share.projectId)!.title, accessId: share.accessId, resource: { id: share.id, kind: share.kind as MentorResourceKind, resourceId: share.resourceId, sectionKey: share.sectionKey, title: share.title, accessMode: share.accessMode as "VIEW" | "COMMENT" | null, createdAt: share.createdAt.toISOString(), revokedAt: share.revokedAt?.toISOString() ?? null, canComment: canCommentMentorShare(policies.find(p => p.id === share.accessId)!, share) } }));
+    return pageResult(items, total, page);
+  },
   async tasks(project: string, actor: string, page = 1): Promise<MentorAccessPage<MentorAssignedTask>> {
     return scoped(project, actor, false, async c => {
       const policies = await c.tx.mentorAccess.findMany({ where: { projectId: c.project.id, mentorUserId: c.actorId, revokedAt: null } });
@@ -107,16 +153,28 @@ export const mentorAccessService = {
         submissionId: permissions.has("SUBMISSIONS_VIEW") && row.targetKind?.toLowerCase() === "submission" ? row.targetId : null })), total, page);
     });
   },
-  async workspace(project: string, actor: string, page = 1): Promise<MentorAccessWorkspace> {
+  async workspace(project: string, actor: string, page = 1, activeOnly = false): Promise<MentorAccessWorkspace> {
     return scoped(project, actor, false, async c => {
-      const where = { projectId: c.project.id, ...(c.role ? {} : { mentorUserId: c.actorId, relationshipId: { not: null }, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }) };
+      const activeRelations = activeOnly ? await c.tx.mentorRelationship.findMany({where:{projectId:c.project.id,status:"ACTIVE"},select:{id:true}}) : null;
+      const where = { projectId: c.project.id, ...(activeRelations ? {relationshipId:{in:activeRelations.map(r=>r.id)},revokedAt:null} : {}), ...(c.role ? {} : { mentorUserId: c.actorId, relationshipId: { not: null }, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }) };
       const [rows, total] = await Promise.all([c.tx.mentorAccess.findMany({ where, ...paging(page), orderBy: [{ createdAt: "desc" }, { id: "desc" }] }), c.tx.mentorAccess.count({ where })]);
       const policies: MentorAccessWorkspace["policies"] = [];
+      const assignmentGrants = await c.tx.reviewerAssignment.findMany({ where: { mentorAccessId: { in: rows.map(r => r.id) }, status: { in: ["assigned", "accepted", "completed"] } } });
+      const requests = await c.tx.reviewRequest.findMany({ where: { id: { in: assignmentGrants.flatMap(a => a.reviewRequestId ? [a.reviewRequestId] : []) }, projectId: c.project.id, origin: "MENTOR_GUIDANCE", status: { in: ["REQUESTED", "ACCEPTED", "IN_REVIEW", "RESUBMITTED", "REVISION_REQUESTED", "COMPLETED"] } }, orderBy: { createdAt: "desc" } });
+      const submissionIds = requests.map(r => r.submissionId);
+      const [submitted, revisions] = await Promise.all([c.tx.submission.findMany({ where: { id: { in: submissionIds }, projectId: c.project.id }, select: { id: true, title: true } }), c.tx.submissionRevision.findMany({ where: { id: { in: requests.map(r => r.artifactRevisionId) }, submissionId: { in: submissionIds } }, select: { id: true, revisionNumber: true } })]);
       for (const row of rows) {
-        if (!c.role && !await effectiveMentorAccess(c.tx, row)) continue;
-        const [person, request, shares] = await Promise.all([c.tx.user.findUniqueOrThrow({ where: { id: row.mentorUserId }, select: { fullName: true } }), c.tx.mentorshipRequest.findUniqueOrThrow({ where: { id: row.requestId }, select: { status: true } }), c.tx.mentorResourceShare.findMany({ where: { accessId: row.id, revokedAt: null, ...(!c.role ? { kind: { in: (Object.keys(mentorViewPermission) as MentorResourceKind[]).filter(k => row.permissions.includes(mentorViewPermission[k])) } } : {}) }, orderBy: { createdAt: "desc" }, select: { id: true, kind: true, resourceId: true, sectionKey: true, title: true, createdAt: true, revokedAt: true } })]);
+        const effective = await effectiveMentorAccess(c.tx, row);
+        if (!c.role && !effective) continue;
+        const [person, request, shares] = await Promise.all([c.tx.user.findUniqueOrThrow({ where: { id: row.mentorUserId }, select: { fullName: true, institution: true, avatarUrl: true } }), c.tx.mentorshipRequest.findUniqueOrThrow({ where: { id: row.requestId }, select: { status: true } }), c.tx.mentorResourceShare.findMany({ where: { accessId: row.id, revokedAt: null, ...(!c.role ? { OR: [{ kind: { in: (Object.keys(mentorViewPermission) as MentorResourceKind[]).filter(k => row.permissions.includes(mentorViewPermission[k])) } }, { kind: "PAPER", accessMode: { in: ["VIEW", "COMMENT"] } }] } : {}) }, orderBy: { createdAt: "desc" }, select: { id: true, sharedById: true, kind: true, resourceId: true, sectionKey: true, title: true, accessMode: true, createdAt: true, revokedAt: true } })]);
         const invitationState = request.status === "DECLINED" ? "REJECTED" : ["CANCELLED", "CANCELED_BY_PROJECT", "CLOSED_CAPACITY_REACHED"].includes(request.status) ? "CANCELLED" : request.status as "PENDING" | "ACCEPTED" | "EXPIRED";
-        policies.push({ policy: await policyDto(c.tx, row), mentorId: row.mentorUserId, mentorName: person.fullName, invitationState, shares: shares.map(s => ({ ...s, kind: s.kind as MentorResourceKind, createdAt: s.createdAt.toISOString(), revokedAt: s.revokedAt?.toISOString() ?? null })) });
+        const reviewResources = effective ? requests.flatMap(r => {
+          const grant = assignmentGrants.find(a => a.mentorAccessId === row.id && a.reviewerId === row.mentorUserId && a.reviewRequestId === r.id && a.artifactRevisionId === r.artifactRevisionId);
+          const s = submitted.find(s => s.id === r.submissionId), v = revisions.find(v => v.id === r.artifactRevisionId);
+          return grant && s && v && !(r.status === "REQUESTED" && r.expiresAt && r.expiresAt <= new Date()) ? [{ id: r.id, submissionId: s.id, title: s.title, revisionId: v.id, revisionNumber: v.revisionNumber, status: r.status, createdAt: r.createdAt.toISOString() }] : [];
+        }) : [];
+        const role = row.relationshipId ? await c.tx.mentorRelationship.findUnique({ where: { id: row.relationshipId }, select: { mentorRole: true, startedAt: true } }) : null;
+        policies.push({ mentorRole: role?.mentorRole, startedAt: role?.startedAt.toISOString(), mentorInstitution: person.institution, mentorAvatarUrl: person.avatarUrl, reviewResources, policy: await policyDto(c.tx, row, effective), mentorId: row.mentorUserId, mentorName: person.fullName, invitationState, shares: shares.map(({sharedById, ...s}) => ({ ...s, canUnshare: c.role === "OWNER" || Boolean(c.role) && sharedById === c.actorId, kind: s.kind as MentorResourceKind, accessMode: s.accessMode as "VIEW" | "COMMENT" | null, canComment: !["ARCHIVED", "COMPLETED"].includes(c.project.status) && canCommentMentorShare(row, s), createdAt: s.createdAt.toISOString(), revokedAt: s.revokedAt?.toISOString() ?? null })) });
       }
       // Basic collaboration context for accepted mentors; never expose the private plan or description.
       const members = await c.tx.projectMember.findMany({ where: { projectId: c.project.id, status: "ACTIVE" }, select: { userId: true } });
@@ -130,13 +188,16 @@ export const mentorAccessService = {
       return { viewerId: c.actorId, projectId: c.project.id, title: c.project.title, basics, canManage: c.role === "OWNER", readOnly: ["ARCHIVED", "COMPLETED"].includes(c.project.status), ...pageResult([], total, page), policies };
     });
   },
+  async paperPdf(project: string, actor: string, id: string, shareId: string) {
+    return scoped(project, actor, false, async c => { const policy=await scopedAccess(c,id); const share=await c.tx.mentorResourceShare.findFirst({where:{id:shareId,accessId:id,projectId:c.project.id,revokedAt:null,kind:"PAPER"}}); if(!share?.sourceFileId||!c.role&&!canReadMentorShare(policy,share)) throw AppError.notFound("PDF chưa được chia sẻ hoặc đã thu hồi"); const file=await c.tx.projectPaperFile.findFirst({where:{id:share.sourceFileId,projectId:c.project.id,paperId:share.resourceId},select:{content:true}}); if(!file) throw AppError.notFound("PDF không còn khả dụng"); return file; });
+  },
   async resource(project: string, actor: string, id: string, shareId: string) {
     return scoped(project, actor, false, async c => {
       const row = await scopedAccess(c, id);
       const share = await c.tx.mentorResourceShare.findFirst({ where: { id: shareId, accessId: id, projectId: c.project.id, ...(!c.role ? { revokedAt: null } : {}) } });
       if (!share) throw AppError.notFound("Nội dung chưa được chia sẻ hoặc đã thu hồi");
-      requirePermission(c, row, mentorViewPermission[share.kind as MentorResourceKind]);
-      return shareDto(share);
+      if (!c.role && !canReadMentorShare(row, share)) throw AppError.forbidden("Nội dung chưa được chia sẻ");
+      return { ...shareDto(share), canComment: !["ARCHIVED", "COMPLETED"].includes(c.project.status) && canCommentMentorShare(row, share) };
     });
   },
   async configure(project: string, actor: string, id: string, input: z.infer<typeof schemas.configureMentorAccessSchema>) {
@@ -164,13 +225,17 @@ export const mentorAccessService = {
       await mentorAccessEvent(c.tx, row, c.actorId, "ACCESS_REVOKED", { reason: input.reason }); return policyDto(c.tx, updated);
     });
   },
-  async share(project: string, actor: string, id: string, input: MentorShareInput & { expectedVersion: number }) {
+  async share(project: string, actor: string, id: string, input: (MentorShareInput & { expectedVersion: number }) | z.infer<typeof schemas.mentorPaperShareSchema>) {
+    if ("accessMode" in input) return this.sharePaper(project, actor, id, input);
     return scoped(project, actor, true, async c => { manager(c); writable(c); const row = await scopedAccess(c, id); expectWorkspaceVersion(row.version, input.expectedVersion); await configurable(c, row); const { expectedVersion: _, ...data } = input; const share = await publishMentorShare(c.tx, row, c.actorId, data); await c.tx.mentorAccess.update({ where: { id }, data: { version: { increment: 1 } } }); return share; });
   },
   async unshare(project: string, actor: string, id: string, shareId: string, input: z.infer<typeof schemas.mentorAccessActionSchema>) {
     return scoped(project, actor, false, async c => {
-      manager(c); const row = await scopedAccess(c, id); expectWorkspaceVersion(row.version, input.expectedVersion);
+      if (!c.role) throw AppError.forbidden("Chỉ thành viên nhóm được ngừng chia sẻ"); const row = await scopedAccess(c, id);
       const share = await c.tx.mentorResourceShare.findFirst({ where: { id: shareId, accessId: id, projectId: c.project.id } }); if (!share) throw AppError.notFound("Không tìm thấy bản chia sẻ");
+      if (c.role !== "OWNER" && share.sharedById !== c.actorId) throw AppError.forbidden("Chỉ người chia sẻ hoặc chủ dự án được ngừng chia sẻ");
+      if (share.revokedAt) return { id: shareId };
+      expectWorkspaceVersion(row.version, input.expectedVersion);
       await c.tx.mentorResourceShare.update({ where: { id: shareId }, data: { revokedAt: share.revokedAt ?? new Date() } }); await c.tx.mentorAccess.update({ where: { id }, data: { version: { increment: 1 } } }); await mentorAccessEvent(c.tx, row, c.actorId, "RESOURCE_REVOKED", { shareId, reason: input.reason }); return { id: shareId };
     });
   },
@@ -200,11 +265,12 @@ export const mentorAccessService = {
       return pageResult(items.map(item => ({ ...item, kind, sectionKey: "" })), total, query.page);
     });
   },
-  async feedback(project: string, actor: string, id: string, page = 1) {
+  async feedback(project: string, actor: string, id: string, page = 1, shareId?: string) {
     return scoped(project, actor, false, async c => {
       const row = await scopedAccess(c, id), shares = await c.tx.mentorResourceShare.findMany({ where: { accessId: id, revokedAt: null } });
-      const readable = shares.filter(s => row.permissions.includes(mentorViewPermission[s.kind as MentorResourceKind])).map(s => s.id);
-      const where = { accessId: id, projectId: c.project.id, ...(!c.role ? { OR: [...(row.permissions.includes("MENTOR_CHAT") ? [{ shareId: null }] : []), { shareId: { in: readable } }] } : {}) };
+      const readable = shares.filter(s => canReadMentorShare(row, s)).map(s => s.id);
+      if (shareId && (!shares.some(share => share.id === shareId) || !c.role && !readable.includes(shareId))) throw AppError.notFound("Nội dung chưa được chia sẻ hoặc đã thu hồi");
+      const where = { accessId: id, projectId: c.project.id, ...(shareId ? { shareId } : {}), ...(!c.role ? { OR: [...(row.permissions.includes("MENTOR_CHAT") ? [{ shareId: null }] : []), { shareId: { in: readable } }] } : {}) };
       const [rows, total] = await Promise.all([c.tx.mentorFeedback.findMany({ where, ...paging(page), orderBy: [{ createdAt: "desc" }, { id: "desc" }] }), c.tx.mentorFeedback.count({ where })]);
       const people = await c.tx.user.findMany({ where: { id: { in: [...new Set(rows.flatMap(r => [r.authorId, ...(r.handledById ? [r.handledById] : [])]))] } }, select: { id: true, fullName: true } });
       const names = new Map(people.map(p => [p.id, p.fullName]));
@@ -217,9 +283,11 @@ export const mentorAccessService = {
       if (!await effectiveMentorAccess(c.tx, row)) throw AppError.conflict("Quan hệ cố vấn chưa hoạt động hoặc đã hết quyền truy cập");
       if (input.shareId) {
         const share = await c.tx.mentorResourceShare.findFirst({ where: { id: input.shareId, projectId: c.project.id, accessId: id, revokedAt: null } }); if (!share) throw AppError.notFound("Nội dung chưa được chia sẻ");
-        const kind = share.kind as MentorResourceKind; requirePermission(c, row, mentorViewPermission[kind]);
+        const kind = share.kind as MentorResourceKind; if (!c.role && !canReadMentorShare(row, share)) throw AppError.forbidden("Nội dung chưa được chia sẻ");
         const permission: MentorPermission | undefined = input.kind === "REVIEW" ? kind === "MANUSCRIPT" ? "MANUSCRIPTS_REVIEW" : undefined : kind === "PAPER" ? input.kind === "SUGGESTION" ? "PAPERS_SUGGEST" : "PAPERS_COMMENT" : kind === "GAP" ? input.kind === "SUGGESTION" ? "GAPS_RECOMMEND" : "GAPS_COMMENT" : kind === "MANUSCRIPT" ? input.kind === "SUGGESTION" ? "MANUSCRIPTS_SUGGEST" : "MANUSCRIPTS_COMMENT" : ["TASK", "MILESTONE"].includes(kind) && input.kind === "SUGGESTION" ? "TASKS_SUGGEST" : undefined;
-        if (!permission || input.kind === "MESSAGE") throw AppError.badRequest("Loại phản hồi chưa phù hợp với tài nguyên"); requirePermission(c, row, permission);
+        if (!permission || input.kind === "MESSAGE") throw AppError.badRequest("Loại phản hồi chưa phù hợp với tài nguyên");
+        if (!c.role && share.accessMode && kind === "PAPER") { if (share.accessMode !== "COMMENT" || input.kind !== "COMMENT") throw AppError.forbidden("Bài báo này chỉ cho phép thao tác đã được nhóm chia sẻ"); }
+        else requirePermission(c, row, permission);
       } else { if (input.kind !== "MESSAGE") throw AppError.badRequest("Chọn tài nguyên cho nhận xét hoặc đề xuất"); requirePermission(c, row, "MENTOR_CHAT"); }
       if (input.replyToId) { const parent = await c.tx.mentorFeedback.findFirst({ where: { id: input.replyToId, accessId: id, shareId: input.shareId } }); if (!parent) throw AppError.badRequest("Phản hồi gốc không thuộc cuộc trao đổi này"); }
       const previous = await c.tx.mentorFeedback.findUnique({ where: { accessId_authorId_clientKey: { accessId: id, authorId: c.actorId, clientKey: input.clientKey } } });

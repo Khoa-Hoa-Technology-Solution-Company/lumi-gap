@@ -638,7 +638,33 @@ export const submissionService = {
 
   async listRevisions(submissionInput: string, actorInput: string, actorRole: UserRole) { const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const access = await assertSubmissionAccess(submission, actor.id, actorRole); const allowed = access === "blind" ? await accessibleRevisionIds(submission.id, actor.id) : undefined; const rows = await getPrisma().submissionRevision.findMany({ where: { submissionId: submission.id, ...(allowed ? { id: { in: allowed } } : {}) }, orderBy: { revisionNumber: "desc" } }); return rows.map((row) => { const dto = revisionDto(row); if (access === "blind") { const { uploadedById: _uploadedById, uploadedBy: _uploadedBy, originalFileName: _originalFileName, ...safe } = dto; return safe; } return dto; }); },
 
-  async resolveDownload(submissionInput: string, revisionInput: string, actorInput: string, actorRole: UserRole) { const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const access = await assertSubmissionAccess(submission, actor.id, actorRole); const allowed = access === "blind" ? await accessibleRevisionIds(submission.id, actor.id) : undefined; const revision = await getPrisma().submissionRevision.findFirst({ where: { ...idWhere(revisionInput), submissionId: submission.id, ...(allowed ? { AND: { id: { in: allowed } } } : {}) } }); if (!revision) throw AppError.notFound("Submission revision not found"); if (!revision.storageUri) throw AppError.badRequest("This artifact revision is displayed in LumiGap and has no PDF download"); await researchLedgerService.record({ projectId: submission.projectId, actorId: actor.id, eventType: "SUBMISSION_REVISION_DOWNLOADED", resourceKind: "SUBMISSION_REVISION", resourceId: revision.id, checksumSha256: revision.checksumSha256 ?? null, visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { submissionId: submission.id, revisionNumber: revision.revisionNumber, accessMode: access } }); const signedUrl = await pdfStorageService.getSignedDownloadUrl(revision.storageUri); if (signedUrl) return { kind: "redirect" as const, url: signedUrl }; const localPath = pdfStorageService.resolveLocalPath(revision.storageUri); if (!localPath) throw AppError.notFound("Submission file is not available"); return { kind: "local" as const, path: localPath, filename: `submission-revision-${revision.revisionNumber}.pdf` }; },
+  async resolveDownload(submissionInput: string, revisionInput: string, actorInput: string, actorRole: UserRole) {
+    const actor = await resolveUser(actorInput), submission = await getSubmissionOrThrow(submissionInput);
+    const access = await assertSubmissionAccess(submission, actor.id, actorRole);
+    const allowed = access === "blind" ? await accessibleRevisionIds(submission.id, actor.id) : undefined;
+    const revision = await getPrisma().submissionRevision.findFirst({ where: { ...idWhere(revisionInput), submissionId: submission.id, ...(allowed ? { AND: { id: { in: allowed } } } : {}) } });
+    if (!revision) throw AppError.notFound("Submission revision not found");
+    if (!revision.storageUri) throw AppError.badRequest("This artifact revision is displayed in LumiGap and has no PDF download");
+    await researchLedgerService.record({ projectId: submission.projectId, actorId: actor.id, eventType: "SUBMISSION_REVISION_DOWNLOADED", resourceKind: "SUBMISSION_REVISION", resourceId: revision.id, checksumSha256: revision.checksumSha256 ?? null, visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { submissionId: submission.id, revisionNumber: revision.revisionNumber, accessMode: access } });
+    const filename = "submission-revision-" + revision.revisionNumber + ".pdf";
+    if (access === "blind") {
+      // A reviewer receives bytes, never a reusable storage capability. The
+      // existing bounded reader validates remote PDF responses and public DNS.
+      let content: Buffer;
+      try { content = await readStoredPdf(revision.storageUri); }
+      catch { throw AppError.notFound("Submission file is not available"); }
+      // Storage can be slow: a revoked assignment must not authorize a response
+      // using the permission check made before the storage request.
+      const currentAccess = await assertSubmissionAccess(await getSubmissionOrThrow(submission.id), actor.id, actorRole);
+      if (currentAccess === "blind" && !(await accessibleRevisionIds(submission.id, actor.id)).includes(revision.id)) throw AppError.notFound("Submission revision not found");
+      return { kind: "buffer" as const, content, filename };
+    }
+    const signedUrl = await pdfStorageService.getSignedDownloadUrl(revision.storageUri);
+    if (signedUrl) return { kind: "redirect" as const, url: signedUrl };
+    const localPath = pdfStorageService.resolveLocalPath(revision.storageUri);
+    if (!localPath) throw AppError.notFound("Submission file is not available");
+    return { kind: "local" as const, path: localPath, filename };
+  },
 
   async assignReviewer(_submissionInput: string, _input: { reviewerId: string; dueAt?: Date; enforceInstitutionConflict?: boolean }, _actorInput: string) {
     throw AppError.conflict("Use an Academic Review Request; new direct Admin assignments are disabled");

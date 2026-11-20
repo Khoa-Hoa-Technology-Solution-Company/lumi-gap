@@ -1,3 +1,4 @@
+import { MentorPaperSharing } from "./mentor-paper-sharing";
 import { ScreeningStatus } from "./screening-common";
 import { useState, useEffect, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -509,6 +510,7 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
         <ScreeningPaperDetail settings={board?.settings} collaborative={board?.settings.reviewMode === "COLLABORATIVE"} key={`detail-${focused.paperId}`} projectId={projectId} paper={focused} people={board?.people ?? []} readOnly={readOnly} />
         <footer className="library-dialog-footer">
           <div className="screening-actions">
+            {!readOnly && <MentorPaperSharing projectId={projectId} paperId={focused.paperId} />}
             <Button size="sm" variant="outline" onClick={() => setNotesPaper(focused)}>Ghi chú tài liệu</Button>
             <Button size="sm" disabled={focused.round?.finalDecision?.decision !== "INCLUDED" || focused.round?.extractionReady === false} variant="outline" onClick={() => { const next = new URLSearchParams(params); next.set("view", "evidence"); next.set("extract", focused.paperId); next.delete("source"); void move(next); }}>Thêm trích xuất nghiên cứu</Button>
           </div>

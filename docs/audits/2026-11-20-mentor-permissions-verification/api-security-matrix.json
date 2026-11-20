@@ -1,0 +1,1050 @@
+{
+  "source": "complete createApp + signed sessions + isolated PostgreSQL",
+  "rows": [
+    {
+      "role": "ANONYMOUS",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access",
+      "expected": [
+        401
+      ],
+      "actual": 401,
+      "pass": true
+    },
+    {
+      "role": "OWNER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "OWNER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/workspace",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "OWNER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/papers",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "OWNER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/evidence/workspace",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "OWNER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/files/9b00362a-fc51-4190-b786-572feb88ac1b",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "OWNER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/team-chat",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "OWNER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/chat?scope=private",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "OWNER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "OWNER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90/files/43596e0d-4cce-471e-9c22-179324c3ca35",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "OWNER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90/snapshots/6ae8e464-d227-4707-9112-8c89943c789a",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "MEMBER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "MEMBER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/workspace",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "MEMBER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/papers",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "MEMBER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/evidence/workspace",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "MEMBER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/files/9b00362a-fc51-4190-b786-572feb88ac1b",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "MEMBER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/team-chat",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "MEMBER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/chat?scope=private",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "MEMBER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "MEMBER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90/files/43596e0d-4cce-471e-9c22-179324c3ca35",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "MEMBER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90/snapshots/6ae8e464-d227-4707-9112-8c89943c789a",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "PENDING_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PENDING_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/workspace",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PENDING_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/papers",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PENDING_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/evidence/workspace",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PENDING_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/files/9b00362a-fc51-4190-b786-572feb88ac1b",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PENDING_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/team-chat",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PENDING_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/chat?scope=private",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 403,
+      "pass": true
+    },
+    {
+      "role": "PENDING_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PENDING_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90/files/43596e0d-4cce-471e-9c22-179324c3ca35",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PENDING_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90/snapshots/6ae8e464-d227-4707-9112-8c89943c789a",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "OUTSIDER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "OUTSIDER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/workspace",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "OUTSIDER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/papers",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "OUTSIDER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/evidence/workspace",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "OUTSIDER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/files/9b00362a-fc51-4190-b786-572feb88ac1b",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "OUTSIDER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/team-chat",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "OUTSIDER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/chat?scope=private",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 403,
+      "pass": true
+    },
+    {
+      "role": "OUTSIDER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "OUTSIDER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90/files/43596e0d-4cce-471e-9c22-179324c3ca35",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "OUTSIDER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90/snapshots/6ae8e464-d227-4707-9112-8c89943c789a",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PENDING_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentorships/b24b9cc4-64d0-449a-b14e-165f56435125",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "PENDING_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/workspace",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/papers",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/evidence/workspace",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/files/9b00362a-fc51-4190-b786-572feb88ac1b",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/team-chat",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/chat?scope=private",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 403,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90/files/43596e0d-4cce-471e-9c22-179324c3ca35",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90/snapshots/6ae8e464-d227-4707-9112-8c89943c789a",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/shares/46ef24f5-be6c-495d-b8c9-0aa198675352",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/team-chat/events",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "POST",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/feedback",
+      "expected": [
+        201
+      ],
+      "actual": 201,
+      "pass": true
+    },
+    {
+      "role": "OWNER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/feedback",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "ACCEPTED_UNSHARED",
+      "method": "PUT",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03",
+      "expected": [
+        403
+      ],
+      "actual": 403,
+      "pass": true
+    },
+    {
+      "role": "PAPER_VIEW",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/shares/43ec0e5c-b4de-44ea-b3f6-9689e110ca58",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "PAPER_VIEW",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/shares/43ec0e5c-b4de-44ea-b3f6-9689e110ca58/pdf",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "PAPER_VIEW",
+      "method": "POST",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/feedback",
+      "expected": [
+        403
+      ],
+      "actual": 403,
+      "pass": true
+    },
+    {
+      "role": "PAPER_VIEW",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PAPER_VIEW",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/workspace",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PAPER_VIEW",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/papers",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PAPER_VIEW",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/evidence/workspace",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PAPER_VIEW",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/files/9b00362a-fc51-4190-b786-572feb88ac1b",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PAPER_VIEW",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/team-chat",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PAPER_VIEW",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/chat?scope=private",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 403,
+      "pass": true
+    },
+    {
+      "role": "PAPER_VIEW",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PAPER_VIEW",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90/files/43596e0d-4cce-471e-9c22-179324c3ca35",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PAPER_VIEW",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90/snapshots/6ae8e464-d227-4707-9112-8c89943c789a",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "OUTSIDER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/shares/43ec0e5c-b4de-44ea-b3f6-9689e110ca58",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "OUTSIDER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/shares/43ec0e5c-b4de-44ea-b3f6-9689e110ca58/pdf",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "CROSS_PROJECT",
+      "method": "GET",
+      "endpoint": "/projects/3448dffb-27f0-498a-8ced-bfd529e50ba1/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/shares/43ec0e5c-b4de-44ea-b3f6-9689e110ca58",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PAPER_COMMENT",
+      "method": "POST",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/feedback",
+      "expected": [
+        201
+      ],
+      "actual": 201,
+      "pass": true
+    },
+    {
+      "role": "PAPER_COMMENT_RETRY",
+      "method": "POST",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/feedback",
+      "expected": [
+        201
+      ],
+      "actual": 201,
+      "pass": true
+    },
+    {
+      "role": "PAPER_COMMENT",
+      "method": "DELETE",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/papers/7947e236-b374-4d30-bd64-9e9f5bef4e80",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 403,
+      "pass": true
+    },
+    {
+      "role": "PAPER_COMMENT",
+      "method": "PUT",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/research/screening/7947e236-b374-4d30-bd64-9e9f5bef4e80/vote",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "PAPER_COMMENT",
+      "method": "DELETE",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/members/7264b398-b26c-42b4-aaf3-892b694d65bc",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 403,
+      "pass": true
+    },
+    {
+      "role": "DOWNGRADED_VIEW",
+      "method": "POST",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/feedback",
+      "expected": [
+        403
+      ],
+      "actual": 403,
+      "pass": true
+    },
+    {
+      "role": "DOWNGRADED_VIEW",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/feedback?shareId=43ec0e5c-b4de-44ea-b3f6-9689e110ca58",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "REVIEW_V1",
+      "method": "POST",
+      "endpoint": "/review-requests/dc105086-8626-4766-b567-82a323b98b50/accept",
+      "expected": [
+        204
+      ],
+      "actual": 204,
+      "pass": true
+    },
+    {
+      "role": "REVIEW_V1",
+      "method": "GET",
+      "endpoint": "/reviews/5c49ea03-3690-4a46-97a7-a4e8a80bf476",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "OTHER_REVIEWER",
+      "method": "GET",
+      "endpoint": "/reviews/5c49ea03-3690-4a46-97a7-a4e8a80bf476",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "REVIEW_V1",
+      "method": "GET",
+      "endpoint": "/submissions/f581f46e-7f21-4297-8027-9ece152ec9ab/revisions/ccc1970f-916f-43e8-9608-5f78d31706a4/download",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "REVIEW_V1",
+      "method": "GET",
+      "endpoint": "/projects/3448dffb-27f0-498a-8ced-bfd529e50ba1/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "REVIEW_V1",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/manuscripts/f271e13f-f114-4e8f-b5c4-d028688b2b90/snapshots/af891ae9-3986-49de-afb5-14c0cee04d91",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "CANCELLED_REVIEW",
+      "method": "GET",
+      "endpoint": "/reviews/5c49ea03-3690-4a46-97a7-a4e8a80bf476",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 403,
+      "pass": true
+    },
+    {
+      "role": "REMAINING_DIRECT_SHARE",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/shares/43ec0e5c-b4de-44ea-b3f6-9689e110ca58",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "REMAINING_DIRECT_SHARE",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/shares/43ec0e5c-b4de-44ea-b3f6-9689e110ca58/pdf",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "REVOKED_PAPER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/shares/43ec0e5c-b4de-44ea-b3f6-9689e110ca58",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "REVOKED_PAPER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/shares/43ec0e5c-b4de-44ea-b3f6-9689e110ca58/pdf",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "REVOKED_PAPER",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/feedback?shareId=43ec0e5c-b4de-44ea-b3f6-9689e110ca58",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "REVOKED_PAPER",
+      "method": "GET",
+      "endpoint": "/projects/academic-support/resources",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "ENDED_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ENDED_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/shares/97bd9981-48cd-4fab-ba06-207abc66069a",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ENDED_MENTOR",
+      "method": "POST",
+      "endpoint": "/projects/ff55c240-bd41-43ea-b014-03c160aeb5be/mentor-access/5c5e28cb-ab3a-436c-bd20-04e8c163bc03/feedback",
+      "expected": [
+        404
+      ],
+      "actual": 404,
+      "pass": true
+    },
+    {
+      "role": "ENDED_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/academic-support/resources",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    },
+    {
+      "role": "ENDED_MENTOR",
+      "method": "GET",
+      "endpoint": "/projects/academic-support/workspace",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true
+    }
+  ]
+}

@@ -1,0 +1,566 @@
+Loaded Prisma config from prisma7.config.ts.
+
+Prisma schema loaded from prisma.
+Datasource "db": PostgreSQL database "codex_mentor_workspace_17e1f0e40a4a_test", schema "public" at "127.0.0.1:5433"
+
+167 migrations found in prisma/migrations
+
+Applying migration `20260924000100_postgresql_foundation`
+Applying migration `20260924000200_relations_constraints_search`
+Applying migration `20260924000300_data_migration_control`
+Applying migration `20260924000400_identity_authorization`
+Applying migration `20260924000500_legacy_email_verification_backfill`
+Applying migration `20260924000600_legacy_email_verification_recovery`
+Applying migration `20260925000100_academic_profile_experience`
+Applying migration `20260925000200_backfill_academic_profile_handles`
+Applying migration `20260925000300_super_admin_user_management`
+Applying migration `20260926000100_academic_identity_links`
+Applying migration `20260926000200_position_verification_evidence`
+Applying migration `20260926000300_academic_profile_discoverability`
+Applying migration `20260926000400_display_name_change_limit`
+Applying migration `20260926000500_project_workspace`
+Applying migration `20260926000600_one_active_password_reset_token`
+Applying migration `20260926000700_project_literature_screening`
+Applying migration `20260926000800_academic_review_system`
+Applying migration `20260927000900_research_forum_communities`
+Applying migration `20260927001000_project_invitation_tokens`
+Applying migration `20260929000100_identity_affiliation_admission_foundation`
+Applying migration `20260929000200_internal_lecturer_mentorship`
+Applying migration `20260929000300_external_lecturer_review_invitations`
+Applying migration `20260929000400_fpt_onboarding_options`
+Applying migration `20260929000500_structured_gap_evidence_provenance`
+Applying migration `20260930000100_community_approval_workflow`
+Applying migration `20260930000100_forum_metrics_and_views`
+Applying migration `20260930000200_community_ownership_search`
+Applying migration `20260930000200_forum_view_cooldown_counter`
+Applying migration `20260930000300_forum_participant_lookup`
+Applying migration `20260930000400_forum_visible_reply_backfill`
+Applying migration `20261001000100_forum_public_slugs`
+Applying migration `20261001000200_forum_public_slugs_nullable`
+Applying migration `20261001000200_forum_readable_slugs`
+Applying migration `20261001000300_forum_reactions`
+Applying migration `20261001000400_forum_notification_levels`
+Applying migration `20261002000100_forum_edit_history`
+Applying migration `20261002000200_forum_post_numbers`
+Applying migration `20261002000300_forum_helpful_reactions`
+Applying migration `20261002000400_forum_view_history`
+Applying migration `20261002000500_forum_single_reaction`
+Applying migration `20261002000600_forum_trust_safety_v1`
+Applying migration `20261003000100_community_embeddings`
+Applying migration `20261003000100_forum_appeal_state`
+Applying migration `20261003000200_forum_moderation_targets`
+Applying migration `20261003000300_forum_categories`
+Applying migration `20261003000300_full_text_rag`
+Applying migration `20261003000300_peer_review_versions`
+Applying migration `20261003000400_legacy_review_requests`
+Applying migration `20261006000100_academic_identity_verification`
+Applying migration `20261006110000_user_ai_connections`
+Applying migration `20261007000100_student_affiliation`
+Applying migration `20261007000200_open_academic_onboarding`
+Applying migration `20261007000300_shared_academic_profile_works`
+Applying migration `20261007000400_academic_relationship_consent`
+Applying migration `20261007000500_adaptive_lecturer_verification`
+Applying migration `20261007000600_complete_academic_mentorship`
+Applying migration `20261007000700_mentorship_audit_privacy`
+Applying migration `20261008000100_lecturer_evidence_entries`
+Applying migration `20261008000200_lecturer_submission_hardening`
+Applying migration `20261008000300_lecturer_tracking`
+Applying migration `20261009120000_submissions_project_restrict`
+Applying migration `20261010120000_research_gap_evidence_scope`
+Applying migration `20261014000100_project_creation_team`
+Applying migration `20261014000200_project_owner_reassignment_guard`
+Applying migration `20261014000300_project_workspace_collaboration`
+Applying migration `20261014000400_collaborative_research`
+Applying migration `20261014000500_screening_assignments`
+Applying migration `20261014000600_research_history_kinds`
+Applying migration `20261014000700_project_contribution_allocation`
+Applying migration `20261014000800_allocation_integrity_guards`
+Applying migration `20261014000900_allocation_lifecycle_boundary`
+Applying migration `20261014001000_collaborative_manuscripts`
+Applying migration `20261015000100_living_plan_draft_history`
+Applying migration `20261015000200_research_task_board`
+Applying migration `20261015000300_two_way_mentorship`
+Applying migration `20261015120000_gap_closure_protocol`
+Applying migration `20261016000100_paper_review_analysis`
+Applying migration `20261016000200_research_gap_global_evidence`
+Applying migration `20261016000300_report_grounding_checks`
+Applying migration `20261017120000_quality_assessment_details`
+Applying migration `20261017160000_project_overview_document`
+Applying migration `20261017163000_revert_project_overview_document`
+Applying migration `20261018010000_mentor_positions_and_invitation_content`
+Applying migration `20261019010000_reviewed_research_synthesis`
+Applying migration `20261019120000_quality_project_assessments`
+Applying migration `20261020010000_manuscript_synctex`
+Applying migration `20261020020000_manuscript_suggestions`
+Applying migration `20261020030000_manuscript_suggestion_revisions`
+Applying migration `20261020040000_manuscript_compiler_versions`
+Applying migration `20261020050000_manuscript_preferences_history`
+Applying migration `20261020060000_github_connections`
+Applying migration `20261020070000_manuscript_deletion`
+Applying migration `20261021000100_community_unique_active_name`
+Applying migration `20261021120000_platform_ai_connections`
+Applying migration `20261021150000_research_gap_refinement`
+Applying migration `20261026090000_trend_follows_and_project_snapshots`
+Applying migration `20261027120000_closure_calibration_mode`
+Applying migration `20261028090000_contribution_evaluation_v1`
+Applying migration `20261028091000_contribution_evaluation_objection_resolution`
+Applying migration `20261028100000_manuscript_retained_writing`
+Applying migration `20261028101000_manuscript_writing_snapshot_fallback`
+Applying migration `20261028120000_collaborative_screening_v2`
+Applying migration `20261028120000_forum_post_research_community`
+Applying migration `20261028130000_forum_post_research_community_restrict`
+Applying migration `20261028140000_mentor_resource_access`
+Applying migration `20261029090000_screening_explicit_finalization`
+Applying migration `20261029100000_public_only_research_communities`
+Applying migration `20261029110000_forum_anti_spam`
+Applying migration `20261029120000_collaborative_library`
+Applying migration `20261029150000_contribution_matrix_evidence`
+Applying migration `20261030090000_taxonomy_keywords_tags`
+Applying migration `20261030150000_paper_tags_blocked`
+Applying migration `20261030160000_research_trust_integrity_security`
+Applying migration `20261030161000_research_ledger_retention_fk`
+Applying migration `20261030170000_topic_backfill_runs`
+Applying migration `20261030180000_literature_review_context`
+Applying migration `20261030190000_ingest_campaign_target_tag`
+Applying migration `20261031090000_platform_embedding_connections`
+Applying migration `20261031160000_screening_independent_workflow`
+Applying migration `20261031190000_screening_more_information`
+Applying migration `20261031200000_screening_protocol_permissions`
+Applying migration `20261031210000_screening_discovery_goals`
+Applying migration `20261031220000_mentor_recruitment_plan`
+Applying migration `20261031221000_mentor_candidate_invitation_scope`
+Applying migration `20261101160000_screening_two_slot_integrity`
+Applying migration `20261102000100_screening_adjudication_invitations`
+Applying migration `20261102000600_screening_direct_adjudication`
+Applying migration `20261102090000_papers_openalex_id_unique`
+Applying migration `20261102090000_screening_resolution_provenance`
+Applying migration `20261102100000_user_papers_ai_analyzable_backfill`
+Applying migration `20261102160000_screening_case_decision_link`
+Applying migration `20261102170000_screening_adjudication_invitation_reason`
+Applying migration `20261103120000_screening_single_round_acceptance`
+Applying migration `20261103180000_screening_stage_mode`
+Applying migration `20261103200000_screening_obligations`
+Applying migration `20261104090000_personalization_topics`
+Applying migration `20261106180000_mentorship_applicant_pool`
+Applying migration `20261106181000_mentorship_application_submission_keys`
+Applying migration `20261106190000_manuscript_integrity_center`
+Applying migration `20261106191000_integrity_report_snapshot_scope`
+Applying migration `20261107001000_integrity_ai_acceptance_scope`
+Applying migration `20261107090000_literature_matrix_limitations_feasibility`
+Applying migration `20261107100000_orcid_oauth_identity`
+Applying migration `20261107101000_lecturer_research_specializations`
+Applying migration `20261107113000_orcid_verified_unique`
+Applying migration `20261107120000_topic_watches`
+Applying migration `20261108090000_two_reviewer_consensus`
+Applying migration `20261108110000_screening_evaluation_consensus`
+Applying migration `20261110090000_screening_team_workflow`
+Applying migration `20261111090000_shared_research_classification`
+Applying migration `20261111091000_mentorship_support_preferences`
+Applying migration `20261111092000_keyword_classification_provenance`
+Applying migration `20261111110000_attribution_publication_policy`
+Applying migration `20261112090000_screening_workflow_status_compatibility`
+Applying migration `20261113090000_paper_ingest_source`
+Applying migration `20261113120000_mentor_scientific_review`
+Applying migration `20261113120100_mentor_review_origin`
+Applying migration `20261113120200_preserve_review_origin_compatibility`
+Applying migration `20261113120300_review_response_drafts`
+Applying migration `20261114090000_project_lifecycle_trash_retention`
+Applying migration `20261116090000_scoped_mentor_review_access`
+Applying migration `20261117110000_screening_closed_unresolved_status`
+Applying migration `20261117170000_simple_mentor_invitations`
+Applying migration `20261118090000_manuscript_other_type`
+Applying migration `20261118100000_manuscript_template_registry`
+Applying migration `20261118130000_mentor_manuscript_thread`
+Applying migration `20261120090000_mentor_paper_share_mode`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 20260924000100_postgresql_foundation/
+    └─ migration.sql
+  └─ 20260924000200_relations_constraints_search/
+    └─ migration.sql
+  └─ 20260924000300_data_migration_control/
+    └─ migration.sql
+  └─ 20260924000400_identity_authorization/
+    └─ migration.sql
+  └─ 20260924000500_legacy_email_verification_backfill/
+    └─ migration.sql
+  └─ 20260924000600_legacy_email_verification_recovery/
+    └─ migration.sql
+  └─ 20260925000100_academic_profile_experience/
+    └─ migration.sql
+  └─ 20260925000200_backfill_academic_profile_handles/
+    └─ migration.sql
+  └─ 20260925000300_super_admin_user_management/
+    └─ migration.sql
+  └─ 20260926000100_academic_identity_links/
+    └─ migration.sql
+  └─ 20260926000200_position_verification_evidence/
+    └─ migration.sql
+  └─ 20260926000300_academic_profile_discoverability/
+    └─ migration.sql
+  └─ 20260926000400_display_name_change_limit/
+    └─ migration.sql
+  └─ 20260926000500_project_workspace/
+    └─ migration.sql
+  └─ 20260926000600_one_active_password_reset_token/
+    └─ migration.sql
+  └─ 20260926000700_project_literature_screening/
+    └─ migration.sql
+  └─ 20260926000800_academic_review_system/
+    └─ migration.sql
+  └─ 20260927000900_research_forum_communities/
+    └─ migration.sql
+  └─ 20260927001000_project_invitation_tokens/
+    └─ migration.sql
+  └─ 20260929000100_identity_affiliation_admission_foundation/
+    └─ migration.sql
+  └─ 20260929000200_internal_lecturer_mentorship/
+    └─ migration.sql
+  └─ 20260929000300_external_lecturer_review_invitations/
+    └─ migration.sql
+  └─ 20260929000400_fpt_onboarding_options/
+    └─ migration.sql
+  └─ 20260929000500_structured_gap_evidence_provenance/
+    └─ migration.sql
+  └─ 20260930000100_community_approval_workflow/
+    └─ migration.sql
+  └─ 20260930000100_forum_metrics_and_views/
+    └─ migration.sql
+  └─ 20260930000200_community_ownership_search/
+    └─ migration.sql
+  └─ 20260930000200_forum_view_cooldown_counter/
+    └─ migration.sql
+  └─ 20260930000300_forum_participant_lookup/
+    └─ migration.sql
+  └─ 20260930000400_forum_visible_reply_backfill/
+    └─ migration.sql
+  └─ 20261001000100_forum_public_slugs/
+    └─ migration.sql
+  └─ 20261001000200_forum_public_slugs_nullable/
+    └─ migration.sql
+  └─ 20261001000200_forum_readable_slugs/
+    └─ migration.sql
+  └─ 20261001000300_forum_reactions/
+    └─ migration.sql
+  └─ 20261001000400_forum_notification_levels/
+    └─ migration.sql
+  └─ 20261002000100_forum_edit_history/
+    └─ migration.sql
+  └─ 20261002000200_forum_post_numbers/
+    └─ migration.sql
+  └─ 20261002000300_forum_helpful_reactions/
+    └─ migration.sql
+  └─ 20261002000400_forum_view_history/
+    └─ migration.sql
+  └─ 20261002000500_forum_single_reaction/
+    └─ migration.sql
+  └─ 20261002000600_forum_trust_safety_v1/
+    └─ migration.sql
+  └─ 20261003000100_community_embeddings/
+    └─ migration.sql
+  └─ 20261003000100_forum_appeal_state/
+    └─ migration.sql
+  └─ 20261003000200_forum_moderation_targets/
+    └─ migration.sql
+  └─ 20261003000300_forum_categories/
+    └─ migration.sql
+  └─ 20261003000300_full_text_rag/
+    └─ migration.sql
+  └─ 20261003000300_peer_review_versions/
+    └─ migration.sql
+  └─ 20261003000400_legacy_review_requests/
+    └─ migration.sql
+  └─ 20261006000100_academic_identity_verification/
+    └─ migration.sql
+  └─ 20261006110000_user_ai_connections/
+    └─ migration.sql
+  └─ 20261007000100_student_affiliation/
+    └─ migration.sql
+  └─ 20261007000200_open_academic_onboarding/
+    └─ migration.sql
+  └─ 20261007000300_shared_academic_profile_works/
+    └─ migration.sql
+  └─ 20261007000400_academic_relationship_consent/
+    └─ migration.sql
+  └─ 20261007000500_adaptive_lecturer_verification/
+    └─ migration.sql
+  └─ 20261007000600_complete_academic_mentorship/
+    └─ migration.sql
+  └─ 20261007000700_mentorship_audit_privacy/
+    └─ migration.sql
+  └─ 20261008000100_lecturer_evidence_entries/
+    └─ migration.sql
+  └─ 20261008000200_lecturer_submission_hardening/
+    └─ migration.sql
+  └─ 20261008000300_lecturer_tracking/
+    └─ migration.sql
+  └─ 20261009120000_submissions_project_restrict/
+    └─ migration.sql
+  └─ 20261010120000_research_gap_evidence_scope/
+    └─ migration.sql
+  └─ 20261014000100_project_creation_team/
+    └─ migration.sql
+  └─ 20261014000200_project_owner_reassignment_guard/
+    └─ migration.sql
+  └─ 20261014000300_project_workspace_collaboration/
+    └─ migration.sql
+  └─ 20261014000400_collaborative_research/
+    └─ migration.sql
+  └─ 20261014000500_screening_assignments/
+    └─ migration.sql
+  └─ 20261014000600_research_history_kinds/
+    └─ migration.sql
+  └─ 20261014000700_project_contribution_allocation/
+    └─ migration.sql
+  └─ 20261014000800_allocation_integrity_guards/
+    └─ migration.sql
+  └─ 20261014000900_allocation_lifecycle_boundary/
+    └─ migration.sql
+  └─ 20261014001000_collaborative_manuscripts/
+    └─ migration.sql
+  └─ 20261015000100_living_plan_draft_history/
+    └─ migration.sql
+  └─ 20261015000200_research_task_board/
+    └─ migration.sql
+  └─ 20261015000300_two_way_mentorship/
+    └─ migration.sql
+  └─ 20261015120000_gap_closure_protocol/
+    └─ migration.sql
+  └─ 20261016000100_paper_review_analysis/
+    └─ migration.sql
+  └─ 20261016000200_research_gap_global_evidence/
+    └─ migration.sql
+  └─ 20261016000300_report_grounding_checks/
+    └─ migration.sql
+  └─ 20261017120000_quality_assessment_details/
+    └─ migration.sql
+  └─ 20261017160000_project_overview_document/
+    └─ migration.sql
+  └─ 20261017163000_revert_project_overview_document/
+    └─ migration.sql
+  └─ 20261018010000_mentor_positions_and_invitation_content/
+    └─ migration.sql
+  └─ 20261019010000_reviewed_research_synthesis/
+    └─ migration.sql
+  └─ 20261019120000_quality_project_assessments/
+    └─ migration.sql
+  └─ 20261020010000_manuscript_synctex/
+    └─ migration.sql
+  └─ 20261020020000_manuscript_suggestions/
+    └─ migration.sql
+  └─ 20261020030000_manuscript_suggestion_revisions/
+    └─ migration.sql
+  └─ 20261020040000_manuscript_compiler_versions/
+    └─ migration.sql
+  └─ 20261020050000_manuscript_preferences_history/
+    └─ migration.sql
+  └─ 20261020060000_github_connections/
+    └─ migration.sql
+  └─ 20261020070000_manuscript_deletion/
+    └─ migration.sql
+  └─ 20261021000100_community_unique_active_name/
+    └─ migration.sql
+  └─ 20261021120000_platform_ai_connections/
+    └─ migration.sql
+  └─ 20261021150000_research_gap_refinement/
+    └─ migration.sql
+  └─ 20261026090000_trend_follows_and_project_snapshots/
+    └─ migration.sql
+  └─ 20261027120000_closure_calibration_mode/
+    └─ migration.sql
+  └─ 20261028090000_contribution_evaluation_v1/
+    └─ migration.sql
+  └─ 20261028091000_contribution_evaluation_objection_resolution/
+    └─ migration.sql
+  └─ 20261028100000_manuscript_retained_writing/
+    └─ migration.sql
+  └─ 20261028101000_manuscript_writing_snapshot_fallback/
+    └─ migration.sql
+  └─ 20261028120000_collaborative_screening_v2/
+    └─ migration.sql
+  └─ 20261028120000_forum_post_research_community/
+    └─ migration.sql
+  └─ 20261028130000_forum_post_research_community_restrict/
+    └─ migration.sql
+  └─ 20261028140000_mentor_resource_access/
+    └─ migration.sql
+  └─ 20261029090000_screening_explicit_finalization/
+    └─ migration.sql
+  └─ 20261029100000_public_only_research_communities/
+    └─ migration.sql
+  └─ 20261029110000_forum_anti_spam/
+    └─ migration.sql
+  └─ 20261029120000_collaborative_library/
+    └─ migration.sql
+  └─ 20261029150000_contribution_matrix_evidence/
+    └─ migration.sql
+  └─ 20261030090000_taxonomy_keywords_tags/
+    └─ migration.sql
+  └─ 20261030150000_paper_tags_blocked/
+    └─ migration.sql
+  └─ 20261030160000_research_trust_integrity_security/
+    └─ migration.sql
+  └─ 20261030161000_research_ledger_retention_fk/
+    └─ migration.sql
+  └─ 20261030170000_topic_backfill_runs/
+    └─ migration.sql
+  └─ 20261030180000_literature_review_context/
+    └─ migration.sql
+  └─ 20261030190000_ingest_campaign_target_tag/
+    └─ migration.sql
+  └─ 20261031090000_platform_embedding_connections/
+    └─ migration.sql
+  └─ 20261031160000_screening_independent_workflow/
+    └─ migration.sql
+  └─ 20261031190000_screening_more_information/
+    └─ migration.sql
+  └─ 20261031200000_screening_protocol_permissions/
+    └─ migration.sql
+  └─ 20261031210000_screening_discovery_goals/
+    └─ migration.sql
+  └─ 20261031220000_mentor_recruitment_plan/
+    └─ migration.sql
+  └─ 20261031221000_mentor_candidate_invitation_scope/
+    └─ migration.sql
+  └─ 20261101160000_screening_two_slot_integrity/
+    └─ migration.sql
+  └─ 20261102000100_screening_adjudication_invitations/
+    └─ migration.sql
+  └─ 20261102000600_screening_direct_adjudication/
+    └─ migration.sql
+  └─ 20261102090000_papers_openalex_id_unique/
+    └─ migration.sql
+  └─ 20261102090000_screening_resolution_provenance/
+    └─ migration.sql
+  └─ 20261102100000_user_papers_ai_analyzable_backfill/
+    └─ migration.sql
+  └─ 20261102160000_screening_case_decision_link/
+    └─ migration.sql
+  └─ 20261102170000_screening_adjudication_invitation_reason/
+    └─ migration.sql
+  └─ 20261103120000_screening_single_round_acceptance/
+    └─ migration.sql
+  └─ 20261103180000_screening_stage_mode/
+    └─ migration.sql
+  └─ 20261103200000_screening_obligations/
+    └─ migration.sql
+  └─ 20261104090000_personalization_topics/
+    └─ migration.sql
+  └─ 20261106180000_mentorship_applicant_pool/
+    └─ migration.sql
+  └─ 20261106181000_mentorship_application_submission_keys/
+    └─ migration.sql
+  └─ 20261106190000_manuscript_integrity_center/
+    └─ migration.sql
+  └─ 20261106191000_integrity_report_snapshot_scope/
+    └─ migration.sql
+  └─ 20261107001000_integrity_ai_acceptance_scope/
+    └─ migration.sql
+  └─ 20261107090000_literature_matrix_limitations_feasibility/
+    └─ migration.sql
+  └─ 20261107100000_orcid_oauth_identity/
+    └─ migration.sql
+  └─ 20261107101000_lecturer_research_specializations/
+    └─ migration.sql
+  └─ 20261107113000_orcid_verified_unique/
+    └─ migration.sql
+  └─ 20261107120000_topic_watches/
+    └─ migration.sql
+  └─ 20261108090000_two_reviewer_consensus/
+    └─ migration.sql
+  └─ 20261108110000_screening_evaluation_consensus/
+    └─ migration.sql
+  └─ 20261110090000_screening_team_workflow/
+    └─ migration.sql
+  └─ 20261111090000_shared_research_classification/
+    └─ migration.sql
+  └─ 20261111091000_mentorship_support_preferences/
+    └─ migration.sql
+  └─ 20261111092000_keyword_classification_provenance/
+    └─ migration.sql
+  └─ 20261111110000_attribution_publication_policy/
+    └─ migration.sql
+  └─ 20261112090000_screening_workflow_status_compatibility/
+    └─ migration.sql
+  └─ 20261113090000_paper_ingest_source/
+    └─ migration.sql
+  └─ 20261113120000_mentor_scientific_review/
+    └─ migration.sql
+  └─ 20261113120100_mentor_review_origin/
+    └─ migration.sql
+  └─ 20261113120200_preserve_review_origin_compatibility/
+    └─ migration.sql
+  └─ 20261113120300_review_response_drafts/
+    └─ migration.sql
+  └─ 20261114090000_project_lifecycle_trash_retention/
+    └─ migration.sql
+  └─ 20261116090000_scoped_mentor_review_access/
+    └─ migration.sql
+  └─ 20261117110000_screening_closed_unresolved_status/
+    └─ migration.sql
+  └─ 20261117170000_simple_mentor_invitations/
+    └─ migration.sql
+  └─ 20261118090000_manuscript_other_type/
+    └─ migration.sql
+  └─ 20261118100000_manuscript_template_registry/
+    └─ migration.sql
+  └─ 20261118130000_mentor_manuscript_thread/
+    └─ migration.sql
+  └─ 20261120090000_mentor_paper_share_mode/
+    └─ migration.sql
+
+All migrations have been successfully applied.
+
+ RUN  v2.1.9 D:/lumi-gap/apps/backend
+
+ ❯ src/modules/reviews/__tests__/mentor-review-workflow.persistence.test.ts (15 tests | 1 failed | 1 skipped) 8404ms
+   ✓ scoped mentor delivery and revision workflow > accepts supervision without project membership and sends a version-bound request without broad sharing 593ms
+   × scoped mentor delivery and revision workflow > opens the assigned PDF through authenticated endpoints and refuses other reviewers, edits, and guessed versions 684ms
+     → expected 302 to be 200 // Object.is equality
+   ✓ scoped mentor delivery and revision workflow > requests changes, sends feedback notifications, and moves both queue projections to waiting 513ms
+   ✓ scoped mentor delivery and revision workflow > keeps a new v2 draft private until explicit resubmission 398ms
+   ✓ scoped mentor delivery and revision workflow > keeps submitted feedback successful and durable when notification transport is unavailable 429ms
+   ✓ scoped mentor delivery and revision workflow > serializes simultaneous delivery requests without duplicate assignments, tasks or notifications 311ms
+   ✓ scoped mentor delivery and revision workflow > resubmits v2, retains immutable v1 feedback and exposes only the newly delivered version 737ms
+   ✓ scoped mentor delivery and revision workflow > keeps two mentors' drafts independent and aggregates another accepted project 1949ms
+   ✓ scoped mentor delivery and revision workflow > reads the exact delivered LaTeX snapshot while refusing the live editor and other snapshots 919ms
+   ✓ scoped mentor delivery and revision workflow > blocks cancelled, expired and revoked review grants without deleting submitted evidence 491ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/modules/reviews/__tests__/mentor-review-workflow.persistence.test.ts > scoped mentor delivery and revision workflow > opens the assigned PDF through authenticated endpoints and refuses other reviewers, edits, and guessed versions
+AssertionError: expected 302 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 302
+
+ ❯ src/modules/reviews/__tests__/mentor-review-workflow.persistence.test.ts:117:31
+    115|     vi.mocked(pdfStorageService.getSignedDownloadUrl).mockResolvedValu…
+    116|     const privatePdf=await fetch(base+"/submissions/"+submission+"/rev…
+    117|     expect(privatePdf.status).toBe(200);expect(privatePdf.headers.get(…
+       |                               ^
+    118|     expect(privatePdf.headers.get("cache-control")).toBe("private, no-…
+    119|     expect(privatePdf.headers.get("x-content-type-options")).toBe("nos…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 passed | 1 skipped (15)
+   Start at  16:50:33
+   Duration  14.41s (transform 2.18s, setup 0ms, collect 5.65s, tests 8.40s, environment 0ms, prepare 131ms)
+
+file:///D:/lumi-gap/apps/backend/scripts/test-mentor-workspace.mjs:34
+  await new Promise((resolve, reject) => { child.on("error", reject); child.on("exit", code => code === 0 ? resolve() : reject(new Error(`Check failed (${code})`))); });
+                                                                                                                               ^
+
+Error: Check failed (1)
+    at ChildProcess.<anonymous> (file:///D:/lumi-gap/apps/backend/scripts/test-mentor-workspace.mjs:34:128)
+    at ChildProcess.emit (node:events:519:28)
+    at ChildProcess._handle.onexit (node:internal/child_process:293:12)
+
+Node.js v22.21.1

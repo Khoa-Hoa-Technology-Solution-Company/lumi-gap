@@ -1,3 +1,4 @@
+import { mentorSharingEn } from "./mentor-sharing";
 import { submissionDetailEn } from "./submission-detail";
 import { registrationEn } from "./registration";
 import { mentorWorkspaceEn } from "./mentor-workspace";
@@ -1875,5 +1876,6 @@ export const en = {
   ...creditAttributionEn,
   ...submissionWorkflowStrings,
   ...submissionDetailEn,
+  ...mentorSharingEn,
 } as const;
 import { creditAttributionEn } from "./credit-attribution";

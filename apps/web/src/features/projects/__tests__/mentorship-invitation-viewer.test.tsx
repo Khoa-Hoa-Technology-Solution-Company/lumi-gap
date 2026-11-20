@@ -55,7 +55,11 @@ it("refuses an unauthorized detail response without showing cached snapshot text
   mocks.actor = "outsider"; mocks.detail.mockRejectedValue({ response: { data: { error: { message: "Not authorized" } } } }); await mount();
   expect(document.body.textContent).toContain("Not authorized"); expect(document.body.textContent).not.toContain("Frozen research project"); expect(button("Withdraw")).toBeUndefined();
 });
-it("withdraws a sender's pending request and displays the returned terminal status", async () => {
+it("requires explicit confirmation before withdrawing a sender's pending request and displays the returned terminal status", async () => {
   const cancelled = { ...item, status: "CANCELED_BY_PROJECT", actions: { ...item.actions, cancel: false } }; mocks.respond.mockResolvedValue(cancelled); await mount(); mocks.detail.mockResolvedValue(cancelled);
-  await act(async () => button("Withdraw")!.click()); await tick(); expect(mocks.respond).toHaveBeenCalledWith(expect.objectContaining({ id: "request" }), "cancel", ""); expect(document.body.textContent).toContain("CANCELED_BY_PROJECT");
+  await act(async () => button("Withdraw")!.click()); await tick();
+  expect(mocks.respond).not.toHaveBeenCalled();
+  expect(document.body.textContent).toContain("Confirm withdrawing this invitation?");
+  await act(async () => button("Confirm withdraw")!.click()); await tick();
+  expect(mocks.respond).toHaveBeenCalledWith(expect.objectContaining({ id: "request" }), "cancel", ""); expect(document.body.textContent).toContain("CANCELED_BY_PROJECT");
 });

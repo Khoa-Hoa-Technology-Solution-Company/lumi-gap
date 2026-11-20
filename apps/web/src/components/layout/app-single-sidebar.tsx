@@ -67,7 +67,7 @@ export interface AppSingleSidebarProps {
   collapsed?: boolean;
   onToggleCollapse?: (collapsed: boolean) => void;
   // Mentor-specific
-  activeMentorView?: "overview" | "work" | "projects" | "incoming" | "outgoing" | "active" | "history" | "discover" | "notifications" | "project" | "reviews" | "templates" | "template-builder" | "review" | "review-request" | "review-entry";
+  activeMentorView?: "overview" | "work" | "projects" | "incoming" | "outgoing" | "active" | "history" | "discover" | "notifications" | "project" | "reviews" | "templates" | "template-builder" | "review" | "review-request" | "review-entry" | "resources";
   onSelectMentorView?: (view: "overview" | "work" | "projects") => void;
   mentorMetrics?: {
     projects: number;
@@ -337,6 +337,7 @@ export function AppSingleSidebar({
             })()}
 
             {([
+              { view: "resources", label: "Tài liệu đã chia sẻ", Icon: FolderOpen, active: activeMentorView === "resources" },
               { view: "reviews", label: "Review Center", Icon: BookOpenCheck, active: ["reviews", "review", "review-request", "review-entry"].includes(activeMentorView) },
               { view: "templates", label: "Review Templates", Icon: Shapes, active: ["templates", "template-builder"].includes(activeMentorView) },
             ] as const).map(({ view, label, Icon, active }) => {

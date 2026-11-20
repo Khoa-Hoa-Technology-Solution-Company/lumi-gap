@@ -29,6 +29,7 @@ export function getNotificationDestination(
   if (notification.type.startsWith("LECTURER_VERIFICATION_")) return `/settings/verification/lecturer${verificationQuery}`;
   if (notification.type === "MENTORSHIP_APPLICATION_UPDATE") return "/academic-support?view=outgoing";
   if (notification.type === "MENTORSHIP_APPLICANT_UPDATE" && notification.targetId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=support`;
+  if (notification.type === "MENTOR_RESOURCE_SHARED") return "/mentor-workspace?view=resources";
   if (notification.type.startsWith("MENTORSHIP_") || notification.type.startsWith("PROJECT_MENTORSHIP_")) {
     if (["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED"].includes(notification.type)) {
       const query = new URLSearchParams({ view: "incoming" });
