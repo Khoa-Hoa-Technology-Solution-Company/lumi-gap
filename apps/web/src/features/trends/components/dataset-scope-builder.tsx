@@ -3,14 +3,11 @@ import type { TrendsOverview } from "@trend/shared-types";
 import { FacetGroup } from "./trends-shared.components";
 import { Info, Loader2 } from "lucide-react";
 import { formatLanguageName } from "@/utils/language";
+import { useI18n } from "@/i18n";
 
 interface DatasetScopeBuilderProps {
   data: TrendsOverview;
   isUpdating?: boolean;
-  domainIds: string[];
-  domains: string[];
-  fieldIds: string[];
-  fields: string[];
   subfieldIds: string[];
   subfields: string[];
   topicIds: string[];
@@ -28,10 +25,6 @@ interface DatasetScopeBuilderProps {
 export function DatasetScopeBuilder({
   data,
   isUpdating = false,
-  domainIds,
-  domains,
-  fieldIds,
-  fields,
   subfieldIds,
   subfields,
   topicIds,
@@ -45,6 +38,7 @@ export function DatasetScopeBuilder({
   handleBucketClick,
   hasParentSelected
 }: DatasetScopeBuilderProps) {
+  const { t } = useI18n();
   if (!data.facets) return null;
 
   return (
@@ -126,33 +120,11 @@ export function DatasetScopeBuilder({
             <span className="w-2.5 h-2.5 rounded bg-blue-600 dark:bg-blue-500"></span> OpenAlex research area
           </h3>
           <p className="text-xs text-slate-550 dark:text-slate-400 font-semibold">
-            Choose an OpenAlex domain, field, subfield, or topic. This narrows every trend chart and action on this page.
+            {t("This page covers the Information Technology scope. Choose a subfield or a topic to narrow the list.")}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Domains */}
-          <div className="relative">
-            <FacetGroup
-              title="Domains"
-              buckets={data.facets.domains}
-              total={data.totalPapersInWindow}
-              activeValues={domainIds.length > 0 ? domainIds : domains}
-              onBucketClick={(val, openalexId) => handleBucketClick("Domains", val, openalexId)}
-            />
-          </div>
-
-          {/* Fields */}
-          <div className={`transition-all ${!hasParentSelected ? "opacity-75" : ""}`}>
-            <FacetGroup
-              title="Fields"
-              buckets={data.facets.fields}
-              total={data.totalPapersInWindow}
-              activeValues={fieldIds.length > 0 ? fieldIds : fields}
-              onBucketClick={(val, openalexId) => handleBucketClick("Fields", val, openalexId)}
-            />
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Subfields */}
           <div className={`transition-all ${!hasParentSelected ? "opacity-75" : ""}`}>
             <FacetGroup
@@ -179,7 +151,7 @@ export function DatasetScopeBuilder({
         {!hasParentSelected && (
           <div className="mt-5 p-3 bg-slate-50 dark:bg-slate-900/30 border border-slate-200/50 dark:border-slate-800 rounded-xl text-[11px] text-slate-500 font-semibold select-none flex items-center gap-2">
             <Info className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-            <span>If no domain is selected, fields, subfields, and topics show top categories across the entire dataset. Select a parent to focus the list.</span>
+            <span>{t("No subfield or topic is selected, so the lists show the whole Information Technology scope.")}</span>
           </div>
         )}
       </div>

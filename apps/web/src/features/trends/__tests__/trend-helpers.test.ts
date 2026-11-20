@@ -54,12 +54,13 @@ describe("keyword shift helpers", () => {
     expect(formatShiftCounts(shift(2, 0.5))).toBe("10 → 40");
   });
 
-  it("picks the keyword with the largest significant z, ignoring raw growth", () => {
+  it("picks the keyword with the largest significant z", () => {
     const keywords = [
-      { keyword: "hot but noisy", totalPapers: 5, growthRatePct: 900, yearlyBreakdown: [], shift: shift(1.2, 0.4) },
-      { keyword: "solid", totalPapers: 200, growthRatePct: 30, yearlyBreakdown: [], shift: shift(6, 0.001) },
+      { keyword: "hot but noisy", totalPapers: 5, yearlyBreakdown: [], shift: shift(1.2, 0.4) },
+      { keyword: "solid", totalPapers: 200, yearlyBreakdown: [], shift: shift(6, 0.001) },
     ];
     expect(getFastestKeyword(keywords)?.keyword).toBe("solid");
-    expect(getFastestKeyword(keywords.map(({ shift: _s, ...k }) => k))?.keyword).toBe("hot but noisy");
+    // Without a significant keyword the largest z wins.
+    expect(getFastestKeyword(keywords.map((k) => ({ ...k, shift: { ...k.shift, qValue: 0.4 } })))?.keyword).toBe("solid");
   });
 });

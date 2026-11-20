@@ -202,7 +202,6 @@ const researchHomeKeys = [
   "Find literature that matters",
   "Search by meaning, not just keywords. Start with the question you actually want to answer.",
   "See the bigger picture",
-  "Follow how a field evolves, compare topics, and find the conversations gaining momentum.",
   "Turn reading into direction",
   "Collect papers, connect evidence, and examine candidate gaps in a shared research project.",
   "Research papers orbit a lens, revealing a new connection at the center.",

@@ -166,6 +166,7 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `TREND_READ_MAX_PER_MINUTE` | `EnvSchema` / backend | Default / optional (see template) |
 | `TREND_FOLLOW_CRON` | `EnvSchema` / notification worker | Default / optional (see template) |
 | `TREND_FOLLOW_CHECK_BATCH` | `EnvSchema` / notification worker | Default / optional (see template) |
+| `TREND_WARM_CRON` | `EnvSchema` / notification worker | Default `0 3 */3 * *`; re-fetches the trend series of the IT scope before their 7-day cache expires |
 | `RATE_LIMIT_STORE` | `EnvSchema` / backend | Default / optional (see template) |
 | `QUALITY_EVAL_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `DIRECTIONS_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |

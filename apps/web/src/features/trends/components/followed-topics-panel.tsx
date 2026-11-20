@@ -28,6 +28,11 @@ export function FollowedTopicsPanel() {
             <span className="text-slate-500" title={follow.lastCheckedAt ? t("Checked {{date}}", { date: new Date(follow.lastCheckedAt).toLocaleDateString(language) }) : undefined}>
               {follow.lastVerdict ? verdictLabel(follow.lastVerdict, t) : t("Not checked yet")}
             </span>
+            {follow.inScope === false && (
+              <span className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:border-amber-700/70 dark:bg-amber-950/30 dark:text-amber-300" title={t("This topic is outside the Information Technology scope, so its trend is measured against its own field.")}>
+                {t("Outside the IT scope")}
+              </span>
+            )}
             <button
               type="button"
               className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-800"

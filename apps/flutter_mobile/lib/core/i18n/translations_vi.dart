@@ -6,9 +6,14 @@ const Map<String, String> viTranslations = {
   '10.xxxx/xxxxx': '10.xxxx/xxxxx',
   '3-year CAGR': 'CAGR 3 năm',
   'A closure check is in progress.': 'Đang kiểm tra mức đã được giải quyết.',
-  'A focused academic community for exchanging evidence, questions and research practice.': 'Cộng đồng học thuật để trao đổi bằng chứng, câu hỏi và kinh nghiệm nghiên cứu.',
-  'A focused space for researchers working in this field.': 'Không gian dành cho những người nghiên cứu trong lĩnh vực này.',
-  'A report answers one question from papers you choose.': 'Một báo cáo trả lời một câu hỏi từ các bài báo bạn chọn.',
+  'A focused academic community for exchanging evidence, questions and research practice.':
+      'Cộng đồng học thuật để trao đổi bằng chứng, câu hỏi và kinh nghiệm nghiên cứu.',
+  'A focused space for researchers working in this field.':
+      'Không gian dành cho những người nghiên cứu trong lĩnh vực này.',
+  'A keyword is a signal when it has at least {{min}} papers in {{rFrom}}–{{rTo}}, at least {{novelty}}% of its papers since {{eFrom}} fall in those years, and its share of papers rose significantly compared with {{eFrom}}–{{eTo}}.':
+      'Một từ khoá là tín hiệu khi có ít nhất {{min}} bài trong {{rFrom}}–{{rTo}}, ít nhất {{novelty}}% số bài của nó từ {{eFrom}} nằm trong các năm đó, và thị phần bài của nó tăng có ý nghĩa so với {{eFrom}}–{{eTo}}.',
+  'A report answers one question from papers you choose.':
+      'Một báo cáo trả lời một câu hỏi từ các bài báo bạn chọn.',
   'A research proposal outline that addresses this gap: {{gap}}':
       'Dàn ý đề xuất nghiên cứu nhằm giải quyết khoảng trống: {{gap}}',
   'AI Analyzable': 'AI có thể phân tích',
@@ -42,10 +47,12 @@ const Map<String, String> viTranslations = {
   'Accept and open': 'Chấp nhận và mở',
   'Accept invitation': 'Chấp nhận lời mời',
   'Accept response': 'Chọn câu trả lời này',
-  'Accept to join the project as a member. You can also decline.': 'Chấp nhận để tham gia dự án với vai trò thành viên. Bạn cũng có thể từ chối.',
+  'Accept to join the project as a member. You can also decline.':
+      'Chấp nhận để tham gia dự án với vai trò thành viên. Bạn cũng có thể từ chối.',
   'Accepted': 'Đã chấp nhận',
   'Accepted by question author': 'Được người hỏi chọn',
-  'Accepting adds this project to your workspace. Declining removes the invitation from your list.': 'Chấp nhận sẽ thêm dự án vào không gian làm việc của bạn. Từ chối sẽ xoá lời mời khỏi danh sách.',
+  'Accepting adds this project to your workspace. Declining removes the invitation from your list.':
+      'Chấp nhận sẽ thêm dự án vào không gian làm việc của bạn. Từ chối sẽ xoá lời mời khỏi danh sách.',
   'Accepting...': 'Đang chấp nhận...',
   'Access denied. Admin role required.':
       'Truy cập bị từ chối. Cần quyền quản trị viên.',
@@ -85,8 +92,10 @@ const Map<String, String> viTranslations = {
   'Already answered': 'Đã có câu trả lời',
   'Already have an account?': 'Bạn đã có tài khoản?',
   'Already in this project': 'Đã có trong dự án này',
-  'An added paper becomes evidence the report can cite. It does not force a conclusion.': 'Bài báo được thêm sẽ thành bằng chứng mà báo cáo có thể trích dẫn. Việc này không ép ra kết luận.',
-  'An administrator needs more information to continue verifying your Lecturer position.': 'Quản trị viên cần thêm thông tin để tiếp tục xác minh vị trí giảng viên của bạn.',
+  'An added paper becomes evidence the report can cite. It does not force a conclusion.':
+      'Bài báo được thêm sẽ thành bằng chứng mà báo cáo có thể trích dẫn. Việc này không ép ra kết luận.',
+  'An administrator needs more information to continue verifying your Lecturer position.':
+      'Quản trị viên cần thêm thông tin để tiếp tục xác minh vị trí giảng viên của bạn.',
   'An error occurred': 'Đã xảy ra lỗi',
   'Analysis complete': 'Đã phân tích xong',
   'Analytical Insights & Critique': 'Nhận định và phản biện phân tích',
@@ -97,6 +106,7 @@ const Map<String, String> viTranslations = {
   'Analyzing Gaps with AI': 'Đang phân tích khoảng trống bằng AI',
   'Anonymous': 'Ẩn danh',
   'Appearance': 'Giao diện',
+  'Application topic': 'Chủ đề ứng dụng',
   'Apply': 'Áp dụng',
   'Apply Filters': 'Áp dụng bộ lọc',
   'Approved, waiting for a PDF': 'Đã duyệt, đang chờ PDF',
@@ -148,7 +158,8 @@ const Map<String, String> viTranslations = {
   'Change password': 'Đổi mật khẩu',
   'Chat': 'Trò chuyện',
   'Check again': 'Kiểm tra lại',
-  'Check your connection and use the latest invitation link. It may have been replaced or cancelled.': 'Kiểm tra kết nối và dùng link mời mới nhất. Lời mời có thể đã được thay thế hoặc bị huỷ.',
+  'Check your connection and use the latest invitation link. It may have been replaced or cancelled.':
+      'Kiểm tra kết nối và dùng link mời mới nhất. Lời mời có thể đã được thay thế hoặc bị huỷ.',
   'Checking…': 'Đang kiểm tra…',
   'Choose a PDF file': 'Chọn tệp PDF',
   'Choose a category.': 'Hãy chọn danh mục.',
@@ -161,6 +172,7 @@ const Map<String, String> viTranslations = {
   'Cited by': 'Được trích dẫn bởi',
   'Cited papers in LumiGap': 'Bài được trích dẫn có trong LumiGap',
   'Clear All': 'Xóa tất cả',
+  'Clear change': 'Thay đổi rõ ràng',
   'Clear filters': 'Xoá bộ lọc',
   'Clear search': 'Xoá tìm kiếm',
   'Close': 'Đóng',
@@ -183,6 +195,7 @@ const Map<String, String> viTranslations = {
   'Compare': 'So sánh',
   'Compare up to 5 topics at once to keep the chart readable.':
       'So sánh tối đa 5 chủ đề cùng một lúc để giữ cho biểu đồ có thể đọc được.',
+  'Complete years used: {{count}}': 'Số năm hoàn chỉnh đã dùng: {{count}}',
   'Completed': 'Hoàn tất',
   'Completeness': 'Độ đầy đủ',
   'Conference Proceeding': 'Kỷ yếu hội nghị',
@@ -213,13 +226,16 @@ const Map<String, String> viTranslations = {
   'Could not reload your account. Please try again.':
       'Không tải lại được thông tin tài khoản. Vui lòng thử lại.',
   'Could not remove this content.': 'Không xoá được nội dung này.',
-  'Could not update accepted response.': 'Không cập nhật được câu trả lời được chọn.',
-  'Could not update notification settings.': 'Không cập nhật được cài đặt thông báo.',
+  'Could not update accepted response.':
+      'Không cập nhật được câu trả lời được chọn.',
+  'Could not update notification settings.':
+      'Không cập nhật được cài đặt thông báo.',
   'Could not update reaction.': 'Không cập nhật được cảm xúc.',
   'Could not update the bookmark. Please try again.':
       'Chưa cập nhật được đánh dấu. Vui lòng thử lại.',
   'Could not update this discussion.': 'Không cập nhật được thảo luận.',
-  'Could not update this invitation. Refresh its status and try again.': 'Không cập nhật được lời mời. Hãy tải lại trạng thái rồi thử lại.',
+  'Could not update this invitation. Refresh its status and try again.':
+      'Không cập nhật được lời mời. Hãy tải lại trạng thái rồi thử lại.',
   'Could not update this response.': 'Không cập nhật được trả lời.',
   'Create': 'Tạo',
   'Create a project': 'Tạo dự án',
@@ -284,6 +300,7 @@ const Map<String, String> viTranslations = {
   'Due {{date}}': 'Hạn {{date}}',
   'Each tag can have at most 80 characters.': 'Mỗi thẻ tối đa 80 ký tự.',
   'Earlier': 'Trước đó',
+  'Early signal, not a forecast': 'Tín hiệu sớm, không phải dự báo',
   'Edit Evidence': 'Sửa bằng chứng',
   'Edit Pack': 'Sửa gói',
   'Edit discussion': 'Sửa thảo luận',
@@ -294,7 +311,10 @@ const Map<String, String> viTranslations = {
   'Embedding Coverage': 'Nhúng phạm vi bảo hiểm',
   'Embedding calculation started.': 'Đã bắt đầu tính toán embedding.',
   'Embeddings': 'Embedding',
+  'Emerging': 'Mới nổi',
   'Emerging Keywords': 'Từ khóa mới nổi',
+  'Emerging signals need OpenAlex keyword counts; the local corpus cannot compute them.':
+      'Tín hiệu mới nổi cần số đếm từ khoá của OpenAlex; kho dữ liệu cục bộ không tính được.',
   'English': 'Tiếng Anh',
   'Enter User ID or Email': 'Nhập ID người dùng hoặc email',
   'Enter a keyword above or relax/clear filters in the top-right button to find broader publications.':
@@ -322,13 +342,15 @@ const Map<String, String> viTranslations = {
   'Evidence': 'Bằng chứng',
   'Evidence found': 'Bằng chứng tìm được',
   'Exclude': 'Loại',
-  'Existing responses remain visible, but new replies cannot be added.': 'Các trả lời cũ vẫn hiển thị nhưng không thể thêm trả lời mới.',
+  'Existing responses remain visible, but new replies cannot be added.':
+      'Các trả lời cũ vẫn hiển thị nhưng không thể thêm trả lời mới.',
   'Expected output': 'Kết quả cần có',
   'Expired': 'Đã hết hạn',
   'Expires': 'Hết hạn',
   'Explain': 'Giải thích',
   'Explain Trend with AI': 'Giải thích xu hướng bằng AI',
-  'Explain why this violates policy...': 'Giải thích vì sao nội dung này vi phạm...',
+  'Explain why this violates policy...':
+      'Giải thích vì sao nội dung này vi phạm...',
   'Explaining the trend…': 'Đang giải thích xu hướng…',
   'Explanation copied to clipboard':
       'Đã sao chép phần giải thích vào bộ nhớ tạm',
@@ -355,8 +377,10 @@ const Map<String, String> viTranslations = {
   'Find data': 'Tìm dữ liệu',
   'Finding': 'Phát hiện',
   'Fix and resubmit': 'Sửa và nộp lại',
-  'Follow a discussion to find it here.': 'Theo dõi một thảo luận để thấy nó ở đây.',
-  'Follow respectful academic discussion and cite evidence where possible.': 'Thảo luận học thuật một cách tôn trọng và dẫn nguồn khi có thể.',
+  'Follow a discussion to find it here.':
+      'Theo dõi một thảo luận để thấy nó ở đây.',
+  'Follow respectful academic discussion and cite evidence where possible.':
+      'Thảo luận học thuật một cách tôn trọng và dẫn nguồn khi có thể.',
   'Following': 'Đang theo dõi',
   'For my project': 'Theo dự án',
   'Forgot password': 'Quên mật khẩu',
@@ -371,7 +395,8 @@ const Map<String, String> viTranslations = {
   'Gaps Detected': 'Khoảng trống đã phát hiện',
   'Generate Report': 'Tạo báo cáo',
   'Generate scoped report': 'Tạo báo cáo có phạm vi',
-  'Generated on request from the last 7 days of discussions in this community.': 'Được tạo khi bạn yêu cầu, từ các thảo luận 7 ngày qua trong cộng đồng này.',
+  'Generated on request from the last 7 days of discussions in this community.':
+      'Được tạo khi bạn yêu cầu, từ các thảo luận 7 ngày qua trong cộng đồng này.',
   'Generating': 'Đang tạo',
   'Get an overview': 'Nắm tổng quan',
   'Go to projects': 'Mở Dự án',
@@ -412,12 +437,23 @@ const Map<String, String> viTranslations = {
   'Intermediate readers': 'Người đọc trung cấp',
   'Invalid email': 'Email không hợp lệ',
   'Invitation accepted': 'Đã chấp nhận lời mời',
-  'Invitation accepted. Opening project...': 'Đã chấp nhận lời mời. Đang mở dự án...',
+  'Invitation accepted. Opening project...':
+      'Đã chấp nhận lời mời. Đang mở dự án...',
   'Invitation declined': 'Đã từ chối lời mời',
   'Invitation sent. They join once they accept it.':
       'Đã gửi lời mời. Họ sẽ tham gia khi chấp nhận.',
   'Invite expires': 'Lời mời hết hạn',
   'Invited by': 'Người mời',
+  'Its change is anomalous for topics of its size (Tukey fences)':
+      'Mức thay đổi bất thường so với các chủ đề cùng quy mô (cận Tukey)',
+  'Its share grew over the window but has levelled off near its peak in recent years.':
+      'Thị phần tăng trong giai đoạn xét nhưng vài năm gần đây đã chững lại gần mức đỉnh.',
+  'Its share grew over the window but has since fallen to less than half of its peak.':
+      'Thị phần tăng trong giai đoạn xét nhưng sau đó giảm còn chưa tới một nửa mức đỉnh.',
+  'Its share of publications grew clearly over the years.':
+      'Thị phần công bố tăng rõ rệt qua các năm.',
+  'Its share of publications shrank clearly over the years.':
+      'Thị phần công bố giảm rõ rệt qua các năm.',
   'Join a research project': 'Tham gia một dự án nghiên cứu',
   'Join community': 'Tham gia cộng đồng',
   'Joined': 'Tham gia',
@@ -429,19 +465,24 @@ const Map<String, String> viTranslations = {
   'Keep editing': 'Tiếp tục viết',
   'Keep invitation': 'Giữ lời mời',
   'Keep request': 'Giữ yêu cầu',
-  'Keep this discussion in Following. Notify me when someone replies to me.': 'Giữ thảo luận này trong mục Đang theo dõi. Báo khi có người trả lời tôi.',
+  'Keep this discussion in Following. Notify me when someone replies to me.':
+      'Giữ thảo luận này trong mục Đang theo dõi. Báo khi có người trả lời tôi.',
   'Key Concerns': 'Vấn đề chính',
   'Key Strengths': 'Điểm mạnh chính',
   'Key results': 'Kết quả chính',
   'Keywords': 'Từ khóa',
   'Language': 'Ngôn ngữ',
+  'Large topics': 'Chủ đề lớn',
   'Latest': 'Mới nhất',
   'Laugh': 'Haha',
+  'Layer 3 of the IT scope: an application topic from another field, chosen by the project team':
+      'Lớp 3 của phạm vi CNTT: chủ đề ứng dụng thuộc lĩnh vực khác, do nhóm dự án chọn',
   'Learn the method': 'Tìm hiểu phương pháp',
   'Leave community': 'Rời cộng đồng',
   'Leave this community?': 'Rời cộng đồng này?',
   'Lecturer': 'Giảng viên',
-  'Lecturer position could not be verified': 'Không xác minh được vị trí giảng viên',
+  'Lecturer position could not be verified':
+      'Không xác minh được vị trí giảng viên',
   'Lecturer position is not verified': 'Chưa xác minh vị trí giảng viên',
   'Lecturer position verified': 'Đã xác minh vị trí giảng viên',
   'Lecturer verification': 'Xác minh giảng viên',
@@ -456,18 +497,24 @@ const Map<String, String> viTranslations = {
   'Loading older messages': 'Đang tải tin nhắn cũ',
   'Loading…': 'Đang tải…',
   'Locked': 'Đã khoá',
+  'Log odds ratio': 'Log tỷ số odds',
+  'Looking for emerging keywords. The first time can take about 15 seconds.':
+      'Đang tìm từ khoá mới nổi. Lần đầu có thể mất khoảng 15 giây.',
   'Love': 'Yêu thích',
   'Low priority': 'Ưu tiên thấp',
-  'LumiGap has verified your Lecturer position at the declared institution.': 'LumiGap đã xác minh vị trí giảng viên của bạn tại cơ quan đã khai báo.',
+  'LumiGap has verified your Lecturer position at the declared institution.':
+      'LumiGap đã xác minh vị trí giảng viên của bạn tại cơ quan đã khai báo.',
   'MLA Style:': 'Kiểu MLA:',
   'Manage': 'Quản lý',
-  'Manage invitations, active assessments, feedback you requested, and review history.': 'Quản lý lời mời phản biện, các bài đang đánh giá, nhận xét bạn đã yêu cầu và lịch sử phản biện.',
+  'Manage invitations, active assessments, feedback you requested, and review history.':
+      'Quản lý lời mời phản biện, các bài đang đánh giá, nhận xét bạn đã yêu cầu và lịch sử phản biện.',
   'Max pages': 'Số trang tối đa',
   'Measure': 'Thước đo',
   'Measures': 'Thước đo',
   'Medium (≥40%)': 'Trung bình (≥40%)',
   'Medium confidence': 'Tin cậy trung bình',
   'Medium priority': 'Ưu tiên trung bình',
+  'Medium topics': 'Chủ đề vừa',
   'Member': 'Thành viên',
   'Member removed.': 'Đã xóa thành viên.',
   'Members': 'Thành viên',
@@ -516,11 +563,14 @@ const Map<String, String> viTranslations = {
   'No active requests sent': 'Không có yêu cầu nào đang chờ',
   'No analytical reports generated yet.':
       'Chưa có báo cáo phân tích nào được tạo.',
+  'No clear change in its share of publications.':
+      'Thị phần công bố không thay đổi rõ rệt.',
   'No communities match your search.': 'Không có cộng đồng nào khớp tìm kiếm.',
   'No community activity yet.': 'Chưa có hoạt động cộng đồng nào.',
   'No completed review history': 'Chưa có lịch sử phản biện',
   'No description yet.': 'Chưa có mô tả.',
-  'No discussions in this community match this topic yet.': 'Chưa có thảo luận nào trong cộng đồng thuộc chủ đề này.',
+  'No discussions in this community match this topic yet.':
+      'Chưa có thảo luận nào trong cộng đồng thuộc chủ đề này.',
   'No discussions match these filters.': 'Không có thảo luận nào khớp bộ lọc.',
   'No discussions yet in this community.': 'Chưa có thảo luận nào ở đây.',
   'No due date': 'Không có hạn',
@@ -528,7 +578,10 @@ const Map<String, String> viTranslations = {
   'No history saved yet.': 'Chưa có lịch sử nào được lưu.',
   'No in-library references found yet.':
       'Chưa tìm thấy tài liệu tham khảo nào trong thư viện.',
-  'No interests yet. They shape your suggestions.': 'Chưa có chủ đề nào. Chúng giúp chọn gợi ý cho bạn.',
+  'No interests yet. They shape your suggestions.':
+      'Chưa có chủ đề nào. Chúng giúp chọn gợi ý cho bạn.',
+  'No keyword meets every criterion in this scope.':
+      'Không có từ khoá nào đạt đủ mọi tiêu chí trong phạm vi này.',
   'No matching papers yet.': 'Chưa có bài báo phù hợp.',
   'No members yet.': 'Chưa có thành viên.',
   'No messages yet. Start the conversation.':
@@ -545,7 +598,8 @@ const Map<String, String> viTranslations = {
       'Chưa có dự án nào. Tạo hoặc tham gia một dự án để bắt đầu.',
   'No rankings yet': 'Chưa có bảng xếp hạng',
   'No ratings yet': 'Chưa có đánh giá',
-  'No replies yet. Start the conversation with a question or a reference.': 'Chưa có trả lời. Hãy mở đầu bằng một câu hỏi hoặc một tài liệu tham khảo.',
+  'No replies yet. Start the conversation with a question or a reference.':
+      'Chưa có trả lời. Hãy mở đầu bằng một câu hỏi hoặc một tài liệu tham khảo.',
   'No reports yet': 'Chưa có báo cáo nào',
   'No research gaps found': 'Không tìm thấy khoảng trống nghiên cứu',
   'No research gaps found for this workspace.':
@@ -553,7 +607,8 @@ const Map<String, String> viTranslations = {
   'No reviews in progress': 'Không có phản biện nào đang thực hiện',
   'No saved items yet': 'Chưa có mục nào được lưu',
   'No search results': 'Không có kết quả tìm kiếm',
-  'No shared research gaps yet.': 'Chưa có khoảng trống nghiên cứu nào được chia sẻ.',
+  'No shared research gaps yet.':
+      'Chưa có khoảng trống nghiên cứu nào được chia sẻ.',
   'No signals found. Change scope to load topics.':
       'Không tìm thấy tín hiệu nào. Hãy đổi phạm vi để tải chủ đề.',
   'No suggestions yet. Add topics you are interested in to get suggestions.':
@@ -571,12 +626,16 @@ const Map<String, String> viTranslations = {
       'Chưa đủ dữ liệu theo năm để biết các chủ đề này đang tăng hay giảm.',
   'Not relevant': 'Không phù hợp',
   'Not stated in abstract': 'Không nêu trong tóm tắt',
-  'Nothing to explore yet. Search for a topic to start.': 'Chưa có gì để khám phá. Hãy tìm một chủ đề để bắt đầu.',
+  'Nothing to explore yet. Search for a topic to start.':
+      'Chưa có gì để khám phá. Hãy tìm một chủ đề để bắt đầu.',
   'Notification': 'Thông báo',
   'Notifications': 'Thông báo',
   'Notifications, {{count}} unread': 'Thông báo, {{count}} chưa đọc',
-  'Notify me about every new reply in this discussion.': 'Báo cho tôi mọi trả lời mới trong thảo luận này.',
-  'Notify me only when someone replies to me.': 'Chỉ báo khi có người trả lời tôi.',
+  'Notify me about every new reply in this discussion.':
+      'Báo cho tôi mọi trả lời mới trong thảo luận này.',
+  'Notify me only when someone replies to me.':
+      'Chỉ báo khi có người trả lời tôi.',
+  'Novelty': 'Độ mới',
   'Off topic': 'Lạc đề',
   'Offline': 'Ngoại tuyến',
   'Only you can see this AI conversation':
@@ -592,7 +651,8 @@ const Map<String, String> viTranslations = {
   'Open research gaps': 'Khoảng trống nghiên cứu đang mở',
   'Open · risk ≤ {{percent}}%': 'Còn mở · rủi ro ≤ {{percent}}%',
   'Optional PDF, maximum 10 MB': 'PDF tùy chọn, tối đa 10 MB',
-  'Optional context for moderators': 'Thông tin thêm cho người kiểm duyệt (không bắt buộc)',
+  'Optional context for moderators':
+      'Thông tin thêm cho người kiểm duyệt (không bắt buộc)',
   'Other': 'Khác',
   'Outputs': 'Sản phẩm',
   'Overall': 'Nhìn chung',
@@ -608,7 +668,8 @@ const Map<String, String> viTranslations = {
   'Paper Discussion': 'Thảo luận bài báo',
   'Paper Kind': 'Loại giấy',
   'Paper Type': 'Loại giấy',
-  'Paper and research gap discussions are started on the web, where you can link the paper or gap.': 'Thảo luận về bài báo và khoảng trống nghiên cứu được mở trên web, nơi bạn liên kết được bài báo hoặc khoảng trống.',
+  'Paper and research gap discussions are started on the web, where you can link the paper or gap.':
+      'Thảo luận về bài báo và khoảng trống nghiên cứu được mở trên web, nơi bạn liên kết được bài báo hoặc khoảng trống.',
   'Paper file': 'Tệp bài báo',
   'Paper information': 'Thông tin bài báo',
   'Paper link': 'Liên kết bài báo',
@@ -621,9 +682,12 @@ const Map<String, String> viTranslations = {
   'Papers': 'Bài báo',
   'Papers ({{length}})': 'Bài báo ({{length}})',
   'Papers / year': 'Số bài/năm',
-  'Papers you deselect are left out of the report.': 'Bài báo bị bỏ chọn sẽ không được dùng cho báo cáo.',
+  'Papers before → recent': 'Số bài trước → gần đây',
+  'Papers you deselect are left out of the report.':
+      'Bài báo bị bỏ chọn sẽ không được dùng cho báo cáo.',
   'Password': 'Mật khẩu',
-  'Password changed. Sign in again with the new password.': 'Đã đổi mật khẩu. Hãy đăng nhập lại bằng mật khẩu mới.',
+  'Password changed. Sign in again with the new password.':
+      'Đã đổi mật khẩu. Hãy đăng nhập lại bằng mật khẩu mới.',
   'Password must be at least 10 characters':
       'Mật khẩu phải có ít nhất 10 ký tự',
   'Password must be at most 128 characters': 'Mật khẩu tối đa 128 ký tự',
@@ -631,6 +695,7 @@ const Map<String, String> viTranslations = {
   'Password must include a number': 'Mật khẩu phải có chữ số',
   'Password must include an uppercase letter': 'Mật khẩu phải có chữ hoa',
   'Passwords do not match.': 'Mật khẩu không khớp.',
+  'Past its peak': 'Qua đỉnh',
   'Payment': 'Thanh toán',
   'Pending': 'Đang chờ',
   'Pending approval': 'Chờ duyệt',
@@ -735,10 +800,12 @@ const Map<String, String> viTranslations = {
       'Đã đưa báo cáo vào hàng đợi. Worker sẽ tạo báo cáo ở chế độ nền.',
   'Report response': 'Báo cáo trả lời',
   'Report status': 'Trạng thái báo cáo',
-  'Report submitted for moderator review.': 'Đã gửi báo cáo cho người kiểm duyệt.',
+  'Report submitted for moderator review.':
+      'Đã gửi báo cáo cho người kiểm duyệt.',
   'Reports': 'Báo cáo',
   'Reports ({{length}})': 'Báo cáo ({{length}})',
-  'Reports are for policy or community-rule issues, not ordinary academic disagreement.': 'Báo cáo dành cho vi phạm chính sách hoặc nội quy cộng đồng, không phải bất đồng học thuật thông thường.',
+  'Reports are for policy or community-rule issues, not ordinary academic disagreement.':
+      'Báo cáo dành cho vi phạm chính sách hoặc nội quy cộng đồng, không phải bất đồng học thuật thông thường.',
   'Requested': 'Đã gửi yêu cầu',
   'Requested by': 'Người yêu cầu',
   'Requested by {{name}}': 'Yêu cầu bởi {{name}}',
@@ -774,7 +841,8 @@ const Map<String, String> viTranslations = {
   'Review Center': 'Trung tâm phản biện',
   'Review History': 'Lịch sử phản biện',
   'Review Round {{n}}': 'Vòng phản biện {{n}}',
-  'Review activity will appear here when available.': 'Hoạt động phản biện sẽ hiện ở đây khi có.',
+  'Review activity will appear here when available.':
+      'Hoạt động phản biện sẽ hiện ở đây khi có.',
   'Review request': 'Yêu cầu phản biện',
   'Review request accepted': 'Đã nhận yêu cầu phản biện',
   'Review request cancelled': 'Đã huỷ yêu cầu phản biện',
@@ -793,10 +861,12 @@ const Map<String, String> viTranslations = {
   'Running': 'Đang chạy',
   'Sad': 'Buồn',
   'Sample / data': 'Mẫu / dữ liệu',
+  'Saturated': 'Bão hoà',
   'Save': 'Lưu',
   'Save Paper': 'Lưu bài báo',
   'Save Settings': 'Lưu thiết lập',
-  'Save a report from its page to keep it here.': 'Lưu một báo cáo từ trang của nó để giữ ở đây.',
+  'Save a report from its page to keep it here.':
+      'Lưu một báo cáo từ trang của nó để giữ ở đây.',
   'Save changes': 'Lưu thay đổi',
   'Save papers from Home or Paper Detail to build your research library.':
       'Lưu bài báo từ Trang chủ hoặc Chi tiết bài báo để xây dựng thư viện nghiên cứu của bạn.',
@@ -817,7 +887,8 @@ const Map<String, String> viTranslations = {
   'Search Filters': 'Bộ lọc tìm kiếm',
   'Search Papers': 'Tìm kiếm bài báo',
   'Search Solutions': 'Tìm giải pháp',
-  'Search by name, field, or research topic': 'Tìm theo tên, lĩnh vực hoặc chủ đề nghiên cứu',
+  'Search by name, field, or research topic':
+      'Tìm theo tên, lĩnh vực hoặc chủ đề nghiên cứu',
   'Search discussions': 'Tìm thảo luận',
   'Search for publications outside and tap "Add" button to associate them here.':
       'Hãy tìm công bố ở bên ngoài và nhấn nút "Thêm" để liên kết chúng vào đây.',
@@ -828,7 +899,8 @@ const Map<String, String> viTranslations = {
   'Search text (e.g. quantum computing)':
       'Nội dung tìm kiếm (ví dụ: điện toán lượng tử)',
   'Search topics in current scope...': 'Tìm chủ đề trong phạm vi hiện tại...',
-  'Searches further to find more evidence. Takes longer.': 'Tìm thêm để có nhiều bằng chứng hơn. Mất nhiều thời gian hơn.',
+  'Searches further to find more evidence. Takes longer.':
+      'Tìm thêm để có nhiều bằng chứng hơn. Mất nhiều thời gian hơn.',
   'See the results': 'Xem kết quả',
   'Seen by {{count}}': 'Đã xem bởi {{count}}',
   'Select at least 2 topics above to load trend comparisons.':
@@ -861,6 +933,7 @@ const Map<String, String> viTranslations = {
   'Signals': 'Tín hiệu',
   'Signing in…': 'Đang đăng nhập…',
   'Similar content': 'Nội dung tương tự',
+  'Small topics': 'Chủ đề nhỏ',
   'Some details were not accepted. Check them and try again.':
       'Một số thông tin chưa hợp lệ. Hãy kiểm tra rồi thử lại.',
   'Some features need a verified email.':
@@ -879,7 +952,8 @@ const Map<String, String> viTranslations = {
   'Stable': 'Ổn định',
   'Start OpenAlex Sync': 'Bắt đầu đồng bộ OpenAlex',
   'Start Review': 'Bắt đầu phản biện',
-  'Start an academic discussion with a question, paper, method, or research gap.': 'Bắt đầu một thảo luận học thuật bằng một câu hỏi, bài báo, phương pháp hoặc khoảng trống nghiên cứu.',
+  'Start an academic discussion with a question, paper, method, or research gap.':
+      'Bắt đầu một thảo luận học thuật bằng một câu hỏi, bài báo, phương pháp hoặc khoảng trống nghiên cứu.',
   'Start discussion': 'Đăng thảo luận',
   'Status': 'Trạng thái',
   'Status unknown': 'Chưa rõ trạng thái',
@@ -897,7 +971,8 @@ const Map<String, String> viTranslations = {
   'Submit paper': 'Nộp bài báo',
   'Submit report': 'Gửi báo cáo',
   'Submit review': 'Gửi đánh giá',
-  'Submit updated evidence for your current Lecturer position.': 'Hãy nộp minh chứng mới cho vị trí giảng viên hiện tại.',
+  'Submit updated evidence for your current Lecturer position.':
+      'Hãy nộp minh chứng mới cho vị trí giảng viên hiện tại.',
   'Submitted {{date}}': 'Đã nộp {{date}}',
   'Submitted, no PDF yet': 'Đã gửi, chưa có PDF',
   'Succeeded': 'Thành công',
@@ -912,7 +987,8 @@ const Map<String, String> viTranslations = {
       'Tóm tắt mục đích, phương pháp và phát hiện…',
   'Summarizing…': 'Đang tóm tắt…',
   'Summary Description': 'Mô tả tóm tắt',
-  'Summary generation failed. Try again later.': 'Không tạo được bản tóm tắt. Vui lòng thử lại sau.',
+  'Summary generation failed. Try again later.':
+      'Không tạo được bản tóm tắt. Vui lòng thử lại sau.',
   'Supporting': 'Ủng hộ',
   'Supporting evidence paper': 'Bài báo làm bằng chứng hỗ trợ',
   'Surprised': 'Ngạc nhiên',
@@ -924,8 +1000,6 @@ const Map<String, String> viTranslations = {
   'TAXONOMY SCOPE': 'PHẠM VI PHÂN LOẠI',
   'Tags': 'Thẻ',
   'Tap to browse files': 'Chạm để chọn tệp',
-  'Taxonomy Domains': 'Lĩnh vực phân loại',
-  'Taxonomy Fields': 'Ngành phân loại',
   'Taxonomy Subfields': 'Ngành con phân loại',
   'Team AI': 'AI nhóm',
   'Team Members': 'Thành viên nhóm',
@@ -945,32 +1019,48 @@ const Map<String, String> viTranslations = {
   'The original sign-in session has ended.':
       'Phiên đăng nhập ban đầu đã kết thúc.',
   'The report could not be generated.': 'Không tạo được báo cáo.',
-  'The requester will be notified. A short reason helps them choose another reviewer.': 'Người gửi yêu cầu sẽ được thông báo. Một lý do ngắn giúp họ chọn người phản biện khác.',
-  'The reviewer has accepted this request, so it can no longer be cancelled. If the review is still not delivered after {{date}}, you can cancel it and invite another reviewer.': 'Người phản biện đã nhận yêu cầu nên không thể huỷ nữa. Nếu đến sau {{date}} vẫn chưa có phản biện, bạn có thể huỷ và mời người khác.',
-  'The reviewer has not submitted feedback yet.': 'Người phản biện chưa gửi nhận xét.',
-  'The reviewer will lose access to the assigned review workspace. Existing submitted feedback is never deleted.': 'Người phản biện sẽ mất quyền vào không gian phản biện đã giao. Các nhận xét đã nộp không bao giờ bị xoá.',
-  'This academic review is complete. Every review round remains available above.': 'Lần phản biện học thuật này đã hoàn tất. Mọi vòng phản biện vẫn được giữ ở trên.',
+  'The requester will be notified. A short reason helps them choose another reviewer.':
+      'Người gửi yêu cầu sẽ được thông báo. Một lý do ngắn giúp họ chọn người phản biện khác.',
+  'The reviewer has accepted this request, so it can no longer be cancelled. If the review is still not delivered after {{date}}, you can cancel it and invite another reviewer.':
+      'Người phản biện đã nhận yêu cầu nên không thể huỷ nữa. Nếu đến sau {{date}} vẫn chưa có phản biện, bạn có thể huỷ và mời người khác.',
+  'The reviewer has not submitted feedback yet.':
+      'Người phản biện chưa gửi nhận xét.',
+  'The reviewer will lose access to the assigned review workspace. Existing submitted feedback is never deleted.':
+      'Người phản biện sẽ mất quyền vào không gian phản biện đã giao. Các nhận xét đã nộp không bao giờ bị xoá.',
+  'These are keywords, not topics, and they are separate from the topic verdicts. Nothing says a keyword will keep growing.':
+      'Đây là từ khoá, không phải chủ đề, và tách riêng khỏi kết luận xu hướng của chủ đề. Không có gì bảo đảm từ khoá sẽ tiếp tục tăng.',
+  'This academic review is complete. Every review round remains available above.':
+      'Lần phản biện học thuật này đã hoàn tất. Mọi vòng phản biện vẫn được giữ ở trên.',
   'This account cannot access LumiGap.':
       'Tài khoản này không thể truy cập LumiGap.',
   'This action cannot be undone.': 'Không thể hoàn tác thao tác này.',
-  'This category is read-only or replying is unavailable.': 'Danh mục này chỉ để đọc hoặc hiện không thể trả lời.',
-  'This community is archived. Content is read-only and it no longer accepts members.': 'Cộng đồng này đã được lưu trữ. Nội dung chỉ để đọc và không nhận thêm thành viên.',
-  'This community may not exist or may no longer be available.': 'Cộng đồng này có thể không tồn tại hoặc không còn hoạt động.',
-  'This content could not be reported, or you already reported it.': 'Không báo cáo được nội dung này, hoặc bạn đã báo cáo rồi.',
+  'This category is read-only or replying is unavailable.':
+      'Danh mục này chỉ để đọc hoặc hiện không thể trả lời.',
+  'This community is archived. Content is read-only and it no longer accepts members.':
+      'Cộng đồng này đã được lưu trữ. Nội dung chỉ để đọc và không nhận thêm thành viên.',
+  'This community may not exist or may no longer be available.':
+      'Cộng đồng này có thể không tồn tại hoặc không còn hoạt động.',
+  'This content could not be reported, or you already reported it.':
+      'Không báo cáo được nội dung này, hoặc bạn đã báo cáo rồi.',
   'This discussion is locked.': 'Thảo luận này đã bị khoá.',
-  'This discussion is locked. Your reply was not posted': 'Thảo luận đã bị khoá. Trả lời của bạn chưa được đăng',
+  'This discussion is locked. Your reply was not posted':
+      'Thảo luận đã bị khoá. Trả lời của bạn chưa được đăng',
   'This email already has an account. Sign in instead.':
       'Email này đã có tài khoản. Hãy đăng nhập.',
   'This evaluation is out of date. Re-evaluate to refresh it.':
       'Kết quả đánh giá này đã cũ. Hãy đánh giá lại để cập nhật.',
   'This invitation could not be opened': 'Không mở được lời mời này',
-  'This invitation has already been handled or is no longer active. Ask the project owner for a new invitation if needed.': 'Lời mời này đã được xử lý hoặc không còn hiệu lực. Hãy nhờ chủ dự án gửi lời mời mới nếu cần.',
-  'This invitation is for another verified identity. Use the account that received it, or verify your email in account settings.': 'Lời mời này dành cho một danh tính đã xác minh khác. Hãy dùng tài khoản đã nhận lời mời, hoặc xác minh email trong phần cài đặt tài khoản.',
-  'This invitation is no longer available. It may have expired or been cancelled by the project owner.': 'Lời mời này không còn hiệu lực. Có thể nó đã hết hạn hoặc bị chủ dự án huỷ.',
+  'This invitation has already been handled or is no longer active. Ask the project owner for a new invitation if needed.':
+      'Lời mời này đã được xử lý hoặc không còn hiệu lực. Hãy nhờ chủ dự án gửi lời mời mới nếu cần.',
+  'This invitation is for another verified identity. Use the account that received it, or verify your email in account settings.':
+      'Lời mời này dành cho một danh tính đã xác minh khác. Hãy dùng tài khoản đã nhận lời mời, hoặc xác minh email trong phần cài đặt tài khoản.',
+  'This invitation is no longer available. It may have expired or been cancelled by the project owner.':
+      'Lời mời này không còn hiệu lực. Có thể nó đã hết hạn hoặc bị chủ dự án huỷ.',
   'This is an older result without a reading card. Re-evaluate to get quotes and reading guidance.':
       'Đây là kết quả cũ, chưa có thẻ đọc. Hãy đánh giá lại để có trích dẫn và hướng dẫn đọc.',
+  'This item already exists or was changed. Refresh and try again.':
+      'Mục này đã tồn tại hoặc vừa được thay đổi. Hãy làm mới và thử lại.',
   'This item no longer exists.': 'Mục này không còn tồn tại.',
-  'This item already exists or was changed. Refresh and try again.': 'Mục này đã tồn tại hoặc vừa được thay đổi. Hãy làm mới và thử lại.',
   "This marks the author's accepted response, not scientific verification.":
       'Đây là câu trả lời người hỏi chọn, không phải xác nhận khoa học.',
   'This message no longer exists.': 'Tin nhắn không còn tồn tại.',
@@ -983,12 +1073,17 @@ const Map<String, String> viTranslations = {
   'This request can no longer be cancelled': 'Yêu cầu này không thể huỷ nữa',
   'This request could not be accepted': 'Không nhận được yêu cầu này',
   'This request could not be declined': 'Không từ chối được yêu cầu này',
-  'This response was removed by its author.': 'Trả lời này đã được tác giả xoá.',
-  'This review request can no longer be declined': 'Yêu cầu phản biện này không thể từ chối nữa',
-  'This review request is unavailable or you do not have access.': 'Yêu cầu phản biện này không còn hoặc bạn không có quyền xem.',
-  'This reviewer also mentors this project. The formal review request is a separate agreement.': 'Người phản biện này cũng hướng dẫn dự án. Yêu cầu phản biện chính thức là một thoả thuận riêng.',
+  'This response was removed by its author.':
+      'Trả lời này đã được tác giả xoá.',
+  'This review request can no longer be declined':
+      'Yêu cầu phản biện này không thể từ chối nữa',
+  'This review request is unavailable or you do not have access.':
+      'Yêu cầu phản biện này không còn hoặc bạn không có quyền xem.',
+  'This reviewer also mentors this project. The formal review request is a separate agreement.':
+      'Người phản biện này cũng hướng dẫn dự án. Yêu cầu phản biện chính thức là một thoả thuận riêng.',
   'This section could not be loaded': 'Chưa tải được phần này',
-  'This will remove the invitation from your pending list. You will need a new invitation if you want to join later.': 'Lời mời sẽ bị xoá khỏi danh sách chờ. Bạn sẽ cần lời mời mới nếu muốn tham gia sau này.',
+  'This will remove the invitation from your pending list. You will need a new invitation if you want to join later.':
+      'Lời mời sẽ bị xoá khỏi danh sách chờ. Bạn sẽ cần lời mời mới nếu muốn tham gia sau này.',
   'Thread type': 'Loại bài',
   'Title': 'Tiêu đề',
   'Title must be at least 8 characters and 3 words.':
@@ -996,6 +1091,8 @@ const Map<String, String> viTranslations = {
   'To Year': 'Đến Năm',
   'To do': 'Việc cần làm',
   'Today': 'Hôm nay',
+  'Too few complete years or papers for a trend verdict.':
+      'Quá ít năm hoàn chỉnh hoặc quá ít bài để kết luận xu hướng.',
   'Too many attempts. Please try again later.':
       'Bạn đã thử quá nhiều lần, vui lòng thử lại sau.',
   'Top 20': 'Top 20',
@@ -1004,6 +1101,7 @@ const Map<String, String> viTranslations = {
   'Topic and question': 'Chủ đề và câu hỏi',
   'Topic must be at least 3 characters long.':
       'Chủ đề phải có ít nhất 3 ký tự.',
+  'Topic size (papers in the window)': 'Quy mô chủ đề (số bài trong giai đoạn)',
   'Topic: {{id}}': 'Chủ đề: {{id}}',
   'Topic: {{selectedTopic}}\n\nSummary:\n{{summary}}':
       'Chủ đề: {{selectedTopic}}\n\nTóm tắt:\n{{summary}}',
@@ -1013,16 +1111,21 @@ const Map<String, String> viTranslations = {
   'Tracking': 'Theo dõi',
   'Transfer ownership to leave': 'Chuyển quyền sở hữu để rời',
   'Trend': 'Xu hướng',
+  'Trend verdicts among the {{count}} topics tested':
+      'Kết luận xu hướng của {{count}} chủ đề đã kiểm định',
+  'Trend verdicts in this scope': 'Kết luận xu hướng trong phạm vi này',
   'Trending topics': 'Xu hướng nổi bật',
   'Trends': 'Xu hướng',
   'Trigger Embedding Job': 'Kích hoạt tác vụ embedding',
   'Try Again': 'Thử lại',
-  'Try a broader keyword or clear one of the filters.': 'Thử từ khoá rộng hơn hoặc bỏ bớt bộ lọc.',
+  'Try a broader keyword or clear one of the filters.':
+      'Thử từ khoá rộng hơn hoặc bỏ bớt bộ lọc.',
   'Try again': 'Thử lại',
   'Try another filter or submit a topic.':
       'Hãy thử bộ lọc khác hoặc gửi một chủ đề.',
   'Type': 'Loại',
-  'Unable to load communities. Please try again.': 'Không tải được danh sách cộng đồng. Vui lòng thử lại.',
+  'Unable to load communities. Please try again.':
+      'Không tải được danh sách cộng đồng. Vui lòng thử lại.',
   'Unable to load members.': 'Không tải được danh sách thành viên.',
   'Unaccept response': 'Bỏ chọn câu trả lời',
   'Unanswered': 'Chưa có trả lời',
@@ -1039,9 +1142,11 @@ const Map<String, String> viTranslations = {
   'Untitled paper': 'Bài báo chưa có tiêu đề',
   'Untitled project': 'Dự án chưa đặt tên',
   'Update failed: {{e}}': 'Cập nhật thất bại: {{e}}',
-  'Update the artifact first, then explain how each required revision was addressed.': 'Hãy cập nhật tài liệu trước, rồi giải thích cách bạn xử lý từng yêu cầu chỉnh sửa.',
+  'Update the artifact first, then explain how each required revision was addressed.':
+      'Hãy cập nhật tài liệu trước, rồi giải thích cách bạn xử lý từng yêu cầu chỉnh sửa.',
   'Updating…': 'Đang cập nhật…',
-  'Usable as report evidence: {{percent}}%': 'Mức dùng được làm bằng chứng cho báo cáo: {{percent}}%',
+  'Usable as report evidence: {{percent}}%':
+      'Mức dùng được làm bằng chứng cho báo cáo: {{percent}}%',
   'Use at least 3 characters.': 'Nhập ít nhất 3 ký tự.',
   'Use at most 10000 characters.': 'Tối đa 10000 ký tự.',
   'Use at most 120 characters.': 'Tối đa 120 ký tự.',
@@ -1057,8 +1162,10 @@ const Map<String, String> viTranslations = {
   'Verification claim changed': 'Thông tin xác minh đã thay đổi',
   'Verification email sent. Check your inbox.':
       'Đã gửi email xác minh. Kiểm tra hộp thư của bạn.',
-  'Verify your Lecturer position to participate in official Mentoring and Academic Review.': 'Hãy xác minh vị trí giảng viên để tham gia hướng dẫn và phản biện học thuật chính thức.',
-  'Verify your email to start discussions in communities': 'Hãy xác minh email để mở thảo luận trong cộng đồng',
+  'Verify your Lecturer position to participate in official Mentoring and Academic Review.':
+      'Hãy xác minh vị trí giảng viên để tham gia hướng dẫn và phản biện học thuật chính thức.',
+  'Verify your email to start discussions in communities':
+      'Hãy xác minh email để mở thảo luận trong cộng đồng',
   'Vietnamese': 'Tiếng Việt',
   'View Full Report': 'Xem báo cáo đầy đủ',
   'View Gaps Board': 'Xem bảng khoảng trống',
@@ -1088,7 +1195,8 @@ const Map<String, String> viTranslations = {
   'Why this score': 'Vì sao có điểm này',
   'Withdraw': 'Rút lui',
   'Withdraw from this review?': 'Rút khỏi lần phản biện này?',
-  'Workload, subject mismatch, or conflict of interest': 'Quá tải, không đúng chuyên môn, hoặc xung đột lợi ích',
+  'Workload, subject mismatch, or conflict of interest':
+      'Quá tải, không đúng chuyên môn, hoặc xung đột lợi ích',
   'Workspace Interactive Chat':
       'Trò chuyện tương tác trong không gian làm việc',
   'Workspace Members': 'Thành viên không gian làm việc',
@@ -1106,9 +1214,12 @@ const Map<String, String> viTranslations = {
       'Năm: {{year}} · Trích dẫn: {{citations}}',
   'Yesterday': 'Hôm qua',
   'You': 'Bạn',
-  'You already posted this discussion recently': 'Bạn vừa đăng thảo luận này rồi',
-  'You already submitted a review round, so you can no longer withdraw from this review': 'Bạn đã nộp một vòng phản biện nên không thể rút lui nữa',
-  'You are already a member of this project.': 'Bạn đã là thành viên của dự án này.',
+  'You already posted this discussion recently':
+      'Bạn vừa đăng thảo luận này rồi',
+  'You already submitted a review round, so you can no longer withdraw from this review':
+      'Bạn đã nộp một vòng phản biện nên không thể rút lui nữa',
+  'You are already a member of this project.':
+      'Bạn đã là thành viên của dự án này.',
   'You are sending too fast. Please wait a moment.':
       'Bạn gửi quá nhanh, vui lòng đợi một chút.',
   'You do not have permission to delete this message.':
@@ -1126,21 +1237,27 @@ const Map<String, String> viTranslations = {
   'You left the community': 'Bạn đã rời cộng đồng',
   'You no longer have access to this conversation.':
       'Bạn không còn quyền xem cuộc trò chuyện này.',
-  'You sign in with Google. A password lets you sign in with email too.': 'Bạn đang đăng nhập bằng Google. Có mật khẩu thì bạn đăng nhập được bằng email nữa.',
+  'You sign in with Google. A password lets you sign in with email too.':
+      'Bạn đang đăng nhập bằng Google. Có mật khẩu thì bạn đăng nhập được bằng email nữa.',
   'You were invited to collaborate': 'Bạn được mời cộng tác',
-  'You will be signed out everywhere and sign in again.': 'Bạn sẽ bị đăng xuất khỏi mọi thiết bị và cần đăng nhập lại.',
-  'You will stop being a member. You can join again later.': 'Bạn sẽ không còn là thành viên. Bạn có thể tham gia lại sau.',
+  'You will be signed out everywhere and sign in again.':
+      'Bạn sẽ bị đăng xuất khỏi mọi thiết bị và cần đăng nhập lại.',
+  'You will stop being a member. You can join again later.':
+      'Bạn sẽ không còn là thành viên. Bạn có thể tham gia lại sau.',
   'You withdrew from this review': 'Bạn đã rút khỏi lần phản biện này',
   'Your criteria': 'Tiêu chí của bạn',
   'Your email is still not verified.': 'Email vẫn chưa được xác minh.',
-  'Your institution or academic position changed. Submit evidence for your current claim.': 'Cơ quan hoặc vị trí học thuật của bạn đã thay đổi. Hãy nộp minh chứng cho thông tin hiện tại.',
+  'Your institution or academic position changed. Submit evidence for your current claim.':
+      'Cơ quan hoặc vị trí học thuật của bạn đã thay đổi. Hãy nộp minh chứng cho thông tin hiện tại.',
   'Your paper will stay pending until an admin completes the review.':
       'Bài báo của bạn sẽ ở trạng thái chờ cho đến khi quản trị viên hoàn tất đánh giá.',
   'Your rank': 'Hạng của bạn',
-  'Your request was reviewed but did not meet the verification requirements.': 'Yêu cầu đã được xem xét nhưng chưa đáp ứng điều kiện xác minh.',
+  'Your request was reviewed but did not meet the verification requirements.':
+      'Yêu cầu đã được xem xét nhưng chưa đáp ứng điều kiện xác minh.',
   'Your session has expired. Please sign in again.':
       'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
-  'Your verification request has been recorded. LumiGap will notify you of a result or a request for additional information.': 'Yêu cầu xác minh của bạn đã được ghi nhận. LumiGap sẽ báo cho bạn kết quả hoặc yêu cầu bổ sung thông tin.',
+  'Your verification request has been recorded. LumiGap will notify you of a result or a request for additional information.':
+      'Yêu cầu xác minh của bạn đã được ghi nhận. LumiGap sẽ báo cho bạn kết quả hoặc yêu cầu bổ sung thông tin.',
   'as': 'với vai trò',
   'citations': 'trích dẫn',
   'e.g. LLM in education...': 'ví dụ: LLM trong giáo dục...',
@@ -1191,7 +1308,10 @@ const Map<String, String> viTranslations = {
   '{{count}} stars': '{{count}} sao',
   '{{count}} submitted paper': '{{count}} bài báo đã nộp',
   '{{count}} submitted papers': '{{count}} bài báo đã nộp',
-  '{{length}} papers match your question.': '{{length}} bài báo khớp với câu hỏi của bạn.',
+  '{{found}} signals among {{tested}} keywords tested':
+      '{{found}} tín hiệu trong {{tested}} từ khoá đã kiểm định',
+  '{{length}} papers match your question.':
+      '{{length}} bài báo khớp với câu hỏi của bạn.',
   '{{name}} invited you to collaborate': '{{name}} mời bạn cộng tác',
   '{{name}}: message deleted, {{time}}':
       '{{name}}: tin nhắn đã bị xóa, {{time}}',
@@ -1202,4 +1322,6 @@ const Map<String, String> viTranslations = {
   '{{ratingCount}} ratings · {{average}} avg':
       '{{ratingCount}} đánh giá · trung bình {{average}}',
   '{{value}}% per year': '{{value}}%/năm',
+  '{{value}}% per year in recent years':
+      '{{value}}%/năm trong những năm gần đây',
 };

@@ -9,7 +9,7 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { assertCitationsInRange, citationCoverage } from "../llm/grounding.js";
 import { computePaperScore } from "../scoring/paper-score.js";
 import { computeGapEvidence } from "../gaps/gap-evidence.js";
-import { computeMetrics } from "../trends/trend.formulas.js";
+import { classifyTrend, shareTrendStatistics } from "../trends/trend.verdict.js";
 
 export interface EvaluationRepository {
   countPapers(): Promise<number>;
@@ -222,27 +222,28 @@ function buildSearchReadinessCheck(corpus: EvaluationCorpusMetrics): EvaluationC
 
 function buildTrendFormulaCheck(now: Date): EvaluationCheck {
   const lastCompleteYear = now.getUTCFullYear() - 1;
-  const series = [
-    { year: lastCompleteYear - 3, count: 10 },
-    { year: lastCompleteYear - 2, count: 20 },
-    { year: lastCompleteYear - 1, count: 40 },
-    { year: lastCompleteYear, count: 80 },
-    { year: lastCompleteYear + 1, count: 7 },
-  ];
-  const metrics = computeMetrics(series, lastCompleteYear);
-  const pass = metrics.growthRatePct === 100 && metrics.cagr3yPct === 100 && metrics.momentum > 0;
+  const fixture = (shares: number[]) => shares.map((sharePct, index) => ({ year: lastCompleteYear - shares.length + 1 + index, count: 100, sharePct }));
+  const verdict = (shares: number[]) => classifyTrend({ ...shareTrendStatistics(fixture(shares)), source: "openalex" }).verdict;
+  const results = {
+    rising: verdict([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+    saturated: verdict([1, 2, 3, 4, 5, 6, 7, 8, 8, 8, 8, 8]),
+    past_peak: verdict([1, 2, 3, 4, 5, 6, 20, 30, 12, 8, 7, 7]),
+    declining: verdict([12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]),
+    stable: verdict([5, 6, 5, 6, 5, 6, 5, 6, 5, 6, 5, 6]),
+  };
+  const pass = Object.entries(results).every(([expected, actual]) => expected === actual);
 
   return {
     id: "trend-formula-benchmark",
     feature: "trend",
-    title: "Trend formulas exclude incomplete current-year data",
+    title: "Trend verdict rules classify the benchmark share series",
     status: pass ? "pass" : "fail",
     score: pass ? 10 : 0,
     maxScore: 10,
     basis:
-      "Trend correctness is deterministic: growth = YoY last complete year, CAGR = last 3 complete years, momentum = least-squares slope.",
-    evidence: `Fixture doubled yearly through ${lastCompleteYear} and has a partial YTD drop after it. Computed growth=${metrics.growthRatePct}%, cagr3y=${metrics.cagr3yPct}%, momentum=${metrics.momentum}.`,
-    action: "If this fails, trend charts can mislead users and must not be trusted.",
+      "The trend verdict is deterministic: a Mann–Kendall test on the yearly share, relabelled saturated or past peak from the recent change and the peak ratio.",
+    evidence: `Five 12-year share fixtures, expected → computed: ${Object.entries(results).map(([expected, actual]) => `${expected} → ${actual}`).join(", ")}.`,
+    action: "If this fails, trend verdicts can mislead users and must not be trusted.",
   };
 }
 

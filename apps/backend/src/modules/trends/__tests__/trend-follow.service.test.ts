@@ -10,18 +10,69 @@ const mocks = vi.hoisted(() => ({
   },
   topic: vi.fn(),
   notify: vi.fn(),
+  scopeTopics: vi.fn(),
 }));
 vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => mocks.prisma }));
 vi.mock("../trend.service.js", () => ({ trendService: { topic: mocks.topic }, findUserId: (id: string) => Promise.resolve(id) }));
 vi.mock("../../notifications/notification.service.js", () => ({ notificationService: { create: mocks.notify } }));
+vi.mock("../trend.scope.js", () => ({ itScopeTopics: (...args: unknown[]) => mocks.scopeTopics(...args) }));
 
-import { trendFollowService } from "../trend-follow.service.js";
+import { TREND_METHOD_SINCE, trendFollowService } from "../trend-follow.service.js";
 
 const NOW = new Date("2026-10-26T04:00:00Z");
 function follow(id: string, userId: string, lastVerdict: string | null, topic = "Graph Neural Networks") {
   return { id, userId, topic, topicKey: topic.toLowerCase(), openalexTopicId: "T10012", note: null, lastVerdict, lastDataSource: "openalex", lastCheckedAt: null, createdAt: NOW, updatedAt: NOW };
 }
 const detail = (verdict: string) => ({ dataSource: "openalex", statistics: { classification: { verdict } } });
+
+describe("followed topics after the method change", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.prisma.user.findUnique.mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve({ id: where.id }));
+    mocks.notify.mockResolvedValue({});
+  });
+
+  it("replaces a baseline stored with the earlier method without notifying", async () => {
+    const before = new Date(TREND_METHOD_SINCE.getTime() - 24 * 3600 * 1000);
+    const after = new Date(TREND_METHOD_SINCE.getTime() + 48 * 3600 * 1000);
+    mocks.prisma.trendTopicFollow.findMany.mockResolvedValue([{ ...follow("f1", USER_A, "rising"), lastCheckedAt: before }]);
+    mocks.topic.mockResolvedValue(detail("saturated"));
+
+    expect(await trendFollowService.checkFollowedTopics(after)).toEqual({ topics: 1, changed: 0 });
+    expect(mocks.notify).not.toHaveBeenCalled();
+    expect(mocks.prisma.trendTopicFollow.update).toHaveBeenCalledWith({ where: { id: "f1" }, data: { lastVerdict: "saturated", lastDataSource: "openalex", lastCheckedAt: after } });
+  });
+
+  it("notifies again once the baseline is from the new method", async () => {
+    const baseline = new Date(TREND_METHOD_SINCE.getTime() + 24 * 3600 * 1000);
+    const later = new Date(baseline.getTime() + 48 * 3600 * 1000);
+    mocks.prisma.trendTopicFollow.findMany.mockResolvedValue([{ ...follow("f1", USER_A, "rising"), lastCheckedAt: baseline }]);
+    mocks.topic.mockResolvedValue(detail("saturated"));
+
+    expect(await trendFollowService.checkFollowedTopics(later)).toEqual({ topics: 1, changed: 1 });
+    expect(mocks.notify).toHaveBeenCalledWith(expect.objectContaining({ type: "TREND_VERDICT_CHANGED", message: expect.stringContaining("is now saturated (was rising)") }));
+  });
+
+  it("labels followed topics that are outside the IT scope", async () => {
+    mocks.prisma.trendTopicFollow.findMany.mockResolvedValue([
+      follow("f1", USER_A, "rising"),
+      { ...follow("f2", USER_A, "stable", "Cancer Genomics"), openalexTopicId: "https://openalex.org/T99999" },
+      { ...follow("f3", USER_A, null, "Advanced Graph Neural Networks"), openalexTopicId: null },
+    ]);
+    mocks.scopeTopics.mockResolvedValue([{ id: "T10012", name: "Graph Neural Networks" }, { id: "T11273", name: "Advanced Graph Neural Networks" }]);
+
+    const list = await trendFollowService.list(USER_A);
+    expect(list.map((item) => [item.id, item.inScope])).toEqual([["f1", true], ["f2", false], ["f3", true]]);
+  });
+
+  it("leaves the label out when the scope cannot be looked up", async () => {
+    mocks.prisma.trendTopicFollow.findMany.mockResolvedValue([follow("f1", USER_A, "rising")]);
+    mocks.scopeTopics.mockRejectedValue(new Error("OpenAlex 503"));
+
+    const [item] = await trendFollowService.list(USER_A);
+    expect(item).not.toHaveProperty("inScope");
+  });
+});
 
 describe("followed trend topics", () => {
   beforeEach(() => {

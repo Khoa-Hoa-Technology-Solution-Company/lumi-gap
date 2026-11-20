@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
-import 'package:flutter_mobile/core/utils/number_format.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
@@ -83,7 +82,9 @@ class ExploreScreen extends ConsumerWidget {
       return [
         LumiEmptyState(
           icon: Icons.travel_explore,
-          message: context.t('Nothing to explore yet. Search for a topic to start.'),
+          message: context.t(
+            'Nothing to explore yet. Search for a topic to start.',
+          ),
           compact: true,
         ),
       ];
@@ -97,8 +98,10 @@ class ExploreScreen extends ConsumerWidget {
           children: [
             for (final k in keywords)
               ActionChip(
+                // z of the log odds test: how strong the evidence of a rise is.
                 label: Text(
-                  '${k.keyword}  ${formatSigned(k.growthRatePct, 0)}%',
+                  // i18n-ignore: keyword and its test statistic
+                  '${k.keyword}  z ${k.z.toStringAsFixed(1)}',
                 ),
                 onPressed: () =>
                     go('/search?q=${Uri.encodeComponent(k.keyword)}'),

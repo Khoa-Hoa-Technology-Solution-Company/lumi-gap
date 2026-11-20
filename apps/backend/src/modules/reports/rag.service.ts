@@ -53,7 +53,8 @@ async function loadReportTrendMetrics(report: { id: string; query: string; topic
   try {
     const detail = await trendService.topic(topic, { yearFrom: report.yearFrom ?? undefined, yearTo: report.yearTo ?? undefined });
     const years = detail.yearlyBreakdown.map((row) => row.year);
-    return { topic, yearFrom: Math.min(...years), yearTo: Math.max(...years), lastCompleteYear: detail.lastCompleteYear, totalPapers: detail.totalPapers, yearlyBreakdown: detail.yearlyBreakdown, growthRatePct: detail.growthRatePct, cagr3yPct: detail.cagr3yPct, momentum: detail.momentum };
+    const classification = detail.statistics?.classification;
+    return { topic, yearFrom: Math.min(...years), yearTo: Math.max(...years), lastCompleteYear: detail.lastCompleteYear, totalPapers: detail.totalPapers, yearlyBreakdown: detail.yearlyBreakdown, trend: classification ? { verdict: classification.verdict, confidence: classification.confidence, relativeChangePct: classification.relativeChangePct, pValue: classification.mannKendall?.pValue ?? null } : null };
   } catch (err) {
     logger.debug({ err, reportId: report.id, topic }, "no trend metrics for the report topic");
     return undefined;

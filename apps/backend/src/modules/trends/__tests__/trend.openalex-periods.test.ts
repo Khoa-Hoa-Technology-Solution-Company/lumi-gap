@@ -11,10 +11,13 @@ vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => 
 
 import { getOpenAlexTrendPeriods } from "../trend.openalex-periods.js";
 import { subYearPeriods } from "../trend.openalex-topics.js";
+import { IT_SCOPE_VERSION, itScopeWorkClauses } from "../trend.scope.js";
 import { TrendPeriodsQuerySchema } from "../dto/trends.schema.js";
 
 const T = "type:article|review|preprint|conference-paper|book-chapter";
 const NOW = new Date("2026-10-21T08:00:00Z");
+const [CHUNK_A, CHUNK_B, ...TOPIC_CHUNKS] = itScopeWorkClauses() as [string, string, ...string[]];
+const inOtherChunk = (filter: string) => [CHUNK_B, ...TOPIC_CHUNKS].some((chunk) => filter.includes(chunk));
 
 describe("subYearPeriods", () => {
   it("returns the last N complete months and the running one", () => {
@@ -57,17 +60,20 @@ describe("getOpenAlexTrendPeriods", () => {
     vi.setSystemTime(NOW);
     vi.clearAllMocks();
     client.openAlexGroupBy.mockImplementation(async (filter: string, key: string) => {
+      // The scope is queried in OR chunks (subfields, then layer-3 topics); the fixtures put every paper in the first one.
+      if (inOtherChunk(filter)) return { groups: [], nextCursor: null };
       const month = /from_publication_date:(\d{4}-\d{2})-01,to_publication_date:\1-\d{2}$/.exec(filter)?.[1];
       const index = month ? periods.findIndex((period) => period.key === month) : -1;
       if (key === "type" && index >= 0) return { groups: [{ key: "article", name: "article", count: 900 }, { key: "review", name: "review", count: 100 }], nextCursor: null };
-      if (key === "primary_topic.field.id" && index >= 0) return { groups: [{ key: "17", name: "Computer Science", count: 1000 }], nextCursor: null };
       if (key === "primary_topic.id" && index >= 0) {
         const ids = /primary_topic\.id:([^,]+)/.exec(filter)![1]!.split("|");
         // T1 rises 10, 12, 14, ...; T2 stays at 40.
         return { groups: ids.map((id) => ({ key: id, name: id, count: id === "T1" ? 10 + index * 2 : 40 })), nextCursor: null };
       }
       if (key === "primary_topic.id") return { groups: [{ key: "T2", name: "Steady topic", count: 520 }, { key: "T1", name: "Rising topic", count: 380 }], nextCursor: null };
-      if (key === "primary_topic.field.id") return { groups: [{ key: "17", name: "Computer Science", count: 13000 }], nextCursor: null };
+      if (key === "primary_topic.subfield.id") {
+        return { groups: [{ key: "1702", name: "Artificial Intelligence", count: 13000 }, { key: "9999", name: "Outside the scope", count: 500 }, { key: "1712", name: "Software", count: 12 }], nextCursor: null };
+      }
       return { groups: [], nextCursor: null };
     });
     client.openAlexGet.mockImplementation(async (_path: string, params: Record<string, string>) => ({
@@ -82,15 +88,28 @@ describe("getOpenAlexTrendPeriods", () => {
     vi.useRealTimers();
   });
 
-  it("tests monthly field shares over the complete months only", async () => {
+  it("tests monthly shares of the IT scope over the complete months only", async () => {
     const overview = await getOpenAlexTrendPeriods(TrendPeriodsQuerySchema.parse({}));
+    const window = "from_publication_date:2025-10-01,to_publication_date:2026-10-31";
 
-    expect(overview).toMatchObject({ dataSource: "openalex", granularity: "month", window: "rolling" });
+    expect(overview).toMatchObject({ dataSource: "openalex", scopeVersion: IT_SCOPE_VERSION, granularity: "month", window: "rolling" });
     expect(overview.periods).toHaveLength(13);
     expect(overview.periods.at(-1)).toEqual({ key: "2026-10", from: "2026-10-01", to: "2026-10-31", complete: false });
+    // Totals and denominators are the papers of the whole scope: one request per month and subfield chunk.
     expect(overview.periodTotalPapers[0]).toEqual({ period: "2025-10", count: 1000 });
     expect(overview.totalPapersInWindow).toBe(13000);
-    expect(client.openAlexGroupBy).toHaveBeenCalledWith(`${T},from_publication_date:2025-10-01,to_publication_date:2026-10-31`, "primary_topic.id");
+    expect(client.openAlexGroupBy).toHaveBeenCalledWith(`${T},${CHUNK_A},from_publication_date:2026-09-01,to_publication_date:2026-09-30`, "type");
+    expect(client.openAlexGroupBy).toHaveBeenCalledWith(`${T},${CHUNK_B},from_publication_date:2026-09-01,to_publication_date:2026-09-30`, "type");
+    // Candidates: the largest topics of the scope in the window plus the largest of every subfield of the scope.
+    expect(client.openAlexGroupBy).toHaveBeenCalledWith(`${T},${CHUNK_A},${window}`, "primary_topic.id");
+    expect(client.openAlexGroupBy).toHaveBeenCalledWith(`${T},primary_topic.subfield.id:1702,${window}`, "primary_topic.id");
+    // The layer-3 topics are a stratum of their own (one per OR chunk).
+    for (const chunk of TOPIC_CHUNKS) expect(client.openAlexGroupBy).toHaveBeenCalledWith(`${T},${chunk},${window}`, "primary_topic.id");
+    // A subfield outside the scope, or one below 30 papers, is not a stratum.
+    const filters = client.openAlexGroupBy.mock.calls.map((call) => String(call[0]));
+    expect(filters.some((filter) => filter.includes("primary_topic.subfield.id:9999"))).toBe(false);
+    expect(filters.some((filter) => filter.includes("primary_topic.subfield.id:1712,"))).toBe(false);
+    expect(filters.some((filter) => filter.includes("primary_topic.field.id"))).toBe(false);
     expect(client.openAlexGroupBy).toHaveBeenCalledWith(`${T},primary_topic.id:T2|T1,from_publication_date:2026-09-01,to_publication_date:2026-09-30`, "primary_topic.id");
 
     const [rising, steady] = overview.topics;
@@ -102,13 +121,29 @@ describe("getOpenAlexTrendPeriods", () => {
     // Share +0.2 points per month.
     expect(rising!.classification.senSlope).toBeCloseTo(0.2, 10);
     expect(steady!.classification.verdict).toBe("stable");
-    expect(overview.verdictCounts).toEqual({ rising: 1, stable: 1, declining: 0, insufficient: 0 });
-    expect(overview.candidateStrata).toEqual({ level: "field", strata: 1, perStratum: 3 });
+    expect(overview.verdictCounts).toEqual({ rising: 1, saturated: 0, past_peak: 0, stable: 1, declining: 0, insufficient: 0 });
+    expect(overview.candidateStrata).toEqual({ level: "subfield", strata: 1 + TOPIC_CHUNKS.length, perStratum: 3 });
+    expect(overview.scopeNotice).toEqual({ ignoredFilters: [] });
 
     const risingOnly = await getOpenAlexTrendPeriods(TrendPeriodsQuerySchema.parse({ verdict: "rising" }));
     expect(risingOnly.topics.map((topic) => topic.topic)).toEqual(["Rising topic"]);
     expect(risingOnly.matchedTopicCount).toBe(1);
     expect(risingOnly.testedTopicCount).toBe(2);
+  });
+
+  it("a subfield filter lists that part of the scope against the whole scope, and wider filters are ignored", async () => {
+    const bySubfield = await getOpenAlexTrendPeriods(TrendPeriodsQuerySchema.parse({ subfieldIds: "1702" }));
+    const window = "from_publication_date:2025-10-01,to_publication_date:2026-10-31";
+    expect(client.openAlexGroupBy).toHaveBeenCalledWith(`${T},primary_topic.subfield.id:1702,${window}`, "primary_topic.id");
+    expect(bySubfield.candidateStrata).toBeNull();
+    expect(bySubfield.testedTopicCount).toBe(2);
+    // The denominator is still the whole scope.
+    expect(client.openAlexGroupBy).toHaveBeenCalledWith(`${T},${CHUNK_A},from_publication_date:2026-09-01,to_publication_date:2026-09-30`, "type");
+    expect(bySubfield.topics[0]!.classification.senSlope).toBeCloseTo(0.2, 10);
+
+    const byField = await getOpenAlexTrendPeriods(TrendPeriodsQuerySchema.parse({ fieldIds: "17" }));
+    expect(byField.scopeNotice!.ignoredFilters).toEqual([{ filter: "fields", values: ["17"], reason: expect.stringContaining("Information Technology scope") }]);
+    expect(byField.candidateStrata).toEqual({ level: "subfield", strata: 1 + TOPIC_CHUNKS.length, perStratum: 3 });
   });
 
   it("marks a too-short year-to-date window as insufficient", async () => {

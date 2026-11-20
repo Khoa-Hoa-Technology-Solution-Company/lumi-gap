@@ -303,7 +303,7 @@ class _TopicCard extends StatelessWidget {
                 figure(
                   context.t('Change'),
                   Text(
-                    trendChangeText(context, classification!) ?? '—',
+                    trendChangeText(context, classification) ?? '—',
                     style: theme.textTheme.titleSmall,
                   ),
                 ),

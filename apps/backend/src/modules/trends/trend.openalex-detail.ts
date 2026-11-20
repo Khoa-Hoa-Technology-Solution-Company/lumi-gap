@@ -15,7 +15,8 @@ import type {
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import type { TopicTrendQuery, TrendCompareQuery, TrendRelationshipQuery, TrendTopicCandidatesQuery } from "./dto/trends.schema.js";
-import { computeMetrics, fillMissingYears } from "./trend.formulas.js";
+import { fillMissingYears } from "./trend.formulas.js";
+import { FULL_WINDOW_YEARS } from "./trend.verdict.js";
 import { openAlexGet, openAlexGroupBy, openAlexYearCounts, shortId } from "./trend.openalex-client.js";
 import { buildOpenAlexScope, withScope, yearsClause, type TrendScopeFilters } from "./trend.openalex-scope.js";
 import { mapWithConcurrency } from "./trend.utils.js";
@@ -31,7 +32,8 @@ import { mapWithConcurrency } from "./trend.utils.js";
  * "this topic is not an OpenAlex topic", which triggers the same fallback.
  */
 
-const WINDOW = 10;
+/** Default window, the same as the overview and the topic statistics. */
+const WINDOW = FULL_WINDOW_YEARS;
 const CONCURRENCY = 5;
 const BREAKDOWN_CONCURRENCY = 6;
 const TOP_LIST_SIZE = 5;
@@ -263,7 +265,6 @@ async function topicSeries(scope: string, topic: ResolvedOpenAlexTopic, span: Sp
     yearlyBreakdown,
     totalPapers: yearlyBreakdown.reduce((sum, point) => sum + point.count, 0),
     citationTrend: toCitationTrend(yearlyBreakdown, topCounts),
-    ...computeMetrics(yearlyBreakdown, span.lastCompleteYear),
   };
 }
 
@@ -330,9 +331,6 @@ export async function getOpenAlexTopicDetail(topic: string, query: TopicTrendQue
     yearlyBreakdown: series.yearlyBreakdown,
     citationTrend: series.citationTrend,
     lastCompleteYear: span.lastCompleteYear,
-    growthRatePct: series.growthRatePct,
-    cagr3yPct: series.cagr3yPct,
-    momentum: series.momentum,
   };
 
   // No work in the window: nothing to break down, skip the remaining requests.
@@ -407,9 +405,6 @@ export async function getOpenAlexCompare(query: TrendCompareQuery): Promise<Tren
         totalPapers: series.totalPapers,
         yearlyBreakdown: series.yearlyBreakdown,
         citationTrend: series.citationTrend,
-        momentum: series.momentum,
-        growthRatePct: series.growthRatePct,
-        cagr3yPct: series.cagr3yPct,
       };
     },
   );
@@ -439,7 +434,6 @@ export async function getOpenAlexTopicCandidates(query: TrendTopicCandidatesQuer
       totalPapers: yearlyBreakdown.reduce((sum, point) => sum + point.count, 0),
       yearlyBreakdown,
       matchedBy: "topic",
-      ...computeMetrics(yearlyBreakdown, span.lastCompleteYear),
     };
   });
 
