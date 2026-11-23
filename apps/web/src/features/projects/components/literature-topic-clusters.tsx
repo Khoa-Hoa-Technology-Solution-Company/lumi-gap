@@ -429,7 +429,7 @@ export function LiteratureTopicClustersView({
   return (
     <div className="space-y-4" data-no-i18n>
       {/* Compact Toolbar & Filters */}
-      <header className="rounded-xl border border-border/80 bg-card p-3.5 shadow-xs space-y-2.5">
+      <header className="literature-clusters-toolbar rounded-xl border border-border/80 bg-card p-3.5 shadow-xs space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
@@ -460,25 +460,31 @@ export function LiteratureTopicClustersView({
           </Button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-border/60">
-          <div className="relative flex-1 min-w-[210px]">
-            <Search className="h-3.5 w-3.5 text-muted-foreground absolute left-2.5 top-2.5" />
+        <div className="literature-clusters-filters flex flex-wrap items-center gap-2 pt-2.5 border-t border-border/60">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="h-3.5 w-3.5 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Tìm tiêu đề, tác giả, từ khóa, phương pháp…"
-              className="h-8 w-full rounded-lg border border-border/80 bg-background pl-8 pr-3 text-xs"
+              className="h-9 w-full rounded-lg border border-border/80 bg-background pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground"
               aria-label="Search literature clusters"
             />
           </div>
 
-          <label className="flex items-center gap-1.5 text-xs shrink-0">
-            <span className="text-muted-foreground whitespace-nowrap font-medium">Nhóm theo:</span>
+          <div className="literature-clusters-groupby inline-flex items-center gap-1.5 shrink-0">
+            <label
+              htmlFor={`clusters-groupby-${projectId}`}
+              className="text-xs text-muted-foreground whitespace-nowrap font-medium"
+            >
+              Nhóm theo:
+            </label>
             <select
+              id={`clusters-groupby-${projectId}`}
               value={groupBy}
               onChange={(e) => setGroupBy(e.target.value as GroupByMode)}
-              className="h-8 rounded-lg border border-border/80 bg-background px-2.5 text-xs font-medium"
+              className="h-9 rounded-lg border border-border/80 bg-background px-2.5 text-xs font-medium text-foreground"
               aria-label="Group literature by"
             >
               <option value="topic">Chủ đề</option>
@@ -486,12 +492,12 @@ export function LiteratureTopicClustersView({
               <option value="question">Câu hỏi NC</option>
               <option value="tag">Từ khóa / Tag</option>
             </select>
-          </label>
+          </div>
 
           <select
             value={selectedTopic}
             onChange={(e) => setSelectedTopic(e.target.value)}
-            className="h-8 max-w-[200px] rounded-lg border border-border/80 bg-background px-2.5 text-xs"
+            className="h-9 max-w-[190px] rounded-lg border border-border/80 bg-background px-2.5 text-xs text-foreground"
             aria-label="Filter by topic"
           >
             <option value="ALL">Tất cả chủ đề ({allTopics.length})</option>
@@ -505,7 +511,7 @@ export function LiteratureTopicClustersView({
           <select
             value={selectedMethod}
             onChange={(e) => setSelectedMethod(e.target.value)}
-            className="h-8 max-w-[210px] rounded-lg border border-border/80 bg-background px-2.5 text-xs"
+            className="h-9 max-w-[200px] rounded-lg border border-border/80 bg-background px-2.5 text-xs text-foreground"
             aria-label="Filter by methodology"
           >
             <option value="ALL">Tất cả phương pháp ({allMethods.length})</option>
@@ -519,7 +525,7 @@ export function LiteratureTopicClustersView({
           <select
             value={selectedQuestionId}
             onChange={(e) => setSelectedQuestionId(e.target.value)}
-            className="h-8 max-w-[210px] rounded-lg border border-border/80 bg-background px-2.5 text-xs"
+            className="h-9 max-w-[195px] rounded-lg border border-border/80 bg-background px-2.5 text-xs text-foreground"
             aria-label="Filter by research question"
           >
             <option value="ALL">Tất cả câu hỏi ({allQuestions.length})</option>

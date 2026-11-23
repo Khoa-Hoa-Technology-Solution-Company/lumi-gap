@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   reassess: vi.fn().mockResolvedValue({}),
   requestAdjudication: vi.fn().mockResolvedValue({}),
   proposeAgreement: vi.fn().mockResolvedValue({}),
+  confirmAgreement: vi.fn().mockResolvedValue({}), declineAgreement: vi.fn().mockResolvedValue({}),
   board: vi.fn(), detail: vi.fn(), rounds: vi.fn(), ai: vi.fn().mockResolvedValue(null),
 }));
 
@@ -238,6 +239,38 @@ describe("ScreeningConflictResolution Component", () => {
     expect(mocks.action.mock.calls[0]![3]).not.toHaveProperty("reviewerId");
     expect(mocks.action.mock.calls[0]![3]).not.toHaveProperty("confirmed");
   });
+
+  const pendingClosure = { id: "proposal-1", decision: "CLOSED_UNRESOLVED" as const, reason: "Khác cách diễn giải tiêu chí dù đã đối chiếu nguồn", proposedById: "user-2", reviewIds: ["r1", "r2"], confirmedByIds: ["user-2"], requiredReviewerIds: ["user-1", "user-2"], canConfirm: true, canDecline: true, createdAt: new Date().toISOString() };
+  it("sends a reasoned closure proposal without finalizing or asking for a third reviewer", async () => {
+    await renderRound(mockRound);
+    await act(async () => button("Đề nghị kết thúc do không đạt đồng thuận")!.click());
+    const dialog = document.querySelector('[role="dialog"]')!;
+    await inputText(dialog.querySelector('textarea')!, "Chưa thống nhất được phạm vi sau khi đối chiếu nguồn");
+    await act(async () => dialog.querySelector('form')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    await settle();
+    expect(mocks.proposeAgreement).toHaveBeenCalledWith("proj-1", "round-1", expect.objectContaining({ decision: "CLOSED_UNRESOLVED", expectedVersion: mockRound.version, reason: "Chưa thống nhất được phạm vi sau khi đối chiếu nguồn" }));
+    expect(mocks.confirmAgreement).not.toHaveBeenCalled();
+  });
+  it.each([true, false])("recipient can respond to a pending closure (accept=%s)", async accept => {
+    await renderRound({ ...mockRound, agreement: pendingClosure });
+    expect(container.textContent).toContain("Chờ xác nhận kết thúc");
+    await act(async () => button(accept ? "Đồng ý kết thúc" : "Tiếp tục thảo luận")!.click()); await settle();
+    expect(accept ? mocks.confirmAgreement : mocks.declineAgreement).toHaveBeenCalledWith("proj-1", "round-1", expect.objectContaining({ proposalId: "proposal-1", expectedVersion: mockRound.version }));
+  });
+  it("sender cannot confirm their own closure proposal in the UI", async () => {
+    await renderRound({ ...mockRound, agreement: { ...pendingClosure, proposedById: "user-1", canConfirm: false, canDecline: false } });
+    expect(button("Đồng ý kết thúc")).toBeUndefined(); expect(button("Tiếp tục thảo luận")).toBeUndefined();
+    expect(button("Cập nhật đánh giá")).toBeDefined();
+  });
+  it("retains the closure reason in the dialog after an API error", async () => {
+    mocks.proposeAgreement.mockRejectedValueOnce(new Error("Offline")); await renderRound(mockRound);
+    await act(async () => button("Đề nghị kết thúc do không đạt đồng thuận")!.click());
+    const dialog = document.querySelector('[role="dialog"]')!;
+    await inputText(dialog.querySelector('textarea')!, "Lý do đang soạn vẫn cần giữ nguyên");
+    await act(async () => dialog.querySelector('form')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))); await settle();
+    expect(dialog.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe("Lý do đang soạn vẫn cần giữ nguyên");
+    expect(dialog.querySelector('[role="alert"]')).not.toBeNull();
+  });
   it("requires a written justification before updating", async () => {
     await renderRound(mockRound);
     expect(button("Cập nhật đánh giá")!.disabled).toBe(true);
@@ -253,10 +286,10 @@ describe("ScreeningConflictResolution Component", () => {
     await renderRound({ ...mockRound, consensus: { ...mockRound.consensus!, canUpdate: false } }, readOnly);
     expect(container.querySelector('input[type="radio"]')).toBeNull(); expect(button("Cập nhật đánh giá")).toBeUndefined();
   });
-  it("blocks further evaluation changes at the deadline", async () => {
+  it("keeps discussion and evaluation available after the deadline", async () => {
     await renderRound({ ...mockRound, consensus: { ...mockRound.consensus!, deadline: new Date(Date.now() - 1000).toISOString() } });
-    expect(button("Cập nhật đánh giá")).toBeUndefined(); expect(container.textContent).toContain("Đã hết hạn");
-    expect(button("Gửi bình luận")).toBeUndefined();
+    expect(button("Cập nhật đánh giá")).toBeDefined(); expect(container.textContent).toContain("Quá hạn");
+    expect(button("Gửi bình luận")).toBeDefined();
   });
   it("preserves a draft and shows errors when an update fails", async () => {
     mocks.action.mockRejectedValue(new Error("Offline")); await renderRound(mockRound);

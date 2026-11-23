@@ -15,7 +15,8 @@ type WorkRow = Omit<MentorWorkItem, "href" | "action" | "dueAt" | "updatedAt" | 
 function workspaceSql(actorId: string) {
   return Prisma.sql`WITH scope AS (
     SELECT DISTINCT ON (p.id) p.id, p.title, p.research_field, p.research_stage, p.status, p.updated_at,
-      p.legacy_mongo_id, p.owner_id, a.id AS access_id, a.permissions, r.id AS relationship_id
+      p.legacy_mongo_id, p.owner_id, a.id AS access_id, a.permissions, r.id AS relationship_id,
+      r.mentor_role, r.started_at
     FROM mentor_relationships r
     JOIN mentor_access a ON a.relationship_id=r.id AND a.project_id=r.project_id AND a.mentor_user_id=r.mentor_user_id
     JOIN mentorship_requests invitation ON invitation.id=r.source_request_id AND invitation.id=a.request_id AND invitation.status='ACCEPTED'
@@ -138,41 +139,63 @@ export const mentorWorkspaceService = {
       const rows = await tx.$queryRaw<WorkRow[]>`${base} SELECT * FROM work WHERE ${where}
         ORDER BY ${order}, "updatedAt" DESC,id LIMIT ${query.pageSize} OFFSET ${(query.page - 1) * query.pageSize}`;
       const totals = await tx.$queryRaw<{ count: bigint }[]>`${base} SELECT COUNT(*) AS count FROM work WHERE ${where}`;
-      const metrics = await tx.$queryRaw<{ needsResponse: bigint; overdue: bigint; blocked: bigint; manuscripts: bigint }[]>`${base}
+      const metrics = await tx.$queryRaw<{ needsResponse: bigint; overdue: bigint; blocked: bigint; manuscripts: bigint; completed: bigint; waiting: bigint }[]>`${base}
         SELECT COUNT(*) FILTER (WHERE "needsAction") AS "needsResponse",
           COUNT(*) FILTER (WHERE "needsAction" AND "dueAt"<NOW()) AS overdue,
           COUNT(*) FILTER (WHERE "needsAction" AND blocked) AS blocked,
-          COUNT(*) FILTER (WHERE "needsAction" AND kind IN ('MANUSCRIPT_REVIEW','PROPOSAL_REVIEW')) AS manuscripts
+          COUNT(*) FILTER (WHERE "needsAction" AND kind IN ('MANUSCRIPT_REVIEW','PROPOSAL_REVIEW')) AS manuscripts,
+          COUNT(*) FILTER (WHERE status='DONE') AS completed,
+          COUNT(*) FILTER (WHERE status='WAITING') AS waiting
         FROM work WHERE true ${projectFilter}`;
+      const recentRows = await tx.$queryRaw<WorkRow[]>`${base}
+        SELECT * FROM work WHERE status IN ('DONE','WAITING') ${projectFilter}
+        ORDER BY "updatedAt" DESC, id LIMIT 4`;
       const invitationCounts = await tx.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*) AS count FROM mentorship_requests invitation
         JOIN projects p ON p.id=invitation.project_id AND p.deleted_at IS NULL
         WHERE invitation.mentor_user_id=${actor.id}::uuid AND invitation.direction='PROJECT_TO_LECTURER' AND invitation.status='PENDING'
           AND (invitation.expires_at IS NULL OR invitation.expires_at>NOW())`;
       const projectWhere = query.projectSearch ? Prisma.sql`AND (s.title ILIKE ${`%${query.projectSearch.replace(/[\\%_]/g, "\\$&")}%`} OR s.research_field ILIKE ${`%${query.projectSearch.replace(/[\\%_]/g, "\\$&")}%`})` : Prisma.empty;
-      const projects = await tx.$queryRaw<(Omit<MentorProjectSummary, "updatedAt" | "pendingCount" | "teamSize"> & { updatedAt: Date; pendingCount: bigint; teamSize: bigint })[]>`${base}
+      const projects = await tx.$queryRaw<(Omit<MentorProjectSummary, "updatedAt" | "startedAt" | "pendingCount" | "teamSize" | "sharedCount" | "completedCount"> & {
+        updatedAt: Date; startedAt: Date; pendingCount: bigint; teamSize: bigint; sharedCount: bigint; completedCount: bigint; canChat: boolean;
+      })[]>`${base}
         SELECT s.id::text AS id,s.title,s.research_field AS "researchField",s.research_stage AS "researchStage",s.status,owner.full_name AS "teamLead",s.updated_at AS "updatedAt",
+          s.mentor_role AS "mentorRole", s.started_at AS "startedAt", ('MENTOR_CHAT'=ANY(s.permissions)) AS "canChat",
           (SELECT COUNT(*) FROM users member WHERE member.is_active AND member.account_status='ACTIVE' AND
             (member.id=s.owner_id OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id=s.id AND pm.user_id=member.id AND pm.status='ACTIVE'))) AS "teamSize",
-          (SELECT COUNT(*) FROM work w WHERE w."projectId"=s.id::text AND w."needsAction") AS "pendingCount"
+          (SELECT COUNT(*) FROM work w WHERE w."projectId"=s.id::text AND w."needsAction") AS "pendingCount",
+          (SELECT COUNT(*) FROM work w WHERE w."projectId"=s.id::text AND w.status='DONE') AS "completedCount",
+          ((SELECT COUNT(*) FROM mentor_resource_shares sh WHERE sh.access_id=s.access_id AND sh.project_id=s.id AND sh.revoked_at IS NULL) +
+           (SELECT COUNT(*) FROM plan_shares ps WHERE ps.project_id=s.id AND ps.relationship_id=s.relationship_id AND ps.revoked_at IS NULL)) AS "sharedCount"
         FROM scope s JOIN users owner ON owner.id=s.owner_id WHERE true ${projectWhere}
         ORDER BY s.updated_at DESC,s.id LIMIT 20 OFFSET ${(query.projectPage - 1) * 20}`;
       const projectTotals = await tx.$queryRaw<{ count: bigint }[]>`${base} SELECT COUNT(*) AS count FROM scope s WHERE true ${projectWhere}`;
       const activeProjects = await tx.$queryRaw<{ count: bigint }[]>`${base} SELECT COUNT(*) AS count FROM scope WHERE status NOT IN ('ARCHIVED','COMPLETED')`;
+      const overviewExtras = await tx.$queryRaw<{ sharedResources: bigint; totalStudents: bigint }[]>`${base}
+        SELECT
+          ((SELECT COUNT(*) FROM mentor_resource_shares sh JOIN scope s ON sh.access_id=s.access_id AND sh.project_id=s.id WHERE sh.revoked_at IS NULL) +
+           (SELECT COUNT(*) FROM plan_shares ps JOIN scope s ON ps.project_id=s.id AND ps.relationship_id=s.relationship_id WHERE ps.revoked_at IS NULL)) AS "sharedResources",
+          (SELECT COUNT(DISTINCT member.id) FROM scope s JOIN users member ON member.is_active AND member.account_status='ACTIVE'
+            AND (member.id=s.owner_id OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id=s.id AND pm.user_id=member.id AND pm.status='ACTIVE'))
+            WHERE s.status NOT IN ('ARCHIVED','COMPLETED')) AS "totalStudents"`;
       const total = Number(totals[0]?.count ?? 0), projectTotal = Number(projectTotals[0]?.count ?? 0);
       const now = new Date();
+      const mapRow = (row: WorkRow) => ({ id: row.id, sourceId: row.sourceId, kind: row.kind, title: row.title, description: row.description,
+        projectId: row.projectId, projectTitle: row.projectTitle, sender: row.sender, status: row.status, priority: row.priority,
+        dueAt: row.dueAt?.toISOString() ?? null, updatedAt: row.updatedAt.toISOString(), needsAction: row.needsAction,
+        overdue: row.needsAction && Boolean(row.dueAt && row.dueAt < now), blocked: row.blocked, version: row.version,
+        ...(row.accessIssue ? { accessIssue: row.accessIssue, canContactTeam: row.canContactTeam } : {}),
+        href: mentorWorkHref(row), action: row.accessIssue && row.canContactTeam ? "RESPOND" as const : !row.needsAction || row.kind === "TASK" ? "VIEW" as const : row.kind === "MENTOR_QUESTION" ? "RESPOND" as const : "REVIEW" as const });
       return {
-        items: rows.map(row => ({ id: row.id, sourceId: row.sourceId, kind: row.kind, title: row.title, description: row.description,
-          projectId: row.projectId, projectTitle: row.projectTitle, sender: row.sender, status: row.status, priority: row.priority,
-          dueAt: row.dueAt?.toISOString() ?? null, updatedAt: row.updatedAt.toISOString(), needsAction: row.needsAction,
-          overdue: row.needsAction && Boolean(row.dueAt && row.dueAt < now), blocked: row.blocked, version: row.version,
-          ...(row.accessIssue ? { accessIssue: row.accessIssue, canContactTeam: row.canContactTeam } : {}),
-          href: mentorWorkHref(row), action: row.accessIssue && row.canContactTeam ? "RESPOND" : !row.needsAction || row.kind === "TASK" ? "VIEW" : row.kind === "MENTOR_QUESTION" ? "RESPOND" : "REVIEW" })),
+        items: rows.map(mapRow),
+        recentActivity: recentRows.map(mapRow),
         meta: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.ceil(total / query.pageSize) },
-        projects: projects.map(p => ({ ...p, teamSize: Number(p.teamSize), pendingCount: Number(p.pendingCount), updatedAt: p.updatedAt.toISOString() })),
+        projects: projects.map(p => ({ ...p, teamSize: Number(p.teamSize), pendingCount: Number(p.pendingCount), completedCount: Number(p.completedCount), sharedCount: Number(p.sharedCount), updatedAt: p.updatedAt.toISOString(), startedAt: p.startedAt.toISOString() })),
         projectMeta: { page: query.projectPage, pageSize: 20, total: projectTotal, totalPages: Math.ceil(projectTotal / 20) },
         projectOptions: projectOptions.map(p => ({ id: p.id, title: p.title })),
         summary: { projects: Number(activeProjects[0]?.count ?? 0), needsResponse: Number(metrics[0]?.needsResponse ?? 0),
-          overdue: Number(metrics[0]?.overdue ?? 0), blocked: Number(metrics[0]?.blocked ?? 0), manuscripts: Number(metrics[0]?.manuscripts ?? 0), invitations: Number(invitationCounts[0]?.count ?? 0) },
+          overdue: Number(metrics[0]?.overdue ?? 0), blocked: Number(metrics[0]?.blocked ?? 0), manuscripts: Number(metrics[0]?.manuscripts ?? 0), invitations: Number(invitationCounts[0]?.count ?? 0),
+          completed: Number(metrics[0]?.completed ?? 0), waiting: Number(metrics[0]?.waiting ?? 0),
+          sharedResources: Number(overviewExtras[0]?.sharedResources ?? 0), totalStudents: Number(overviewExtras[0]?.totalStudents ?? 0) },
         generatedAt: now.toISOString(),
       };
     }, { isolationLevel: "RepeatableRead", timeout: 20000 });

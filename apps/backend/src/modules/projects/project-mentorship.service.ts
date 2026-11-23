@@ -250,7 +250,14 @@ export const projectMentorshipService = {
     const canEnable = isVerifiedLecturer(a, profile);
     return {
       acceptingMentorships: canEnable && (profile?.supportAvailability as { enabled?: boolean })?.enabled === true,
-      canEnable, emailEnabled: profile?.mentorshipEmailEnabled ?? true, locale: profile?.notificationLocale ?? "en"
+      canEnable, emailEnabled: profile?.mentorshipEmailEnabled ?? true, locale: profile?.notificationLocale ?? "en",
+      // Only the authenticated account's verified primary address is a recipient.
+      // A saved opt-in does not imply that a demo address has a real inbox.
+      emailDelivery: {
+        status: env.EMAIL_DELIVERY_MODE !== "smtp" ? "NOT_CONFIGURED" as const
+          : /\.(?:test|invalid|localhost)$/i.test(a.email.split("@")[1] ?? "") ? "TEST_ADDRESS" as const : "READY" as const,
+        recipient: a.email,
+      },
     };
   },
   async availableMentors(actorInput: string, query: AcademicSearch = {}) {

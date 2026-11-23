@@ -2,7 +2,7 @@ import type { MentorRole, MentorProjectPreview } from "./project.js";
 
 export type MentorshipApplicationStatus = "APPLIED" | "SHORTLISTED" | "INVITED" | "ACCEPTED" | "DECLINED" | "WITHDRAWN" | "CLOSED";
 export interface MentorshipApplicationInput {
-  message: string; mentorRole: MentorRole; areas: string[]; methodologies: string[]; capabilities: string[]; availability: string; idempotencyKey: string;
+  message: string; mentorRole?: MentorRole; areas?: string[]; methodologies?: string[]; capabilities?: string[]; availability?: string; idempotencyKey: string;
 }
 export interface LecturerMatchEvidence {
   method: "STRUCTURED_TERMS_V1";
@@ -19,7 +19,7 @@ export interface LecturerMatchEvidence {
 }
 export interface MentorshipApplicationView {
   id: string; projectId: string; project: MentorProjectPreview;
-  lecturer: { id: string; name: string; avatarUrl?: string; verifiedLecturer: boolean };
+  lecturer: { id: string; name: string; avatarUrl?: string; verifiedLecturer: boolean; positionTitle?: string; institutionName?: string; expertiseAreas?: string[]; skills?: string[] };
   mentorRole: MentorRole; message: string; areas: string[]; methodologies: string[]; capabilities: string[]; availability: string;
   status: MentorshipApplicationStatus; version: number; createdAt: string; updatedAt: string;
   canManage: boolean; canWithdraw: boolean; canInvite: boolean; canClarify: boolean;

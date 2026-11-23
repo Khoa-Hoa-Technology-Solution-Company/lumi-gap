@@ -7,9 +7,17 @@ import type {
 } from "./project.js";
 import type { WorkspacePerson } from "./project-workspace.js";
 
+export type ProjectAuditEventCategory =
+  | "MEMBERSHIP"
+  | "MANUSCRIPT"
+  | "ACCESS_EXPORT"
+  | "SETTINGS_PRIVACY"
+  | "INTEGRITY_SECURITY";
+
 export interface ProjectSecurityEventView {
   id: string;
   type: string;
+  category?: ProjectAuditEventCategory;
   actor: WorkspacePerson | null;
   entityKind: string | null;
   entityId: string | null;
@@ -19,6 +27,7 @@ export interface ProjectSecurityEventView {
   visibility: string | null;
   createdAt: string;
   summary: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ProjectSecurityOverview {
@@ -32,7 +41,29 @@ export interface ProjectSecurityOverview {
   activeMemberCount: number;
   formerMemberCount: number;
   activeMentorCount: number;
+  totalEventCount?: number;
+  latestEventAt?: string | null;
   recentEvents: ProjectSecurityEventView[];
+}
+
+export interface ProjectAuditEventsQuery {
+  page?: number;
+  pageSize?: number;
+  q?: string;
+  category?: ProjectAuditEventCategory;
+  from?: string;
+  to?: string;
+}
+
+export interface ProjectAuditEventsPage {
+  items: ProjectSecurityEventView[];
+  meta: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+  };
 }
 
 export interface PersonalContributionHistoryItem {

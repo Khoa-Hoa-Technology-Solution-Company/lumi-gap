@@ -105,10 +105,11 @@ function ProjectInvitationRow({
 }
 
 export function ProjectsListPage({ compact = false, invitationsOnly = false, trashOnly = false }: { compact?: boolean; invitationsOnly?: boolean; trashOnly?: boolean }) {
+  const lecturer = useAuthStore(state => state.user?.academicRole === "LECTURER");
   const { data: trashedProjects = [] } = useTrashedProjects({ enabled: !invitationsOnly });
   const { data: projects, isLoading, isError, isFetching, refetch } = useProjects();
-  const mentoring = useMentoredProjects(!invitationsOnly);
-  const mentoredProjects = mentoring.error ? [] : (mentoring.data ?? []).filter(item => !projects?.some(project => project._id === item.projectId));
+  const mentoring = useMentoredProjects(!lecturer && !invitationsOnly);
+  const mentoredProjects = lecturer || mentoring.error ? [] : (mentoring.data ?? []).filter(item => !projects?.some(project => project._id === item.projectId));
   const { data: invitations = [], isLoading: invitationsLoading, isError: invitationsError, isFetching: invitationsFetching, refetch: refetchInvitations } = useMyProjectInvitations();
   const respondToInvitation = useRespondToProjectInvitation();
   const navigate = useNavigate();
@@ -246,8 +247,8 @@ export function ProjectsListPage({ compact = false, invitationsOnly = false, tra
       {invitationSection}
 
       <section aria-label={t("Your research projects")}>
-        {mentoring.isLoading && <p role="status" className="py-3 text-sm text-muted-foreground">{t("Loading…")}</p>}
-        {mentoring.isError && <div role="alert" className="space-y-2 py-3"><p className="text-sm">{t("Unable to load mentorship requests.")}</p><Button variant="outline" size="sm" disabled={mentoring.isFetching} onClick={() => void mentoring.refetch()}>{t("Try again")}</Button></div>}
+        {!lecturer && mentoring.isLoading && <p role="status" className="py-3 text-sm text-muted-foreground">{t("Loading…")}</p>}
+        {!lecturer && mentoring.isError && <div role="alert" className="space-y-2 py-3"><p className="text-sm">{t("Unable to load mentorship requests.")}</p><Button variant="outline" size="sm" disabled={mentoring.isFetching} onClick={() => void mentoring.refetch()}>{t("Try again")}</Button></div>}
         {compact || (!projects?.length && mentoredProjects.length > 0) ? <div className="project-switcher-search">{searchControl}</div> : <div className="project-directory-toolbar">
           <div className="project-switcher-filters">
             <div className="project-switcher-filter-fields">
@@ -313,7 +314,7 @@ export function ProjectsListPage({ compact = false, invitationsOnly = false, tra
             <p className="mt-1 max-w-sm text-sm text-muted-foreground">{t("Please check your connection and try again.")}</p>
             <Button variant="outline" className="mt-5" onClick={() => void refetch()} disabled={isFetching}>{isFetching ? t("Loading...") : t("Try again")}</Button>
           </div>
-        ) : !projects?.length && (mentoredProjects.length || mentoring.isLoading || mentoring.isError) ? null : !projects?.length ? (
+        ) : !projects?.length && (mentoredProjects.length || !lecturer && (mentoring.isLoading || mentoring.isError)) ? null : !projects?.length ? (
           <div className="project-directory-empty">
             <FolderOpen aria-hidden="true" />
             <h2 className="text-lg font-semibold tracking-tight">{t("No projects yet")}</h2>

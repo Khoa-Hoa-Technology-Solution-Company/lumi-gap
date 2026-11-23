@@ -10,19 +10,20 @@ import { isAdminSystemRole } from "@trend/shared-types";
 import { mentorWorkspaceDestination } from "@/features/projects/utils/mentor-workspace-navigation";
 import { useI18n } from "@/i18n";
 
-function formatTime(dateStr: string) {
+function formatTime(dateStr: string, language: string) {
   try {
     const d = new Date(dateStr);
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
+    const isVi = language === "vi";
+    if (diffMins < 1) return isVi ? "Vừa xong" : "Just now";
+    if (diffMins < 60) return isVi ? `${diffMins} phút trước` : `${diffMins}m ago`;
     const diffHrs = Math.floor(diffMins / 60);
-    if (diffHrs < 24) return `${diffHrs}h ago`;
+    if (diffHrs < 24) return isVi ? `${diffHrs} giờ trước` : `${diffHrs}h ago`;
     const diffDays = Math.floor(diffHrs / 24);
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return d.toLocaleDateString();
+    if (diffDays < 7) return isVi ? `${diffDays} ngày trước` : `${diffDays}d ago`;
+    return d.toLocaleDateString(language);
   } catch {
     return "";
   }
@@ -30,7 +31,7 @@ function formatTime(dateStr: string) {
 
 export function NotificationsPage({ embedded = false }: { embedded?: boolean }) {
   const Container = embedded ? "section" : "main";
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminSystemRole(user?.systemRole);
@@ -44,9 +45,9 @@ export function NotificationsPage({ embedded = false }: { embedded?: boolean }) 
   const handleMarkAllRead = async () => {
     try {
       await markAllReadMutation.mutateAsync();
-      toast.success("Marked all as read.");
+      toast.success(language === "vi" ? "Đã đánh dấu tất cả là đã đọc." : "Marked all as read.");
     } catch {
-      toast.error("Failed to mark as read.");
+      toast.error(language === "vi" ? "Không thể đánh dấu đã đọc." : "Failed to mark as read.");
     }
   };
 
@@ -228,7 +229,7 @@ export function NotificationsPage({ embedded = false }: { embedded?: boolean }) 
                           {item.message}
                         </p>
                         <div className="text-[11px] font-medium text-slate-400">
-                          {formatTime(item.createdAt)}
+                          {formatTime(item.createdAt, language)}
                         </div>
                       </div>
                     </div>

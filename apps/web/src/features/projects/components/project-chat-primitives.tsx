@@ -20,7 +20,7 @@ export function ProjectChatMessage({ own, author, avatarUrl, createdAt, locale, 
 
 export function ProjectChatComposer({ value, onChange, onSend, disabled, pending, label, placeholder, sendLabel, keyboardHint, mobileHint, textareaRef, minLength = 1, maxLength = 2000, leading, preview, hasAttachment = false }: {
   value: string; onChange: (value: string) => void; onSend: () => void; disabled: boolean; pending: boolean;
-  label: string; placeholder: string; sendLabel: string; keyboardHint: string; mobileHint: string;
+  label: string; placeholder: string; sendLabel: string; keyboardHint?: string; mobileHint?: string;
   textareaRef?: RefObject<HTMLTextAreaElement>; minLength?: number; maxLength?: number;
   leading?: ReactNode; preview?: ReactNode; hasAttachment?: boolean;
 }) {
@@ -33,7 +33,7 @@ export function ProjectChatComposer({ value, onChange, onSend, disabled, pending
   }, [value, ref]);
   const submit = () => { if (!disabled && !pending && (hasAttachment || value.trim().length >= minLength) && value.length <= maxLength) onSend(); };
   return <div className="project-chat-compose">
-    <form onSubmit={event => { event.preventDefault(); submit(); }}>
+    <form aria-busy={pending} onSubmit={event => { event.preventDefault(); submit(); }}>
       {preview}
       <textarea ref={ref} value={value} onChange={event => onChange(event.target.value)}
         onKeyDown={event => {
@@ -43,8 +43,8 @@ export function ProjectChatComposer({ value, onChange, onSend, disabled, pending
         }} maxLength={maxLength} rows={1} aria-label={label} placeholder={placeholder} disabled={disabled || pending} />
       <div className="project-chat-compose-toolbar">
         {leading}
-        <span className="project-chat-keyboard-hint">{keyboardHint}</span>
-        <span className="project-chat-mobile-hint">{mobileHint}</span>
+        {keyboardHint && <span className="project-chat-keyboard-hint">{keyboardHint}</span>}
+        {mobileHint && <span className="project-chat-mobile-hint">{mobileHint}</span>}
         <div className="project-chat-send-actions">{value.length > maxLength * .8 && <small>{value.length}/{maxLength}</small>}<Button type="submit" size="sm" disabled={disabled || pending || (!hasAttachment && value.trim().length < minLength) || value.length > maxLength}>{pending ? <Loader2 size={16} className="animate-spin" /> : <SendHorizonal size={16} />}{sendLabel}</Button></div>
       </div>
     </form>

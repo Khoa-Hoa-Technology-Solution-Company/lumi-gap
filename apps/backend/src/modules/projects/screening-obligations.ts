@@ -1,6 +1,7 @@
+import { screeningAgreement } from "./screening-agreement-context.js";
 import { maintainProjectConsensus, consensusPending } from "./screening-consensus.js";
 import type { Prisma, ScreeningObligation, ScreeningRound } from "../../generated/prisma/client.js";
-import type { ScreeningAutomaticTask, ScreeningTaskAction, ScreeningTaskStatus, ScreeningTaskFeedback, WorkspacePage } from "@trend/shared-types";
+import type { ScreeningAutomaticTask, ScreeningTaskAction, ScreeningTaskStatus, ScreeningTaskFeedback } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, type WorkspaceContext } from "./workspace-access.js";
 import { roundView, roundSettings } from "./screening-context.js";
@@ -9,7 +10,7 @@ import { caseView, ensureAssignment } from "./screening-case-context.js";
 import { adjudicationTeamRequirement } from "./screening-adjudication-context.js";
 
 const open = (status: string) => ["TODO", "IN_PROGRESS", "BLOCKED"].includes(status);
-const final = (round: ScreeningRound) => ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT"].includes(round.status);
+const final = (round: ScreeningRound) => ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT", "CLOSED_UNRESOLVED"].includes(round.status);
 type Desired = { round: ScreeningRound; actor: string; kind: ScreeningTaskAction; instance: string; dueAt?: Date | null; completedAt?: Date | null; status?: ScreeningTaskStatus; reason?: string };
 
 /** Run only inside withWorkspace's project lock. State, ledger and events commit together.
@@ -52,14 +53,17 @@ export async function reconcileScreeningObligations(c: WorkspaceContext) {
     for (const a of assigned) {
       const claim = claims.find(e => e.roundId === r.id && (e.actorId === a.reviewerId || (e.details as { assignmentId?: string }).assignmentId === a.id) && ((e.result as { assignmentId?: string }).assignmentId === a.id || (e.details as { assignmentId?: string }).assignmentId === a.id));
       const instance = `review:${a.id}:${claim?.id ?? "initial"}`;
-      if (a.submittedAt || enabled && a.active && live.has(a.reviewerId) && !final(r) && (!a.dueAt || a.dueAt > now)) {
+      if (a.submittedAt || enabled && a.active && live.has(a.reviewerId) && !final(r)) {
         desired.push({ round: r, actor: a.reviewerId, kind: "REVIEW", instance, dueAt: a.dueAt, completedAt: a.submittedAt, status: a.submittedAt ? "DONE" : "TODO", reason: a.submittedAt ? "Đã gửi phiếu đánh giá" : "Chờ bạn gửi phiếu" });
       }
     }
     if (!enabled) continue;
     if (consensusPending(r.status)) {
+      const proposal = await screeningAgreement(c, r);
       for (const a of assigned.filter(a => a.active && a.submittedAt && live.has(a.reviewerId))) {
-        desired.push({ round: r, actor: a.reviewerId, kind: "DISCUSSION", instance: `evaluation-discussion:${r.id}:${r.consensusStartedAt?.toISOString()}`, dueAt: r.consensusDeadline, status: r.status === "CONSENSUS_IN_PROGRESS" ? "IN_PROGRESS" : "TODO", reason: "Trao đổi và cập nhật đánh giá để thống nhất" });
+        if (proposal?.decision === "CLOSED_UNRESOLVED" && proposal.proposedById !== a.reviewerId) {
+          desired.push({ round: r, actor: a.reviewerId, kind: "CONSENSUS", instance: `consensus:${proposal.id}`, dueAt: r.consensusDeadline, reason: "Phản hồi đề nghị kết thúc chưa đạt đồng thuận" });
+        } else desired.push({ round: r, actor: a.reviewerId, kind: "DISCUSSION", instance: `evaluation-discussion:${r.id}:${r.consensusStartedAt?.toISOString()}`, dueAt: r.consensusDeadline, status: r.status === "CONSENSUS_IN_PROGRESS" ? "IN_PROGRESS" : "TODO", reason: proposal ? "Chờ người còn lại xác nhận; vẫn có thể trao đổi" : "Trao đổi và cập nhật đánh giá để thống nhất" });
       }
     } else if (dispute) {
       for (const id of dispute.reviewerIds.filter(id => live.has(id))) {

@@ -2,15 +2,13 @@ import { MentorSharedResourceInbox } from "@/features/projects/components/mentor
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import {
-  AlertTriangle,
-  ArrowUpRight,
   ArrowLeft,
+  ArrowUpRight,
+  Bell,
   BookOpen,
   Clock3,
   Compass,
-  FileText,
   FolderOpen,
-  GraduationCap,
   Inbox,
   ListTodo,
   Menu,
@@ -39,6 +37,7 @@ import { mentorWorkspaceDestination } from "@/features/projects/utils/mentor-wor
 import { canLeaveWorkspace } from "@/features/projects/components/workspace-common";
 
 const EmbeddedAcademicSupport = lazy(() => import("./academic-support").then(m => ({ default: m.AcademicSupportPage })));
+const EmbeddedProjects = lazy(() => import("@/pages/projects/projects-list").then(m => ({ default: m.ProjectsListPage })));
 const EmbeddedNotifications = lazy(() => import("@/pages/notifications").then(m => ({ default: m.NotificationsPage })));
 const EmbeddedMentorProject = lazy(() => import("./mentor-project").then(m => ({ default: m.MentorProjectPage })));
 const EmbeddedReviewCenter = lazy(() => import("@/pages/reviews/review-dashboard").then(m => ({ default: m.ReviewDashboardPage })));
@@ -78,61 +77,63 @@ function MentorProjects({
 
   return (
     <section className="mentor-projects-section">
-      <div className="mentor-projects-toolbar">
-        <div className="mentor-project-search">
-          <Search size={16} aria-hidden="true" className="mentor-project-search-icon" />
-          <Input
-            type="search"
-            maxLength={160}
-            aria-label={t("mentorWorkspace.searchProjects")}
-            placeholder={t("mentorWorkspace.searchProjects")}
-            value={search}
-            onChange={e => onChange(1, e.target.value)}
-          />
-          {search ? (
-            <button
-              type="button"
-              className="mentor-search-clear"
-              aria-label={t("mentorWorkspace.clearProjectSearch")}
-              onClick={() => onChange(1, "")}
-            >
-              <X size={14} aria-hidden="true" />
-            </button>
+      {data.projects.length > 0 || Boolean(search) ? (
+        <div className="mentor-projects-toolbar">
+          <div className="mentor-project-search">
+            <Search size={16} aria-hidden="true" className="mentor-project-search-icon" />
+            <Input
+              type="search"
+              maxLength={160}
+              aria-label={t("mentorWorkspace.searchProjects")}
+              placeholder={t("mentorWorkspace.searchProjects")}
+              value={search}
+              onChange={e => onChange(1, e.target.value)}
+            />
+            {search ? (
+              <button
+                type="button"
+                className="mentor-search-clear"
+                aria-label={t("mentorWorkspace.clearProjectSearch")}
+                onClick={() => onChange(1, "")}
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
+
+          {data.projects.length > 0 ? (
+            <div className="mentor-filter-chips" role="group" aria-label={t("mentorWorkspace.projects")}>
+              <button
+                type="button"
+                className="mentor-filter-chip"
+                data-active={quickFilter === "ALL"}
+                onClick={() => setQuickFilter("ALL")}
+              >
+                <span>{t("mentorWorkspace.filterAllProjects")}</span>
+                <span className="mentor-chip-count">{data.projects.length}</span>
+              </button>
+              <button
+                type="button"
+                className="mentor-filter-chip"
+                data-active={quickFilter === "ATTENTION"}
+                data-tone={attentionCount > 0 ? "attention" : undefined}
+                onClick={() => setQuickFilter("ATTENTION")}
+              >
+                <span>{t("mentorWorkspace.filterNeedsAttention")}</span>
+                <span className="mentor-chip-count">{attentionCount}</span>
+              </button>
+              <button
+                type="button"
+                className="mentor-filter-chip"
+                data-active={quickFilter === "ACTIVE"}
+                onClick={() => setQuickFilter("ACTIVE")}
+              >
+                <span>{t("mentorWorkspace.filterActiveProjects")}</span>
+              </button>
+            </div>
           ) : null}
         </div>
-
-        {data.projects.length > 0 ? (
-          <div className="mentor-filter-chips" role="group" aria-label={t("mentorWorkspace.projects")}>
-            <button
-              type="button"
-              className="mentor-filter-chip"
-              data-active={quickFilter === "ALL"}
-              onClick={() => setQuickFilter("ALL")}
-            >
-              <span>{t("mentorWorkspace.filterAllProjects")}</span>
-              <span className="mentor-chip-count">{data.projects.length}</span>
-            </button>
-            <button
-              type="button"
-              className="mentor-filter-chip"
-              data-active={quickFilter === "ATTENTION"}
-              data-tone={attentionCount > 0 ? "attention" : undefined}
-              onClick={() => setQuickFilter("ATTENTION")}
-            >
-              <span>{t("mentorWorkspace.filterNeedsAttention")}</span>
-              <span className="mentor-chip-count">{attentionCount}</span>
-            </button>
-            <button
-              type="button"
-              className="mentor-filter-chip"
-              data-active={quickFilter === "ACTIVE"}
-              onClick={() => setQuickFilter("ACTIVE")}
-            >
-              <span>{t("mentorWorkspace.filterActiveProjects")}</span>
-            </button>
-          </div>
-        ) : null}
-      </div>
+      ) : null}
 
       {data.projects.length > 0 ? (
         <p className="mentor-projects-count">
@@ -145,9 +146,14 @@ function MentorProjects({
           <FolderOpen size={28} aria-hidden="true" />
           <h3>{t("mentorWorkspace.emptyProjects")}</h3>
           <p>{t("mentorWorkspace.emptyProjectsHint")}</p>
-          <Button asChild variant="outline">
-            <Link to="/mentor-workspace?view=incoming">{t("mentorWorkspace.invitations")}</Link>
-          </Button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/mentor-workspace?view=incoming">{t("mentorWorkspace.invitations")}</Link>
+            </Button>
+            <Button asChild size="sm">
+              <Link to="/mentor-workspace?view=discover">{t("mentorWorkspace.discovery")}</Link>
+            </Button>
+          </div>
         </div>
       ) : !visibleProjects.length ? (
         <div className="mentor-queue-empty">
@@ -164,7 +170,10 @@ function MentorProjects({
               <li key={project.id} className="mentor-project-card" data-pending={hasPending}>
                 <div className="mentor-project-card-main">
                   <div className="mentor-project-card-top">
-                      <Link className="mentor-project-title" to={mentorWorkspaceDestination(`/projects/${encodeURIComponent(project.id)}?tab=tasks`)}>
+                    <Link
+                      className="mentor-project-title"
+                      to={mentorWorkspaceDestination(`/projects/${encodeURIComponent(project.id)}?tab=tasks`)}
+                    >
                       {project.title}
                     </Link>
                     <div className="mentor-project-badges">
@@ -269,18 +278,67 @@ export function MentorWorkspacePage() {
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const profile = useAcademicProfile();
   const [params, setParams] = useSearchParams();
-  const view = (["overview", "work", "projects", "incoming", "outgoing", "active", "history", "discover", "notifications", "project", "reviews", "templates", "template-builder", "review", "review-request", "review-entry", "resources"] as const).find(value => value === params.get("view")) ?? "overview";
+  const view =
+    (
+      [
+        "overview",
+        "work",
+        "projects",
+        "research-projects",
+        "incoming",
+        "outgoing",
+        "active",
+        "history",
+        "discover",
+        "notifications",
+        "project",
+        "reviews",
+        "templates",
+        "template-builder",
+        "review",
+        "review-request",
+        "review-entry",
+        "resources",
+      ] as const
+    ).find(value => value === params.get("view")) ?? "overview";
   const dashboard = ["overview", "work", "projects"].includes(view);
-  const breadcrumbKey = view === "project" ? "projects" : ["incoming", "outgoing", "active", "history"].includes(view) ? "invitations" : view === "discover" ? "discovery" : view;
-  const breadcrumbLabel = ["reviews", "review", "review-request", "review-entry"].includes(view) ? t("Review Center") : ["templates", "template-builder"].includes(view) ? t("Review Templates") : t(`mentorWorkspace.${breadcrumbKey}`);
-  useEffect(() => { if (contentScrollRef.current) contentScrollRef.current.scrollTop = 0; }, [view]);
+  const breadcrumbKey =
+    view === "project"
+      ? "projects"
+      : ["incoming", "outgoing", "active", "history"].includes(view)
+        ? "invitations"
+        : view === "discover"
+          ? "discovery"
+          : view;
+  const breadcrumbLabel =
+    view === "research-projects"
+      ? t(
+        params.get("directory") === "trash"
+          ? "Trash"
+          : params.get("directory") === "invitations"
+            ? "Project invitations"
+            : "mentorWorkspace.personalProjects",
+      )
+      : ["reviews", "review", "review-request", "review-entry"].includes(view)
+        ? t("mentorWorkspace.reviewCenterTitle")
+        : ["templates", "template-builder"].includes(view)
+          ? t("mentorWorkspace.templatesTitle")
+          : t(`mentorWorkspace.${breadcrumbKey}`);
+
+  useEffect(() => {
+    if (contentScrollRef.current) contentScrollRef.current.scrollTop = 0;
+  }, [view]);
+
   const [filters, setFilters] = useState<MentorWorkQuery>({ page: 1, status: "ACTIONABLE", sort: "priority" });
   const [projectSearch, setProjectSearch] = useState("");
   const [projectPage, setProjectPage] = useState(1);
+
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
     const desktop = window.matchMedia("(min-width: 1024px)");
-    const closeOnDesktop = () => { if (desktop.matches) setMobileOpen(false); };
+    const closeOnDesktop = () => {
+      if (desktop.matches) setMobileOpen(false);
+    };
     desktop.addEventListener("change", closeOnDesktop);
     return () => desktop.removeEventListener("change", closeOnDesktop);
   }, []);
@@ -300,10 +358,15 @@ export function MentorWorkspacePage() {
     verified,
   );
 
-  const navigate = async (next: string) => { if (!await canLeaveWorkspace()) return; setParams({ view: next }); setMobileOpen(false); };
+  const navigate = async (next: string) => {
+    if (!(await canLeaveWorkspace())) return;
+    setParams({ view: next });
+    setMobileOpen(false);
+  };
+
   const openWorkWithFilter = (patch: Partial<MentorWorkQuery>) => {
     setFilters({ page: 1, sort: "priority", status: "ACTIONABLE", ...patch });
-    navigate("work");
+    void navigate("work");
   };
 
   if (profile.isLoading) {
@@ -322,17 +385,20 @@ export function MentorWorkspacePage() {
     );
   }
   if (!lecturer) return <Navigate to="/academic-support" replace />;
-  if (!verified) {
+  // A lecturer's own project library does not require mentor verification.
+  if (!verified && view !== "research-projects") {
     return (
       <main className="mentor-global-page" data-no-i18n>
         <h1>{t("mentorWorkspace.title")}</h1>
         <p>{t("mentorWorkspace.verifyRequired")}</p>
-        <Button asChild>
-          <Link to="/settings/verification/lecturer">{t("mentorWorkspace.verify")}</Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link to="/academic-support?view=incoming">{t("mentorWorkspace.invitations")}</Link>
-        </Button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button asChild>
+            <Link to="/settings/verification/lecturer">{t("mentorWorkspace.verify")}</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link to="/academic-support?view=incoming">{t("mentorWorkspace.invitations")}</Link>
+          </Button>
+        </div>
       </main>
     );
   }
@@ -343,233 +409,270 @@ export function MentorWorkspacePage() {
   return (
     <div className={cn("mentor-workspace-shell", collapsed && "mentor-shell-collapsed")} data-no-i18n>
       <div className="mentor-shell-sidebar">
-        <AppSingleSidebar activeWorkspace="mentor" collapsed={collapsed} onToggleCollapse={toggleCollapse}
-          activeMentorView={view} onSelectMentorView={navigate} mentorMetrics={metrics} recentProjects={data?.projects} />
+        <AppSingleSidebar
+          activeWorkspace="mentor"
+          collapsed={collapsed}
+          onToggleCollapse={toggleCollapse}
+          activeMentorView={view}
+          onSelectMentorView={navigate}
+          mentorMetrics={metrics}
+          recentProjects={data?.projects}
+        />
       </div>
+
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent id="mentor-mobile-navigation" className="mentor-mobile-sidebar" closeLabel={t("Close navigation")}
-          onCloseAutoFocus={event => { event.preventDefault(); mobileMenuRef.current?.focus(); }}>
+        <SheetContent
+          id="mentor-mobile-navigation"
+          className="mentor-mobile-sidebar"
+          closeLabel={t("Close navigation")}
+          onCloseAutoFocus={event => {
+            event.preventDefault();
+            mobileMenuRef.current?.focus();
+          }}
+        >
           <SheetTitle className="sr-only">{t("mentorWorkspace.navigation")}</SheetTitle>
           <SheetDescription className="sr-only">{t("mentorWorkspace.subtitle")}</SheetDescription>
-          <div className="mentor-mobile-sidebar-body" onClickCapture={event => { if (event.target instanceof Element && event.target.closest("a")) setMobileOpen(false); }}>
-            <AppSingleSidebar activeWorkspace="mentor" activeMentorView={view} onSelectMentorView={navigate}
-              mentorMetrics={metrics} recentProjects={data?.projects} />
+          <div
+            className="mentor-mobile-sidebar-body"
+            onClickCapture={event => {
+              if (event.target instanceof Element && event.target.closest("a")) setMobileOpen(false);
+            }}
+          >
+            <AppSingleSidebar
+              activeWorkspace="mentor"
+              activeMentorView={view}
+              onSelectMentorView={navigate}
+              mentorMetrics={metrics}
+              recentProjects={data?.projects}
+            />
           </div>
         </SheetContent>
       </Sheet>
-      <div ref={contentScrollRef} className="mentor-shell-main">
+
+      <div ref={contentScrollRef} className={cn("mentor-shell-main", view === "review" && "mentor-shell-main-fixed")}>
         <div className="mentor-shell-toolbar">
           <div className="mentor-toolbar-location">
-            <Button ref={mobileMenuRef} type="button" variant="ghost" size="icon" className="mentor-mobile-menu" onClick={() => setMobileOpen(true)}
-              aria-label={t("Open navigation")} aria-expanded={mobileOpen} aria-controls="mentor-mobile-navigation">
+            <Button
+              ref={mobileMenuRef}
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="mentor-mobile-menu"
+              onClick={() => setMobileOpen(true)}
+              aria-label={t("Open navigation")}
+              aria-expanded={mobileOpen}
+              aria-controls="mentor-mobile-navigation"
+            >
               <Menu size={19} aria-hidden="true" />
             </Button>
-            <WorkspaceBreadcrumb className="mentor-shell-breadcrumb" items={(() => {
-              const root = { label: t("mentorWorkspace.title"), href: "/mentor-workspace" };
-              if (["review", "review-request", "review-entry"].includes(view)) {
-                return [
-                  root,
-                  { label: t("Review Center"), href: "/mentor-workspace?view=reviews" },
-                  { label: view === "review-request" ? "Chi tiết yêu cầu phản biện" : "Không gian phản biện", active: true },
-                ];
-              }
-              if (view === "template-builder") {
-                return [
-                  root,
-                  { label: t("Review Templates"), href: "/mentor-workspace?view=templates" },
-                  { label: params.get("templateId") ? "Chỉnh sửa mẫu" : "Tạo mẫu phản biện", active: true },
-                ];
-              }
-              if (view === "project") {
-                return [
-                  root,
-                  { label: t("mentorWorkspace.projects"), href: "/mentor-workspace?view=projects" },
-                  { label: "Không gian dự án", active: true },
-                ];
-              }
-              return [
-                root,
-                { label: breadcrumbLabel, active: true },
-              ];
-            })()} />
+            <WorkspaceBreadcrumb
+              className="mentor-shell-breadcrumb"
+              items={(() => {
+                const root = { label: t("mentorWorkspace.title"), href: "/mentor-workspace" };
+                if (["review", "review-request", "review-entry"].includes(view)) {
+                  return [
+                    root,
+                    { label: t("mentorWorkspace.reviewCenterTitle"), href: "/mentor-workspace?view=reviews" },
+                    {
+                      label: t(
+                        view === "review-request"
+                          ? "mentorWorkspace.breadcrumb.reviewDetail"
+                          : "mentorWorkspace.breadcrumb.reviewSpace",
+                      ),
+                      active: true,
+                    },
+                  ];
+                }
+                if (view === "template-builder") {
+                  return [
+                    root,
+                    { label: t("mentorWorkspace.templatesTitle"), href: "/mentor-workspace?view=templates" },
+                    {
+                      label: t(
+                        params.get("templateId")
+                          ? "mentorWorkspace.breadcrumb.editTemplate"
+                          : "mentorWorkspace.breadcrumb.newTemplate",
+                      ),
+                      active: true,
+                    },
+                  ];
+                }
+                if (view === "project") {
+                  return [
+                    root,
+                    { label: t("mentorWorkspace.projects"), href: "/mentor-workspace?view=projects" },
+                    { label: t("mentorWorkspace.breadcrumb.projectSpace"), active: true },
+                  ];
+                }
+                return [root, { label: breadcrumbLabel, active: true }];
+              })()}
+            />
           </div>
+
           <div className="mentor-toolbar-actions">
+            <Button
+              asChild
+              variant={view === "notifications" ? "secondary" : "ghost"}
+              size="icon"
+              aria-label={t("mentorWorkspace.notifications")}
+              title={t("mentorWorkspace.notifications")}
+            >
+              <Link to="/mentor-workspace?view=notifications">
+                <Bell size={17} aria-hidden="true" />
+              </Link>
+            </Button>
             <ThemeToggle />
             <LanguageSwitcher />
-            <Button asChild variant="outline" size="sm" className="mentor-main-site-link"><Link to="/home" aria-label={t("mentorWorkspace.mainSite")}><ArrowLeft size={14} aria-hidden="true" /><span>{t("mentorWorkspace.mainSite")}</span></Link></Button>
+            <Button asChild variant="outline" size="sm" className="mentor-main-site-link">
+              <Link to="/home" aria-label={t("mentorWorkspace.mainSite")}>
+                <ArrowLeft size={14} aria-hidden="true" />
+                <span>{t("mentorWorkspace.mainSite")}</span>
+              </Link>
+            </Button>
           </div>
         </div>
-        <main className="mentor-global-page mentor-shell-content">
-          {!dashboard ? <Suspense fallback={<MentorQueueLoading />}>
-            {view === "reviews" ? <div className="mentor-review-content"><EmbeddedReviewCenter /></div>
-              : view === "templates" ? <div className="mentor-review-content"><EmbeddedReviewTemplates /></div>
-              : view === "template-builder" ? <div className="mentor-review-content"><EmbeddedTemplateBuilder key={params.get("templateId") ?? "new"} /></div>
-              : view === "review" ? <div className="mentor-review-content"><EmbeddedReviewWorkspace key={params.get("assignmentId")} /></div>
-              : view === "review-request" ? <div className="mentor-review-content"><EmbeddedReviewRequest key={params.get("requestId")} /></div>
-              : view === "review-entry" ? <div className="mentor-review-content"><EmbeddedReviewEntry key={params.get("submissionId")} /></div>
-              : view === "resources" ? <MentorSharedResourceInbox />
-              : view === "notifications" ? <EmbeddedNotifications embedded />
-              : view === "project" ? <EmbeddedMentorProject embedded />
-              : <EmbeddedAcademicSupport embedded />}
-          </Suspense> : <>
-          {view !== "overview" ? <header className="mentor-global-header">
-        <div className="mentor-header-copy">
-          <span className="mentor-eyebrow-pill">
-            <GraduationCap size={13} aria-hidden="true" />
-            <span>{t("mentorWorkspace.eyebrow")}</span>
-          </span>
-          <h1>{t("mentorWorkspace.title")}</h1>
-          <p>{t("mentorWorkspace.subtitle")}</p>
-        </div>
-        <div className="mentor-header-actions">
-          {metrics && metrics.needsResponse > 0 ? (
-            <Button onClick={() => openWorkWithFilter({ status: "ACTIONABLE" })}>
-              <ListTodo size={16} aria-hidden="true" />
-              {t("mentorWorkspace.metric.needsResponse")} ({metrics.needsResponse})
-            </Button>
-          ) : null}
-          <Button asChild variant="outline">
-            <Link to="/mentor-workspace?view=incoming">
-              <Inbox size={16} aria-hidden="true" />
-              {t("mentorWorkspace.invitations")}
-              {metrics ? ` (${metrics.invitations})` : ""}
-            </Link>
-          </Button>
-        </div>
-      </header> : null}
 
-        <div className="mentor-global-content">
-          {query.isError ? (
-            <div className="mentor-queue-empty" role="alert">
-              <p>{t("mentorWorkspace.loadError")}</p>
-              <Button variant="outline" onClick={() => void query.refetch()}>
-                {t("Try again")}
-              </Button>
-            </div>
-          ) : (
-            <>
-              {metrics && view !== "overview" ? (
-                <div className="mentor-summary" role="region" aria-label={t("mentorWorkspace.overview")}>
-                  <button
-                    type="button"
-                    className="mentor-kpi-card"
-                    data-tone="primary"
-                    data-active={view === "projects"}
-                    onClick={() => navigate("projects")}
-                  >
-                    <span className="mentor-kpi-top">
-                      <FolderOpen size={15} aria-hidden="true" />
-                      <span>{t("mentorWorkspace.metric.projects")}</span>
-                    </span>
-                    <strong className="mentor-kpi-value">{metrics.projects}</strong>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="mentor-kpi-card"
-                    data-tone={metrics.needsResponse > 0 ? "amber" : "neutral"}
-                    data-active={view === "work" && filters.status === "ACTIONABLE" && !filters.kind}
-                    onClick={() => openWorkWithFilter({ status: "ACTIONABLE", sort: "priority" })}
-                  >
-                    <span className="mentor-kpi-top">
-                      <Clock3 size={15} aria-hidden="true" />
-                      <span>{t("mentorWorkspace.metric.needsResponse")}</span>
-                    </span>
-                    <strong className="mentor-kpi-value">{metrics.needsResponse}</strong>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="mentor-kpi-card"
-                    data-tone={metrics.overdue > 0 ? "danger" : "neutral"}
-                    data-active={view === "work" && filters.status === "OVERDUE"}
-                    onClick={() => openWorkWithFilter({ status: "OVERDUE", sort: "deadline" })}
-                  >
-                    <span className="mentor-kpi-top">
-                      <AlertTriangle size={15} aria-hidden="true" />
-                      <span>{t("mentorWorkspace.metric.overdue")}</span>
-                    </span>
-                    <strong className="mentor-kpi-value">{metrics.overdue}</strong>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="mentor-kpi-card"
-                    data-tone={metrics.blocked > 0 ? "danger" : "neutral"}
-                    data-active={view === "work" && filters.status === "BLOCKED"}
-                    onClick={() => openWorkWithFilter({ status: "BLOCKED" })}
-                  >
-                    <span className="mentor-kpi-top">
-                      <ShieldAlert size={15} aria-hidden="true" />
-                      <span>{t("mentorWorkspace.metric.blocked")}</span>
-                    </span>
-                    <strong className="mentor-kpi-value">{metrics.blocked}</strong>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="mentor-kpi-card"
-                    data-tone={metrics.manuscripts > 0 ? "indigo" : "neutral"}
-                    data-active={view === "work" && filters.kind === "REVIEW"}
-                    onClick={() => openWorkWithFilter({ kind: "REVIEW", status: "ACTIONABLE" })}
-                  >
-                    <span className="mentor-kpi-top">
-                      <FileText size={15} aria-hidden="true" />
-                      <span>{t("mentorWorkspace.metric.manuscripts")}</span>
-                    </span>
-                    <strong className="mentor-kpi-value">{metrics.manuscripts}</strong>
-                  </button>
-
-                  <Link
-                    className="mentor-kpi-card"
-                    data-tone={metrics.invitations > 0 ? "emerald" : "neutral"}
-                    to="/mentor-workspace?view=incoming"
-                  >
-                    <span className="mentor-kpi-top">
-                      <Inbox size={15} aria-hidden="true" />
-                      <span>{t("mentorWorkspace.metric.invitations")}</span>
-                    </span>
-                    <strong className="mentor-kpi-value">{metrics.invitations}</strong>
-                  </Link>
-                </div>
-              ) : null}
-
-              {view !== "overview" ? <header className="mentor-content-heading">
-                <h2>{t(`mentorWorkspace.${view}`)}</h2>
-              </header> : null}
-
-              {view === "work" ? (
-                <MentorWorkQueue
-                  data={data}
-                  query={filters}
-                  onChange={setFilters}
-                  loading={query.isLoading}
-                  fetching={query.isFetching}
-                  error={query.error}
-                  retry={() => void query.refetch()}
+        <main className={cn("mentor-global-page mentor-shell-content", view === "review" && "mentor-shell-content-review")}>
+          {!dashboard ? (
+            <Suspense fallback={<MentorQueueLoading />}>
+              {view === "research-projects" ? (
+                <EmbeddedProjects
+                  embedded
+                  invitationsOnly={params.get("directory") === "invitations"}
+                  trashOnly={params.get("directory") === "trash"}
                 />
+              ) : view === "reviews" ? (
+                <div className="mentor-review-content">
+                  <EmbeddedReviewCenter />
+                </div>
+              ) : view === "templates" ? (
+                <div className="mentor-review-content">
+                  <EmbeddedReviewTemplates />
+                </div>
+              ) : view === "template-builder" ? (
+                <div className="mentor-review-content">
+                  <EmbeddedTemplateBuilder key={params.get("templateId") ?? "new"} />
+                </div>
+              ) : view === "review" ? (
+                <div className="mentor-review-content">
+                  <EmbeddedReviewWorkspace key={params.get("assignmentId")} />
+                </div>
+              ) : view === "review-request" ? (
+                <div className="mentor-review-content">
+                  <EmbeddedReviewRequest key={params.get("requestId")} />
+                </div>
+              ) : view === "review-entry" ? (
+                <div className="mentor-review-content">
+                  <EmbeddedReviewEntry key={params.get("submissionId")} />
+                </div>
+              ) : view === "resources" ? (
+                <MentorSharedResourceInbox />
+              ) : view === "notifications" ? (
+                <EmbeddedNotifications embedded />
+              ) : view === "project" ? (
+                <EmbeddedMentorProject embedded />
+              ) : (
+                <EmbeddedAcademicSupport embedded />
+              )}
+            </Suspense>
+          ) : (
+            <div className="mentor-global-content">
+              {query.isError ? (
+                <div className="mentor-queue-empty" role="alert">
+                  <p>{t("mentorWorkspace.loadError")}</p>
+                  <Button variant="outline" onClick={() => void query.refetch()}>
+                    {t("Try again")}
+                  </Button>
+                </div>
+              ) : view === "work" ? (
+                <>
+                  <header className="mentor-page-header">
+                    <div className="min-w-0">
+                      <h1>{t("mentorWorkspace.work")}</h1>
+                      <p>{t("mentorWorkspace.workHint")}</p>
+                    </div>
+                    {metrics && (metrics.overdue > 0 || metrics.blocked > 0) ? (
+                      <div className="mentor-header-pills">
+                        {metrics.overdue > 0 ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="border-destructive/40 text-destructive hover:bg-destructive/10 gap-1.5"
+                            onClick={() => openWorkWithFilter({ status: "OVERDUE", sort: "deadline" })}
+                          >
+                            <Clock3 size={14} aria-hidden="true" />
+                            <span>{t("mentorWorkspace.overdueRequests", { count: metrics.overdue })}</span>
+                          </Button>
+                        ) : null}
+                        {metrics.blocked > 0 ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="border-destructive/40 text-destructive hover:bg-destructive/10 gap-1.5"
+                            onClick={() => openWorkWithFilter({ status: "BLOCKED" })}
+                          >
+                            <ShieldAlert size={14} aria-hidden="true" />
+                            <span>{t("mentorWorkspace.blockedRequests", { count: metrics.blocked })}</span>
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </header>
+                  <MentorWorkQueue
+                    data={data}
+                    query={filters}
+                    onChange={setFilters}
+                    loading={query.isLoading}
+                    fetching={query.isFetching}
+                    error={query.error}
+                    retry={() => void query.refetch()}
+                  />
+                </>
               ) : query.isLoading || !data || (view === "overview" && query.isPlaceholderData) ? (
                 <MentorQueueLoading />
               ) : view === "projects" ? (
-                <MentorProjects
-                  data={data}
-                  page={projectPage}
-                  search={projectSearch}
-                  onChange={(page, search) => {
-                    setProjectPage(page);
-                    setProjectSearch(search);
-                  }}
-                  onOpenProjectWork={projectId =>
-                    openWorkWithFilter({ projectId, status: "ACTIONABLE", sort: "priority" })
-                  }
-                />
+                <>
+                  <header className="mentor-page-header">
+                    <div className="min-w-0">
+                      <h1>{t("mentorWorkspace.projects")}</h1>
+                      <p>{t("mentorWorkspace.projectsPageHint")}</p>
+                    </div>
+                    {metrics && metrics.invitations > 0 ? (
+                      <Button asChild size="sm" variant="outline" className="gap-1.5 shrink-0">
+                        <Link to="/mentor-workspace?view=incoming">
+                          <Inbox size={15} aria-hidden="true" />
+                          <span>
+                            {t("mentorWorkspace.invitations")} ({metrics.invitations})
+                          </span>
+                        </Link>
+                      </Button>
+                    ) : null}
+                  </header>
+                  <MentorProjects
+                    data={data}
+                    page={projectPage}
+                    search={projectSearch}
+                    onChange={(page, search) => {
+                      setProjectPage(page);
+                      setProjectSearch(search);
+                    }}
+                    onOpenProjectWork={projectId =>
+                      openWorkWithFilter({ projectId, status: "ACTIONABLE", sort: "priority" })
+                    }
+                  />
+                </>
               ) : (
-                <MentorOverview data={data} fetching={query.isFetching} refresh={() => void query.refetch()} openWork={openWorkWithFilter} />
+                <MentorOverview
+                  data={data}
+                  fetching={query.isFetching}
+                  refresh={() => void query.refetch()}
+                  openWork={openWorkWithFilter}
+                />
               )}
-            </>
+            </div>
           )}
-        </div>
-          </>}
         </main>
       </div>
     </div>

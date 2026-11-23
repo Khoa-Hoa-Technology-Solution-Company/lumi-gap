@@ -1,7 +1,7 @@
 export const screeningQueueVi: Record<string, string> = {
   "Review queue": "Hàng đợi đánh giá",
   "{{count}} papers available": "{{count}} bài cần người đánh giá",
-  "One review already submitted? Those papers come first. Claims last 24 hours.": "Ưu tiên bài đang chờ phiếu thứ hai. Mỗi lượt nhận được giữ trong 24 giờ.",
+  "Papers awaiting a second review come first. Aim to finish within 24 hours; overdue reviews stay open.": "Ưu tiên bài đang chờ phiếu thứ hai. Mục tiêu hoàn tất trong 24 giờ; quá hạn vẫn có thể tiếp tục.",
   "Claim next paper": "Nhận bài tiếp theo",
   "Claim the next priority paper from the entire queue": "Nhận bài ưu tiên trong toàn bộ hàng đợi",
   "Search title, author, DOI or keywords": "Tìm theo tiêu đề, tác giả, DOI hoặc từ khóa",
@@ -19,7 +19,7 @@ export const screeningQueueVi: Record<string, string> = {
   "No review slots available": "Hiện không có suất đánh giá phù hợp",
   "Your claimed papers and submitted reviews are in My Work.": "Các bài đã nhận và phiếu đã gửi nằm trong Việc của tôi.",
   "Propose a paper": "Đề xuất bài báo mới",
-  "Review claimed. Your slot is held for 24 hours.": "Đã nhận bài. Suất đánh giá được giữ trong 24 giờ.",
+  "Review claimed. Aim to finish within 24 hours; overdue reviews stay open.": "Đã nhận bài. Mục tiêu hoàn tất trong 24 giờ; quá hạn vẫn có thể tiếp tục.",
   "That slot was just taken. The queue has been refreshed; please choose another paper.": "Suất vừa được người khác nhận. Hàng đợi đã cập nhật; bạn hãy chọn bài khác.",
   "You cannot claim this paper. Your access or eligibility may have changed.": "Bạn chưa thể nhận bài này. Quyền truy cập hoặc điều kiện đánh giá có thể đã thay đổi.",
   "Could not claim a review. Please try again.": "Chưa thể nhận bài. Hãy thử lại.",

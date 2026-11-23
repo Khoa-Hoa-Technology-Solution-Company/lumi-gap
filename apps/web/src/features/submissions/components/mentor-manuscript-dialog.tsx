@@ -109,11 +109,25 @@ function MentorManuscriptForm(props: Props) {
       <label>{t("Send to lecturer")} *<select required value={mentorId} onChange={event => { setSelectedMentor(event.target.value); setResponses({}); }}><option value="">{t("Select an accepted mentor")}</option>{mentors.data?.map(item => <option key={item.id} value={item.canonicalId ?? item.id}>{item.fullName}</option>)}</select></label>
       {mentors.isLoading ? <p role="status">{t("Loading mentors…")}</p> : mentors.error ? <p role="alert">{t("Could not load mentors.")} <button type="button" onClick={() => void mentors.refetch()}>{t("Retry")}</button></p> : !mentors.data?.length ? <p>{t("No accepted mentor with valid access is available.")} <Link to={`/projects/${projectId}?tab=support`}>{t("Find an advisor")}</Link></p> : <p className="mentor-send-hint">{t("Only accepted mentors with valid access can receive this version.")}</p>}
       {context.error ? <p role="alert">{t("Could not load review history.")} <button type="button" onClick={() => void context.refetch()}>{t("Retry")}</button></p> : null}
-      {waiting ? <p className="mentor-send-hint">{t("This mentor has an open review. Sending the same version opens that request; a new version waits for their feedback.")} <Link to={`/projects/${projectId}?tab=submissions&submission=${context.data?.submission?.id}`}>{t("Open submitted version")}</Link></p> : null}
+      {waiting ? (
+        <div role="status" className="rounded-lg border border-amber-300/80 bg-amber-50/70 p-3 text-xs leading-5 text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+          <p className="font-medium">
+            Giảng viên này đang đánh giá phiên bản v{context.data?.submission?.currentRevisionNumber ?? 1}.
+          </p>
+          <p className="mt-1">
+            Bản đã gửi sẽ không bị thay đổi hay tự hủy. Vui lòng chờ giảng viên hoàn tất góp ý trước khi gửi phiên bản mới cho giảng viên này, hoặc chọn cố vấn khác nếu nhóm có nhiều giảng viên hướng dẫn.{" "}
+            {context.data?.submission?.id && (
+              <Link className="font-medium underline" to={`/projects/${projectId}?tab=submissions&submission=${context.data.submission.id}`}>
+                {t("Open submitted version")}
+              </Link>
+            )}
+          </p>
+        </div>
+      ) : null}
       {items.length ? <fieldset><legend>{t("Respond to requested changes")}</legend>{items.map(item => <label key={item.id}>{item.description}<textarea required maxLength={10000} rows={2} value={responses[item.id] ?? ""} onChange={event => setResponses(current => ({ ...current, [item.id]: event.target.value }))} /></label>)}</fieldset> : null}
       <label>{t("What would your team like feedback on? (optional)")}<textarea rows={3} maxLength={5000} value={message} onChange={event => setMessage(event.target.value)} /></label>
       <p className="mentor-send-hint">{t("The mentor receives this request in Mentor Workspace and can only read and review the version you share. This is internal feedback, not a conference or journal submission.")}</p>
     </fieldset>{error ? <p role="alert" className="text-destructive">{error}</p> : null}
-    <footer><Button type="button" variant="outline" disabled={busy} onClick={() => props.onOpenChange(false)}>{t("Cancel")}</Button><Button type="submit" disabled={busy || !mentorId || !pdfValid || !blob || context.isFetching || Boolean(context.error || mentors.error) || items.some(item => !responses[item.id]?.trim())}>{t(send.isPending ? "Sending…" : "Send for mentor feedback")}</Button></footer></form>
+    <footer><Button type="button" variant="outline" disabled={busy} onClick={() => props.onOpenChange(false)}>{t("Cancel")}</Button><Button type="submit" disabled={busy || !mentorId || Boolean(waiting) || !pdfValid || !blob || context.isFetching || Boolean(context.error || mentors.error) || items.some(item => !responses[item.id]?.trim())}>{t(send.isPending ? "Sending…" : "Send for mentor feedback")}</Button></footer></form>
   </DialogContent>;
 }

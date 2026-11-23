@@ -114,13 +114,27 @@ export function ProjectDetailPage() {
   return (
     <div className="project-workspace">
       <div className="project-page-width project-detail-page">
-        <div className="flex items-center justify-between gap-4 mb-4">
+        <div className="flex items-center justify-between gap-4 mb-2.5">
           <WorkspaceBreadcrumb
-            items={[
-              { label: t("Research workspace") || "Không gian nghiên cứu", href: "/projects" },
-              { label: project.title, href: `/projects/${project._id}?tab=overview` },
-              { label: t(projectSections.find(s => s.key === activeTab)?.label ?? "Overview"), active: true },
-            ]}
+            items={(() => {
+              const activeSectionLabel = t(projectSections.find(s => s.key === activeTab)?.label ?? "Overview");
+              const selectedSubmission = searchParams.get("submission");
+              const base = [
+                { label: t("Research workspace") || "Không gian nghiên cứu", href: "/projects" },
+                { label: project.title, href: `/projects/${project._id}?tab=overview` },
+              ];
+              if (activeTab === "submissions" && selectedSubmission && selectedSubmission !== "new") {
+                return [
+                  ...base,
+                  { label: activeSectionLabel, href: `/projects/${project._id}?tab=submissions` },
+                  { label: "Chi tiết bản thảo", active: true },
+                ];
+              }
+              return [
+                ...base,
+                { label: activeSectionLabel, active: true },
+              ];
+            })()}
             className="mb-0"
           />
           {canAccessChat && activeTab !== "chat" && (

@@ -27,7 +27,7 @@ export const academicSupportApi = {
   async list(id: string, params: AcademicSearch = {}): Promise<MentorshipCollection> { return (await api.get(`/projects/${encodeURIComponent(id)}/mentorships`, { params })).data.data; },
   async requestDetail(projectId: string, requestId: string): Promise<MentorshipRequest> { return (await api.get(`/projects/${encodeURIComponent(projectId)}/mentorships/${encodeURIComponent(requestId)}`)).data.data; },
   async preferences(): Promise<MentoringPreferences> { return (await api.get("/projects/academic-support/preferences")).data.data; },
-  async savePreferences(input: Partial<Omit<MentoringPreferences, "canEnable">>): Promise<MentoringPreferences> { return (await api.patch("/projects/academic-support/preferences", input)).data.data; },
+  async savePreferences(input: Partial<Pick<MentoringPreferences, "acceptingMentorships" | "emailEnabled" | "locale">>): Promise<MentoringPreferences> { return (await api.patch("/projects/academic-support/preferences", input)).data.data; },
   async searchMentors(params: AcademicSearch): Promise<{ items: AvailableMentor[]; meta: AcademicPageMeta }> { return (await api.get("/projects/academic-support/available-mentors", { params })).data.data; },
   async mentors(id: string, params: AcademicSearch): Promise<{ items: AvailableMentor[]; meta: AcademicPageMeta }> { return (await api.get(`/projects/${encodeURIComponent(id)}/available-mentors`, { params })).data.data; },
   async opportunities(params: AcademicSearch): Promise<{ items: MentorPreview[]; meta: AcademicPageMeta }> { return (await api.get("/projects/academic-support/opportunities", { params })).data.data; },

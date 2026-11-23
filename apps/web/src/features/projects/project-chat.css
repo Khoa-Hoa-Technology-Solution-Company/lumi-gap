@@ -1,10 +1,10 @@
 /* Conversation controls and composer share the workspace's existing theme. */
 .project-conversation { --primary: 224 76% 48%; --primary-foreground: 0 0% 100%; --chat-text-size: 17px; --chat-text-leading: 1.55; --chat-message-width: 68ch; min-width: 0; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--background)); overflow: hidden; }
-.project-chat-channels { display: flex; gap: 8px; padding: 0 16px; border-bottom: 1px solid hsl(var(--border)); }
-.project-mentor-channel { padding: 1rem clamp(.75rem, 2vw, 1.5rem); min-width: 0; }
+.project-chat-channels { display: flex; gap: 8px; padding: 0 16px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--card)); }
+.project-mentor-channel { padding: 0; min-width: 0; }
 .project-mentor-channel .mentor-access-workspace { margin-block: 0; }
 .project-mentor-channel .mentor-collaboration-panel { border: 0; border-radius: 0; box-shadow: none; padding: 0; background: transparent; margin-top: 1.25rem; }
-.project-chat-channels [role="tab"] { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 0 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: hsl(var(--muted-foreground)); font-size: 15px; font-weight: 600; white-space: nowrap; }
+.project-chat-channels [role="tab"] { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: hsl(var(--muted-foreground)); font-size: 13.5px; font-weight: 600; white-space: nowrap; }
 .project-chat-channels [role="tab"][aria-selected="true"] { color: hsl(var(--primary)); border-bottom-color: hsl(var(--primary)); }
 .project-chat-channels [role="tab"]:hover { background: hsl(var(--muted) / .55); color: hsl(var(--foreground)); }
 .project-conversation :focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: -3px; }

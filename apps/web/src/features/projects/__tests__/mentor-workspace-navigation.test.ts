@@ -1,5 +1,23 @@
 import { expect, it } from "vitest";
-import { mentorWorkspaceDestination } from "../utils/mentor-workspace-navigation";
+import { mentorWorkspaceDestination, researchProjectDirectoryDestination } from "../utils/mentor-workspace-navigation";
+
+it.each([
+  ["/projects", ""],
+  ["/projects/?q=education&scope=OWNED&status=ACTIVE&sort=NAME&create=1#list", ""],
+  ["/projects?view=trash", "trash"],
+  ["/projects?view=invitations", "invitations"],
+])("leaves personal project directory links in the research workspace: %s", (path) => {
+  expect(mentorWorkspaceDestination(path)).toBe(path);
+});
+
+it.each([
+  ["view=research-projects", "/projects"],
+  ["view=research-projects&directory=trash", "/projects?view=trash"],
+  ["view=research-projects&directory=invitations", "/projects?view=invitations"],
+  ["view=research-projects&q=study&scope=OWNED&create=1&projectId=wrong", "/projects?q=study&scope=OWNED&create=1"],
+])("moves an old embedded directory link outside without retaining mentor selectors: %s", (query, target) => {
+  expect(researchProjectDirectoryDestination(new URLSearchParams(query), "#list")).toBe(`${target}#list`);
+});
 
 it("keeps mentor project, invitations, resources and notification links in the shell", () => {
   expect(mentorWorkspaceDestination("/notifications")).toBe("/mentor-workspace?view=notifications");

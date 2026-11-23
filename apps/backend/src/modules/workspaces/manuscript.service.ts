@@ -596,16 +596,93 @@ export const manuscriptService = {
   async context(projectId: string, actorId: string, id: string): Promise<ManuscriptContext> {
     return withWorkspace(projectId, actorId, {}, async context => {
       await manuscript(context, id);
-      const [links, plan, gaps, evidence] = await Promise.all([
-        context.tx.projectPaper.findMany({ where: { projectId: context.project.id }, select: { paperId: true }, take: 200 }),
+      const [links, plan, gaps, evidence, activeRounds, bibFiles] = await Promise.all([
+        context.tx.projectPaper.findMany({ where: { projectId: context.project.id }, select: { paperId: true, screeningStatus: true }, take: 200 }),
         context.tx.researchPlan.findUnique({ where: { projectId: context.project.id } }),
         context.tx.researchGap.findMany({ where: { projectId: context.project.id }, select: { id: true, title: true, description: true, assessmentStatus: true, assumptions: true }, take: 100 }),
-        context.tx.projectEvidenceItem.findMany({ where: { projectId: context.project.id }, select: { id: true, claim: true, context: true, reviewState: true, limitations: true }, take: 200 }),
+        context.tx.projectEvidenceItem.findMany({ where: { projectId: context.project.id }, select: { id: true, paperId: true, claim: true, context: true, reviewState: true, origin: true, limitations: true, locator: true }, take: 200 }),
+        typeof context.tx.screeningRound?.findMany === "function"
+          ? context.tx.screeningRound.findMany({ where: { projectId: context.project.id, active: true }, select: { paperId: true, status: true } })
+          : Promise.resolve([]),
+        context.tx.manuscriptFile.findMany({ where: { workspaceId: id, deletedAt: null, kind: "TEXT", path: { endsWith: ".bib" } }, select: { path: true, crdtState: true } }),
       ]);
       const ids = links.map(l => l.paperId);
-      const gapEvidence = await context.tx.gapEvidenceRecord.findMany({ where: { gapId: { in: gaps.map(g => g.id) } }, select: { id: true, gapId: true, evidenceKind: true, excerpt: true, explanation: true, evidenceItemId: true }, take: 200 });
+      const linkByPaper = new Map(links.map(l => [l.paperId, l]));
+      const roundByPaper = new Map(activeRounds.map(r => [r.paperId, r]));
+      const combinedBibText = bibFiles.map(f => f.crdtState ? sourceText(f.crdtState) : "").join("\n");
+      const gapEvidence = await context.tx.gapEvidenceRecord.findMany({ where: { gapId: { in: gaps.map(g => g.id) } }, select: { id: true, gapId: true, paperId: true, evidenceKind: true, excerpt: true, explanation: true, evidenceItemId: true }, take: 200 });
       const [papers, authors] = await Promise.all([context.tx.paper.findMany({ where: { id: { in: ids } }, select: { id: true, title: true, publicationYear: true, doi: true, journalName: true } }), context.tx.paperAuthor.findMany({ where: { paperId: { in: ids } }, orderBy: { position: "asc" } })]);
-      return { references: papers.map(p => { const names = authors.filter(a => a.paperId === p.id).map(a => a.displayName), key = citationKey(p, names); return { id: p.id, title: p.title, authors: names, year: p.publicationYear || null, doi: p.doi, citationKey: key, bibtex: bibtexEntry(p, names, key) }; }), plan: plan ? { title: context.project.title, objective: plan.objectives.join("\n"), questions: plan.questions } : null, gaps: gaps.map(g => ({ id: g.id, title: g.title, description: g.description, status: g.assessmentStatus, limitations: g.assumptions })), evidence: [...evidence.map(e => ({ id: e.id, claim: e.claim, interpretation: e.context, status: e.reviewState, evidenceRole: "EXTRACTED", limitations: e.limitations })), ...gapEvidence.map(e => ({ id: e.id, gapId: e.gapId, claim: e.excerpt ?? e.explanation, interpretation: e.explanation, status: evidence.find(item => item.id === e.evidenceItemId)?.reviewState ?? "UNVERIFIED", evidenceRole: e.evidenceKind, limitations: evidence.find(item => item.id === e.evidenceItemId)?.limitations ?? "" }))] };
+      const paperTitleById = new Map(papers.map(p => [p.id, p.title]));
+      return {
+        references: papers.map(p => {
+          const names = authors.filter(a => a.paperId === p.id).map(a => a.displayName);
+          const marker = `% lumigap-paper:${p.id}`;
+          const markerIdx = combinedBibText.indexOf(marker);
+          const retainedKey = markerIdx >= 0 ? combinedBibText.slice(markerIdx + marker.length).match(/^\s*@[A-Za-z]+\s*\{\s*([A-Za-z0-9_:.-]+)\s*,/)?.[1] : undefined;
+          const key = retainedKey ?? citationKey(p, names);
+          const keyEscaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const inBib = markerIdx >= 0 || new RegExp(`@[A-Za-z]+\\s*\\{\\s*${keyEscaped}\\s*,`).test(combinedBibText);
+          const round = roundByPaper.get(p.id);
+          const link = linkByPaper.get(p.id);
+          const screeningStatus = round?.status ?? (link?.screeningStatus === "BACKGROUND" ? "BACKGROUND" : link?.screeningStatus ?? "NOT_REVIEWED");
+          const pEv = evidence.filter(e => e.paperId === p.id);
+          const verifiedCount = pEv.filter(e => e.reviewState === "ACCEPTED").length;
+          const aiPending = pEv.some(e => e.origin === "AI_SUGGESTED" && e.reviewState === "PENDING");
+          const evidenceStatus: "NOT_STARTED" | "AI_SUGGESTED" | "IN_PROGRESS" | "COMPLETED" =
+            pEv.length === 0 ? "NOT_STARTED" : verifiedCount > 0 ? "COMPLETED" : aiPending ? "AI_SUGGESTED" : "IN_PROGRESS";
+          const metadataWarnings: string[] = [];
+          if (!p.title?.trim()) metadataWarnings.push("Thiếu tiêu đề bài báo");
+          if (!names.length) metadataWarnings.push("Thiếu thông tin tác giả");
+          if (!p.publicationYear || p.publicationYear < 1000) metadataWarnings.push("Thiếu năm xuất bản");
+          return {
+            id: p.id,
+            title: p.title,
+            authors: names,
+            year: p.publicationYear || null,
+            doi: p.doi,
+            journalName: p.journalName ?? null,
+            citationKey: key,
+            bibtex: bibtexEntry(p, names, key),
+            screeningStatus,
+            evidenceStatus,
+            extractionCount: pEv.length,
+            verifiedCount,
+            inBib,
+            metadataWarnings,
+          };
+        }),
+        plan: plan ? { title: context.project.title, objective: plan.objectives.join("\n"), questions: plan.questions } : null,
+        gaps: gaps.map(g => ({ id: g.id, title: g.title, description: g.description, status: g.assessmentStatus, limitations: g.assumptions })),
+        evidence: [
+          ...evidence.map(e => ({
+            id: e.id,
+            paperId: e.paperId,
+            sourceTitle: paperTitleById.get(e.paperId) ?? "",
+            locator: e.locator || undefined,
+            claim: e.claim,
+            interpretation: e.context,
+            status: e.reviewState,
+            evidenceRole: "EXTRACTED",
+            limitations: e.limitations,
+          })),
+          ...gapEvidence.map(e => {
+            const linkedItem = evidence.find(item => item.id === e.evidenceItemId);
+            const resolvedPaperId = e.paperId ?? linkedItem?.paperId;
+            return {
+              id: e.id,
+              gapId: e.gapId,
+              paperId: resolvedPaperId ?? undefined,
+              sourceTitle: resolvedPaperId ? paperTitleById.get(resolvedPaperId) ?? "" : "",
+              locator: linkedItem?.locator || undefined,
+              claim: e.excerpt ?? e.explanation,
+              interpretation: e.explanation,
+              status: linkedItem?.reviewState ?? "UNVERIFIED",
+              evidenceRole: e.evidenceKind,
+              limitations: linkedItem?.limitations ?? "",
+            };
+          }),
+        ],
+      };
     });
   },
   async insertCitation(projectId: string, actorId: string, id: string, paperId: string, requireIncluded = false) {
@@ -616,6 +693,9 @@ export const manuscriptService = {
       if (requireIncluded && paper.dataStatus !== "active") throw AppError.conflict("The AI source is no longer available");
       const authors = await context.tx.paperAuthor.findMany({ where: { paperId }, orderBy: { position: "asc" } });
       let row = await context.tx.manuscriptFile.findFirst({ where: { workspaceId: id, path: "references.bib", deletedAt: null, kind: "TEXT" } });
+      if (!row) {
+        row = await context.tx.manuscriptFile.findFirst({ where: { workspaceId: id, path: { endsWith: ".bib" }, deletedAt: null, kind: "TEXT" }, orderBy: { path: "asc" } });
+      }
       if (!row) {
         await enforceQuota(context.tx, id, 1);
         await pathsAvailable(context.tx, id, [{ path: "references.bib", kind: "TEXT" }]);

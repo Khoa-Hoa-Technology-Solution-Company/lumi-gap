@@ -1,13 +1,12 @@
+import { publishedScreeningRounds } from "./screening-effective.js";
 import type { ScreeningWorkspaceSummary, ScreeningPhase } from "@trend/shared-types";
 import type { WorkspaceContext } from "./workspace-access.js";
 import { evidenceEligibility } from "./evidence-eligibility.js";
 
 /** Project-scoped current acceptance, independent of who submitted a personal ballot. */
 export async function acceptedScreeningPapers(c: WorkspaceContext): Promise<NonNullable<ScreeningWorkspaceSummary["acceptedPapers"]>> {
-  const rounds = await c.tx.screeningRound.findMany({
-    where: { projectId: c.project.id, active: true, status: "INCLUDED", legacyNeedsAudit: false },
-    select: { id: true, paperId: true, phase: true },
-  });
+  const rounds = [...(await publishedScreeningRounds(c.tx, c.project.id)).values()]
+    .filter(r => r.status === "INCLUDED" && !r.legacyNeedsAudit);
   if (!rounds.length) return [];
   const eligible = await evidenceEligibility(c.tx, c.project.id, rounds.map(r => r.paperId));
   const accepted = rounds.filter(r => eligible.get(r.paperId)?.eligible);

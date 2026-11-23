@@ -62,9 +62,16 @@ It forwards only fixed compiler paths and preserves the internal authentication
 header. The launcher checks both compiler health endpoints before starting the API.
 Optional services require existing local images; the launcher never builds them.
 `worker:sync`, bulk ingestion, and the full worker suite do not start by default.
-Backend and web watch their source automatically. Shared types use the existing
-compiled package by default; rebuild it with the command below after changing
-shared source, or start with `-WatchSharedTypes` while working on that package.
+Backend and web watch their source automatically. The launcher rebuilds shared
+types before every Start, so newly pulled exports cannot leave the API using an
+old compiled package. Use `-WatchSharedTypes` when editing that package during a
+running session. Build diagnostics are saved as `shared-types-build.*.log` in
+`.cache/local-light/`. A failed build stops startup and points to those logs.
+
+Start checks both tracked API/Web processes and their HTTP readiness. If an
+earlier attempt left only a backend watcher running, Start restarts the tracked
+processes instead of reporting that the whole application is already running.
+Status reports HTTP readiness separately from process liveness.
 
 Avoid `pnpm dev`, `pnpm dev:local`, or full `docker compose up` while this mode
 is running: those commands can start the full stack or duplicate workers.
@@ -120,3 +127,20 @@ make migration status pass.
   native uploads were retained; no migrations or seeds were applied.
 - Optional AI/TeX startup configurations were validated with Compose, but their
   workloads were not run in the default lightweight mode.
+
+## Startup repair verified (2026-11-22)
+
+- A stale shared-types build lacked `TREND_SIZE_BANDS`, stopping the API before
+  Vite was launched. Start now builds the package and checks HTTP readiness.
+- Recovered an incomplete startup with only the backend watcher recorded. A
+  repeat Start then preserved all process IDs and created no duplicate workers.
+- Applied only the existing `20261113090000_paper_ingest_source` migration through
+  Prisma's targeted local deployment mechanism, separately from the launcher.
+  This added the missing ingestion columns and ran its checked-in provenance
+  backfill. Prisma recorded that migration normally; older history was not edited.
+  All 1,357 Paper records remained. Other pending migrations were not applied.
+- API `/health` and `/ready`, proxied Paper listing and `/home/overview`, and web
+  `/` returned 200; unauthenticated `/auth/me` returned the expected 401.
+- A fresh browser rendered `/home` with featured papers, no JavaScript exceptions
+  and no HTTP 5xx responses. Only PostgreSQL and Redis containers were running.
+- No full application build or production deployment was performed for this repair.

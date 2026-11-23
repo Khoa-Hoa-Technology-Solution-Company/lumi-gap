@@ -31,6 +31,51 @@
   outline-offset: -2px;
 }
 
+.miv-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 0.3);
+}
+
+.miv-meta-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+}
+
+.miv-meta-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border) / 0.8);
+  color: hsl(var(--primary));
+}
+
+.miv-meta-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.3;
+  margin-bottom: 1px;
+}
+
+.miv-topic-card {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--primary) / 0.22);
+  background: linear-gradient(155deg, hsl(var(--primary) / 0.05) 0%, hsl(var(--card)) 48%);
+}
+
 .mentor-invitation-viewer-footer {
   display: flex;
   flex: 0 0 auto;

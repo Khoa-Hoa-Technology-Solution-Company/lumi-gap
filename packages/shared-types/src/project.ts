@@ -465,6 +465,7 @@ export interface AvailableMentor extends MentorshipPerson {
 }
 export interface MentoringPreferences {
   acceptingMentorships: boolean; canEnable: boolean; emailEnabled: boolean; locale: "en" | "vi";
+  emailDelivery?: { status: "READY" | "NOT_CONFIGURED" | "TEST_ADDRESS"; recipient: string };
 }
 export interface RequestMentorRelationshipRequest {
   mentorUserId: string;

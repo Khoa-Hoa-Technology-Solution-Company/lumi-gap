@@ -1,11 +1,10 @@
 import type { ScreeningRound, ScreeningAssignment } from "../../generated/prisma/client.js";
 import { AppError } from "../../common/exceptions/app-error.js";
-import { jsonSnapshot, type WorkspaceContext } from "./workspace-access.js";
+import { type WorkspaceContext } from "./workspace-access.js";
 import { screeningPeople } from "./screening-assignments.js";
 
 export const CLAIM_HOURS = 24; // Existing project policy, including full text. No per-user limit.
-export const occupiedScreeningSlot = (a: Pick<ScreeningAssignment, "submittedAt" | "dueAt" | "active">, now = new Date()) =>
-  a.active && Boolean(a.submittedAt || !a.dueAt || a.dueAt > now);
+export const occupiedScreeningSlot = (a: Pick<ScreeningAssignment, "submittedAt" | "dueAt" | "active">, _now = new Date()) => a.active;
 
 export function assertScreeningCapacity(round: Pick<ScreeningRound, "legacyNeedsAudit" | "settings">) {
   const s = round.settings as { reviewMode?: string; requiredReviewers?: number };
@@ -16,15 +15,8 @@ export function assertScreeningCapacity(round: Pick<ScreeningRound, "legacyNeeds
 }
 
 /** Called under the project write lock. Reads use the same server deadline predicate. */
-export async function expireScreeningClaims(c: WorkspaceContext) {
-  const rows = await c.tx.screeningAssignment.findMany({ where: {
-    projectId: c.project.id, active: true, submittedAt: null, dueAt: { lte: new Date() },
-  } });
-  for (const a of rows) {
-    await c.tx.screeningAssignment.update({ where: { id: a.id }, data: { active: false } });
-    await c.tx.screeningAudit.create({ data: { projectId: c.project.id, roundId: a.roundId,
-      actorId: c.actorId, type: "CLAIM_EXPIRED", details: jsonSnapshot({ assignmentId: a.id, reviewerId: a.reviewerId, revision: a.revision, dueAt: a.dueAt }) } });
-  }
+export async function expireScreeningClaims(_c: WorkspaceContext) {
+  // Due dates mark overdue work. Explicit release/reassignment frees a reviewer slot.
 }
 
 export function invalidScreeningMetadata(paper: { title: string; journalName: string | null; paperKind: string | null }) {

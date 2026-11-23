@@ -1,4 +1,4 @@
-import type { ScreeningLiveEvent, ScreeningAutomaticTask, ScreeningClaimResult, ScreeningClaimNextResult } from "@trend/shared-types";
+import type { ScreeningLiveEvent, ScreeningAutomaticTask, ScreeningClaimResult, ScreeningClaimNextResult, ScreeningRescreenReasonCategory, ScreeningPhase } from "@trend/shared-types";
 import type { ScreeningWorkspaceSummary, ScreeningAdjudicationView, ProjectAnalysisSet, ScreeningBoard, ScreeningRoundView, ScreeningSettings, ScreeningMetrics, ScreeningAiView, ScreeningAuditView, WorkspacePage, WorkspacePerson } from "@trend/shared-types";
 import { api, API_BASE_URL } from "@/services/api-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -7,7 +7,7 @@ async function get<T>(id: string, suffix: string, params?: Record<string, string
 async function write(id: string, suffix: string, data: unknown, method = "post") { return (await api.request<{ data: unknown }>({ url: path(id, suffix), method, data })).data.data; }
 export const screeningApi = {
   extendDiscussion: (id: string, roundId: string, data: { expectedVersion: number; hours?: number; reason: string; clientKey?: string }) => write(id, `rounds/${roundId}/discussion/extend`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
-  reopenUnresolved: (id: string, roundId: string, data: { expectedVersion: number; reason: string; clientKey?: string }) => write(id, `rounds/${roundId}/reopen-unresolved`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
+  reopenUnresolved: (id: string, roundId: string, data: { expectedVersion: number; reasonCategory?: ScreeningRescreenReasonCategory; reason: string; targetPhase?: ScreeningPhase; clientKey?: string }) => write(id, `rounds/${roundId}/reopen-unresolved`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
   closeUnresolved: (id: string, roundId: string, data: { expectedVersion: number; reason: string; note?: string; clientKey?: string }) => write(id, `rounds/${roundId}/close-unresolved`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
   requestMoreInfo: (id: string, roundId: string, data: { expectedVersion: number; reason: string; clientKey?: string }) => write(id, `rounds/${roundId}/request-more-info`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
   automaticTasks: (id: string, params?: Record<string, string | number>) => get<ScreeningAutomaticTask[]>(id, "automatic-tasks", params),

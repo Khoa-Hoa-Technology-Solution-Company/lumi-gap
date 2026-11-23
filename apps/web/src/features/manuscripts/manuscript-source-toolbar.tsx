@@ -1,4 +1,4 @@
-import { Bold, Italic, Heading1, List, Sigma, Search, Undo2, Redo2, MessageSquarePlus, Table2, FunctionSquare } from "lucide-react";
+import { Bold, Italic, Heading1, List, Sigma, Search, Undo2, Redo2, MessageSquarePlus, Table2, FunctionSquare, BookMarked } from "lucide-react";
 import { openSearchPanel } from "@codemirror/search";
 import type { EditorView } from "@codemirror/view";
 import { useI18n } from "@/i18n";
@@ -11,8 +11,8 @@ const tools = [
   { action: "list", label: "Insert list", Icon: List },
   { action: "math", label: "Insert equation", Icon: Sigma },
 ] as const;
-export function ManuscriptSourceToolbar({ getView, canEdit, canSearch, canComment, onComment, onStructure, canStructure = canEdit, filename }: {
-  getView: () => EditorView | null; canEdit: boolean; canSearch: boolean; canComment: boolean; onComment: () => void; canStructure?: boolean; onStructure?: (kind: "table" | "equation") => void; filename: string;
+export function ManuscriptSourceToolbar({ getView, canEdit, canSearch, canComment, onComment, onStructure, canStructure = canEdit, canCite = canEdit, onOpenCitationPicker, filename }: {
+  getView: () => EditorView | null; canEdit: boolean; canSearch: boolean; canComment: boolean; onComment: () => void; canStructure?: boolean; onStructure?: (kind: "table" | "equation") => void; canCite?: boolean; onOpenCitationPicker?: () => void; filename: string;
 }) {
   const { t } = useI18n();
   const language = sourceLanguage(filename), latexFile = language === "LaTeX";
@@ -23,6 +23,7 @@ export function ManuscriptSourceToolbar({ getView, canEdit, canSearch, canCommen
     <span className="writing-tool-divider" />
     {tools.map(({ action, label, Icon }) => <button key={action} title={t(label)} aria-label={t(label)} disabled={!canEdit || !latexFile} onClick={() => edit(action)}><Icon /></button>)}
     {onStructure ? <><button title={t("Table editor")} aria-label={t("Table editor")} disabled={!canStructure || !latexFile} onClick={() => onStructure("table")}><Table2 /></button><button title={t("Equation editor")} aria-label={t("Equation editor")} disabled={!canStructure || !latexFile} onClick={() => onStructure("equation")}><FunctionSquare /></button></> : null}
+    {onOpenCitationPicker ? <button type="button" className="writing-cite-toolbar-btn" title={t("Open citation picker")} aria-label={t("Open citation picker")} disabled={!canCite || !latexFile} onClick={onOpenCitationPicker}><BookMarked /><span>{t("Chèn trích dẫn")}</span></button> : null}
     <span className="writing-tool-divider" />
     <button title={t("Comment on selection")} aria-label={t("Comment on selection")} disabled={!canComment} onClick={onComment}><MessageSquarePlus /></button>
     <span className="writing-source-mode">{t(language)}</span>

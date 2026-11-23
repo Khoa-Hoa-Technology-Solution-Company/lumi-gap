@@ -19,16 +19,19 @@ export function safeEvidenceLink(value?: string | null): string | undefined {
 export function buildLecturerMatch(requirements: Requirements, application: Pick<MentorshipApplicationInput, "areas" | "methodologies" | "capabilities">, profile?: PublicAcademicProfile, linked: Publication[] = [], verifiedLecturer = false): LecturerMatchEvidence {
   const topics: LecturerMatchEvidence["topics"] = [];
   const requestedTopics = [...new Set(requirements.topics.filter(Boolean))];
+  const appAreas = application.areas ?? [];
+  const appMethodologies = application.methodologies ?? [];
+  const appCapabilities = application.capabilities ?? [];
   for (const term of requestedTopics) {
     if ([...profile?.expertiseAreas ?? [], ...profile?.researchInterests ?? [], ...profile?.researchSpecializations ?? [], ...profile?.skills ?? [], ...profile?.researchKeywords ?? [], ...profile?.researchClassification?.nodes.map(node => node.name) ?? [], ...profile?.researchClassification?.keywords.map(keyword => keyword.name) ?? [], ...profile?.researchClassification?.skillIds.map(id => TECHNICAL_SKILLS.find(skill => skill.id === id)?.label ?? id) ?? []].some(value => same(value, term))) topics.push({ term, source: "PROFILE_DECLARATION" });
-    if (application.areas.some(value => same(value, term))) topics.push({ term, source: "APPLICATION_DECLARATION" });
+    if (appAreas.some(value => same(value, term))) topics.push({ term, source: "APPLICATION_DECLARATION" });
   }
   // Featuring a paper is a claim of attribution, even if its metadata is canonical.
   const featured: Publication[] = (profile?.featuredWorks ?? []).filter(work => work.visibility === "PUBLIC" && (work.kind ?? "PAPER") === "PAPER" && work.title).map(work => ({ title: work.title!, year: work.year, source: work.source, href: safeEvidenceLink(work.href), matchedTerms: requestedTopics.filter(term => containsEvidenceTerm(work.title!, term)), attribution: "SELF_DECLARED" }));
   const publications = [...linked, ...featured].filter(work => work.matchedTerms.length).filter((work, index, all) => all.findIndex(other => same(other.title, work.title)) === index).slice(0, 8);
   for (const term of requestedTopics.filter(term => publications.some(work => work.matchedTerms.includes(term)))) topics.push({ term, source: "PUBLICATION_TITLE" });
-  const methodologies = requirements.methodologies.filter(term => application.methodologies.some(value => same(value, term)));
-  const mentoringNeeds = application.capabilities.filter(term => containsEvidenceTerm(requirements.needs, term));
+  const methodologies = requirements.methodologies.filter(term => appMethodologies.some(value => same(value, term)));
+  const mentoringNeeds = appCapabilities.filter(term => containsEvidenceTerm(requirements.needs, term));
   const identities = (profile?.academicIdentityLinks ?? []).flatMap(link => {
     const href = safeEvidenceLink(link.profileUrl); return href ? [{ provider: String(link.provider), href, verified: link.verificationStatus === "PROVIDER_CONNECTED" && ["OAUTH", "SYSTEM", "ADMIN"].includes(link.connectionMethod) }] : [];
   });

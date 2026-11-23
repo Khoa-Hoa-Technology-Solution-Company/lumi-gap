@@ -103,10 +103,35 @@ export function MentorAccessWorkspace({
   const entry = selected ? policies.find(p => p.policy.id === selected) : (visibleManagePolicies[0] ?? policies[0]);
 
   return <section className={`mentor-access-workspace ${mode === "conversation" ? "mentor-conversation-workspace" : ""} ${embedded ? "is-embedded" : ""}`} data-no-i18n>
-    {!embedded && (
+    {!embedded && mode !== "conversation" && (
       <header>
-        <h2>{mode === "conversation" ? "Nhóm và cố vấn" : mentorView ? data.title : "Tài liệu đã chia sẻ"}</h2>
-        {mode !== "conversation" && <p>{mentorView ? "Bạn chỉ xem được nội dung nhóm đã duyệt. Mã nguồn và cuộc trò chuyện nội bộ không được chia sẻ." : "Theo dõi bài báo đã chia sẻ và các phiên bản bản thảo đã gửi góp ý."}</p>}
+        <h2>{mentorView ? data.title : "Tài liệu đã chia sẻ"}</h2>
+        <p>{mentorView ? "Bạn chỉ xem được nội dung nhóm đã duyệt. Mã nguồn và cuộc trò chuyện nội bộ không được chia sẻ." : "Theo dõi bài báo đã chia sẻ và các phiên bản bản thảo đã gửi góp ý."}</p>
+      </header>
+    )}
+    {mode === "conversation" && (
+      <header className="mentor-chat-header">
+        <div className="mentor-chat-header-title">
+          <span className="mentor-chat-header-icon" aria-hidden="true">
+            <MessagesSquare size={16} />
+          </span>
+          <div className="min-w-0">
+            <h2>Nhóm và cố vấn</h2>
+            {entry && <p className="mentor-chat-header-sub">{mentorView ? "Trao đổi trực tiếp cùng các thành viên nhóm nghiên cứu" : "Trao đổi trực tiếp với cố vấn hướng dẫn"}</p>}
+          </div>
+        </div>
+        <div className="mentor-chat-header-controls">
+          {((!entry || policies.length > 1) && policies.length > 0) && (
+            <label className="mentor-chat-picker">
+              <span className="sr-only">Cuộc trò chuyện</span>
+              <select aria-label="Chọn cố vấn để trao đổi" value={entry?.policy.id ?? ""} onChange={async e => { const next = e.target.value; if (await canLeaveWorkspace()) setSelected(next); }}>
+                {!entry && <option value="" disabled>Chọn cố vấn trên trang này</option>}
+                {policies.map(p => <option key={p.policy.id} value={p.policy.id}>{`${p.mentorName}${p.policy.effective ? "" : " · Chỉ đọc"}`}</option>)}
+              </select>
+            </label>
+          )}
+          {entry && <MentorChatParticipants entry={entry} basics={data.basics} />}
+        </div>
       </header>
     )}
     <AccessError error={query.error} />
@@ -116,7 +141,7 @@ export function MentorAccessWorkspace({
         <MentorAdjudicationTasks projectId={projectId} />
       </div>
     )}
-    {!policies.length ? <p className="text-xs text-muted-foreground">{mode === "conversation" ? "Chưa có cố vấn đã nhận hướng dẫn trên trang này. Khi lời mời được chấp nhận, nhóm có thể bắt đầu trao đổi tại đây." : "Chưa có quyền cố vấn. Chủ dự án có thể gửi lời mời trong mục Tìm cố vấn."}</p> : <>
+    {!policies.length ? <p className="p-4 text-xs text-muted-foreground">{mode === "conversation" ? "Chưa có cố vấn đã nhận hướng dẫn trên trang này. Khi lời mời được chấp nhận, nhóm có thể bắt đầu trao đổi tại đây." : "Chưa có quyền cố vấn. Chủ dự án có thể gửi lời mời trong mục Tìm cố vấn."}</p> : <>
       {mode === "manage" ? (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Chọn cố vấn để quản lý quyền">
@@ -159,17 +184,16 @@ export function MentorAccessWorkspace({
             </button>
           )}
         </div>
-      ) : (
-        ((!entry || policies.length > 1) || mode !== "conversation") && <label>{mode === "conversation" ? "Cuộc trò chuyện" : "Cố vấn và lời mời"}<select aria-label={mode === "conversation" ? "Chọn cố vấn để trao đổi" : "Chọn cố vấn để quản lý quyền"} value={entry?.policy.id ?? ""} onChange={async e => { const next = e.target.value; if (await canLeaveWorkspace()) setSelected(next); }}>
+      ) : mode !== "conversation" ? (
+        <label>Cố vấn và lời mời<select aria-label="Chọn cố vấn để quản lý quyền" value={entry?.policy.id ?? ""} onChange={async e => { const next = e.target.value; if (await canLeaveWorkspace()) setSelected(next); }}>
           {!entry && <option value="" disabled>Chọn cố vấn trên trang này</option>}
-          {policies.map(p => <option key={p.policy.id} value={p.policy.id}>{mode === "conversation" ? `${p.mentorName}${p.policy.effective ? "" : " · Chỉ đọc"}` : `${p.mentorName} · ${statusLabels[p.invitationState]} · ${policyStatusText(p)}`}</option>)}
+          {policies.map(p => <option key={p.policy.id} value={p.policy.id}>{`${p.mentorName} · ${statusLabels[p.invitationState]} · ${policyStatusText(p)}`}</option>)}
         </select></label>
-      )}
-      {mode === "conversation" && entry && <MentorChatParticipants entry={entry} basics={data.basics} />}
+      ) : null}
       {entry && (mode === "conversation" ? <MentorConversationPanel key={entry.policy.id} projectId={projectId} entry={entry} readOnly={data.readOnly || !entry.policy.effective} actorId={data.viewerId} /> : <AccessEntry key={entry.policy.id} projectId={projectId} data={data} entry={entry} actorId={data.viewerId} showCollaboration={mode === "all"} page={page} embedded={embedded} />)}
     </>}
-    {selected && !entry && <p role="status">Cuộc trao đổi này không còn ở trang hiện tại hoặc bạn không còn quyền truy cập. Hãy chọn cố vấn hoặc chuyển trang.</p>}
-    {!mentorView && mode === "conversation" && <Button asChild variant="link"><Link to={`/projects/${encodeURIComponent(projectId)}?tab=support`}>Tìm cố vấn và quản lý lời mời</Link></Button>}
+    {selected && !entry && <p role="status" className="px-4 py-3 text-sm text-muted-foreground">Cuộc trao đổi này không còn ở trang hiện tại hoặc bạn không còn quyền truy cập. Hãy chọn cố vấn hoặc chuyển trang.</p>}
+    {!mentorView && mode === "conversation" && <div className="border-t border-border/60 px-4 py-2"><Button asChild variant="link" className="h-auto p-0 text-xs"><Link to={`/projects/${encodeURIComponent(projectId)}?tab=support`}>Tìm cố vấn và quản lý lời mời</Link></Button></div>}
     {data.total > data.pageSize && <PageButtons page={page} hasNext={data.hasNext} onPage={next => { void (async () => { if (await canLeaveWorkspace()) { setSelected(""); setPage(next); } })(); }} />}
   </section>;
 }
@@ -180,8 +204,8 @@ function MentorChatParticipants({ entry, basics }: { entry: Entry; basics: Works
     { id: entry.mentorId, name: entry.mentorName, role: "Cố vấn" },
     ...(basics?.team.filter(person => person.id !== entry.mentorId).map(person => ({ ...person, role: person.role === "OWNER" ? "Chủ dự án" : "Thành viên" })) ?? []),
   ].map(person => [person.id, person])).values()];
-  return <Dialog><DialogTrigger asChild><Button type="button" variant="ghost" className="h-auto min-h-10 max-w-full justify-start gap-2 px-2 py-2 text-left text-sm text-muted-foreground">
-    <Users size={16} className="shrink-0" aria-hidden="true" /><span className="min-w-0 whitespace-normal break-words">{entry.mentorName} · {basics ? `${people.length} người tham gia` : "Cố vấn và nhóm dự án"}</span>
+  return <Dialog><DialogTrigger asChild><Button type="button" variant="outline" size="sm" className="mentor-chat-participants-btn h-8 gap-1.5 rounded-full px-3 text-xs font-medium text-muted-foreground hover:text-foreground">
+    <Users size={14} className="shrink-0" aria-hidden="true" /><span className="min-w-0 truncate max-w-[260px]">{entry.mentorName} · {basics ? `${people.length} người tham gia` : "Cố vấn và nhóm dự án"}</span>
   </Button></DialogTrigger><DialogContent className="sm:max-w-md" closeLabel="Đóng danh sách người tham gia" data-no-i18n>
     <DialogTitle className="pr-8">Người tham gia{basics ? ` (${people.length})` : ""}</DialogTitle>
     <DialogDescription>Cuộc trò chuyện giữa cố vấn và các thành viên dự án.</DialogDescription>

@@ -1,9 +1,10 @@
 import type { ScreeningChoice, ScreeningConsensusPolicy, ScreeningMetrics, ScreeningState, ScreeningSettings, ScreeningOutcome } from "@trend/shared-types";
 
-/** Current two-reviewer workflows accept a paper in one round. Older protocols retain their frozen stage rules. */
+/** Two-stage protocols always require Full-text after Title/Abstract; single-stage accepts in one round. */
 export function automaticFullTextStage(settings: Pick<ScreeningSettings, "workflowVersion" | "reviewMode" | "stages" | "screeningMode">) {
+  if (settings.screeningMode === "TWO_STAGE") return true;
   if ((settings.workflowVersion ?? 0) >= 12 && settings.reviewMode === "INDEPENDENT") return false;
-  if (settings.screeningMode) return settings.screeningMode === "TWO_STAGE";
+  if (settings.screeningMode) return false;
   return (settings.workflowVersion ?? 0) < 5 && settings.reviewMode !== "COLLABORATIVE" && Boolean(settings.stages?.includes("FULL_TEXT"));
 }
 

@@ -102,9 +102,11 @@ it("keeps completed projects readable and disables new collaboration", async () 
 it("paginates mentor feedback independently", async () => {
   mocks.feedback.mockResolvedValue({ ...emptyPage, total: 21, hasNext: true }); await mount(); await click("Trang sau"); expect(mocks.feedback).toHaveBeenLastCalledWith("project", "access", 2);
 });
-it("retains a stale permission draft until the owner explicitly reloads", async () => {
-  mocks.actorId = "owner"; const view = { ...structuredClone(base), viewerId: "owner", canManage: true }; mocks.workspace.mockResolvedValue(view); await mount(); await click("Cấu hình quyền và chia sẻ"); await fill("Lý do thay đổi", "Cập nhật theo trao đổi");
-  const newer = structuredClone(view); newer.policies[0]!.policy.version++; mocks.workspace.mockResolvedValue(newer);
-  await act(async () => { await client.invalidateQueries({ queryKey: ["mentor-access", "owner", "project", "workspace"] }); }); await tick();
-  expect(button("Lưu quyền và nội dung đã duyệt").disabled).toBe(true); expect(document.body.textContent).toContain("Bản nháp vẫn được giữ"); expect(mocks.configure).not.toHaveBeenCalled();
+it("keeps the owner resource view simple and removes the technical permission editor", async () => {
+  mocks.actorId = "owner"; mocks.workspace.mockResolvedValue({ ...structuredClone(base), viewerId: "owner", canManage: true }); await mount();
+  expect(host.textContent).toContain("Tài liệu đã chia sẻ");
+  expect(button("Cấu hình quyền và chia sẻ")).toBeUndefined();
+  expect(host.textContent).not.toContain("Observer");
+  expect(host.textContent).not.toContain("Lý do thay đổi");
+  expect(mocks.configure).not.toHaveBeenCalled();
 });

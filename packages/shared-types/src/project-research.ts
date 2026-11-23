@@ -3,7 +3,11 @@ import type { ProjectScreeningStatus } from "./project.js";
 import type { PaperAiAnalysis } from "./paper.js";
 import type { PaperKnowledge } from "./knowledge.js";
 import type { FeasibilitySummary } from "./project-literature.js";
-export interface ProjectPaperAnalysis { paperId: string; title: string; screeningStatus: ProjectScreeningStatus; analysis: PaperAiAnalysis | null; knowledge: PaperKnowledge }
+export interface ProjectPaperAnalysis {
+  paperId: string; title: string; screeningStatus: ProjectScreeningStatus; analysis: PaperAiAnalysis | null; knowledge: PaperKnowledge;
+  authors?: string[]; publicationYear?: number | null; journalName?: string | null; doi?: string | null;
+  abstractText?: string | null; paperLink?: string | null; fullTextAvailable?: boolean;
+}
 
 export type ScreeningPhase = "TITLE_ABSTRACT" | "FULL_TEXT";
 export type EvidenceReviewState = "PENDING" | "ACCEPTED" | "REJECTED";
@@ -32,6 +36,7 @@ export interface SaveProjectEvidence extends EvidenceContent, EvidenceWorkflowIn
 export type EvidenceOverviewEntry = Pick<ProjectEvidence, "id" | "version" | "origin" | "reviewState" | "claim" | "methodology" | "results" | "limitations" | "themes" | "relatedQuestions" | "verificationStatus" | "sourceScope">;
 export interface ResearchSynthesisPaper {
   paperId: string; title: string; doi: string | null; publicationYear: number | null;
+  authors?: string[]; journalName?: string | null; paperLink?: string | null; fullTextAvailable?: boolean;
   eligible: boolean; screeningStatus: string; eligibilityReason: string | null;
   entries: EvidenceOverviewEntry[]; extractionCount: number; verifiedCount: number;
   questions: Array<{ id: string; text: string }>; themes: string[];

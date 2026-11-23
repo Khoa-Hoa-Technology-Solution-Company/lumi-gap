@@ -52,7 +52,10 @@ it('reuses real invitation queries and tabs within the mentor workspace',async()
   expect(host.querySelector('.mentor-embedded-support')).not.toBeNull();
   expect(host.textContent).toContain('Please guide our research');
   expect(mocks.mine).toHaveBeenCalledWith(expect.objectContaining({view:'incoming'}));
-  await click('Find teams to mentor');
+  expect(host.textContent).not.toContain('Teams you mentor');
+  await act(async()=>root.unmount());
+  root=createRoot(host);
+  await mount('/mentor-workspace?view=discover',true);
   expect(host.querySelector('[data-testid="current-location"]')?.textContent).toBe('/mentor-workspace');
   expect(mocks.opportunities).toHaveBeenCalled();
 });
@@ -101,7 +104,7 @@ it('returns to the last available mentor page when the directory shrinks after r
   expect(host.querySelector('[aria-label="Mentor pagination"]')).toBeNull();
 });
 it('shows both lecturer flows prominently and hides the student mentor finder',async()=>{await mount();expect(button('Find teams to mentor')).toBeDefined();expect(button('Incoming Requests').textContent).toContain('1');expect(host.querySelector('#mentorship-project')).toBeNull();expect(host.querySelector('h3')?.textContent).toBe(project.title);expect(mocks.projects).not.toHaveBeenCalled();});
-it('loads discover deep links with team needs and an offer action',async()=>{await mount('/academic-support?view=discover');expect(host.textContent).toContain(project.mentoringNeeds);expect(button('Express mentoring interest')).toBeDefined();expect(mocks.opportunities).toHaveBeenCalledWith({q:'',area:undefined,page:1});expect(button('Find teams to mentor').getAttribute('aria-current')).toBe('page');});
+it('loads discover deep links with team needs and an offer action',async()=>{await mount('/academic-support?view=discover');expect(host.textContent).toContain(project.mentoringNeeds);expect(button('Offer to support team')).toBeDefined();expect(mocks.opportunities).toHaveBeenCalledWith({q:'',area:undefined,page:1});expect(button('Find teams to mentor').getAttribute('aria-current')).toBe('page');});
 it('requires explicit confirmation before accepting an invitation',async()=>{await mount();await click('Accept');expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Accept mentorship');expect(mocks.respond).not.toHaveBeenCalled();await click('Confirm');expect(mocks.respond).toHaveBeenCalledWith(expect.objectContaining({id:'request'}),'accept','');});
 it('shows the approved abstract before opening any dialog, and repeats the topic brief before consent',async()=>{
   await mount();
@@ -183,14 +186,22 @@ it('sends one confirmation when the button is clicked twice before React updates
   await act(async()=>{confirm.click();confirm.click();});await tick();expect(mocks.respond).toHaveBeenCalledTimes(1);
   await act(async()=>finish());await tick();
 });
-async function fillApplication(){
+async function fillApplication(availabilityValue?: string){
   const message=document.querySelector<HTMLTextAreaElement>('#application-message')!;
-  const availability=document.querySelector<HTMLTextAreaElement>('#application-availability')!;
-  await act(async()=>{for(const [element,value] of [[message,'I can guide experiments and research methods'],[availability,'One feedback meeting every week']] as const){Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(element,value);element.dispatchEvent(new Event('input',{bubbles:true}));}});await tick();
+  const availability=document.querySelector<HTMLTextAreaElement>('#application-availability');
+  await act(async()=>{
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(message,'I can guide experiments and research methods');
+    message.dispatchEvent(new Event('input',{bubbles:true}));
+    if (availability && availabilityValue !== undefined) {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(availability,availabilityValue);
+      availability.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+  });
+  await tick();
 }
 it('sends one application when submitted twice before React updates',async()=>{
   let finish!:()=>void;applications.apply.mockImplementation(()=>new Promise<void>(r=>{finish=r;}));
-  await mount('/academic-support?view=discover');await click('Express mentoring interest');await fillApplication();const form=document.querySelector('#application-message')!.closest('form')!;
+  await mount('/academic-support?view=discover');await click('Offer to support team');await fillApplication();const form=document.querySelector('#application-message')!.closest('form')!;
   await act(async()=>{form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});await tick();expect(applications.apply).toHaveBeenCalledTimes(1);expect(mocks.offer).not.toHaveBeenCalled();
   await act(async()=>finish());await tick();
 });
@@ -201,14 +212,40 @@ it('does not require a primary or secondary vacancy before preparing an unassign
   expect(document.querySelector('[role="dialog"] select')).toBeNull();
   expect(button('Send Invitation').disabled).toBe(false);expect(mocks.request).not.toHaveBeenCalled();
 });
-it('opens an application without creating a request and submits only after confirmation',async()=>{await mount('/academic-support?view=discover');await click('Express mentoring interest');expect(applications.apply).not.toHaveBeenCalled();expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Applying does not reserve');await fillApplication();await click('Submit application');expect(applications.apply).toHaveBeenCalledWith('project',expect.objectContaining({message:'I can guide experiments and research methods',availability:'One feedback meeting every week',mentorRole:'PRIMARY',idempotencyKey:expect.any(String)}));expect(mocks.offer).not.toHaveBeenCalled();});
-it('explains disabled discovery and exposes availability settings',async()=>{mocks.preferences.mockResolvedValue({canEnable:true,acceptingMentorships:false,emailEnabled:false});await mount('/academic-support?view=discover');expect(host.textContent).toContain('Enable mentoring availability');expect(host.querySelector<HTMLDetailsElement>('#mentoring-settings')?.open).toBe(true);expect(mocks.opportunities).not.toHaveBeenCalled();});
+it('opens simplified support offer dialog without comma fields or role picker and submits with only message required',async()=>{
+  await mount('/academic-support?view=discover');
+  await click('Offer to support team');
+  expect(applications.apply).not.toHaveBeenCalled();
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.textContent).toContain('Applying does not reserve a mentor position or grant project access.');
+  expect(dialog.querySelector('#application-areas')).toBeNull();
+  expect(dialog.querySelector('#application-methodologies')).toBeNull();
+  expect(dialog.querySelector('#application-capabilities')).toBeNull();
+  expect(dialog.querySelector('#application-role')).toBeNull();
+  expect(button('Send support offer').disabled).toBe(true);
+  await fillApplication();
+  expect(button('Send support offer').disabled).toBe(false);
+  await click('Send support offer');
+  expect(applications.apply).toHaveBeenCalledWith('project',expect.objectContaining({message:'I can guide experiments and research methods',idempotencyKey:expect.any(String)}));
+  expect(applications.apply.mock.calls[0]?.[1]).not.toHaveProperty('mentorRole');
+  expect(applications.apply.mock.calls[0]?.[1]).not.toHaveProperty('availability');
+  expect(mocks.offer).not.toHaveBeenCalled();
+});
+it('prevents duplicate support offer in discover UI when a pending offer already exists',async()=>{
+  applications.mine.mockResolvedValue({items:[{id:'app-1',projectId:'project',project,lecturer:{id:'mentor',name:'Demo mentor',verifiedLecturer:true},mentorRole:'PRIMARY',message:'Already offered support for this team',areas:[],methodologies:[],capabilities:[],availability:'',status:'APPLIED',version:1,createdAt:'2026-10-21T08:00:00Z',updatedAt:'2026-10-21T08:00:00Z',canManage:false,canWithdraw:true,canInvite:false,canClarify:true}],meta});
+  await mount('/academic-support?view=discover');
+  const sentBtn = button('Offer already sent');
+  expect(sentBtn).toBeDefined();
+  expect(sentBtn.disabled).toBe(true);
+  expect(button('Offer to support team')).toBeUndefined();
+});
+it('explains disabled discovery and exposes availability settings',async()=>{mocks.preferences.mockResolvedValue({canEnable:true,acceptingMentorships:false,emailEnabled:false});await mount('/academic-support?view=discover');expect(host.textContent).toContain('Enable mentoring availability');expect(mocks.opportunities).not.toHaveBeenCalled();await click('Mentoring availability');expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Mentoring availability & notifications');});
 it('shows a retriable discovery error without falsely showing an empty state',async()=>{mocks.opportunities.mockRejectedValue(new Error('Offline'));await mount('/academic-support?view=discover');expect(host.querySelector('[role="alert"]')).not.toBeNull();expect(host.textContent).not.toContain('No projects are seeking mentors right now.');expect(button('Try again')).toBeDefined();});
 it('loads active and sent views through the existing API',async()=>{await mount();await click('Teams you mentor');expect(mocks.mine).toHaveBeenLastCalledWith({page:1,view:'active'});await click('My mentoring applications');expect(mocks.mine).toHaveBeenLastCalledWith({page:1,view:'outgoing'});});
 it('does not expose lecturer discovery or load opportunities for students',async()=>{state.role='STUDENT';await mount('/academic-support?view=discover');expect(button('Find teams to mentor')).toBeUndefined();expect(mocks.opportunities).not.toHaveBeenCalled();expect(host.querySelector('#mentorship-project')).not.toBeNull();});
 it('expands shared team details without fetching private project data or sending an offer',async()=>{mocks.opportunities.mockResolvedValue({items:[{...project,expertise:['Experimental design']}],meta});await mount('/academic-support?view=discover');const details=host.querySelector<HTMLElement>('#team-detail-project')!;expect(details.hidden).toBe(true);await click('View team details');expect(details.hidden).toBe(false);expect(details.textContent).toContain('Experimental design');expect(details.textContent).toContain('Primary mentor');expect(host.querySelectorAll('.team-opportunity-summary')).toHaveLength(1);expect(mocks.offer).not.toHaveBeenCalled();expect(mocks.projects).not.toHaveBeenCalled();await click('Show less');expect(details.hidden).toBe(true);});
 it('filters discovery on the server and clears both fields together',async()=>{await mount('/academic-support?view=discover');await click('Research Area');expect(host.querySelector<HTMLElement>('#team-area-filter')!.hidden).toBe(false);const search=host.querySelector<HTMLInputElement>('[aria-label="Search mentor opportunities"]')!,area=host.querySelector<HTMLInputElement>('#team-area-input')!;await act(async()=>{for(const [field,value] of [[search,'learning'],[area,'Education']] as const){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(field,value);field.dispatchEvent(new Event('input',{bubbles:true}));}});await act(async()=>{await new Promise(r=>setTimeout(r,360));});await tick();expect(mocks.opportunities).toHaveBeenLastCalledWith({q:'learning',area:'Education',page:1});await click('Clear filters');await act(async()=>{await new Promise(r=>setTimeout(r,360));});await tick();expect(search.value).toBe('');expect(area.value).toBe('');expect(mocks.opportunities).toHaveBeenLastCalledWith({q:'',area:undefined,page:1});});
-it('opens availability settings from the header without changing preferences',async()=>{await mount('/academic-support?view=discover');expect(host.querySelector<HTMLDetailsElement>('#mentoring-settings')!.open).toBe(false);await act(async()=>host.querySelector<HTMLAnchorElement>('.lecturer-availability')!.click());expect(host.querySelector<HTMLDetailsElement>('#mentoring-settings')!.open).toBe(true);expect(mocks.savePreferences).not.toHaveBeenCalled();});
+it('opens availability settings popup from the header without changing preferences',async()=>{await mount('/academic-support?view=discover');expect(document.querySelector('[role="dialog"]')).toBeNull();await act(async()=>host.querySelector<HTMLAnchorElement>('.lecturer-availability')!.click());expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Mentoring availability & notifications');expect(mocks.savePreferences).not.toHaveBeenCalled();});
 it('opens an active project on its dedicated guidance page',async()=>{mocks.mine.mockResolvedValue({requests:[],relationships:[{...invitation,kind:'RELATIONSHIP',status:'ACTIVE',startedAt:'2026-10-21T08:00:00Z',actions:{openProject:true,end:true}}],counts:{incoming:0,active:1},requestMeta:meta,relationshipMeta:meta});await mount('/academic-support?view=active');await click('Open project');expect(host.querySelector('[data-testid="current-location"]')?.textContent).toBe('/academic-support/projects/project');expect(host.querySelector('.mentor-workspace')).toBeNull();});
 it('redirects old lecturer project links to the dedicated guidance page',async()=>{await mount('/academic-support?projectId=project');expect(host.querySelector('[data-testid="current-location"]')?.textContent).toBe('/academic-support/projects/project');});
 it('keeps an unsent mentor message mounted when the conversation background request fails',async()=>{
