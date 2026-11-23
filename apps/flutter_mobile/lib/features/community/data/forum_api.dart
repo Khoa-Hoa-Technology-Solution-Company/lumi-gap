@@ -28,8 +28,8 @@ const forumPostTypes = [
 
 String forumTypeLabel(String type) => switch (type) {
       'QUESTION' => tk('Question'),
-      'PAPER_DISCUSSION' => tk('Paper Discussion'),
-      'RESEARCH_GAP_DISCUSSION' => tk('Research Gap Discussion'),
+      'PAPER_DISCUSSION' => tk('Paper discussion'),
+      'RESEARCH_GAP_DISCUSSION' => tk('Research gap discussion'),
       _ => tk('Discussion'),
     };
 

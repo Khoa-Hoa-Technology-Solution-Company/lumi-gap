@@ -27,6 +27,8 @@ class _FakeGapsApi extends Fake implements GapsApi {
     source: 'standalone',
     status: 'active',
     evidenceCount: 3,
+    gapConfidence: 'MODERATE',
+    evidenceConfidence: 0.82,
   );
 
   /// With [total] above 1 the list is served page by page, titled
@@ -219,11 +221,33 @@ void main() {
     expect(api.listed.where((p) => p.status == 'resolved' && p.page > 1), isEmpty);
   });
 
+  test('gap confidence: the label always, a score only when there is one', () {
+    ResearchGapItem parse(Map<String, dynamic> extra) => ResearchGapItem.fromJson({
+          'id': 'g',
+          'title': 't',
+          ...extra,
+        });
+    // Missing or unknown level: the column default, LOW.
+    expect(parse({}).gapConfidence, 'LOW');
+    expect(parse({'gapConfidence': 'odd'}).gapConfidence, 'LOW');
+    expect(parse({'gapConfidence': 'high'}).gapConfidence, 'HIGH');
+    // Never scored: no score, not "0%".
+    expect(parse({}).evidenceConfidence, isNull);
+    expect(parse({'evidenceConfidence': 0.4}).evidenceConfidence, 0.4);
+    // A project gap stores 0 on purpose: not a score either.
+    expect(
+      parse({'evidenceConfidence': 0, 'projectId': 'p1'}).evidenceConfidence,
+      isNull,
+    );
+  });
+
   testWidgets('a card shows real data only: no invented severity',
       (tester) async {
     await _pump(tester);
     expect(find.text('Privacy budget in federated learning'), findsOneWidget);
-    expect(find.text('82% confidence'), findsOneWidget);
+    // The web's assessment label, not a percentage on the card.
+    expect(find.text('Gap confidence: Moderate'), findsOneWidget);
+    expect(find.text('82% confidence'), findsNothing);
     expect(find.text('3 evidence papers'), findsOneWidget);
     expect(find.textContaining('Severity'), findsNothing);
     // The state uses the tab's word.
@@ -298,7 +322,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(api.analyzed, ['federated learning']);
-    expect(find.text('Analyzing Gaps with AI'), findsOneWidget);
+    expect(find.text('Analyzing gaps with AI'), findsOneWidget);
 
     api.jobStatus = 'ready';
     await tester.pump(const Duration(seconds: 3));
@@ -319,10 +343,10 @@ void main() {
     final api = await _pump(tester);
     api.patchError = httpFailure(403);
     // The review actions are in the gap's sheet, not on every card.
-    expect(find.text('Validate Gap'), findsNothing);
+    expect(find.text('Validate gap'), findsNothing);
     await tester.tap(find.text('Privacy budget in federated learning'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Validate Gap'));
+    await tester.tap(find.text('Validate gap'));
     await tester.pumpAndSettle();
     expect(api.patched, [('g1', 'resolved')]);
     expect(find.text('You do not have permission to do this.'), findsOneWidget);

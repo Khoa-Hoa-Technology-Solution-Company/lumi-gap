@@ -113,6 +113,8 @@ class ResearchGapItem {
     this.evidenceCount = 0,
     this.closureStatus = GapClosureStatus.notChecked,
     this.latestClosureCheck,
+    this.gapConfidence = 'LOW',
+    this.evidenceConfidence,
   });
 
   factory ResearchGapItem.fromJson(Map<String, dynamic> json) {
@@ -136,6 +138,17 @@ class ResearchGapItem {
       evidenceCount: (json['evidenceCount'] as num?)?.toInt() ?? (json['supportingPapers'] as List<dynamic>? ?? []).length,
       closureStatus: GapClosureStatus.parse(json['closureStatus']),
       latestClosureCheck: GapClosureSummary.tryParse(json['latestClosureCheck']),
+      // Backend column defaults to LOW and is never null (research.prisma).
+      gapConfidence: switch (json['gapConfidence']?.toString().toUpperCase()) {
+        'HIGH' => 'HIGH',
+        'MODERATE' => 'MODERATE',
+        _ => 'LOW',
+      },
+      // Null when the evidence was never scored; project gaps store 0 on
+      // purpose (gaps.service.ts), which is not a score either.
+      evidenceConfidence: json['projectId'] == null
+          ? (json['evidenceConfidence'] as num?)?.toDouble()
+          : null,
     );
   }
 
@@ -157,6 +170,12 @@ class ResearchGapItem {
   /// Gap Closure Protocol result; [GapClosureStatus.notChecked] when the API omits it.
   final GapClosureStatus closureStatus;
   final GapClosureSummary? latestClosureCheck;
+
+  /// The reviewer-facing assessment the web shows: LOW, MODERATE or HIGH.
+  final String gapConfidence;
+
+  /// Evidence score in 0..1, or null when there is none to show.
+  final double? evidenceConfidence;
 }
 
 /// Result of the latest closure check of a gap (`GapClosureStatus` in shared-types).

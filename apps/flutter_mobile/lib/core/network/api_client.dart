@@ -19,7 +19,10 @@ class ApiClient {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 120),
+        // Reaching the server is quick or it is not going to happen: offline
+        // must say so in seconds, not after a two-minute spinner.
+        connectTimeout: const Duration(seconds: 20),
+        // Answers can be slow (AI analysis, reports): those keep two minutes.
         receiveTimeout: const Duration(seconds: 120),
       ),
     );

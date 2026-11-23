@@ -96,9 +96,11 @@ Future<_GatedSearchApi> _pump(
   return api;
 }
 
+/// Types [query] and presses the keyboard's search key: there is no
+/// separate Search button.
 Future<void> _search(WidgetTester tester, String query) async {
   await tester.enterText(find.byType(TextField), query);
-  await tester.tap(find.widgetWithText(FilledButton, 'Search'));
+  await tester.testTextInput.receiveAction(TextInputAction.search);
   await tester.pump();
 }
 
@@ -107,10 +109,24 @@ void main() {
       (tester) async {
     final api = await _pump(tester);
     expect(find.byType(LumiEmptyState), findsOneWidget);
+    // Nothing was searched, so "no results" would be false.
+    expect(find.text('No search results'), findsNothing);
+    expect(find.text('Search by title, keyword or author.'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Search'), findsNothing);
     expect(api.calls, isEmpty);
     // A blank query is not sent either.
     await _search(tester, '   ');
     expect(api.calls, isEmpty);
+    expect(find.text('No search results'), findsNothing);
+  });
+
+  testWidgets('"No search results" only after a search that found nothing',
+      (tester) async {
+    final api = await _pump(tester);
+    await _search(tester, 'nothing matches');
+    api.calls.single.answer.complete(const PagedPapers(papers: []));
+    await tester.pumpAndSettle();
+    expect(find.text('No search results'), findsOneWidget);
   });
 
   testWidgets('loading shows a skeleton, then the results', (tester) async {
@@ -131,7 +147,7 @@ void main() {
     expect(find.byType(LumiSkeleton), findsNothing);
     expect(find.text('Paper a'), findsOneWidget);
     expect(find.text('2026 · Nature · 3 citations'), findsOneWidget);
-    expect(find.text('Open Access'), findsOneWidget);
+    expect(find.text('Open access'), findsOneWidget);
     // No venue and no authors: left out, and "1 citation" is singular.
     expect(find.text('2026 · 1 citation'), findsOneWidget);
     expect(find.textContaining('Unknown'), findsNothing);
@@ -185,6 +201,11 @@ void main() {
     );
     expect(find.textContaining('Exception'), findsNothing);
     expect(find.byType(LumiSkeleton), findsNothing);
+    // Offline is not "nothing found": no empty-results claim, and a retry.
+    expect(find.text('No search results'), findsNothing);
+    await tester.tap(find.text('Try again'));
+    await tester.pump();
+    expect(api.calls, hasLength(2));
   });
 
   testWidgets('an answer after the screen is closed does not throw',
@@ -252,13 +273,13 @@ void main() {
 
     FilledButton applyButton(WidgetTester tester) =>
         tester.widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'Apply Filters'),
+          find.widgetWithText(FilledButton, 'Apply filters'),
         );
 
     testWidgets('closing without "Apply" changes nothing', (tester) async {
       final api = await withResults(tester);
-      await tester.enterText(yearField('From Year'), '2020');
-      await tester.tap(find.text('Open Access Only'));
+      await tester.enterText(yearField('From year'), '2020');
+      await tester.tap(find.text('Open access only'));
       await tester.pump();
       // Dismiss by tapping outside the sheet.
       await tester.tapAt(const Offset(200, 40));
@@ -274,13 +295,13 @@ void main() {
     testWidgets('a bad or backwards year is refused under the field',
         (tester) async {
       await withResults(tester);
-      await tester.enterText(yearField('From Year'), '1800');
+      await tester.enterText(yearField('From year'), '1800');
       await tester.pump();
       expect(find.text('Enter a year between 1900 and 2100.'), findsOneWidget);
       expect(applyButton(tester).onPressed, isNull);
 
-      await tester.enterText(yearField('From Year'), '2024');
-      await tester.enterText(yearField('To Year'), '2020');
+      await tester.enterText(yearField('From year'), '2024');
+      await tester.enterText(yearField('To year'), '2020');
       await tester.pump();
       expect(find.text('"From" must not be after "To".'), findsOneWidget);
       expect(applyButton(tester).onPressed, isNull);
@@ -289,11 +310,11 @@ void main() {
     testWidgets('"Apply" sends the filters and shows readable chips',
         (tester) async {
       final api = await withResults(tester);
-      await tester.enterText(yearField('From Year'), '2020');
-      await tester.enterText(yearField('To Year'), '2024');
-      await tester.tap(find.text('Open Access Only'));
+      await tester.enterText(yearField('From year'), '2020');
+      await tester.enterText(yearField('To year'), '2024');
+      await tester.tap(find.text('Open access only'));
       await tester.pump();
-      await tester.tap(find.widgetWithText(FilledButton, 'Apply Filters'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Apply filters'));
       await tester.pumpAndSettle();
 
       final sent = api.calls.last.params;
@@ -301,7 +322,7 @@ void main() {
       expect(sent.yearTo, 2024);
       expect(sent.openAccess, isTrue);
       expect(find.widgetWithText(InputChip, '2020–2024'), findsOneWidget);
-      expect(find.widgetWithText(InputChip, 'Open Access'), findsOneWidget);
+      expect(find.widgetWithText(InputChip, 'Open access'), findsOneWidget);
 
       // Removing a chip searches again without it.
       api.calls.last.answer.complete(PagedPapers(papers: [_paper('b')]));
@@ -332,7 +353,7 @@ void main() {
         .complete(PagedPapers(papers: [_paper('a'), _paper('b')]));
     await tester.pumpAndSettle();
     expect(find.byTooltip('Remove bookmark'), findsOneWidget);
-    expect(find.byTooltip('Save Paper'), findsOneWidget);
+    expect(find.byTooltip('Save paper'), findsOneWidget);
   });
 
   testWidgets(

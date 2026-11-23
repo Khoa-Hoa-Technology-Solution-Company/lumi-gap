@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
-import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
 import 'package:flutter_mobile/features/papers/domain/paper_citation.dart';
@@ -84,8 +83,13 @@ class _PaperActionsPanelState extends ConsumerState<PaperActionsPanel> {
       year: paper.publicationYear,
       journal: paper.journalName,
     );
-    return showDialog<void>(
+    return showModalBottomSheet<void>(
+      // Over the bottom navigation bar, dimming it too.
+      useRootNavigator: true,
       context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      isScrollControlled: true,
       builder: (context) {
         final theme = Theme.of(context);
         Widget style(String label, String text) => Column(
@@ -115,25 +119,19 @@ class _PaperActionsPanelState extends ConsumerState<PaperActionsPanel> {
                 SelectableText(text, style: theme.textTheme.bodySmall),
               ],
             );
-        return AlertDialog(
-          title: Text(context.t('Cite Publication')),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                style(context.t('APA Style:'), apa),
-                const Divider(height: 24),
-                style(context.t('MLA Style:'), mla),
-              ],
-            ),
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(context.t('Cite publication'), style: theme.textTheme.titleLarge),
+              const SizedBox(height: 16),
+              style(context.t('APA style:'), apa),
+              const Divider(height: 24),
+              style(context.t('MLA style:'), mla),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(context.t('Close')),
-            ),
-          ],
         );
       },
     );
@@ -143,11 +141,12 @@ class _PaperActionsPanelState extends ConsumerState<PaperActionsPanel> {
   Widget build(BuildContext context) {
     final status = ref.watch(bookmarkStatusProvider(_target)).value;
     final isBookmarked = status?.bookmarked ?? false;
-    final pdf = widget.paper.openAccessUrl;
+    final fullText = widget.paper.openAccessUrl;
 
-    return LumiCard(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-      child: Row(
+    // The bar under the paper: the three paper actions, then the main one,
+    // "Open full text", when there is a free copy. One label per intent: the
+    // full text is not offered twice ("PDF link" was the same URL).
+    return Row(
         children: [
           PaperActionButton(
             icon: isBookmarked ? Icons.bookmark : Icons.bookmark_border,
@@ -161,25 +160,35 @@ class _PaperActionsPanelState extends ConsumerState<PaperActionsPanel> {
           ),
           PaperActionButton(
             icon: Icons.create_new_folder_outlined,
-            label: context.t('Add to Project'),
+            label: context.t('Add to project'),
             onTap: () => unawaited(
               showAddToProjectSheet(context, paperId: widget.paperId),
             ),
           ),
           PaperActionButton(
             icon: Icons.format_quote,
-            label: context.t('Cite Paper'),
+            label: context.t('Cite paper'),
             onTap: () => unawaited(_showCitation()),
           ),
-          PaperActionButton(
-            icon: Icons.picture_as_pdf_outlined,
-            label: context.t('PDF Link'),
-            onTap: pdf == null
-                ? null
-                : () => unawaited(launchUrl(Uri.parse(pdf))),
-          ),
+          if (fullText != null) ...[
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 2,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                onPressed: () => unawaited(launchUrl(Uri.parse(fullText))),
+                icon: const Icon(Icons.open_in_new, size: 18),
+                label: Text(
+                  context.t('Open full text'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ],
         ],
-      ),
     );
   }
 }

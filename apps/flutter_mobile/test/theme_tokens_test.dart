@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/theme/lumi_tints.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/readable_text.dart';
@@ -70,10 +71,11 @@ const _light = _Tokens(
 );
 
 const _dark = _Tokens(
-  background: 0x020817,
-  surface: 0x0F172A,
-  surfaceMuted: 0x1E293B, // slate-800
-  line: 0x1E293B,
+  // One step lighter than the web's slate-950 (2026-11-23).
+  background: 0x0F172A, // slate-900
+  surface: 0x1E293B, // slate-800
+  surfaceMuted: 0x334155, // slate-700
+  line: 0x334155,
   foreground: 0xF1F5F9, // slate-100
   foregroundSecondary: 0xCBD5E1, // slate-300
   muted: 0x94A3B8, // slate-400
@@ -167,8 +169,18 @@ void main() {
 
       test('the page background and component themes use the tokens', () {
         expect(theme.scaffoldBackgroundColor, hex(e.background));
-        expect(theme.appBarTheme.backgroundColor, hex(e.surface));
-        expect(theme.appBarTheme.scrolledUnderElevation, 0);
+        // Every header is the brand band: blue, white title and icons,
+        // rounded at its lower edge.
+        final tints = theme.brightness == Brightness.dark
+            ? LumiTints.dark
+            : LumiTints.light;
+        expect(theme.appBarTheme.backgroundColor, tints.hero);
+        expect(theme.appBarTheme.foregroundColor, tints.onHero);
+        expect(theme.appBarTheme.titleTextStyle?.color, tints.onHero);
+        expect(
+          (theme.appBarTheme.shape! as RoundedRectangleBorder).borderRadius,
+          const BorderRadius.vertical(bottom: Radius.circular(24)),
+        );
         expect(theme.navigationBarTheme.backgroundColor, hex(e.surface));
         expect(theme.navigationBarTheme.indicatorColor, hex(e.primarySoft));
         expect(theme.cardTheme.color, hex(e.surface));
@@ -220,23 +232,18 @@ void main() {
         }
       });
 
-      test('status bar icons contrast with the page', () {
-        // Dark icons on the light theme, light icons on the dark one, set on
-        // the theme so a transparent app bar cannot flip them.
+      test('status bar icons contrast with the blue header', () {
+        // White icons over the brand band, in both themes.
         final style = theme.appBarTheme.systemOverlayStyle;
         expect(style, isNotNull);
-        expect(
-          style!.statusBarIconBrightness,
-          theme.brightness == Brightness.light
-              ? Brightness.dark
-              : Brightness.light,
-        );
+        expect(style!.statusBarIconBrightness, Brightness.light);
       });
 
-      test('cards are 8dp, sheets 12dp, nav bar 80dp, app bar 64dp', () {
+      test('inner cards 16dp, sheets 12dp, nav bar 80dp, app bar 64dp', () {
+        // Plain Cards are inner panels; list cards (LumiCard) are 20dp.
         expect(
           (theme.cardTheme.shape! as RoundedRectangleBorder).borderRadius,
-          BorderRadius.circular(8),
+          BorderRadius.circular(16),
         );
         expect(
           (theme.bottomSheetTheme.shape! as RoundedRectangleBorder)

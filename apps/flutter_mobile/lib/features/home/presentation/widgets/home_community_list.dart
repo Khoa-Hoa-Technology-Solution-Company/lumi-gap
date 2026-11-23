@@ -21,7 +21,7 @@ class HomeCommunityList extends StatelessWidget {
     final theme = Theme.of(context);
     return Container(
       clipBehavior: Clip.antiAlias,
-      decoration: homeCardDecoration(lumi),
+      decoration: homeCardDecoration(context),
       child: Column(
         // Every row spans the card; otherwise a short row is centred and
         // looks indented next to a long one.

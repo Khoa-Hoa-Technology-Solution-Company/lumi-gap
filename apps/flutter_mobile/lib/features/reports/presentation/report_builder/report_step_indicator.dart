@@ -16,7 +16,7 @@ class ReportStepIndicator extends StatelessWidget {
     final labels = [
       context.t('Setup'),
       context.t('Preview'),
-      context.t('Edit Pack'),
+      context.t('Edit pack'),
       context.t('Status'),
     ];
     // Four columns of the same width across the track: each circle sits in

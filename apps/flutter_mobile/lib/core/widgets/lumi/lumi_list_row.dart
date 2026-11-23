@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/theme/lumi_tints.dart';
+import 'package:flutter_mobile/core/utils/haptics.dart';
 
 /// One tappable row of a list or menu, at least 56dp tall: icon, title,
 /// optional description, optional value, then a chevron when it navigates.
@@ -14,6 +18,8 @@ class LumiListRow extends StatelessWidget {
     this.value,
     this.trailing,
     this.onTap,
+    this.onLongPress,
+    this.longPressHint,
     this.destructive = false,
     this.showChevron = true,
     super.key,
@@ -31,6 +37,13 @@ class LumiListRow extends StatelessWidget {
   final String? value;
   final Widget? trailing;
   final VoidCallback? onTap;
+
+  /// Opens the row's action sheet. The same actions must stay reachable from
+  /// a visible control.
+  final VoidCallback? onLongPress;
+
+  /// What TalkBack says a long-press does ("Show actions").
+  final String? longPressHint;
 
   /// Title and icon in the error colour (sign out, delete).
   final bool destructive;
@@ -114,10 +127,21 @@ class LumiListRow extends StatelessWidget {
       ),
     );
 
-    if (onTap == null) return row;
+    final longPress = onLongPress;
+    if (onTap == null && longPress == null) return row;
     return Semantics(
-      button: true,
-      child: InkWell(onTap: onTap, child: row),
+      button: onTap != null,
+      onLongPressHint: longPress == null ? null : longPressHint,
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: longPress == null
+            ? null
+            : () {
+                unawaited(Haptics.select());
+                longPress();
+              },
+        child: row,
+      ),
     );
   }
 }
@@ -133,11 +157,19 @@ class LumiRowGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lumi = context.lumi;
-    return Material(
+    final brightness = Theme.of(context).brightness;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(LumiElevation.cardRadius),
+        boxShadow: LumiElevation.card(brightness),
+      ),
+      child: Material(
       color: lumi.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: lumi.line),
+        borderRadius: BorderRadius.circular(LumiElevation.cardRadius),
+        side: brightness == Brightness.dark
+            ? BorderSide(color: lumi.line)
+            : BorderSide.none,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -148,6 +180,7 @@ class LumiRowGroup extends StatelessWidget {
             children[i],
           ],
         ],
+      ),
       ),
     );
   }

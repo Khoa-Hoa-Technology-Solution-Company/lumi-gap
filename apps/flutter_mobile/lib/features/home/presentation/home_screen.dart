@@ -1,15 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/theme/lumi_tints.dart';
 import 'package:flutter_mobile/core/utils/web_href.dart';
-import 'package:flutter_mobile/core/widgets/lumi/lumi_brand_logo.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
 import 'package:flutter_mobile/core/widgets/notification_bell.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
-import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
+import 'package:flutter_mobile/features/bookmarks/presentation/bookmark_toggle.dart';
 import 'package:flutter_mobile/features/home/data/home_api.dart';
 import 'package:flutter_mobile/features/home/data/home_models.dart';
 import 'package:flutter_mobile/features/home/presentation/widgets/home_attention_list.dart';
@@ -37,43 +38,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  /// Papers whose bookmark request is still in flight. A second tap on the
-  /// same paper is ignored until the first one has finished; otherwise two
-  /// "check then create" sequences could both create a bookmark.
-  final Set<String> _bookmarkBusy = {};
-
-  Future<void> _toggleBookmark(String paperId) async {
-    if (!_bookmarkBusy.add(paperId)) return;
-    // Leaving Home mid-request must still refresh the saved state elsewhere.
-    final container = ProviderScope.containerOf(context, listen: false);
-    try {
-      final api = container.read(bookmarksApiProvider);
-      final status = await api.checkStatus('paper', paperId);
-      if (status.bookmarked && status.bookmarkId != null) {
-        await api.delete(status.bookmarkId!);
-      } else {
-        await api.create(targetKind: 'paper', targetId: paperId);
-      }
-    } on Object catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              context.t('Could not update the bookmark. Please try again.'),
-            ),
-          ),
-        );
-      }
-    } finally {
-      _bookmarkBusy.remove(paperId);
-      // Re-read the real state whether the request worked or not, so the
-      // icon never shows a guess.
-      container
-        ..invalidate(bookmarksProvider)
-        ..invalidate(bookmarkStatusProvider(BookmarkTarget('paper', paperId)));
-    }
-  }
-
   /// Pull to refresh: reload both requests independently and keep the
   /// spinner until both are done; say so if either failed.
   Future<void> _refresh() async {
@@ -187,61 +151,102 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     void go(String path) => unawaited(context.push(path));
 
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        // The brand on the first screen, as on the web header. The tab label
-        // below still says "Home", and screen readers hear "LumiGap".
-        title: const LumiBrandLogo(height: 32),
-        actions: const [NotificationBell(), SizedBox(width: 4)],
-      ),
+    final tints = context.tints;
+    // White status bar icons over the coloured header, in both themes.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(top: 8, bottom: 24),
+          padding: const EdgeInsets.only(bottom: 24),
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (roleKey != null)
-                    Text(
-                      context.t(roleKey),
-                      style: theme.textTheme.bodyLarge
-                          ?.copyWith(color: lumi.foregroundSecondary),
+            // The brand colour band: who is signed in, notifications and
+            // search, within thumb reach of nothing else.
+            ColoredBox(
+              color: tints.hero,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  MediaQuery.paddingOf(context).top + 16,
+                  20,
+                  16,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (roleKey != null)
+                                Text(
+                                  context.t(roleKey),
+                                  style: theme.textTheme.titleSmall
+                                      ?.copyWith(color: tints.onHeroSoft),
+                                ),
+                              Semantics(
+                                header: true,
+                                child: Text(
+                                  name == null
+                                      ? context.t('Hello')
+                                      : context.t('Hello, {{name}}', {'name': name}),
+                                  style: theme.textTheme.headlineMedium?.copyWith(
+                                    color: tints.onHero,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const NotificationBell(onHero: true),
+                      ],
                     ),
-                  Text(
-                    name == null
-                        ? context.t('Hello')
-                        : context.t('Hello, {{name}}', {'name': name}),
-                    style: theme.textTheme.headlineMedium,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 16),
-                  LumiSearchButton(
-                    hint: context.t('Search papers, keywords…'),
-                    onPressed: () => go('/search'),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    LumiSearchButton(
+                      hint: context.t('Search papers, keywords…'),
+                      onPressed: () => go('/search'),
+                    ),
+                  ],
+                ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 20, 12, 28),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final (icon, label, path) in _shortcuts)
-                    Expanded(
-                      child: LumiShortcutTile(
-                        icon: icon,
-                        label: context.t(label),
-                        onPressed: () => go(path),
+            // The shortcut cards sit across the band's lower edge.
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [tints.hero, tints.hero, lumi.background, lumi.background],
+                  stops: const [0, 0.45, 0.45, 1],
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final (i, (icon, label, path)) in _shortcuts.indexed) ...[
+                      if (i > 0) const SizedBox(width: 10),
+                      Expanded(
+                        child: LumiShortcutTile(
+                          icon: icon,
+                          label: context.t(label),
+                          tint: tints.cycle[i % tints.cycle.length],
+                          onPressed: () => go(path),
+                        ),
                       ),
-                    ),
-                ],
+                    ],
+                  ],
+                ),
               ),
             ),
             _section<HomeResearchOverview, List<HomeAttentionItem>>(
@@ -309,7 +314,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               builder: (items) => HomeRecommendedList(
                 items: items,
                 onOpen: (p) => go('/paper/${p.id}'),
-                onBookmark: (p) => unawaited(_toggleBookmark(p.id)),
+                onBookmark: (p) => unawaited(togglePaperBookmark(context, p.id)),
               ),
             ),
             // The newest papers are on Explore, with the other things
@@ -328,6 +333,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

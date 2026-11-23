@@ -4,16 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/projects/data/team_chat_api.dart';
 import 'package:flutter_mobile/features/projects/data/team_chat_models.dart';
+import 'package:flutter_mobile/features/projects/presentation/project_detail/project_members_screen.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail_screen.dart';
 import 'package:flutter_mobile/features/projects/providers/team_chat_controller.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 import 'auth_test_support.dart';
 import 'support/readable_text.dart';
@@ -26,6 +29,15 @@ import 'team_chat_support.dart';
 
 class _FakeProjectsApi extends Fake implements ProjectsApi {
   final List<({String text, String scope})> aiSends = [];
+  final List<String> deleted = [];
+  final List<String> removedPapers = [];
+
+  @override
+  Future<void> delete(String projectId) async => deleted.add(projectId);
+
+  @override
+  Future<void> removePaper(String projectId, String paperId) async =>
+      removedPapers.add(paperId);
 
   @override
   Future<void> sendChat(
@@ -100,6 +112,8 @@ Future<_Fakes> _pump(
   bool messages = true,
   double width = 412,
   Brightness brightness = Brightness.light,
+  bool withRouter = false,
+  bool withReport = true,
 }) async {
   final fakes = _active = _Fakes();
   fakes.chat.onList = (_, _) async => messages
@@ -138,33 +152,55 @@ Future<_Fakes> _pump(
               : <ProjectChatMessage>[],
         ),
         reportsProvider.overrideWith(
-          (ref, params) async => const ReportsList(
-            reports: [
-              ReportListItem(
-                id: 'r1',
-                query: 'federated learning',
-                status: 'ready',
-                topic: 'Báo cáo thử',
-              ),
-            ],
-            total: 1,
-          ),
+          (ref, params) async => withReport
+              ? const ReportsList(
+                  reports: [
+                    ReportListItem(
+                      id: 'r1',
+                      query: 'federated learning',
+                      status: 'ready',
+                      topic: 'Báo cáo thử',
+                    ),
+                  ],
+                  total: 1,
+                )
+              : const ReportsList(reports: [], total: 0),
         ),
         gapsProvider.overrideWith(
           (ref, params) async => const ListGapsResponse(data: [], total: 0),
         ),
       ],
-      child: MaterialApp(
-        locale: AppLocale.en.locale,
-        supportedLocales: AppLocale.supportedLocales,
-        localizationsDelegates: appLocalizationsDelegates,
-        // The app's own theme: the default Material one would test colours
-        // the app never shows.
-        theme: brightness == Brightness.dark
-            ? AppTheme.darkTheme
-            : AppTheme.lightTheme,
-        home: const ProjectDetailScreen(id: 'p1'),
-      ),
+      child: withRouter
+          ? MaterialApp.router(
+              locale: AppLocale.en.locale,
+              supportedLocales: AppLocale.supportedLocales,
+              localizationsDelegates: appLocalizationsDelegates,
+              theme: AppTheme.lightTheme,
+              routerConfig: GoRouter(
+                initialLocation: '/project/p1',
+                routes: [
+                  GoRoute(
+                    path: '/projects',
+                    builder: (_, _) => const Scaffold(body: Text('projects list')),
+                  ),
+                  GoRoute(
+                    path: '/project/:id',
+                    builder: (_, _) => const ProjectDetailScreen(id: 'p1'),
+                  ),
+                ],
+              ),
+            )
+          : MaterialApp(
+              locale: AppLocale.en.locale,
+              supportedLocales: AppLocale.supportedLocales,
+              localizationsDelegates: appLocalizationsDelegates,
+              // The app's own theme: the default Material one would test
+              // colours the app never shows.
+              theme: brightness == Brightness.dark
+                  ? AppTheme.darkTheme
+                  : AppTheme.lightTheme,
+              home: const ProjectDetailScreen(id: 'p1'),
+            ),
     ),
   );
   await tester.pumpAndSettle();
@@ -212,13 +248,31 @@ void _screenTest(String name, Future<void> Function(WidgetTester tester) body) {
   });
 }
 
+/// Opens one view of the workspace. Four are tabs; the AI assistant is the
+/// second view of the Chat tab; Members is a screen pushed from the app-bar
+/// overflow (it is closed again before another view opens).
 Future<void> _openTab(WidgetTester tester, String name) async {
+  if (find.byType(ProjectMembersScreen).evaluate().isNotEmpty) {
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+  }
+  if (name == 'Members') {
+    await tester.tap(find.byTooltip('More project actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Members').last);
+    await tester.pumpAndSettle();
+    return;
+  }
+  final tabName = name == 'AI assistant' ? 'Chat' : name;
   final tab = find.descendant(
     of: find.byType(TabBar),
-    matching: find.text(name),
+    matching: find.text(tabName),
   );
   await tester.ensureVisible(tab);
   await tester.tap(tab);
+  await tester.pumpAndSettle();
+  if (tabName != 'Chat') return;
+  await tester.tap(find.text(name == 'Chat' ? 'Team chat' : 'AI assistant'));
   await tester.pumpAndSettle();
   if (name == 'Chat') await _deliverReady(tester);
 }
@@ -243,23 +297,24 @@ void _check(String key, Object actual, Object? expected) {
   }
 }
 
+/// Every view of the workspace, in the order the tests walk them.
 const _tabs = [
   'Overview',
   'Papers',
   'Chat',
-  'AI Assistant',
+  'AI assistant',
   'Outputs',
   'Members',
 ];
 
 void main() {
-  _screenTest('has the six tabs in order', (tester) async {
+  _screenTest('has the four tabs in order', (tester) async {
     await _pump(tester);
     final labels = tester
         .widgetList<Tab>(find.byType(Tab))
         .map((t) => t.text)
         .toList();
-    expect(labels, _tabs);
+    expect(labels, ['Overview', 'Papers', 'Chat', 'Outputs']);
     expect(find.text('Học liên kết trong y tế'), findsWidgets);
     await _dispose(tester);
   });
@@ -282,6 +337,59 @@ void main() {
     }
     expect(_errors, isEmpty, reason: 'empty project: layout errors');
     await _dispose(tester);
+  });
+
+  _screenTest('Overview: papers but no report, the next step is a report',
+      (tester) async {
+    await _pump(tester, messages: false, withReport: false);
+    expect(find.text('Generate your first report'), findsOneWidget);
+    expect(find.text('Ask about your papers'), findsNothing);
+    await tester.tap(find.widgetWithText(FilledButton, 'Generate report'));
+    await tester.pumpAndSettle();
+    expect(DefaultTabController.of(tester.element(find.byType(TabBarView))).index, 3);
+    await _dispose(tester);
+  });
+
+  _screenTest('"Add paper" shows on the Papers tab only and opens search',
+      (tester) async {
+    await _pump(tester, messages: false);
+    expect(find.text('Add paper'), findsNothing);
+    await _openTab(tester, 'Papers');
+    expect(find.text('Add paper'), findsOneWidget);
+    await _openTab(tester, 'Outputs');
+    expect(find.text('Add paper'), findsNothing);
+    await _dispose(tester);
+  });
+
+  group('removing a paper', () {
+    Finder row(String title) => find.widgetWithText(LumiListRow, title);
+
+    _screenTest('Undo keeps it: nothing is sent', (tester) async {
+      final api = await _pump(tester, messages: false);
+      await _openTab(tester, 'Papers');
+      await tester.drag(row('Privacy in Medical FL'), const Offset(-500, 0));
+      await tester.pumpAndSettle();
+      expect(row('Privacy in Medical FL'), findsNothing);
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(row('Privacy in Medical FL'), findsOneWidget);
+      expect(api.projects.removedPapers, isEmpty);
+      await _dispose(tester);
+    });
+
+    _screenTest('the request goes out once the Undo window closes',
+        (tester) async {
+      final api = await _pump(tester, messages: false);
+      await _openTab(tester, 'Papers');
+      await tester.drag(row('Privacy in Medical FL'), const Offset(-500, 0));
+      await tester.pumpAndSettle();
+      expect(api.projects.removedPapers, isEmpty);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pumpAndSettle();
+      expect(api.projects.removedPapers, ['pa2']);
+      await _dispose(tester);
+    });
   });
 
   for (final brightness in Brightness.values) {
@@ -373,7 +481,7 @@ void main() {
         tester,
       ) async {
         final api = await _pump(tester, messages: false);
-        await _openTab(tester, 'AI Assistant');
+        await _openTab(tester, 'AI assistant');
         await send(tester, 'hỏi AI');
 
         expect(api.teamSends, isEmpty);
@@ -398,7 +506,7 @@ void main() {
         tester,
       ) async {
         final api = await _pump(tester, messages: false);
-        await _openTab(tester, 'AI Assistant');
+        await _openTab(tester, 'AI assistant');
         await tester.tap(find.text('Team AI'));
         await tester.pumpAndSettle();
 
@@ -408,7 +516,7 @@ void main() {
         expect(api.teamSends, ['tin cho nhóm']);
         expect(api.aiSends, isEmpty);
 
-        await _openTab(tester, 'AI Assistant');
+        await _openTab(tester, 'AI assistant');
         expect(
           find.text('AI answers are visible to every project member'),
           findsOneWidget,
@@ -431,7 +539,7 @@ void main() {
           project: _emptyProject,
           messages: false,
         );
-        await _openTab(tester, 'AI Assistant');
+        await _openTab(tester, 'AI assistant');
 
         // The empty AI chat already shows this sentence as a hint (1); the
         // error banner adds a second one.
@@ -473,7 +581,7 @@ void main() {
       await _openTab(tester, 'Chat');
       await tester.enterText(input(), 'bản nháp nhóm');
       await tester.pump();
-      await _openTab(tester, 'AI Assistant');
+      await _openTab(tester, 'AI assistant');
       expect(tester.widget<TextField>(input()).controller!.text, isEmpty);
 
       await tester.enterText(input(), 'bản nháp AI');
@@ -484,6 +592,67 @@ void main() {
         tester.widget<TextField>(input()).controller!.text,
         'bản nháp nhóm',
       );
+      await _dispose(tester);
+    });
+  });
+
+  group('project actions', () {
+    const owned = ProjectView(
+      id: 'p1',
+      title: 'Học liên kết trong y tế',
+      ownerId: 'u1',
+      accessRole: 'OWNER',
+      members: [ProjectMemberRef(id: 'u1', displayName: 'Minh Nguyen')],
+    );
+    const joined = ProjectView(
+      id: 'p1',
+      title: 'Học liên kết trong y tế',
+      ownerId: 'u9',
+      accessRole: 'MEMBER',
+    );
+
+    Future<void> openActions(WidgetTester tester) async {
+      await tester.tap(find.byTooltip('More project actions'));
+      await tester.pumpAndSettle();
+    }
+
+    _screenTest('a member sees Members only: no settings, no Trash', (tester) async {
+      await _pump(tester, project: joined, messages: false);
+      await openActions(tester);
+      expect(find.text('Members'), findsWidgets);
+      expect(find.text('Project settings'), findsNothing);
+      expect(find.text('Move project to Trash'), findsNothing);
+      await _dispose(tester);
+    });
+
+    _screenTest('Trash needs the exact title, then moves once and leaves', (tester) async {
+      final api = await _pump(tester, project: owned, messages: false, withRouter: true);
+      await openActions(tester);
+      await tester.tap(find.text('Move project to Trash'));
+      await tester.pumpAndSettle();
+      final confirm = find.widgetWithText(FilledButton, 'Move to Trash');
+      expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+      await tester.enterText(find.byType(TextField).last, 'Học liên kết');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+      await tester.enterText(find.byType(TextField).last, 'Học liên kết trong y tế');
+      await tester.pump();
+      await tester.tap(confirm);
+      await tester.pumpAndSettle();
+      expect(api.projects.deleted, ['p1']);
+      expect(find.text('projects list'), findsOneWidget);
+      expect(find.text('Project moved to Trash'), findsOneWidget);
+      await _dispose(tester);
+    });
+
+    _screenTest('cancelling the Trash sheet sends nothing', (tester) async {
+      final api = await _pump(tester, project: owned, messages: false);
+      await openActions(tester);
+      await tester.tap(find.text('Move project to Trash'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(api.projects.deleted, isEmpty);
       await _dispose(tester);
     });
   });
@@ -499,13 +668,35 @@ const Map<String, List<String>> _expected = {
     '1',
     '2',
     '2',
-    'AI Assistant',
-    'Add',
-    'Add publications to power grounding reports, chat, and gap detection.',
+    'Ask about your papers',
     'Chat',
-    'Gaps Detected',
-    'Ground Your Research',
+    'Federated Learning Survey',
+    'Gaps',
     'Học liên kết trong y tế',
+    'Members',
+    'Mô tả dự án',
+    'Next step',
+    'Open chat',
+    'Outputs',
+    'Overview',
+    'Papers',
+    'Papers',
+    'Privacy in Medical FL',
+    'Recent papers',
+    'Reports',
+    'The AI assistant answers from the papers in this project.',
+    'Year: 2024 · Citations: 12',
+    'Year: N/A · Citations: 0',
+  ],
+  'Papers': [
+    '0',
+    '1',
+    '2',
+    '2',
+    'Add paper',
+    'Chat',
+    'Federated Learning Survey',
+    'Gaps',
     'Học liên kết trong y tế',
     'Members',
     'Mô tả dự án',
@@ -513,87 +704,92 @@ const Map<String, List<String>> _expected = {
     'Overview',
     'Papers',
     'Papers',
-    'Reports',
-    'Team Members',
-  ],
-  'Papers': [
-    'AI Assistant',
-    'Chat',
-    'Federated Learning Survey',
-    'Học liên kết trong y tế',
-    'Members',
-    'Outputs',
-    'Overview',
-    'Papers',
     'Privacy in Medical FL',
+    'Reports',
     'Year: 2024 · Citations: 12',
     'Year: N/A · Citations: 0',
   ],
   'Chat': [
+    '0',
     '09:00',
-    'AI Assistant',
+    '1',
+    '2',
+    '2',
+    'AI assistant',
     'Chat',
     'Chào cả nhóm',
+    'Gaps',
     'Học liên kết trong y tế',
     'L',
     'Lan Tran',
     'Members',
     'Message the team…',
+    'Mô tả dự án',
     'Outputs',
     'Overview',
     'Papers',
+    'Papers',
+    'Reports',
+    'Team chat',
     'Today',
   ],
-  'AI Assistant': [
+  'AI assistant': [
+    '0',
+    '1',
     '10:00',
-    'AI Assistant',
+    '2',
+    '2',
+    'AI assistant',
     'AI assistant',
     'Ask AI Assistant about project publications...',
     'Chat',
     'Copy',
+    'Gaps',
     'Học liên kết trong y tế',
     'Members',
     'My AI',
+    'Mô tả dự án',
     'Only you can see this AI conversation',
     'Outputs',
     'Overview',
     'Papers',
+    'Papers',
+    'Reports',
     'Team AI',
+    'Team chat',
     'Đây là câu trả lời của AI',
   ],
   'Outputs': [
-    'AI Assistant',
+    '0',
+    '1',
+    '2',
+    '2',
     'Báo cáo thử',
     'Chat',
-    'Discovered Research Gaps',
-    'Generate Report',
+    'Discovered research gaps',
+    'Gaps',
+    'Generate report',
     'Học liên kết trong y tế',
     'Members',
+    'Mô tả dự án',
     'No research gaps found for this workspace.',
     'Outputs',
     'Overview',
     'Papers',
+    'Papers',
+    'Ready',
     'Reports',
-    'Status: READY · federated learning',
+    'Reports',
+    'federated learning',
   ],
   'Members': [
-    'AI Assistant',
-    'Add',
-    'Chat',
-    'Enter User ID or Email',
-    'Học liên kết trong y tế',
     'LT',
     'Lan Tran',
     'MN',
     'Member',
     'Members',
     'Minh Nguyen',
-    'Outputs',
-    'Overview',
     'Owner',
-    'Papers',
-    'Workspace Members',
-    'Workspace Settings',
   ],
 };
 const Map<String, List<String>> _expectedEmpty = {
@@ -602,87 +798,107 @@ const Map<String, List<String>> _expectedEmpty = {
     '0',
     '0',
     '1',
-    'AI Assistant',
-    'Add',
     'Add publications to power grounding reports, chat, and gap detection.',
     'Chat',
     'Dự án trống',
-    'Dự án trống',
-    'Gaps Detected',
-    'Ground Your Research',
+    'Gaps',
+    'Ground your research',
     'Members',
+    'Next step',
     'No description yet.',
     'Outputs',
     'Overview',
     'Papers',
     'Papers',
     'Reports',
-    'Team Members',
+    'Search publications',
   ],
   'Papers': [
-    'AI Assistant',
+    '0',
+    '0',
+    '0',
+    '1',
     'Chat',
     'Dự án trống',
+    'Gaps',
     'Members',
+    'No description yet.',
     'No papers inside this project workspace yet.',
     'Outputs',
     'Overview',
     'Papers',
-    'Search for publications outside and tap "Add" button to associate them here.',
+    'Papers',
+    'Reports',
     'Search publications',
   ],
   'Chat': [
-    'AI Assistant',
+    '0',
+    '0',
+    '0',
+    '1',
+    'AI assistant',
     'Chat',
     'Dự án trống',
+    'Gaps',
     'Members',
     'Message the team…',
+    'No description yet.',
     'No messages yet. Start the conversation.',
     'Outputs',
     'Overview',
     'Papers',
+    'Papers',
+    'Reports',
+    'Team chat',
   ],
-  'AI Assistant': [
-    'AI Assistant',
+  'AI assistant': [
+    '0',
+    '0',
+    '0',
+    '1',
+    'AI assistant',
     'Add papers before asking AI.',
     'Ask AI Assistant about project publications...',
     'Chat',
     'Dự án trống',
+    'Gaps',
     'Members',
     'My AI',
     'No AI messages yet',
+    'No description yet.',
     'Only you can see this AI conversation',
     'Outputs',
     'Overview',
     'Papers',
+    'Papers',
+    'Reports',
     'Team AI',
+    'Team chat',
   ],
   'Outputs': [
-    'AI Assistant',
+    '0',
+    '0',
+    '0',
+    '1',
     'Báo cáo thử',
     'Chat',
-    'Discovered Research Gaps',
+    'Discovered research gaps',
     'Dự án trống',
-    'Generate Report',
+    'Gaps',
+    'Generate report',
     'Members',
+    'No description yet.',
     'No research gaps found for this workspace.',
     'Outputs',
     'Overview',
     'Papers',
+    'Papers',
+    'Ready',
     'Reports',
-    'Status: READY · federated learning',
+    'Reports',
+    'federated learning',
   ],
   'Members': [
-    'AI Assistant',
-    'Add',
-    'Chat',
-    'Dự án trống',
-    'Enter User ID or Email',
     'Members',
-    'Outputs',
-    'Overview',
-    'Papers',
-    'Workspace Members',
-    'Workspace Settings',
   ],
 };

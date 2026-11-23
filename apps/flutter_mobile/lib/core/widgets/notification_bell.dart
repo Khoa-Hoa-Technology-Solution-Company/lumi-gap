@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/theme/lumi_tints.dart';
 import 'package:flutter_mobile/features/notifications/data/notifications_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -22,7 +23,10 @@ String notificationBellLabel(int unread, AppLocale locale) => unread <= 0
 /// [notificationsProvider] the notifications screen invalidates after marking
 /// items read, so the badge refreshes itself.
 class NotificationBell extends ConsumerWidget {
-  const NotificationBell({super.key});
+  const NotificationBell({this.onHero = false, super.key});
+
+  /// Drawn on the coloured Home header: white icon on a translucent tile.
+  final bool onHero;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -41,9 +45,15 @@ class NotificationBell extends ConsumerWidget {
       onTap: () => unawaited(context.push('/notifications')),
       child: Tooltip(
         message: label,
-        child: SizedBox(
+        child: Container(
           width: 48,
           height: 48,
+          decoration: onHero
+              ? BoxDecoration(
+                  color: context.tints.onHero.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(16),
+                )
+              : null,
           child: InkResponse(
             onTap: () => unawaited(context.push('/notifications')),
             radius: 24,
@@ -58,7 +68,7 @@ class NotificationBell extends ConsumerWidget {
                 child: Icon(
                   Icons.notifications_outlined,
                   size: 24,
-                  color: lumi.foreground,
+                  color: onHero ? context.tints.onHero : lumi.foreground,
                 ),
               ),
             ),

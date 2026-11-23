@@ -57,12 +57,12 @@ class PaperHeaderCard extends StatelessWidget {
               ),
               if (paper.isAiAnalyzable)
                 LumiChip(
-                  label: context.t('AI Analyzable'),
+                  label: context.t('AI analyzable'),
                   icon: Icons.check_circle_outline,
                 ),
               if (paper.openAccessUrl != null)
                 LumiChip(
-                  label: context.t('Open Access'),
+                  label: context.t('Open access'),
                   tone: LumiChipTone.success,
                   icon: Icons.lock_open,
                 ),
@@ -115,6 +115,8 @@ class PaperHeaderCard extends StatelessWidget {
 
   Future<void> _showAllAuthors(BuildContext context) =>
       showModalBottomSheet<void>(
+        // Over the bottom navigation bar, dimming it too.
+        useRootNavigator: true,
         context: context,
         isScrollControlled: true,
         builder: (context) => DraggableScrollableSheet(
@@ -126,7 +128,7 @@ class PaperHeaderCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
               Text(
-                context.t('All Authors'),
+                context.t('All authors'),
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
@@ -136,7 +138,7 @@ class PaperHeaderCard extends StatelessWidget {
                   leading: LumiAvatar(name: author.displayName),
                   title: Text(author.displayName),
                   subtitle: Text(
-                    context.t('Author Position: {{position}}', {
+                    context.t('Author position: {{position}}', {
                       'position': author.position,
                     }),
                   ),

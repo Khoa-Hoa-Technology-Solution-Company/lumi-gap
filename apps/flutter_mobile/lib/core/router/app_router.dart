@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_mobile/core/i18n/i18n.dart';
-import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/admin/presentation/admin_sync_screen.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
+import 'package:flutter_mobile/features/auth/presentation/auth_startup_screen.dart';
 import 'package:flutter_mobile/features/auth/presentation/forgot_password_screen.dart';
 import 'package:flutter_mobile/features/auth/presentation/login_screen.dart';
 import 'package:flutter_mobile/features/auth/presentation/register_screen.dart';
@@ -73,7 +72,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isSplash = state.matchedLocation == '/splash';
       
       
-      if (isLoading && !isGoingToLogin) {
+      // Checking the session, or the check could not reach the server (the
+      // session is kept): the start screen, which offers a retry.
+      if ((isLoading || authState.hasError) && !isGoingToLogin) {
         return '/splash';
       }
       
@@ -91,9 +92,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/splash',
-        builder: (context, state) => Scaffold(
-          body: AppLoading(fullScreen: true, message: context.t('Initializing...')),
-        ),
+        builder: (context, state) => const AuthStartupScreen(),
       ),
       GoRoute(
         path: '/login',

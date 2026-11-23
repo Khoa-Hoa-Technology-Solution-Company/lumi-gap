@@ -27,7 +27,10 @@ class ReportDetailScreen extends ConsumerWidget {
     final query = ref.watch(reportProvider(id));
     final Widget body;
     if (query.hasValue) {
-      body = _ReportBody(report: query.requireValue, id: id);
+      body = RefreshIndicator(
+        onRefresh: () => ref.refresh(reportProvider(id).future),
+        child: _ReportBody(report: query.requireValue, id: id),
+      );
     } else if (query.hasError) {
       body = LumiErrorState(
         message: context.t(failureMessageKey(query.error!)),
@@ -39,7 +42,7 @@ class ReportDetailScreen extends ConsumerWidget {
     }
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.t('Report Detail')),
+        title: Text(context.t('Report detail')),
         actions: [
           _ReportBookmarkButton(reportId: id),
           const SizedBox(width: 4),
@@ -65,6 +68,7 @@ class _ReportBody extends StatelessWidget {
     final topic = report.topic ?? report.query;
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       children: [
         LumiCard(
@@ -147,8 +151,8 @@ class _ReportBody extends StatelessWidget {
         if (report.researchGaps.isNotEmpty) ...[
           const SizedBox(height: 24),
           LumiSectionHeader(
-            title: context.t('Identified Research Gaps'),
-            actionLabel: context.t('View Gaps Board'),
+            title: context.t('Identified research gaps'),
+            actionLabel: context.t('View gaps board'),
             onAction: () => unawaited(
               context.push('/gaps?topic=${Uri.encodeComponent(topic)}'),
             ),
@@ -239,10 +243,9 @@ class _ReportBookmarkButtonState extends ConsumerState<_ReportBookmarkButton> {
       onPressed: _busy || status == null
           ? null
           : () => unawaited(_toggle(status)),
-      icon: Icon(
-        saved ? Icons.bookmark : Icons.bookmark_border,
-        color: saved ? context.lumi.primary : null,
-      ),
+      // On the blue app bar: the filled icon says "saved", in the bar's
+      // icon colour.
+      icon: Icon(saved ? Icons.bookmark : Icons.bookmark_border),
     );
   }
 }

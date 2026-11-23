@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/theme/lumi_tints.dart';
 
 /// The main choice of a screen (2–4 options) as a muted track whose selected
 /// option is a raised `surface` tile. Secondary choices go in a filter sheet.
@@ -27,10 +28,10 @@ class LumiSegmentedTabs<T> extends StatelessWidget {
     final lumi = context.lumi;
     final theme = Theme.of(context);
     final track = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
-        color: lumi.surfaceMuted,
-        borderRadius: BorderRadius.circular(12),
+        color: segmentTrackColor(context),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         children: [
@@ -83,16 +84,18 @@ class _Segment extends StatelessWidget {
       inMutuallyExclusiveGroup: true,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(999),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 48),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
             child: Material(
-              color: selected ? lumi.surface : lumi.surfaceMuted,
+              color: selected
+                  ? segmentSelectedColor(context)
+                  : segmentTrackColor(context),
               elevation: selected ? 1 : 0,
               shadowColor: lumi.scrim,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(999),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 40),
                 child: Center(
@@ -127,15 +130,20 @@ class LumiFilterButton extends StatelessWidget {
   const LumiFilterButton({
     required this.activeCount,
     required this.onPressed,
+    this.onHero = false,
     super.key,
   });
 
   final int activeCount;
   final VoidCallback onPressed;
 
+  /// In a blue app bar: white icon on a translucent tile, like the Home bell.
+  final bool onHero;
+
   @override
   Widget build(BuildContext context) {
     final lumi = context.lumi;
+    final tints = context.tints;
     final label = activeCount == 0
         ? context.t('Filters')
         : context.t('Filters, {{count}} active', {'count': '$activeCount'});
@@ -158,15 +166,21 @@ class LumiFilterButton extends StatelessWidget {
             children: [
               Positioned.fill(
                 child: Material(
-                  color: lumi.surface,
+                  color: onHero
+                      ? tints.onHero.withValues(alpha: 0.16)
+                      : lumi.surface,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: lumi.line),
+                    borderRadius: BorderRadius.circular(onHero ? 14 : 12),
+                    side: onHero ? BorderSide.none : BorderSide(color: lumi.line),
                   ),
                   child: InkWell(
                     onTap: onPressed,
-                    borderRadius: BorderRadius.circular(12),
-                    child: Icon(Icons.tune, size: 20, color: lumi.foreground),
+                    borderRadius: BorderRadius.circular(onHero ? 14 : 12),
+                    child: Icon(
+                      Icons.tune,
+                      size: 20,
+                      color: onHero ? tints.onHero : lumi.foreground,
+                    ),
                   ),
                 ),
               ),
@@ -181,7 +195,7 @@ class LumiFilterButton extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 6),
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: lumi.primary,
+                        color: onHero ? tints.onHero : lumi.primary,
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
@@ -190,7 +204,9 @@ class LumiFilterButton extends StatelessWidget {
                             .textTheme
                             .labelMedium
                             ?.copyWith(
-                              color: lumi.onPrimary,
+                              color: onHero
+                                  ? LumiColors.light.primary
+                                  : lumi.onPrimary,
                               fontWeight: FontWeight.w700,
                             ),
                       ),
@@ -229,12 +245,12 @@ class LumiSearchButton extends StatelessWidget {
       child: Material(
         color: lumi.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: lumi.line),
         ),
         child: InkWell(
           onTap: onPressed,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           child: SizedBox(
             height: 52,
             child: Padding(
@@ -270,12 +286,16 @@ class LumiShortcutTile extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onPressed,
+    this.tint,
     super.key,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onPressed;
+
+  /// The icon's tile colour; the brand blue when null.
+  final LumiTint? tint;
 
   @override
   Widget build(BuildContext context) {
@@ -289,22 +309,33 @@ class LumiShortcutTile extends StatelessWidget {
       // the tap is offered here.
       onTap: onPressed,
       excludeSemantics: true,
-      child: InkWell(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: lumi.surface,
+          borderRadius: BorderRadius.circular(LumiElevation.cardRadius),
+          border: Theme.of(context).brightness == Brightness.dark
+              ? Border.all(color: lumi.line)
+              : null,
+          boxShadow: LumiElevation.card(Theme.of(context).brightness),
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(LumiElevation.cardRadius),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.fromLTRB(4, 14, 4, 12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 56,
-                height: 56,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                  color: lumi.primarySoft,
-                  borderRadius: BorderRadius.circular(12),
+                  color: tint?.background ?? lumi.primarySoft,
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(icon, size: 24, color: lumi.primary),
+                child: Icon(icon, size: 22, color: tint?.foreground ?? lumi.primary),
               ),
               const SizedBox(height: 8),
               Text(
@@ -321,6 +352,22 @@ class LumiShortcutTile extends StatelessWidget {
           ),
         ),
       ),
+        ),
+      ),
     );
   }
 }
+
+/// The track of a segmented control: a recessed grey in light mode. In dark
+/// mode the track is the card colour and the selected pill the lighter grey,
+/// so the selection reads as raised, not sunken.
+Color segmentTrackColor(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+        ? context.lumi.surface
+        : context.lumi.surfaceMuted;
+
+/// The selected pill of a segmented control (see [segmentTrackColor]).
+Color segmentSelectedColor(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+        ? context.lumi.surfaceMuted
+        : context.lumi.surface;

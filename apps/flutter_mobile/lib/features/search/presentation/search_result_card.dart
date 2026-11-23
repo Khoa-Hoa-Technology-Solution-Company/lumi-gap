@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/theme/lumi_tints.dart';
+import 'package:flutter_mobile/core/utils/haptics.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_action_sheet.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
 
@@ -43,99 +48,156 @@ class SearchResultCard extends StatelessWidget {
     ].join(' · ');
     final isSaved = saved ?? false;
 
-    const radius = BorderRadius.all(Radius.circular(12));
+    // The app's card surface (LumiCard): radius 20, soft shadow in light
+    // mode, hairline border in dark mode.
+    const radius = BorderRadius.all(Radius.circular(LumiElevation.cardRadius));
+    final brightness = theme.brightness;
+
+    // Long-press: the same two actions as the row tap and the save button.
+    Future<void> showActions() async {
+      final action = await showLumiActionSheet<String>(
+        context,
+        title: paper.title,
+        actions: [
+          LumiSheetAction(
+            value: 'open',
+            label: context.t('Open'),
+            icon: Icons.open_in_new,
+          ),
+          if (saved != null)
+            LumiSheetAction(
+              value: 'bookmark',
+              label: isSaved
+                  ? context.t('Remove bookmark')
+                  : context.t('Bookmark'),
+              icon: isSaved
+                  ? Icons.bookmark_remove_outlined
+                  : Icons.bookmark_border,
+              enabled: !savingBookmark,
+            ),
+        ],
+      );
+      switch (action) {
+        case 'open':
+          onTap();
+        case 'bookmark':
+          onBookmarkTap();
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: lumi.surface,
-        shape: RoundedRectangleBorder(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
           borderRadius: radius,
-          side: BorderSide(color: lumi.line),
+          boxShadow: LumiElevation.card(brightness),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          borderRadius: radius,
-          onTap: onTap,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 4, 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+        child: Material(
+          color: lumi.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: radius,
+            side: brightness == Brightness.dark
+                ? BorderSide(color: lumi.line)
+                : BorderSide.none,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Semantics(
+            onLongPressHint: context.t('Show actions'),
+            child: InkWell(
+              borderRadius: radius,
+              onTap: onTap,
+              onLongPress: () {
+                unawaited(Haptics.select());
+                unawaited(showActions());
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 4, 14),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            paper.title,
-                            style: theme.textTheme.titleMedium,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                paper.title,
+                                style: theme.textTheme.titleMedium,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            // Imported papers keep the stored default 0, which
+                            // means "not measured": no chip rather than "0.00".
+                            if (paper.dataQualityScore > 0) ...[
+                              const SizedBox(width: 8),
+                              Tooltip(
+                                message: context.t('Data quality score'),
+                                child: LumiChip(
+                                  label: paper.dataQualityScore.toStringAsFixed(
+                                    2,
+                                  ),
+                                  tone: LumiChipTone.primary,
+                                  icon: Icons.bar_chart,
+                                ),
+                              ),
+                            ],
+                            IconButton(
+                              isSelected: isSaved,
+                              icon: Icon(
+                                isSaved
+                                    ? Icons.bookmark
+                                    : Icons.bookmark_outline,
+                                color: isSaved
+                                    ? lumi.primary
+                                    : lumi.foregroundSecondary,
+                              ),
+                              tooltip: isSaved
+                                  ? context.t('Remove bookmark')
+                                  : context.t('Save paper'),
+                              onPressed: savingBookmark ? null : onBookmarkTap,
+                            ),
+                          ],
                         ),
-                        // Imported papers keep the stored default 0, which
-                        // means "not measured": no chip rather than "0.00".
-                        if (paper.dataQualityScore > 0) ...[
-                          const SizedBox(width: 8),
-                          Tooltip(
-                            message: context.t('Data quality score'),
-                            child: LumiChip(
-                              label: paper.dataQualityScore.toStringAsFixed(2),
-                              tone: LumiChipTone.primary,
-                              icon: Icons.bar_chart,
+                        if (authors.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            authors,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: lumi.foregroundSecondary,
                             ),
                           ),
                         ],
-                        IconButton(
-                          isSelected: isSaved,
-                          icon: Icon(
-                            isSaved ? Icons.bookmark : Icons.bookmark_outline,
-                            color: isSaved
-                                ? lumi.primary
-                                : lumi.foregroundSecondary,
-                          ),
-                          tooltip: isSaved
-                              ? context.t('Remove bookmark')
-                              : context.t('Save Paper'),
-                          onPressed: savingBookmark ? null : onBookmarkTap,
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              meta,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: lumi.foregroundSecondary,
+                              ),
+                            ),
+                            if (paper.openAccessUrl != null)
+                              LumiChip(
+                                label: context.t('Open access'),
+                                tone: LumiChipTone.success,
+                                icon: Icons.lock_open,
+                              ),
+                          ],
                         ),
                       ],
                     ),
-                    if (authors.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        authors,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(color: lumi.foregroundSecondary),
-                      ),
-                    ],
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          meta,
-                          style: theme.textTheme.bodyMedium
-                              ?.copyWith(color: lumi.foregroundSecondary),
-                        ),
-                        if (paper.openAccessUrl != null)
-                          LumiChip(
-                            label: context.t('Open Access'),
-                            tone: LumiChipTone.success,
-                            icon: Icons.lock_open,
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

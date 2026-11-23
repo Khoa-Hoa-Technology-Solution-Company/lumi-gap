@@ -1,12 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/relative_time.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_action_sheet.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_confirm_sheet.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/community/data/forum_api.dart';
@@ -43,10 +46,15 @@ class _ForumPostScreenState extends ConsumerState<ForumPostScreen> {
   int _page = 0;
   bool _hasMore = true;
   bool _loadingReplies = false;
+
+  /// Bumped by a refresh: a page that was in flight before it is dropped,
+  /// so an old page never lands in the restarted list.
+  int _repliesGen = 0;
   Object? _repliesError;
   String? _repliesFor;
 
   final _reply = TextEditingController();
+  final _replyFocus = FocusNode();
   ForumReply? _replyTo;
   bool _sending = false;
 
@@ -63,6 +71,7 @@ class _ForumPostScreenState extends ConsumerState<ForumPostScreen> {
   @override
   void dispose() {
     _reply.dispose();
+    _replyFocus.dispose();
     super.dispose();
   }
 
@@ -80,9 +89,10 @@ class _ForumPostScreenState extends ConsumerState<ForumPostScreen> {
       _repliesError = null;
     });
     final next = _page + 1;
+    final gen = _repliesGen;
     try {
       final page = await _api.replies(postId, next);
-      if (!mounted) return;
+      if (!mounted || gen != _repliesGen) return;
       setState(() {
         for (final r in page.items) {
           if (_replyIds.add(r.id)) _replies.add(r);
@@ -91,9 +101,30 @@ class _ForumPostScreenState extends ConsumerState<ForumPostScreen> {
         _hasMore = page.hasMore && page.items.length >= forumReplyPageSize;
       });
     } on Object catch (e) {
-      if (mounted) setState(() => _repliesError = e);
+      if (mounted && gen == _repliesGen) setState(() => _repliesError = e);
     } finally {
-      if (mounted) setState(() => _loadingReplies = false);
+      if (mounted && gen == _repliesGen) setState(() => _loadingReplies = false);
+    }
+  }
+
+  /// Pull to refresh: the discussion again, and its replies from page one.
+  Future<void> _refresh() async {
+    setState(() {
+      _repliesGen++;
+      _replies.clear();
+      _replyIds.clear();
+      _page = 0;
+      _hasMore = true;
+      _loadingReplies = false;
+      _repliesError = null;
+      // The next build loads page one again.
+      _repliesFor = null;
+    });
+    try {
+      ref.invalidate(forumPostProvider(widget.idOrSlug));
+      await ref.read(forumPostProvider(widget.idOrSlug).future);
+    } on Object catch (_) {
+      // The error state of the screen says what went wrong.
     }
   }
 
@@ -159,6 +190,27 @@ class _ForumPostScreenState extends ConsumerState<ForumPostScreen> {
     });
   }
 
+  Future<void> _showPostActions(ForumPost post, {required bool isOwner}) async {
+    final editable = isOwner && !post.readOnly;
+    final action = await showLumiActionSheet<_PostAction>(
+      context,
+      actions: [
+        LumiSheetAction(value: _PostAction.share, label: context.t('Share'), icon: Icons.link),
+        if (editable)
+          LumiSheetAction(value: _PostAction.edit, label: context.t('Edit discussion'), icon: Icons.edit_outlined),
+        LumiSheetAction(value: _PostAction.report, label: context.t('Report content'), icon: Icons.flag_outlined),
+        if (editable)
+          LumiSheetAction(
+            value: _PostAction.delete,
+            label: context.t('Delete discussion'),
+            icon: Icons.delete_outline,
+            destructive: true,
+          ),
+      ],
+    );
+    if (action != null && mounted) await _postAction(post, action);
+  }
+
   Future<void> _postAction(ForumPost post, _PostAction action) async {
     switch (action) {
       case _PostAction.share:
@@ -189,10 +241,24 @@ class _ForumPostScreenState extends ConsumerState<ForumPostScreen> {
         await copyForumLink(context, forumWebPath(post, postNumber: reply.postNumber));
       case ReplyAction.report:
         await reportForumContent(context, ref, reply: true, id: reply.id);
+      case ReplyAction.copy:
+        final messenger = ScaffoldMessenger.of(context);
+        final locale = context.appLocale;
+        await Clipboard.setData(ClipboardData(text: reply.content));
+        messenger.showSnackBar(SnackBar(content: Text(translate('Copied to clipboard', locale))));
       case ReplyAction.edit:
-        final text = await showDialog<String>(
-          context: context,
-          builder: (_) => EditReplyDialog(initial: reply.content),
+        final text = await showLumiInputSheet(
+          context,
+          title: context.t('Edit response'),
+          field: LumiSheetField(
+            label: context.t('Response'),
+            initial: reply.content,
+            maxLength: forumReplyMax,
+            minLines: 3,
+            maxLines: 8,
+            required: true,
+          ),
+          confirmText: context.t('Save changes'),
         );
         if (text == null || text == reply.content || !mounted) return;
         final error = replyError(text);
@@ -281,18 +347,10 @@ class _ForumPostScreenState extends ConsumerState<ForumPostScreen> {
               icon: Icon(level == 'MUTED' ? Icons.notifications_off_outlined : Icons.notifications_none),
               selectedIcon: const Icon(Icons.notifications_active),
             ),
-            PopupMenuButton<_PostAction>(
+            IconButton(
               tooltip: context.t('More discussion actions'),
-              enabled: !_busy,
-              onSelected: (a) => unawaited(_postAction(post, a)),
-              itemBuilder: (context) => [
-                PopupMenuItem(value: _PostAction.share, child: Text(context.t('Share'))),
-                if (isOwner && !post.readOnly)
-                  PopupMenuItem(value: _PostAction.edit, child: Text(context.t('Edit discussion'))),
-                PopupMenuItem(value: _PostAction.report, child: Text(context.t('Report content'))),
-                if (isOwner && !post.readOnly)
-                  PopupMenuItem(value: _PostAction.delete, child: Text(context.t('Delete discussion'))),
-              ],
+              onPressed: _busy ? null : () => unawaited(_showPostActions(post, isOwner: isOwner)),
+              icon: const Icon(Icons.more_vert),
             ),
           ],
         ],
@@ -336,7 +394,10 @@ class _ForumPostScreenState extends ConsumerState<ForumPostScreen> {
               }
               return false;
             },
-            child: ListView(
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               children: [
                 Wrap(
@@ -378,7 +439,8 @@ class _ForumPostScreenState extends ConsumerState<ForumPostScreen> {
                 LumiSectionHeader(title: context.t('Replies')),
                 if (_replies.isEmpty && !_loadingReplies && _repliesError == null && !_hasMore)
                   Text(context.t('No replies yet. Start the conversation with a question or a reference.'), style: secondary),
-                for (final r in _replies) ...[
+                for (final (i, r) in _replies.indexed) ...[
+                  if (i > 0) Divider(height: 1, color: context.lumi.line),
                   ForumReplyCard(
                     reply: r,
                     accepted: r.id == accepted,
@@ -388,11 +450,13 @@ class _ForumPostScreenState extends ConsumerState<ForumPostScreen> {
                     canAccept: isOwner && post.type == 'QUESTION',
                     busy: _busy,
                     parentAuthor: r.parentCommentId == null ? null : authors[r.parentCommentId],
-                    onReply: () => setState(() => _replyTo = r),
+                    onReply: () {
+                      setState(() => _replyTo = r);
+                      _replyFocus.requestFocus();
+                    },
                     onAccept: () => unawaited(_toggleAccept(post, r)),
                     onAction: (a) => unawaited(_replyAction(post, r, a)),
                   ),
-                  const SizedBox(height: 8),
                 ],
                 if (_repliesError != null)
                   LumiErrorState(
@@ -409,11 +473,13 @@ class _ForumPostScreenState extends ConsumerState<ForumPostScreen> {
                   ),
               ],
             ),
+            ),
           ),
         ),
         if (canReply)
           ReplyComposer(
             controller: _reply,
+            focusNode: _replyFocus,
             sending: _sending,
             replyingTo: _replyTo?.author.fullName,
             onCancelReplyTo: () => setState(() => _replyTo = null),

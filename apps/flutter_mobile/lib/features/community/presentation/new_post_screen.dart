@@ -5,6 +5,7 @@ import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_confirm_sheet.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_text_field.dart';
@@ -162,20 +163,13 @@ class _NewPostScreenState extends ConsumerState<NewPostScreen> {
   }
 
   Future<bool> _confirmDiscard() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.t('Discard this discussion?')),
-        content: Text(context.t('What you wrote will be lost.')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.t('Keep editing'))),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: context.lumi.error),
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(context.t('Discard')),
-          ),
-        ],
-      ),
+    final ok = await showLumiConfirmSheet(
+      context,
+      title: context.t('Discard this discussion?'),
+      message: context.t('What you wrote will be lost.'),
+      confirmText: context.t('Discard'),
+      cancelText: context.t('Keep editing'),
+      destructive: true,
     );
     return ok ?? false;
   }

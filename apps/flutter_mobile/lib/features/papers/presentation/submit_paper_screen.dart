@@ -7,6 +7,7 @@ import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/theme/lumi_tints.dart';
 import 'package:flutter_mobile/features/papers/data/papers_api.dart';
 import 'package:flutter_mobile/features/papers/domain/submit_paper_validation.dart';
 import 'package:flutter_mobile/features/papers/presentation/submit_paper_parts.dart';
@@ -173,7 +174,7 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.editId == null ? context.t('Submit Paper') : context.t('Resubmit Paper')),
+        title: Text(widget.editId == null ? context.t('Submit paper') : context.t('Resubmit paper')),
         centerTitle: false,
         scrolledUnderElevation: 0,
         actions: [
@@ -184,12 +185,12 @@ class _SubmitPaperScreenState extends ConsumerState<SubmitPaperScreen> {
               padding: const EdgeInsets.only(right: 8),
               child: TextButton.icon(
                 onPressed: _autoFillTestData,
-                icon: Icon(Icons.summarize_outlined, size: 16, color: context.lumi.primary),
+                icon: Icon(Icons.summarize_outlined, size: 16, color: context.tints.onHero),
                 label: Text(
-                  context.t('Fill Test'),
+                  context.t('Fill test'),
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: context.lumi.primary,
+                    color: context.tints.onHero,
                   ),
                 ),
               ),

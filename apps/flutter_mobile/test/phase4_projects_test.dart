@@ -5,7 +5,7 @@ import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/core/theme/lumi_chart.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
-import 'package:flutter_mobile/features/projects/presentation/project_detail/members_settings_tab.dart';
+import 'package:flutter_mobile/features/projects/presentation/project_detail/project_members_screen.dart';
 import 'package:flutter_mobile/features/projects/presentation/projects_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,8 +15,18 @@ import 'support/readable_text.dart';
 
 class _RemoveApi extends Fake implements ProjectsApi {
   final List<String> removed = [];
+  final List<String> invited = [];
   Object? error;
   Completer<void>? gate;
+
+  @override
+  Future<void> addMember(
+    String projectId, {
+    required String targetId,
+    String role = 'member',
+  }) async {
+    invited.add(targetId);
+  }
 
   @override
   Future<void> removeMember(String projectId, String memberId) async {
@@ -64,18 +74,16 @@ Future<void> _pumpMembers(
   await tester.pumpWidget(
     ProviderScope(
       key: UniqueKey(),
-      overrides: [projectsApiProvider.overrideWithValue(api)],
+      overrides: [
+        projectsApiProvider.overrideWithValue(api),
+        projectProvider.overrideWith((ref, id) async => project),
+      ],
       child: MaterialApp(
         locale: AppLocale.en.locale,
         supportedLocales: AppLocale.supportedLocales,
         localizationsDelegates: appLocalizationsDelegates,
         theme: AppTheme.lightTheme,
-        home: Scaffold(
-          body: Consumer(
-            builder: (context, ref, _) =>
-                ProjectMembersSettingsTab(project: project, ref: ref),
-          ),
-        ),
+        home: ProjectMembersScreen(projectId: project.id),
       ),
     ),
   );
@@ -149,7 +157,7 @@ void main() {
     });
   });
 
-  group('members tab', () {
+  group('members screen', () {
     testWidgets('a member cannot remove anyone', (tester) async {
       final api = _RemoveApi();
       await _pumpMembers(
@@ -159,6 +167,43 @@ void main() {
       );
       expect(find.text('Lan Tran'), findsOneWidget);
       expect(find.byTooltip('Remove member'), findsNothing);
+      // Inviting is the owner's too (MANAGE_MEMBERS).
+      expect(find.text('Invite member'), findsNothing);
+    });
+
+    testWidgets('the owner invites by a valid email only', (tester) async {
+      final api = _RemoveApi();
+      await _pumpMembers(tester, ProjectView.fromJson(_detailJson()), api);
+      await tester.tap(find.text('Invite member'));
+      await tester.pumpAndSettle();
+      final send = find.widgetWithText(FilledButton, 'Send invitation');
+      expect(tester.widget<FilledButton>(send).onPressed, isNull);
+      await tester.enterText(find.byType(TextField), 'not-an-email');
+      await tester.pump();
+      expect(find.text('Enter a valid email address.'), findsOneWidget);
+      expect(tester.widget<FilledButton>(send).onPressed, isNull);
+      await tester.enterText(find.byType(TextField), '  lan@fpt.edu.vn ');
+      await tester.pump();
+      await tester.tap(send);
+      await tester.pumpAndSettle();
+      expect(api.invited, ['lan@fpt.edu.vn']);
+      expect(find.text('Invitation sent. They join once they accept it.'), findsOneWidget);
+    });
+
+    testWidgets('long-press on a member offers Remove; the owner row none',
+        (tester) async {
+      final api = _RemoveApi();
+      await _pumpMembers(tester, ProjectView.fromJson(_detailJson()), api);
+      await tester.longPress(find.text('Minh Nguyen'));
+      await tester.pumpAndSettle();
+      expect(find.byType(BottomSheet), findsNothing);
+      await tester.longPress(find.text('Lan Tran'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Remove member').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
+      await tester.pumpAndSettle();
+      expect(api.removed, ['u2']);
     });
 
     testWidgets('the owner removes a member only after confirming',

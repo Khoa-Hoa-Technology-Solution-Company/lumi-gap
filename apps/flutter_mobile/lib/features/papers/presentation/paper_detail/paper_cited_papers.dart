@@ -4,26 +4,55 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/papers/data/papers_api.dart';
-import 'package:flutter_mobile/features/papers/presentation/paper_detail/paper_detail_sections.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 /// Works this paper cites that are also in the LumiGap library, as in the
-/// web's "cited papers" block. Closed at first: the list is only requested
-/// when the reader opens it.
+/// web's "cited papers" block. A row that opens a sheet: the list is only
+/// requested when the reader asks for it.
 class PaperCitedPapers extends StatelessWidget {
   const PaperCitedPapers({required this.paperId, super.key});
 
   final String paperId;
 
   @override
-  Widget build(BuildContext context) => PaperSection(
-        icon: Icons.format_list_bulleted,
-        title: context.t('Cited papers in LumiGap'),
-        initiallyExpanded: false,
-        child: _CitedList(paperId: paperId),
+  Widget build(BuildContext context) => LumiRowGroup(
+        children: [
+          LumiListRow(
+            icon: Icons.format_list_bulleted,
+            title: context.t('Cited papers in LumiGap'),
+            onTap: () => unawaited(
+              showModalBottomSheet<void>(
+                // Over the bottom navigation bar, dimming it too.
+                useRootNavigator: true,
+                context: context,
+                showDragHandle: true,
+                useSafeArea: true,
+                isScrollControlled: true,
+                builder: (context) => DraggableScrollableSheet(
+                  expand: false,
+                  initialChildSize: 0.6,
+                  maxChildSize: 0.95,
+                  builder: (context, controller) => ListView(
+                    controller: controller,
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                    children: [
+                      Text(
+                        context.t('Cited papers in LumiGap'),
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 12),
+                      _CitedList(paperId: paperId),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       );
 }
 
