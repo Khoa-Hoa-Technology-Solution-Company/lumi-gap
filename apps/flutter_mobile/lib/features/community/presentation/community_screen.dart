@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
-import 'package:flutter_mobile/core/widgets/notification_bell.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_hero_app_bar.dart';
 import 'package:flutter_mobile/features/community/data/forum_api.dart';
 import 'package:flutter_mobile/features/community/presentation/communities_list.dart';
 import 'package:flutter_mobile/features/community/presentation/forum_feed.dart';
@@ -63,6 +63,8 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
   /// the sheet closes with "Apply".
   Future<void> _pickFilters() async {
     final picked = await showModalBottomSheet<(String?, String?)>(
+      // Over the bottom navigation bar, dimming it too.
+      useRootNavigator: true,
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -125,11 +127,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Text(context.t('Community')),
-        actions: const [NotificationBell(), SizedBox(width: 4)],
-      ),
+      appBar: LumiHeroAppBar(title: context.t('Community')),
       floatingActionButton: _view == CommunityView.discussions
           ? FloatingActionButton.extended(
               onPressed: () => unawaited(_newDiscussion()),

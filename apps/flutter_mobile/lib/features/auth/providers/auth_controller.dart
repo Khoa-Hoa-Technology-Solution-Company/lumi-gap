@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:developer';
 
+import 'package:dio/dio.dart';
+import 'package:flutter_mobile/core/errors/api_exception.dart';
 import 'package:flutter_mobile/core/storage/secure_token_store.dart';
 import 'package:flutter_mobile/features/auth/data/auth_api.dart';
 import 'package:flutter_mobile/features/auth/data/auth_failure.dart';
@@ -42,15 +44,29 @@ class AuthController extends Notifier<AsyncValue<User?>> {
       } else {
         state = const AsyncData(null);
       }
-    } on Object catch (e) {
+    } on Object catch (e, st) {
       log('AuthController: _initAuth error: $e');
-      // Ignore delete errors during initialization if it was a timeout
-      try {
-        await _tokenStore.delete().timeout(const Duration(seconds: 2));
-      } on Object catch (_) {}
-      state = const AsyncData(null);
+      if (sessionRejected(e)) {
+        // The server said the session is over: sign out for good.
+        try {
+          await _tokenStore.delete().timeout(const Duration(seconds: 2));
+        } on Object catch (_) {}
+        state = const AsyncData(null);
+      } else {
+        // Offline, a timeout or a server error says nothing about the
+        // session: keep it, and let the start screen offer a retry rather
+        // than signing the person out because the network was down.
+        state = AsyncError(e, st);
+      }
     }
     log('AuthController: _initAuth completed, state is ${state.value}');
+  }
+
+  /// Tries the start-up session check again (after "could not connect").
+  Future<void> retryStartup() async {
+    if (state.isLoading) return;
+    state = const AsyncLoading();
+    await _initAuth();
   }
 
   /// Signs in. Returns null on success (the router then leaves the auth
@@ -133,4 +149,17 @@ class AuthController extends Notifier<AsyncValue<User?>> {
     await _tokenStore.delete();
     state = const AsyncData(null);
   }
+}
+
+/// True when the server refused the stored session (401 / 403), the only
+/// case in which start-up may drop it. The API client has already tried a
+/// token refresh before a 401 gets here.
+bool sessionRejected(Object error) {
+  final status = switch (error) {
+    DioException(:final response, :final error) =>
+      response?.statusCode ?? (error is ApiException ? error.statusCode : null),
+    ApiException(:final statusCode) => statusCode,
+    _ => null,
+  };
+  return status == 401 || status == 403;
 }

@@ -109,11 +109,11 @@ class _TrendCompareResultsState extends State<TrendCompareResults> {
             ),
             DropdownMenuItem(
               value: CompareMetric.citations,
-              child: Text(context.t('Total Citations')),
+              child: Text(context.t('Total citations')),
             ),
             DropdownMenuItem(
               value: CompareMetric.avgCitations,
-              child: Text(context.t('Avg Citations')),
+              child: Text(context.t('Avg citations')),
             ),
           ],
           onChanged: (v) {
@@ -286,7 +286,7 @@ class _TopicCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               figure(
-                context.t('Total Papers'),
+                context.t('Total papers'),
                 Text(
                   formatNumber(topic.totalPapers),
                   style: theme.textTheme.titleSmall,
@@ -325,12 +325,12 @@ class _TopicCard extends StatelessWidget {
               TextButton.icon(
                 onPressed: onSearch,
                 icon: const Icon(Icons.search, size: 18),
-                label: Text(context.t('Search Papers')),
+                label: Text(context.t('Search papers')),
               ),
               TextButton.icon(
                 onPressed: onExplain,
                 icon: const Icon(Icons.summarize_outlined, size: 18),
-                label: Text(context.t('AI Explain')),
+                label: Text(context.t('AI explain')),
               ),
             ],
           ),

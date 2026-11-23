@@ -110,7 +110,7 @@ void main() {
 
     await tester.tap(find.textContaining('Leave community'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(TextButton, 'Leave community'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Leave community'));
     await tester.pumpAndSettle();
     expect(api.calls, ['leave rc1']);
     expect(find.text('You left the community'), findsOneWidget);

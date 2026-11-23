@@ -116,7 +116,7 @@ class _TrendsCompareTabState extends ConsumerState<TrendsCompareTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        LumiSectionHeader(title: context.t('Recommended Comparisons')),
+        LumiSectionHeader(title: context.t('Recommended comparisons')),
         // Cards as tall as their text, never clipped at large text sizes.
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,

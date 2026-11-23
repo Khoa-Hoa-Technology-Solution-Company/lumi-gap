@@ -222,9 +222,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Local topic'));
       await tester.pumpAndSettle();
-      expect(find.text('Search Papers'), findsOneWidget);
-      expect(find.text('Generate Report'), findsOneWidget);
-      await tester.tap(find.text('Explain Trend with AI'));
+      expect(find.text('Search papers'), findsOneWidget);
+      expect(find.text('Generate report'), findsOneWidget);
+      await tester.tap(find.text('Explain trend with AI'));
       await tester.pumpAndSettle();
       expect(explained, ['Local topic']);
     });
@@ -412,7 +412,7 @@ void main() {
       );
       await tester.tap(find.text('New report').last);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Preview Evidence Pack'));
+      await tester.tap(find.text('Preview evidence pack'));
       await tester.pumpAndSettle();
       // A real API call would fail without a server; none is made.
       expect(tester.takeException(), isNull);
@@ -449,11 +449,11 @@ void main() {
         ],
       );
       expect(find.text('Topic A'), findsOneWidget);
-      expect(find.text('Preview Evidence Pack'), findsNothing);
+      expect(find.text('Preview evidence pack'), findsNothing);
 
       await tester.tap(find.widgetWithText(FloatingActionButton, 'New report'));
       await tester.pumpAndSettle();
-      expect(find.text('Preview Evidence Pack'), findsOneWidget);
+      expect(find.text('Preview evidence pack'), findsOneWidget);
       await tester.enterText(
         find.ancestor(
           of: find.text('What should the report answer?'),
@@ -484,7 +484,7 @@ void main() {
           reportsProvider.overrideWith((ref, params) async => someReports),
         ],
       );
-      expect(find.text('Preview Evidence Pack'), findsOneWidget);
+      expect(find.text('Preview evidence pack'), findsOneWidget);
       expect(find.text('Federated learning'), findsOneWidget);
       // Back goes to where the link was, so no "Close" of its own.
       expect(find.byTooltip('Close'), findsNothing);

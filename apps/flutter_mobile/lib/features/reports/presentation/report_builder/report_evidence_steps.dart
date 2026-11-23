@@ -163,14 +163,14 @@ class ReportPreviewStep extends StatelessWidget {
               Expanded(
                 child: OutlinedButton(
                   onPressed: onBack,
-                  child: Text(context.t('Back to Setup')),
+                  child: Text(context.t('Back to setup')),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton(
                   onPressed: papers.isEmpty ? null : onNext,
-                  child: Text(context.t('Edit Evidence')),
+                  child: Text(context.t('Edit evidence')),
                 ),
               ),
             ],
@@ -275,7 +275,7 @@ class ReportEditStep extends StatelessWidget {
                             color: lumi.onPrimary,
                           ),
                         )
-                      : Text(context.t('Generate Report')),
+                      : Text(context.t('Generate report')),
                 ),
               ),
             ],

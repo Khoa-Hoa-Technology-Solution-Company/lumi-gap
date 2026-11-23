@@ -67,40 +67,19 @@ class ProjectAiAssistantTab extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
+                // The app's standard field, as the team chat composer.
                 Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: colors.surfaceContainerHighest.withValues(
-                        alpha: .5,
+                  child: TextField(
+                    controller: messageController,
+                    minLines: 1,
+                    maxLines: 4,
+                    maxLength: 2000,
+                    textInputAction: TextInputAction.newline,
+                    decoration: InputDecoration(
+                      hintText: context.t(
+                        'Ask AI Assistant about project publications...',
                       ),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: colors.outlineVariant.withValues(alpha: .18),
-                      ),
-                    ),
-                    child: TextField(
-                      controller: messageController,
-                      minLines: 1,
-                      maxLines: 4,
-                      maxLength: 2000,
-                      textInputAction: TextInputAction.newline,
-                      decoration: InputDecoration(
-                        hintText:
-                            context.t('Ask AI Assistant about project publications...'),
-                        counterText: '',
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        filled: false,
-                        prefixIcon: const Icon(
-                          Icons.chat_bubble_outline,
-                          size: 20,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 13,
-                        ),
-                      ),
+                      counterText: '',
                     ),
                   ),
                 ),

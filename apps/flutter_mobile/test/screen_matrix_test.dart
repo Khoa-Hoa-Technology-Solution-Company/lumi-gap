@@ -7,6 +7,7 @@ import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/admin/data/admin_api.dart';
 import 'package:flutter_mobile/features/admin/presentation/admin_sync_screen.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
+import 'package:flutter_mobile/features/auth/presentation/auth_startup_screen.dart';
 import 'package:flutter_mobile/features/auth/presentation/forgot_password_screen.dart';
 import 'package:flutter_mobile/features/auth/presentation/login_screen.dart';
 import 'package:flutter_mobile/features/auth/presentation/register_screen.dart';
@@ -32,11 +33,14 @@ import 'package:flutter_mobile/features/papers/data/papers_models.dart';
 import 'package:flutter_mobile/features/papers/presentation/my_papers_screen.dart';
 import 'package:flutter_mobile/features/papers/presentation/paper_detail_screen.dart';
 import 'package:flutter_mobile/features/papers/presentation/submit_paper_screen.dart';
+import 'package:flutter_mobile/features/profile/presentation/account_editors.dart';
 import 'package:flutter_mobile/features/profile/presentation/account_screen.dart';
 import 'package:flutter_mobile/features/profile/presentation/profile_screen.dart';
 import 'package:flutter_mobile/features/projects/data/invitations_api.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/projects/presentation/invitation_link_screen.dart';
+import 'package:flutter_mobile/features/projects/presentation/project_detail/project_members_screen.dart';
+import 'package:flutter_mobile/features/projects/presentation/project_detail/project_settings_screen.dart';
 import 'package:flutter_mobile/features/projects/presentation/projects_screen.dart';
 import 'package:flutter_mobile/features/quality/data/quality_api.dart';
 import 'package:flutter_mobile/features/rankings/data/rankings_api.dart';
@@ -150,8 +154,16 @@ TrendingTopic _topic(String name, TrendVerdict verdict, double? change) =>
     );
 
 /// Overrides every screen may reach; each case adds its own.
-List<Override> _common(User? user, List<Bookmark>? bookmarks) => [
-  authControllerProvider.overrideWith(() => FakeAuthController(user)),
+List<Override> _common(
+  User? user,
+  List<Bookmark>? bookmarks, {
+  bool startupFailed = false,
+}) => [
+  authControllerProvider.overrideWith(
+    () => startupFailed
+        ? _UnreachableAuthController()
+        : FakeAuthController(user),
+  ),
   notificationsProvider.overrideWith(
     (ref) async => const [
       AppNotification(
@@ -206,6 +218,7 @@ class _Case {
     this.overrides = const [],
     this.user,
     this.bookmarks,
+    this.startupFailed = false,
   });
 
   final String name;
@@ -217,6 +230,16 @@ class _Case {
 
   /// The reader's bookmarks, when the screen is about them.
   final List<Bookmark>? bookmarks;
+
+  /// The start-up session check could not reach the server.
+  final bool startupFailed;
+}
+
+/// A start-up check that failed for want of a network (session kept).
+class _UnreachableAuthController extends AuthController {
+  @override
+  AsyncValue<User?> build() =>
+      AsyncError(Exception('offline'), StackTrace.empty);
 }
 
 const _project = ProjectView(
@@ -229,6 +252,11 @@ const _project = ProjectView(
 );
 
 final List<_Case> _cases = [
+  _Case(
+    'start-up offline',
+    () => const AuthStartupScreen(),
+    startupFailed: true,
+  ),
   _Case('login', () => const LoginScreen()),
   _Case('register', () => const RegisterScreen()),
   _Case('forgot password', () => const ForgotPasswordScreen()),
@@ -373,6 +401,43 @@ final List<_Case> _cases = [
     ],
   ),
   _Case('profile', () => const ProfileScreen(), user: _user()),
+  _Case(
+    'account institution',
+    () => const AccountInstitutionScreen(),
+    user: _user(),
+  ),
+  _Case(
+    'account interests',
+    () => const AccountInterestsScreen(),
+    user: _user().copyWith(
+      researchInterests: ['federated learning', 'privacy'],
+    ),
+  ),
+  _Case('account password', () => const AccountPasswordScreen(), user: _user()),
+  _Case(
+    'project members',
+    () => const ProjectMembersScreen(projectId: 'pr1'),
+    user: _user(),
+    overrides: [
+      projectProvider.overrideWith(
+        (ref, id) async => const ProjectView(
+          id: 'pr1',
+          title: 'Học liên kết trong y tế và giáo dục đại học',
+          accessRole: 'OWNER',
+          ownerId: 'u1',
+          members: [
+            ProjectMemberRef(id: 'u1', displayName: 'Nguyễn Minh Anh'),
+            ProjectMemberRef(id: 'u2', displayName: 'Trần Thị Bích Ngọc'),
+          ],
+        ),
+      ),
+    ],
+  ),
+  _Case(
+    'project settings',
+    () => const ProjectSettingsScreen(project: _project),
+    user: _user(),
+  ),
   _Case(
     'account',
     () => const AccountScreen(),
@@ -661,7 +726,10 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       key: UniqueKey(),
-      overrides: [..._common(c.user, c.bookmarks), ...c.overrides],
+      overrides: [
+        ..._common(c.user, c.bookmarks, startupFailed: c.startupFailed),
+        ...c.overrides,
+      ],
       child: MaterialApp.router(
         routerConfig: router,
         locale: locale.locale,

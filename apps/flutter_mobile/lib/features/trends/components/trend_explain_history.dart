@@ -45,7 +45,7 @@ class TrendExplainHistory extends ConsumerWidget {
                         side: BorderSide(color: lumi.line),
                       ),
                       title: Text(
-                        item.topic ?? context.t('Dataset Overview'),
+                        item.topic ?? context.t('Dataset overview'),
                         style: theme.textTheme.titleSmall,
                       ),
                       subtitle: Text(
@@ -74,7 +74,7 @@ class TrendExplainHistory extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        LumiSectionHeader(title: context.t('Saved Explanation History')),
+        LumiSectionHeader(title: context.t('Saved explanation history')),
         body,
       ],
     );

@@ -77,9 +77,9 @@ String? normalizeSource(String raw) {
 
 /// Paper kinds the API filters on, with their English label keys.
 final List<(String, String)> searchPaperKinds = [
-  ('article', tk('Journal Article')),
-  ('book-chapter', tk('Book Chapter')),
-  ('proceedings', tk('Conference Proceeding')),
+  ('article', tk('Journal article')),
+  ('book-chapter', tk('Book chapter')),
+  ('proceedings', tk('Conference proceeding')),
   ('preprint', tk('Preprint')),
   ('review', tk('Review')),
   ('other', tk('Other')),
@@ -91,7 +91,7 @@ String paperKindLabel(String code) {
   for (final (value, label) in searchPaperKinds) {
     if (value == code) return label;
   }
-  return tk('Paper Kind');
+  return tk('Paper kind');
 }
 
 /// [scope] without the kind, source or provider that Search moved into

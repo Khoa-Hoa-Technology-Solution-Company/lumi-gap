@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/gaps/presentation/gap_closure_widgets.dart';
@@ -14,7 +15,33 @@ import 'package:flutter_mobile/features/gaps/presentation/gap_closure_widgets.da
       _ => (label: tk('Active'), tone: LumiChipTone.primary),
     };
 
-/// Confidence as a bar and a percentage. The colour bands follow the
+/// Readable label of a gap's confidence (`gapConfidence`), as an English key.
+String gapConfidenceLabel(String level) => switch (level) {
+  'HIGH' => tk('High'),
+  'MODERATE' => tk('Moderate'),
+  _ => tk('Low'),
+};
+
+/// "Gap confidence: Low", as on the web gap card (gap-card.tsx).
+class GapConfidenceLabel extends StatelessWidget {
+  const GapConfidenceLabel({required this.level, super.key});
+
+  final String level;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      context.t('Gap confidence: {{level}}', {
+        'level': context.t(gapConfidenceLabel(level)),
+      }),
+      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+        color: context.lumi.foregroundSecondary,
+      ),
+    );
+  }
+}
+
+/// Evidence confidence as a bar and a percentage. The colour bands follow the
 /// filter's thresholds (40% and 70%); the number is always written.
 class GapConfidenceBar extends StatelessWidget {
   const GapConfidenceBar({required this.value, super.key});
@@ -86,60 +113,50 @@ class GapCard extends StatelessWidget {
     final lumi = context.lumi;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: lumi.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: lumi.line),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onOpen,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  gap.title,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium,
+      // The app's card surface, as every other list card.
+      child: LumiCard(
+        onTap: onOpen,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              gap.title,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleMedium,
+            ),
+            if (gap.description.trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                gap.description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: lumi.foregroundSecondary,
                 ),
-                if (gap.description.trim().isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    gap.description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: lumi.foregroundSecondary,
-                    ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                GapClosureBadge(gap: gap),
+                GapConfidenceLabel(level: gap.gapConfidence),
+                Text(
+                  context.plural(
+                    gap.evidenceCount,
+                    one: '{{count}} evidence paper',
+                    other: '{{count}} evidence papers',
                   ),
-                ],
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    GapClosureBadge(gap: gap),
-                    GapConfidenceBar(value: gap.confidence),
-                    Text(
-                      context.plural(
-                        gap.evidenceCount,
-                        one: '{{count}} evidence paper',
-                        other: '{{count}} evidence papers',
-                      ),
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: lumi.foregroundSecondary,
-                      ),
-                    ),
-                  ],
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: lumi.foregroundSecondary,
+                  ),
                 ),
               ],
             ),
-          ),
+          ],
         ),
       ),
     );

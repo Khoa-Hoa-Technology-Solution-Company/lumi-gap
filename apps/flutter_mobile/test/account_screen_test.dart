@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_text_field.dart';
 import 'package:flutter_mobile/features/auth/data/auth_api.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
@@ -101,6 +102,12 @@ Future<void> _fillPassword(
   await tester.enterText(_field('Confirm new password'), confirm ?? next);
 }
 
+/// Opens the editor behind one row of the account list.
+Future<void> _open(WidgetTester tester, String row) async {
+  await tester.tap(find.widgetWithText(LumiListRow, row));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   test('institution: may stay empty, but a set one cannot be cleared', () {
     expect(institutionError('', saved: null), isNull);
@@ -136,15 +143,20 @@ void main() {
       'saving sends the interests, and the institution only when it changed',
       (tester) async {
     final (api, _) = await _pump(tester, _user);
+    // The list shows what is saved; each row opens its own editor.
+    expect(find.text('FPT University'), findsOneWidget);
+    expect(find.text('federated learning'), findsOneWidget);
+    await _open(tester, 'Research interests');
     FilledButton save() =>
         tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save'));
     // Nothing changed yet: nothing to save.
     expect(save().onPressed, isNull);
+    // Typed but not added: Save adds it rather than losing it.
     await tester.enterText(_field('Add an interest'), 'privacy');
-    await tester.tap(find.byTooltip('Add'));
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
+    // Interests only: the institution is not re-sent.
     expect(api.updates.single.institution, isNull);
     expect(api.updates.single.interests, ['federated learning', 'privacy']);
     expect(find.text('Profile saved.'), findsOneWidget);
@@ -153,7 +165,8 @@ void main() {
   testWidgets('a set institution cannot be emptied: said under the field',
       (tester) async {
     final (api, _) = await _pump(tester, _user);
-    await tester.enterText(_field('University / Institution'), '');
+    await _open(tester, 'University / institution');
+    await tester.enterText(_field('University / institution'), '');
     // One frame: the Save button turns on once the field has changed.
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
@@ -165,6 +178,7 @@ void main() {
   testWidgets('password: rules and confirmation are checked before sending',
       (tester) async {
     final (api, _) = await _pump(tester, _user);
+    await _open(tester, 'Change password');
     await _fillPassword(tester, next: 'short', confirm: 'other');
     await tester.tap(find.widgetWithText(FilledButton, 'Change password'));
     await tester.pumpAndSettle();
@@ -177,6 +191,7 @@ void main() {
   testWidgets('a changed password is sent once and signs out: the API ended '
       'every session', (tester) async {
     final (api, controller) = await _pump(tester, _user);
+    await _open(tester, 'Change password');
     api.passwordGate = Completer<void>();
     await _fillPassword(tester, current: 'OldPassword1', next: 'NewPassword12');
     final button = find.widgetWithText(FilledButton, 'Change password');
@@ -193,6 +208,7 @@ void main() {
       (tester) async {
     final (api, controller) = await _pump(tester, _user);
     api.passwordError = httpFailure(400);
+    await _open(tester, 'Change password');
     await _fillPassword(tester, current: 'Wrong1password', next: 'NewPassword12');
     await tester.tap(find.widgetWithText(FilledButton, 'Change password'));
     await tester.pumpAndSettle();
@@ -204,9 +220,10 @@ void main() {
       (tester) async {
     final (api, _) =
         await _pump(tester, _user.copyWith(hasPasswordLogin: false));
+    await _open(tester, 'Set password');
     expect(find.widgetWithText(LumiTextField, 'Current password'), findsNothing);
     await _fillPassword(tester, next: 'NewPassword12');
-    await tester.tap(find.widgetWithText(FilledButton, 'Set Password'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Set password'));
     await tester.pumpAndSettle();
     expect(api.passwords.single.current, isNull);
   });

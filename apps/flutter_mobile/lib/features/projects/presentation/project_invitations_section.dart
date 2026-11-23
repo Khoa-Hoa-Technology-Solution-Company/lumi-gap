@@ -6,6 +6,7 @@ import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/relative_time.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_confirm_sheet.dart';
 import 'package:flutter_mobile/features/projects/data/invitations_api.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -64,31 +65,16 @@ class _ProjectInvitationsSectionState
   }
 
   Future<bool> _confirmDecline(ProjectInvitation invitation) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.t('Decline project invitation?')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(invitation.projectTitle, style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 12),
-            Text(context.t('This will remove the invitation from your pending list. You will need a new invitation if you want to join later.')),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(context.t('Keep invitation')),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: context.lumi.error),
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(context.t('Decline invitation')),
-          ),
-        ],
-      ),
+    final ok = await showLumiConfirmSheet(
+      context,
+      title: context.t('Decline project invitation?'),
+      message: [
+        invitation.projectTitle,
+        context.t('This will remove the invitation from your pending list. You will need a new invitation if you want to join later.'),
+      ].join('\n\n'),
+      confirmText: context.t('Decline invitation'),
+      cancelText: context.t('Keep invitation'),
+      destructive: true,
     );
     return ok ?? false;
   }

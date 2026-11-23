@@ -45,6 +45,7 @@ class TrendsSignalsTab extends StatelessWidget {
         );
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(0, 20, 0, 32),
       children: [
         if (strongest != null)
@@ -58,7 +59,7 @@ class TrendsSignalsTab extends StatelessWidget {
         if (overview.risingKeywords.isNotEmpty) ...[
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: LumiSectionHeader(title: context.t('Emerging Keywords')),
+            child: LumiSectionHeader(title: context.t('Emerging keywords')),
           ),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -68,9 +69,14 @@ class TrendsSignalsTab extends StatelessWidget {
                 for (final kw in overview.risingKeywords) ...[
                   _KeywordChip(
                     keyword: kw.keyword,
-                    // z of the log odds test: how strong the evidence of a rise is.
-                    change:
-                        'z ${kw.z.toStringAsFixed(1)}', // i18n-ignore: test statistic
+                    // How many papers carry it; the test statistic itself is
+                    // not shown to readers, only whether the rise passed it.
+                    change: context.plural(
+                      kw.totalPapers,
+                      one: '{{count}} paper',
+                      other: '{{count}} papers',
+                      args: {'count': formatNumber(kw.totalPapers)},
+                    ),
                     significant: kw.significant,
                     onTap: () => unawaited(
                       context.push(
@@ -91,7 +97,7 @@ class TrendsSignalsTab extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               LumiSectionHeader(
-                title: context.t('Rising Topics Signals'),
+                title: context.t('Rising topics'),
                 caption: allInsufficient
                     ? context.t(
                         'Not enough yearly data yet to tell whether these topics are rising or falling.',

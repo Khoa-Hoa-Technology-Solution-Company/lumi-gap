@@ -37,22 +37,27 @@ class LumiSectionHeader extends StatelessWidget {
                     header: true,
                     child: Text(
                       title,
-                      style: theme.textTheme.titleLarge,
+                      style: theme.textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w800),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),
+                // A round chevron on a card-coloured disc (direction A); its
+                // name ("View all") is the tooltip and what screen readers
+                // hear.
                 if (onAction != null && actionLabel != null)
-                  TextButton(
+                  IconButton(
                     onPressed: onAction,
-                    // No right padding: the label ends on the same edge as
-                    // the cards below. The tap target stays 48dp.
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.only(left: 12),
+                    tooltip: actionLabel,
+                    style: IconButton.styleFrom(
+                      backgroundColor: context.lumi.surface,
+                      foregroundColor: context.lumi.foreground,
                       minimumSize: const Size(48, 48),
+                      shape: const CircleBorder(),
                     ),
-                    child: Text(actionLabel!),
+                    icon: const Icon(Icons.chevron_right),
                   ),
               ],
             ),
@@ -109,17 +114,34 @@ class LumiSkeleton extends StatelessWidget {
 /// [LumiSkeleton] as the whole body of a screen or tab: page padding, and
 /// clipped rather than scrollable, so on a short screen the last placeholder
 /// is simply cut off.
+///
+/// [leadHeight] adds one taller block first, for a screen that opens with a
+/// hero card, so the placeholder has the shape of what loads.
 class LumiPageSkeleton extends StatelessWidget {
-  const LumiPageSkeleton({this.rows = 4, this.height = 96, super.key});
+  const LumiPageSkeleton({
+    this.rows = 4,
+    this.height = 96,
+    this.leadHeight,
+    super.key,
+  });
 
   final int rows;
   final double height;
+  final double? leadHeight;
 
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
     physics: const NeverScrollableScrollPhysics(),
     padding: const EdgeInsets.all(16),
-    child: LumiSkeleton(rows: rows, height: height),
+    child: Column(
+      children: [
+        if (leadHeight case final lead?) ...[
+          LumiSkeleton(rows: 1, height: lead),
+          const SizedBox(height: 24),
+        ],
+        LumiSkeleton(rows: rows, height: height),
+      ],
+    ),
   );
 }
 

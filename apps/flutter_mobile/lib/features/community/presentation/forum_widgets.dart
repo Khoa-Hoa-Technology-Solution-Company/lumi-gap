@@ -126,6 +126,8 @@ class _ForumReactionBarState extends ConsumerState<ForumReactionBar> {
 
   Future<void> _pick() async {
     final picked = await showModalBottomSheet<String>(
+      // Over the bottom navigation bar, dimming it too.
+      useRootNavigator: true,
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(

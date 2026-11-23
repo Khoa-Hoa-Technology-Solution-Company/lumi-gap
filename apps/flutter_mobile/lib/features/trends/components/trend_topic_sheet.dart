@@ -20,6 +20,8 @@ Future<void> showTrendTopicSheet(
 }) {
   final router = GoRouter.of(context);
   return showModalBottomSheet<void>(
+    // Over the bottom navigation bar, dimming it too.
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -226,7 +228,7 @@ class _TopicSheet extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: onSearch,
                   icon: const Icon(Icons.search, size: 18),
-                  label: Text(context.t('Search Papers')),
+                  label: Text(context.t('Search papers')),
                 ),
               ),
               const SizedBox(width: 8),
@@ -234,7 +236,7 @@ class _TopicSheet extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: onReport,
                   icon: const Icon(Icons.description_outlined, size: 18),
-                  label: Text(context.t('Generate Report')),
+                  label: Text(context.t('Generate report')),
                 ),
               ),
             ],
@@ -245,7 +247,7 @@ class _TopicSheet extends StatelessWidget {
             child: OutlinedButton.icon(
               onPressed: onExplain,
               icon: const Icon(Icons.summarize_outlined, size: 18),
-              label: Text(context.t('Explain Trend with AI')),
+              label: Text(context.t('Explain trend with AI')),
             ),
           ),
         ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_confirm_sheet.dart';
 import 'package:flutter_mobile/features/projects/data/team_chat_models.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/team_chat/team_chat_bubbles.dart';
 
@@ -10,6 +11,8 @@ Future<void> showTeamChatReaders(
   List<TeamChatSender> readers,
 ) {
   return showModalBottomSheet<void>(
+    // Over the bottom navigation bar, dimming it too.
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     builder: (sheetContext) => SafeArea(
@@ -48,6 +51,8 @@ Future<void> showTeamChatReaders(
 /// who may delete the message. Returns true when the user picked it.
 Future<bool> showTeamChatMessageMenu(BuildContext context) async {
   final picked = await showModalBottomSheet<bool>(
+    // Over the bottom navigation bar, dimming it too.
+    useRootNavigator: true,
     context: context,
     builder: (sheetContext) {
       final lumi = sheetContext.lumi;
@@ -77,41 +82,17 @@ Future<bool> showTeamChatMessageMenu(BuildContext context) async {
 /// Confirmation with an optional reason (at most 500 characters). Returns
 /// null when cancelled, otherwise the trimmed reason (possibly empty).
 Future<String?> askTeamChatDeleteReason(BuildContext context) {
-  // Not disposed on purpose: the dialog is still animating out when it
-  // returns, and the controller has no listeners to leak.
-  final reason = TextEditingController();
-  return showDialog<String>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text(context.t('Delete message?')),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(context.t('Everyone in the team will see "Message deleted".')),
-          const SizedBox(height: 12),
-          TextField(
-            controller: reason,
-            maxLength: 500,
-            maxLines: 3,
-            minLines: 1,
-            decoration: InputDecoration(
-              labelText: context.t('Reason (optional)'),
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: Text(context.t('Cancel')),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(dialogContext).pop(reason.text.trim()),
-          child: Text(context.t('Delete')),
-        ),
-      ],
+  return showLumiInputSheet(
+    context,
+    title: context.t('Delete message?'),
+    message: context.t('Everyone in the team will see "Message deleted".'),
+    field: LumiSheetField(
+      label: context.t('Reason (optional)'),
+      maxLength: 500,
+      maxLines: 3,
     ),
+    confirmText: context.t('Delete'),
+    destructive: true,
   );
 }
 

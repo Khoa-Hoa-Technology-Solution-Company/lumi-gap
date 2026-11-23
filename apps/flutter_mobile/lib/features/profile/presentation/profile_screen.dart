@@ -1,16 +1,22 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/i18n/locale_provider.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/theme/lumi_tints.dart';
 import 'package:flutter_mobile/core/theme/theme_provider.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_confirm_sheet.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
+import 'package:flutter_mobile/core/widgets/notification_bell.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
+import 'package:flutter_mobile/features/notifications/data/notifications_api.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
 import 'package:flutter_mobile/features/profile/presentation/email_verification_banner.dart';
 import 'package:flutter_mobile/features/profile/presentation/language_sheet.dart';
@@ -56,23 +62,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (_signingOut) return;
     setState(() => _signingOut = true);
     try {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(context.t('Sign out')),
-          content: Text(context.t('Do you want to sign out of LumiGap?')),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(context.t('Cancel')),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: TextButton.styleFrom(foregroundColor: context.lumi.error),
-              child: Text(context.t('Sign out')),
-            ),
-          ],
-        ),
+      final confirmed = await showLumiConfirmSheet(
+        context,
+        title: context.t('Sign out'),
+        message: context.t('Do you want to sign out of LumiGap?'),
+        confirmText: context.t('Sign out'),
+        destructive: true,
       );
       if (confirmed ?? false) {
         await ref.read(authControllerProvider.notifier).logout();
@@ -88,6 +83,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final authState = ref.watch(authControllerProvider);
     final user = authState.value;
     final bookmarks = ref.watch(bookmarksProvider).value ?? [];
+    final unreadNotifications = ref.watch(notificationsProvider).maybeWhen(
+          data: (items) => items.where((item) => !item.isRead).length,
+          orElse: () => 0,
+        );
     final reports =
         ref.watch(reportsProvider(const ReportsParams())).value?.total ?? 0;
 
@@ -134,194 +133,266 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
     );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.t('Profile')),
-        automaticallyImplyLeading: false,
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          children: [
-            // Centred, top to bottom: badge, name, email, then one line with
-            // the role and the institution. Nothing hangs to one side.
-            LumiCard(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-              child: Column(
-                children: [
-                  // Rank badge earned from contribution points.
-                  ExcludeSemantics(
-                    child: Container(
-                      width: 80,
-                      height: 80,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: lumi.primarySoft,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Image.asset(levelAsset, fit: BoxFit.contain),
-                    ),
+    final tints = context.tints;
+    final hasChips = academicKey != null ||
+        staffKey != null ||
+        (institution != null && institution.isNotEmpty);
+
+    // White status bar icons over the blue header, in both themes.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+        body: RefreshIndicator(
+          onRefresh: () async {
+            ref
+              ..invalidate(bookmarksProvider)
+              ..invalidate(reportsProvider(const ReportsParams()));
+            final messenger = ScaffoldMessenger.of(context);
+            final locale = context.appLocale;
+            try {
+              await ref.read(authControllerProvider.notifier).refreshUser();
+            } on Object catch (e) {
+              messenger.showSnackBar(
+                SnackBar(content: Text(translate(failureMessageKey(e), locale))),
+              );
+            }
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 24),
+            children: [
+              // Who is signed in, on the brand band: the rank badge, the
+              // name, the email, then the role and the institution.
+              ColoredBox(
+                color: tints.hero,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    MediaQuery.paddingOf(context).top + 16,
+                    20,
+                    20,
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    displayName,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleLarge,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (email != null && email != displayName) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      email,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: lumi.foregroundSecondary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                  if (academicKey != null ||
-                      staffKey != null ||
-                      (institution != null && institution.isNotEmpty)) ...[
-                    const SizedBox(height: 12),
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 8,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        if (academicKey != null)
-                          LumiChip(
-                            label: context.t(academicKey),
-                            tone: LumiChipTone.primary,
+                  child: Column(
+                    children: [
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Semantics(
+                          header: true,
+                          child: Text(
+                            context.t('Profile'),
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              color: tints.onHero,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
-                        if (staffKey != null)
-                          LumiChip(label: context.t(staffKey)),
-                        if (institution != null && institution.isNotEmpty)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Rank badge earned from contribution points.
+                      ExcludeSemantics(
+                        child: Container(
+                          width: 84,
+                          height: 84,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: tints.onHero.withValues(alpha: 0.16),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Image.asset(levelAsset, fit: BoxFit.contain),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        displayName,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: tints.onHero,
+                          fontWeight: FontWeight.w800,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (email != null && email != displayName) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          email,
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium
+                              ?.copyWith(color: tints.onHeroSoft),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      if (hasChips) ...[
+                        const SizedBox(height: 12),
+                        // The chips in the light palette: a light pill reads
+                        // on the blue band in both themes.
+                        Theme(
+                          data: theme.copyWith(extensions: const [LumiColors.light]),
+                          child: Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 8,
+                            runSpacing: 6,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              Icon(
-                                Icons.school_outlined,
-                                size: 16,
-                                color: lumi.foregroundSecondary,
-                              ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  institution,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: lumi.foregroundSecondary,
-                                  ),
+                              if (academicKey != null)
+                                LumiChip(
+                                  label: context.t(academicKey),
+                                  tone: LumiChipTone.primary,
                                 ),
-                              ),
+                              if (staffKey != null)
+                                LumiChip(label: context.t(staffKey)),
+                              if (institution != null && institution.isNotEmpty)
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.school_outlined,
+                                      size: 16,
+                                      color: tints.onHeroSoft,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        institution,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(color: tints.onHeroSoft),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                             ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              // The counters sit across the band's lower edge, as Home's
+              // shortcuts.
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [tints.hero, tints.hero, lumi.background, lumi.background],
+                    stops: const [0, 0.45, 0.45, 1],
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                  child: IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Figures only: each place has one entry, the rows
+                        // below (Bookmarks) and the Home shortcuts (Reports).
+                        _StatCard(
+                          label: context.t('Bookmarks'),
+                          value: paperBookmarks.length,
+                        ),
+                        const SizedBox(width: 10),
+                        _StatCard(label: context.t('Topics'), value: topicCount),
+                        const SizedBox(width: 10),
+                        _StatCard(label: context.t('Reports'), value: reports),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const EmailVerificationBanner(),
+                    const SizedBox(height: 12),
+                    groupLabel(context.t('Activity')),
+                    LumiRowGroup(
+                      children: [
+                        // Submitting a paper starts from My papers, where
+                        // its status is followed.
+                        LumiListRow(
+                          icon: Icons.description_outlined,
+                          title: context.t('My papers'),
+                          onTap: () => unawaited(context.push('/my-papers')),
+                        ),
+                        LumiListRow(
+                          icon: Icons.bookmark_border,
+                          title: context.t('Bookmarks'),
+                          onTap: () => unawaited(context.push('/bookmarks')),
+                        ),
+                        // The bell lives on Home only; here the same screen
+                        // with its unread count.
+                        LumiListRow(
+                          icon: Icons.notifications_none,
+                          title: context.t('Notifications'),
+                          value: unreadNotifications > 0
+                              ? unreadBadgeText(unreadNotifications)
+                              : null,
+                          onTap: () => unawaited(context.push('/notifications')),
+                        ),
+                        // Web: Workspace → Review Center.
+                        LumiListRow(
+                          icon: Icons.rate_review_outlined,
+                          title: context.t('Review Center'),
+                          onTap: () => unawaited(context.push('/reviews')),
+                        ),
+                        if (user?.role == UserRole.admin)
+                          LumiListRow(
+                            icon: Icons.sync,
+                            title: context.t('Admin sync'),
+                            onTap: () => unawaited(context.push('/admin/sync')),
                           ),
                       ],
                     ),
+                    const SizedBox(height: 24),
+                    groupLabel(context.t('Settings')),
+                    LumiRowGroup(
+                      children: [
+                        LumiListRow(
+                          icon: Icons.manage_accounts_outlined,
+                          title: context.t('Account'),
+                          subtitle: context.t('Institution, interests, password'),
+                          onTap: () => unawaited(context.push('/account')),
+                        ),
+                        LumiListRow(
+                          icon: themeModeIcon(currentThemeMode),
+                          title: context.t('Appearance'),
+                          value: context.t(themeModeLabel(currentThemeMode)),
+                          onTap: () => unawaited(showThemeModeSheet(context)),
+                        ),
+                        LumiListRow(
+                          icon: Icons.language,
+                          title: context.t('Language'),
+                          value: languageChoiceLabel(context, languageChoice),
+                          onTap: () => unawaited(showLanguageSheet(context)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    LumiRowGroup(
+                      children: [
+                        LumiListRow(
+                          icon: Icons.logout,
+                          title: context.t('Sign out'),
+                          destructive: true,
+                          showChevron: false,
+                          onTap: (authState.isLoading || _signingOut)
+                              ? null
+                              : () => unawaited(_handleLogout()),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
                   ],
-                ],
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-
-            const EmailVerificationBanner(),
-            const SizedBox(height: 12),
-
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Figures only: each place has one entry, the rows below
-                  // (Bookmarks) and the Home shortcuts (Reports).
-                  _StatCard(
-                    label: context.t('Bookmarks'),
-                    value: paperBookmarks.length,
-                  ),
-                  const SizedBox(width: 12),
-                  _StatCard(label: context.t('Topics'), value: topicCount),
-                  const SizedBox(width: 12),
-                  _StatCard(label: context.t('Reports'), value: reports),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            groupLabel(context.t('Activity')),
-            LumiRowGroup(
-              children: [
-                // Submitting a paper starts from My papers, where its
-                // status is followed.
-                LumiListRow(
-                  icon: Icons.description_outlined,
-                  title: context.t('My papers'),
-                  onTap: () => unawaited(context.push('/my-papers')),
-                ),
-                LumiListRow(
-                  icon: Icons.bookmark_border,
-                  title: context.t('Bookmarks'),
-                  onTap: () => unawaited(context.push('/bookmarks')),
-                ),
-                // Web: Workspace → Review Center.
-                LumiListRow(
-                  icon: Icons.rate_review_outlined,
-                  title: context.t('Review Center'),
-                  onTap: () => unawaited(context.push('/reviews')),
-                ),
-                if (user?.role == UserRole.admin)
-                  LumiListRow(
-                    icon: Icons.sync,
-                    title: context.t('Admin sync'),
-                    onTap: () => unawaited(context.push('/admin/sync')),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            groupLabel(context.t('Settings')),
-            LumiRowGroup(
-              children: [
-                LumiListRow(
-                  icon: Icons.manage_accounts_outlined,
-                  title: context.t('Account'),
-                  subtitle: context.t('Institution, interests, password'),
-                  onTap: () => unawaited(context.push('/account')),
-                ),
-                LumiListRow(
-                  icon: themeModeIcon(currentThemeMode),
-                  title: context.t('Appearance'),
-                  value: context.t(themeModeLabel(currentThemeMode)),
-                  onTap: () => unawaited(showThemeModeSheet(context)),
-                ),
-                LumiListRow(
-                  icon: Icons.language,
-                  title: context.t('Language'),
-                  value: languageChoiceLabel(context, languageChoice),
-                  onTap: () => unawaited(showLanguageSheet(context)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            LumiRowGroup(
-              children: [
-                LumiListRow(
-                  icon: Icons.logout,
-                  title: context.t('Sign out'),
-                  destructive: true,
-                  showChevron: false,
-                  onTap: (authState.isLoading || _signingOut)
-                      ? null
-                      : () => unawaited(_handleLogout()),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-          ],
+            ],
+          ),
         ),
       ),
     );
