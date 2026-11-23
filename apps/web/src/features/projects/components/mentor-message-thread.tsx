@@ -19,6 +19,7 @@ export function MentorMessageThread({ projectId, actorId, entry, readOnly, pendi
 }) {
   const [draft, setDraft] = useState("");
   const [reply, setReply] = useState<MentorFeedback | null>(null);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const olderAnchor = useRef<{ height: number; top: number }>();
   const query = useInfiniteQuery({
@@ -44,10 +45,33 @@ export function MentorMessageThread({ projectId, actorId, entry, readOnly, pendi
   }, [query.isFetchingNextPage, messages, containerRef]);
   useUnsavedWorkspace(Boolean(draft) || pending);
   const canWrite = !readOnly && !denied && (actorId !== entry.mentorId || entry.policy.permissions.includes("MENTOR_CHAT"));
+  const starters = actorId === entry.mentorId ? [
+    { label: "Hỏi tiến độ", body: "Nhóm cập nhật giúp mình tiến độ và những vướng mắc hiện tại nhé." },
+    { label: "Góp ý phương pháp", body: "Mình muốn trao đổi với nhóm về phương pháp nghiên cứu." },
+    { label: "Hẹn trao đổi", body: "Nhóm đề xuất giúp mình thời gian phù hợp để cùng trao đổi nhé." },
+  ] : [
+    { label: "Cập nhật tiến độ", body: "Thưa thầy/cô, nhóm xin cập nhật tiến độ nghiên cứu: " },
+    { label: "Xin góp ý", body: "Thưa thầy/cô, nhóm cần góp ý về phương pháp nghiên cứu: " },
+    { label: "Hẹn trao đổi", body: "Thưa thầy/cô, nhóm muốn hẹn một buổi trao đổi. Thầy/cô có thể sắp xếp thời gian nào ạ?" },
+  ];
+  const focusMessage = (messageId: string) => {
+    const element = [...(containerRef.current?.querySelectorAll<HTMLDivElement>("[data-message-id]") ?? [])]
+      .find(node => node.dataset.messageId === messageId);
+    if (!element) return;
+    element.scrollIntoView?.({ block: "center" });
+    element.focus({ preventScroll: true });
+    setHighlightedId(messageId);
+  };
+  const cancelReply = () => { setReply(null); inputRef.current?.focus(); };
   const submit = async () => {
     const body = draft.trim();
     if (!canWrite || pending || query.isLoading || query.isError || body.length < 1 || body.length > 5000) return;
-    if (await onSend(body, reply?.id ?? null)) { setDraft(""); setReply(null); jumpToLatest(); }
+    const replyToId = reply?.id ?? null;
+    if (await onSend(body, replyToId)) {
+      setDraft(current => current.trim() === body ? "" : current);
+      setReply(current => current?.id === replyToId ? null : current);
+      jumpToLatest();
+    }
     inputRef.current?.focus();
   };
   return <section className="mentor-message-chat project-chat-surface" aria-label="Tin nhắn với cố vấn">
@@ -60,16 +84,37 @@ export function MentorMessageThread({ projectId, actorId, entry, readOnly, pendi
             void query.fetchNextPage();
           }}>{query.isFetchingNextPage ? "Đang tải…" : "Xem tin nhắn trước"}</Button>}
           {query.isLoading ? <div role="status" aria-label="Đang tải tin nhắn" className="space-y-4 py-5"><Skeleton className="h-12 w-3/4" /><Skeleton className="ml-auto h-12 w-2/3" /></div> :
-            !query.isError && !messages.length ? <div className="project-chat-empty"><MessageSquare size={28} aria-hidden="true" /><h4>Bắt đầu trò chuyện</h4><p>Nhắn tin cho cố vấn và các thành viên trong nhóm.</p></div> : messages.map((item, index) => {
+            !query.isError && !messages.length ? (
+              <div className="project-chat-empty">
+                <span className="mentor-chat-empty-badge" aria-hidden="true">
+                  <MessageSquare size={22} />
+                </span>
+                <h4>Bắt đầu trò chuyện</h4>
+                <p>
+                  {actorId === entry.mentorId
+                    ? "Trao đổi trực tiếp với các thành viên nhóm nghiên cứu về tiến độ, phương pháp hoặc bản thảo."
+                    : "Nhắn tin cho cố vấn và các thành viên trong nhóm."}
+                </p>
+                {canWrite && !draft && <div className="mentor-chat-starters" role="group" aria-label="Gợi ý mở đầu cuộc trò chuyện">
+                  {starters.map(starter => <button key={starter.label} type="button" disabled={pending} onClick={() => {
+                    setDraft(starter.body); inputRef.current?.focus();
+                  }}>{starter.label}</button>)}
+                </div>}
+              </div>
+            ) : messages.map((item, index) => {
               const own = item.authorId === actorId;
               const date = new Date(item.createdAt);
               const previous = messages[index - 1];
               const parent = item.replyToId ? messages.find(message => message.id === item.replyToId) : null;
-              return <div key={item.id} data-message-id={item.id}>
+              return <div key={item.id} data-message-id={item.id} data-highlight={highlightedId === item.id} tabIndex={-1}
+                onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHighlightedId(null); }}>
                 {(!previous || date.toDateString() !== new Date(previous.createdAt).toDateString()) && <div className="project-chat-date"><time dateTime={item.createdAt}>{date.toLocaleDateString("vi-VN", { day: "numeric", month: "short", year: "numeric" })}</time></div>}
-                {item.replyToId && <div className="mentor-message-reply-context" data-own={own}><Reply size={13} aria-hidden="true" /><span>{parent ? `${parent.authorName}: ${parent.body}` : "Trả lời tin nhắn trước"}</span></div>}
+                {parent ? <button type="button" className="mentor-message-reply-context" data-own={own}
+                  aria-label={`Xem tin nhắn gốc của ${parent.authorName}`} onClick={() => focusMessage(parent.id)}>
+                  <Reply size={13} aria-hidden="true" /><span>{parent.authorName}: {parent.body}</span>
+                </button> : item.replyToId && <div className="mentor-message-reply-context" data-own={own}><Reply size={13} aria-hidden="true" /><span>Trả lời tin nhắn trước</span></div>}
                 <ProjectChatMessage own={own} author={`${item.authorName}${own ? " (Bạn)" : item.mentor ? " · Cố vấn" : ""}`} createdAt={item.createdAt} locale="vi-VN" content={item.body}
-                  footer={<>{item.shareId && <span>{entry.shares.find(share => share.id === item.shareId)?.title ?? "Nội dung đã ngừng chia sẻ"}</span>}{canWrite && !item.shareId && <button type="button" aria-label={`Trả lời ${item.authorName}`} onClick={() => { setReply(item); inputRef.current?.focus(); }}><Reply size={14} aria-hidden="true" /></button>}</>} />
+                  footer={<>{item.shareId && <span>{entry.shares.find(share => share.id === item.shareId)?.title ?? "Nội dung đã ngừng chia sẻ"}</span>}{canWrite && !item.shareId && <button type="button" aria-label={`Trả lời ${item.authorName}`} onClick={() => { setReply(item); inputRef.current?.focus(); }}><Reply size={14} aria-hidden="true" /><span>Trả lời</span></button>}</>} />
                 {item.response && <ProjectChatMessage own={false} author={item.handledByName ?? "Nhóm dự án"} createdAt={item.handledAt ?? item.createdAt} locale="vi-VN" content={item.response} />}
               </div>;
             })}
@@ -78,10 +123,12 @@ export function MentorMessageThread({ projectId, actorId, entry, readOnly, pendi
       </div>
       {query.isError && <div role="alert" className="project-chat-error"><span>{denied ? "Bạn không còn quyền xem cuộc trò chuyện này." : "Chưa tải được tin nhắn. Nội dung đang soạn vẫn được giữ."}</span><Button type="button" variant="ghost" size="sm" onClick={() => void query.refetch()}>Thử lại</Button></div>}
       {error}
-      {canWrite ? <div className="mentor-collab-composer">
-        {reply && <div className="mentor-message-reply"><div><strong>Trả lời {reply.authorName}</strong><p>{reply.body}</p></div><Button type="button" variant="ghost" size="icon" aria-label="Hủy trả lời" onClick={() => setReply(null)}><X size={16} aria-hidden="true" /></Button></div>}
+      {canWrite ? <div className="mentor-collab-composer" onKeyDown={event => {
+        if (event.key === "Escape" && reply && !pending && !event.nativeEvent.isComposing) { event.preventDefault(); cancelReply(); }
+      }}>
+        {reply && <div className="mentor-message-reply"><div><strong>Trả lời {reply.authorName}</strong><p>{reply.body}</p></div><Button type="button" variant="ghost" size="icon" aria-label="Hủy trả lời" disabled={pending} onClick={cancelReply}><X size={16} aria-hidden="true" /></Button></div>}
         <ProjectChatComposer value={draft} onChange={setDraft} onSend={() => void submit()} pending={pending} disabled={query.isLoading || query.isError} textareaRef={inputRef} minLength={1} maxLength={5000}
-          label="Tin nhắn với cố vấn và nhóm" placeholder="Nhắn tin cho cố vấn và nhóm…" sendLabel="Gửi" keyboardHint="Enter để gửi · Shift+Enter để xuống dòng" mobileHint="Cố vấn và nhóm dự án" />
+          label="Tin nhắn với cố vấn và nhóm" placeholder={actorId === entry.mentorId ? "Nhắn tin trao đổi với nhóm nghiên cứu…" : "Nhắn tin cho cố vấn và nhóm…"} sendLabel="Gửi" />
       </div> : <p role="status" className="mentor-message-readonly">{readOnly ? "Cuộc trò chuyện đang ở chế độ chỉ đọc." : "Nhóm chưa cấp quyền chat cho cố vấn."}</p>}
     </div>
   </section>;

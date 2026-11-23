@@ -108,7 +108,7 @@ it.each([false, true])("allows fulltext evidence and RQ input with fixed stage, 
   mocks.detail.mockResolvedValue(full);
   mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, fullTextAvailable: true, round: full }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
-  if (editing) await click("Sửa lựa chọn");
+  if (editing) await click("Đổi đánh giá của tôi");
   const source = [...document.querySelectorAll("label")].find(l => l.textContent?.startsWith("Nguồn toàn văn đã đọc"))!.querySelector("input")!;
   const rq = document.querySelector<HTMLInputElement>('.assessment-questions input[type="checkbox"]')!;
   expect(source.disabled).toBe(false);
@@ -129,7 +129,7 @@ it("preserves the include rationale while editing and blocks clearing it", async
   mocks.detail.mockResolvedValue(reviewed);
   mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: reviewed }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
-  await click("Sửa lựa chọn");
+  await click("Đổi đánh giá của tôi");
   const area = [...document.querySelectorAll("label")].find(l => l.textContent?.startsWith("Lý do / Căn cứ phù hợp"))!.querySelector("textarea")!;
   expect(area.value).toBe(reviewed.myReview.comment);
   await fill("Lý do / Căn cứ phù hợp", "   ");
@@ -154,7 +154,7 @@ it("blocks an already-open rationale edit when the peer submits and retains the 
   mocks.detail.mockResolvedValue(reviewed);
   mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: reviewed }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
-  await click("Sửa lựa chọn");
+  await click("Đổi đánh giá của tôi");
   await fill("Lý do / Căn cứ phù hợp", "Bản nháp đang chỉnh sửa");
   const completed = { ...reviewed, completed: 2, assignments: reviewed.assignments.map(a => ({ ...a, completed: true })) };
   mocks.detail.mockResolvedValue(completed);
@@ -184,7 +184,7 @@ it("keeps the edit action when my first ballot is visible but the other reviewer
   mocks.detail.mockResolvedValue(waiting);
   mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: waiting }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
-  await click("Sửa lựa chọn");
+  await click("Đổi đánh giá của tôi");
   expect(document.querySelector<HTMLInputElement>('input[type="radio"][value="INCLUDE"]')?.checked).toBe(true);
   expect([...document.querySelectorAll("textarea")].some(area => area.value === mine.comment)).toBe(true);
 });

@@ -14,7 +14,7 @@ import {
 
 vi.mock("../hooks/use-mentored-projects", () => ({ useMentoredProjects: () => ({ data: [], isLoading: false, isError: false }) }));
 
-const mocks = vi.hoisted(() => ({ projects: vi.fn(), project: vi.fn(), mentorEntry: vi.fn(), invitations: vi.fn(), respond: vi.fn(), user: { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" } as { id: string; systemRole: string; emailVerifiedAt: string } | null }));
+const mocks = vi.hoisted(() => ({ projects: vi.fn(), project: vi.fn(), mentorEntry: vi.fn(), invitations: vi.fn(), respond: vi.fn(), user: { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" } as { id: string; systemRole: string; emailVerifiedAt: string; academicRole?: string } | null }));
 vi.mock("../hooks/use-mentor-project-entry", () => ({ useMentorProjectEntry: mocks.mentorEntry }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, string | number>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values?.[name] ?? "")) }) }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (selector: (state: { user: typeof mocks.user }) => unknown) => selector({ user: mocks.user }) }));
@@ -71,6 +71,15 @@ it("opens the most recently updated non-archived project without a directory cli
   expect(container.querySelector("aside")).toBe(sidebar);
   await act(async () => [...container.querySelectorAll("button")].find(button => button.textContent === "Back")!.click());
   expect(container.querySelector("output")?.textContent).toBe("/projects/shared");
+});
+
+it("shows a lecturer's personal directory and preserves filters without auto-opening a project or picker", async () => {
+  mocks.user!.academicRole = "LECTURER";
+  await render("/projects?scope=OWNED&status=ACTIVE&sort=NAME");
+  expect(container.querySelector("output")?.textContent).toBe("/projects?scope=OWNED&status=ACTIVE&sort=NAME");
+  expect([...container.querySelectorAll('.project-browser-panel .project-directory-title')].map(link => link.textContent)).toEqual([owned.title]);
+  expect(container.querySelector<HTMLDetailsElement>(".coord-project-picker")?.open).toBe(false);
+  expect(container.querySelector('.mentor-workspace-shell')).toBeNull();
 });
 
 it("keeps filters and the selected section when switching, removes project-specific IDs, and resets project drafts", async () => {

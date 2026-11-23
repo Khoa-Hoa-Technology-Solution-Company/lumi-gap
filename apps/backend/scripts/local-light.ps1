@@ -77,8 +77,37 @@ function Show-Status {
         if ($proc) { Write-Host ("{0}: running (PID {1})" -f $entry.Name, $proc.Id) }
         else { Write-Host "$($entry.Name): stopped" }
     }
+    foreach ($endpoint in @(@('API', 'http://127.0.0.1:4000/ready'), @('Web', 'http://127.0.0.1:8080/'))) {
+        if (Test-HttpReady $endpoint[1]) { Write-Host "$($endpoint[0]): ready" }
+        else { Write-Host "$($endpoint[0]): not ready (see logs)" }
+    }
     Write-Host 'Web: http://localhost:8080 | API: http://localhost:4000'
     Write-Host "Logs: $cache"
+}
+
+function Test-HttpReady([string]$Url) {
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 2
+        return $response.StatusCode -eq 200
+    } catch { return $false }
+}
+
+function Build-SharedTypes {
+    Write-Host 'Building shared types before starting API and Web...'
+    $outFile = Join-Path $cache 'shared-types-build.out.log'
+    $errFile = Join-Path $cache 'shared-types-build.err.log'
+    # Incremental builds leave unchanged output alone, so repeated Start does not
+    # trigger an otherwise healthy backend watcher to restart.
+    $arguments = @((Join-Path $repo 'node_modules/typescript/bin/tsc'), '-b', 'packages/shared-types/tsconfig.json')
+    if (-not (Test-Path -LiteralPath (Join-Path $repo 'packages/shared-types/dist/index.js'))) { $arguments += '--force' }
+    $proc = Start-Process -FilePath $node -ArgumentList (Quote-Arguments $arguments) -WorkingDirectory $repo -WindowStyle Hidden -RedirectStandardOutput $outFile -RedirectStandardError $errFile -PassThru
+    $null = $proc.Handle
+    if (-not $proc.WaitForExit(120000)) {
+        Stop-Process -Id $proc.Id -ErrorAction SilentlyContinue
+        throw "Shared types build timed out. Check: $outFile and $errFile"
+    }
+    $proc.WaitForExit()
+    if ($proc.ExitCode -ne 0) { throw "Shared types build failed. Check: $outFile and $errFile" }
 }
 
 function Start-Node([string]$Name, [string]$Directory, [string[]]$Values) {
@@ -118,20 +147,24 @@ try {
         return
     }
 
+    foreach ($required in @('.env', 'node_modules/tsx/dist/cli.mjs', 'node_modules/vite/bin/vite.js', 'node_modules/typescript/bin/tsc', 'apps/backend/src/generated/prisma/client.ts')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repo $required))) { throw "Required file missing: $required. See docs/LOCAL_LIGHT_WINDOWS.md." }
+    }
+    Build-SharedTypes
+
     $rawState = @(Read-State)
     $alive = @($rawState | Where-Object { $null -ne (Find-TrackedProcess $_) })
     if ($alive.Count -gt 0) {
-        if ($alive.Count -ne $rawState.Count) {
-            Write-Host 'Some services had stopped. Automatically stopping remaining processes to restart cleanly...'
+        $serviceNames = @($alive | ForEach-Object { $_.Name })
+        $complete = $alive.Count -eq $rawState.Count -and 'backend' -in $serviceNames -and 'web' -in $serviceNames
+        if (-not $complete -or -not (Test-HttpReady 'http://127.0.0.1:4000/ready') -or -not (Test-HttpReady 'http://127.0.0.1:8080/')) {
+            Write-Host 'Local startup is incomplete or not ready. Restarting the tracked processes...'
             Stop-TrackedProcesses
         } else {
             Write-Host 'Local mode is already running. Stop it first to change options.'
             Show-Status
             return
         }
-    }
-    foreach ($required in @('.env', 'node_modules/tsx/dist/cli.mjs', 'node_modules/vite/bin/vite.js', 'apps/backend/src/generated/prisma/client.ts', 'packages/shared-types/dist/index.js')) {
-        if (-not (Test-Path -LiteralPath (Join-Path $repo $required))) { throw "Required file missing: $required. See docs/LOCAL_LIGHT_WINDOWS.md." }
     }
     if ($Workers -contains 'manuscript-compile' -and -not $Compiler) { throw 'Use -Compiler to enable the isolated compiler and its worker.' }
 

@@ -149,7 +149,7 @@ it("removes the composer when access is revoked during polling", async () => {
 it("preserves the mentor's scoped project view with shared content", async () => {
   data.viewerId = "an"; data.canManage = false;
   await mount(<MentorAccessWorkspace projectId="p" mentorView />);
-  expect(host.textContent).toContain("Nội dung đã chia sẻ");
+  expect(host.textContent).toContain("Tài liệu đã chia sẻ");
   expect(host.querySelector(".mentor-collab-composer")).not.toBeNull();
   expect(host.textContent).not.toContain("Cấu hình quyền và chia sẻ");
 });
@@ -219,4 +219,78 @@ it("shows the same relationship message thread through the member and mentor cha
   expect(host.textContent).not.toContain("Internal team chat");
   expect(host.textContent).not.toContain("Internal AI chat");
   expect(api.feedback.mock.calls.every(call => call[0] === "p" && call[1] === "access-an")).toBe(true);
+});
+
+it.each([false, true])("fills a role-appropriate starter without sending or displaying keyboard instructions (mentor: %s)", async mentor => {
+  if (mentor) { data.viewerId = "an"; data.canManage = false; }
+  await mount(<MentorAccessWorkspace projectId="p" mentorView={mentor} mode="conversation" />);
+  expect(host.textContent).not.toContain("Enter để gửi");
+  expect(host.querySelector(".project-chat-keyboard-hint")).toBeNull();
+  expect(host.querySelector(".project-chat-mobile-hint")).toBeNull();
+  await act(async () => button(mentor ? "Hỏi tiến độ" : "Cập nhật tiến độ").click());
+  const input = host.querySelector("textarea")!;
+  expect(input.value).toContain(mentor ? "Nhóm cập nhật" : "Thưa thầy/cô");
+  expect(document.activeElement).toBe(input);
+  expect(api.comment).not.toHaveBeenCalled();
+  expect(host.querySelector(".mentor-chat-starters")).toBeNull();
+});
+
+it("takes the reader to a loaded original message when its reply quote is clicked", async () => {
+  const original = { id: "original", authorId: "an", authorName: "An", mentor: true, shareId: null, kind: "MESSAGE", body: "Góp ý về phương pháp", creditRoles: [], createdAt: "2026-11-05T08:00:00Z" };
+  api.feedback.mockResolvedValue({ items: [{ ...original, id: "reply", authorId: "owner", body: "Nhóm đã cập nhật", replyToId: original.id, createdAt: "2026-11-05T08:01:00Z" }, original], total: 2, page: 1, hasNext: false });
+  await mount(<MentorAccessWorkspace projectId="p" mode="conversation" />);
+  const source = host.querySelector<HTMLDivElement>('[data-message-id="original"]')!;
+  const scroll = vi.fn(); source.scrollIntoView = scroll;
+  await act(async () => {
+    const quote = host.querySelector<HTMLButtonElement>('[aria-label="Xem tin nhắn gốc của An"]')!;
+    quote.focus(); quote.click();
+  });
+  expect(scroll).toHaveBeenCalledWith({ block: "center" });
+  expect(document.activeElement).toBe(source);
+  expect(source.dataset.highlight).toBe("true");
+  expect(api.comment).not.toHaveBeenCalled();
+});
+
+it("cancels a reply with Escape and keeps the unsent message focused", async () => {
+  api.feedback.mockResolvedValue({ items: [{ id: "m", authorId: "an", authorName: "An", mentor: true, shareId: null, kind: "MESSAGE", body: "Chào nhóm", creditRoles: [], createdAt: "2026-11-05T08:00:00Z" }], total: 1, page: 1, hasNext: false });
+  await mount(<MentorAccessWorkspace projectId="p" mode="conversation" />);
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Trả lời An"]')!.click());
+  await fill("Bản nháp chưa gửi");
+  const input = host.querySelector("textarea")!;
+  await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+  expect(host.querySelector(".mentor-message-reply")).toBeNull();
+  expect(input.value).toBe("Bản nháp chưa gửi");
+  expect(document.activeElement).toBe(input);
+  expect(api.comment).not.toHaveBeenCalled();
+});
+
+it("blocks simultaneous duplicate sends and clears the composer only after success", async () => {
+  let finish!: (value: unknown) => void;
+  api.comment.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await mount(<MentorAccessWorkspace projectId="p" mode="conversation" />);
+  await fill("Tiến độ mới của nhóm");
+  await act(async () => {
+    const form = host.querySelector("form")!;
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+  expect(api.comment).toHaveBeenCalledTimes(1);
+  expect(host.querySelector("textarea")!.value).toBe("Tiến độ mới của nhóm");
+  expect(host.querySelector("form")?.getAttribute("aria-busy")).toBe("true");
+  await act(async () => finish({ id: "saved" })); await tick();
+  expect(host.querySelector("textarea")!.value).toBe("");
+  expect(host.querySelector("form")?.getAttribute("aria-busy")).toBe("false");
+});
+
+it("retries a failed mentor message with the same receipt without losing its draft", async () => {
+  api.comment.mockRejectedValueOnce(new Error("offline"));
+  await mount(<MentorAccessWorkspace projectId="p" mode="conversation" />);
+  await fill("Nội dung cần gửi lại");
+  await act(async () => button("Gửi").click()); await tick();
+  expect(host.querySelector("textarea")!.value).toBe("Nội dung cần gửi lại");
+  const receipt = api.comment.mock.calls[0]![2].clientKey;
+  await act(async () => button("Gửi").click()); await tick();
+  expect(api.comment).toHaveBeenCalledTimes(2);
+  expect(api.comment.mock.calls[1]![2].clientKey).toBe(receipt);
+  expect(host.querySelector("textarea")!.value).toBe("");
 });

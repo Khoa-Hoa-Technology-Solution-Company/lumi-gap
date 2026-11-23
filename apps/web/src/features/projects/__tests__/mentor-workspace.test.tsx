@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { MentorWorkspaceData } from "@trend/shared-types";
@@ -70,6 +70,8 @@ it("shows the real sender, project, exact revision, overdue state and canonical 
 });
 it("resets server pagination on filters and never accepts another assignee as a filter", async () => {
   const change = vi.fn(); await mount(queue(change));
+  const toggle = [...host.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.includes("Filters"))!;
+  await act(async () => toggle.click());
   const select = host.querySelector<HTMLSelectElement>('select[aria-label="Status"]')!;
   await act(async () => { select.value = "WAITING"; select.dispatchEvent(new Event("change", { bubbles: true })); });
   expect(change).toHaveBeenCalledWith({ page: 1, status: "WAITING" });
@@ -91,19 +93,19 @@ it("hides stale private rows when a refetch is denied", async () => {
 });
 it("keeps invitations and notifications separate from work and opens the aggregate dashboard", async () => {
   await mount(<MentorWorkspacePage />);
-  expect(host.textContent).toContain("Needs your attention");
+  expect(host.textContent).toContain("Your priorities");
   expect(host.querySelector('a[href="/mentor-workspace?view=incoming"]')).not.toBeNull();
   expect(host.querySelector('a[href="/mentor-workspace?view=notifications"]')).not.toBeNull();
   expect(host.querySelector('a[href="/mentor-workspace?view=review&assignmentId=assignment"]')).not.toBeNull();
 });
-it("shows actionable work beside real research teams and keeps review tools inside the mentor shell", async () => {
+it("shows actionable work beside real research teams and keeps academic review in the sidebar", async () => {
   await mount(<MentorWorkspacePage />);
   expect(host.querySelector("h1")?.textContent).toBe("Research guidance overview");
   expect(host.querySelector(".mentor-overview-priorities")?.textContent).toContain("Actual pinned manuscript");
   expect(host.querySelector(".mentor-overview-teams")?.textContent).toContain("Team owner");
   expect(host.querySelector(".mentor-overview-teams")?.textContent).toContain("Study design");
-  expect(host.querySelector('.mentor-overview-resources a[href="/mentor-workspace?view=reviews"]')).not.toBeNull();
-  expect(host.querySelector('.mentor-overview-resources a[href="/mentor-workspace?view=templates"]')).not.toBeNull();
+  expect(host.querySelector('.mentor-shell-sidebar a[href="/mentor-workspace?view=reviews"]')).not.toBeNull();
+  expect(host.querySelector('.mentor-overview-resources')).toBeNull();
   expect(host.querySelector(".mentor-kpi-card")).toBeNull();
 });
 it.each([
@@ -229,6 +231,14 @@ it("requires verification before fetching mentor work", async () => {
   await mount(<MentorWorkspacePage />);
   expect(mocks.read).not.toHaveBeenCalled();
   expect(host.querySelector('a[href="/settings/verification/lecturer"]')).not.toBeNull();
+});
+function ResearchDestination() { const location = useLocation(); return <output>{location.pathname}{location.search}{location.hash}</output>; }
+it.each(["VERIFIED", "PENDING"])("redirects the legacy personal library outside without fetching mentor work (%s)", async status => {
+  mocks.profile.data.verificationStatuses.position = status;
+  await mount(<Routes><Route path="/mentor-workspace" element={<MentorWorkspacePage />} /><Route path="/projects" element={<ResearchDestination />} /></Routes>, "/mentor-workspace?view=research-projects&directory=trash&q=study#list");
+  expect(mocks.read).not.toHaveBeenCalled();
+  expect(host.querySelector("output")?.textContent).toBe("/projects?q=study&view=trash#list");
+  expect(host.querySelector(".mentor-shell-sidebar")).toBeNull();
 });
 it("never uses another account's work as placeholder data while the new account loads", async () => {
   await mount(<MentorWorkspacePage />);

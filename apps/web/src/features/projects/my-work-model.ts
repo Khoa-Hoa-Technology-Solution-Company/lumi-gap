@@ -19,7 +19,7 @@ export type MyWorkTask = {
 };
 export function myWorkTasks(summary: ScreeningWorkspaceSummary, readOnly: boolean, now = Date.now()): MyWorkTask[] {
   if (readOnly || summary.readOnly) return [];
-  if (summary.automaticTasks) return summary.automaticTasks.filter(t => !t.endedAt && t.status !== "BLOCKED" && (!t.dueAt || Date.parse(t.dueAt) > now)).map(automaticWorkTask);
+  if (summary.automaticTasks) return summary.automaticTasks.filter(t => !t.endedAt && t.status !== "BLOCKED").map(automaticWorkTask);
   const tasks = new Map<string, MyWorkTask>();
   const add = (task: MyWorkTask) => { if (!tasks.has(task.roundId)) tasks.set(task.roundId, task); };
   const cases = new Set((summary.myTrackedDisputes ?? []).filter(t => t.caseStatus).map(t => t.roundId));
@@ -58,7 +58,7 @@ export function myWorkTasks(summary: ScreeningWorkspaceSummary, readOnly: boolea
   for (const t of summary.pendingInformation ?? []) add({ ...t, kind: t.kind, label: t.kind === "FULLTEXT" ? "Cần bổ sung toàn văn" : "Cần bổ sung thông tin", description: t.reason, action: t.kind === "FULLTEXT" ? "Bổ sung toàn văn" : "Bổ sung và mở lại" });
 
   // 6. Active claims
-  for (const t of summary.myActiveClaims) if (!t.dueAt || new Date(t.dueAt).getTime() > now) add({ ...t, kind: "REVIEW", label: "Chưa gửi phiếu", description: "Hoàn tất phiếu đánh giá trong thời hạn giữ chỗ.", action: "Tiếp tục đánh giá", deadline: t.dueAt });
+  for (const t of summary.myActiveClaims) add({ ...t, kind: "REVIEW", label: "Chưa gửi phiếu", description: "Hoàn tất phiếu đánh giá; quá hạn vẫn có thể tiếp tục.", action: "Tiếp tục đánh giá", deadline: t.dueAt });
 
   return [...tasks.values()];
 }
@@ -78,7 +78,7 @@ export function personalEvaluations(summary: ScreeningWorkspaceSummary): Screeni
 }
 export type EvaluationHistoryFilter = "PENDING" | "DECIDED" | "ALL";
 export function matchesEvaluationHistory(item: ScreeningPersonalEvaluation, filter: EvaluationHistoryFilter) {
-  const decided = ["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(item.groupStatus);
+  const decided = ["INCLUDED", "EXCLUDED", "BACKGROUND", "CLOSED_UNRESOLVED"].includes(item.groupStatus);
   return filter === "ALL" || (filter === "DECIDED" ? decided : !decided);
 }
 export function evaluationGroupLabel(item: ScreeningPersonalEvaluation) {
@@ -99,7 +99,7 @@ export function screeningWorkLink(projectId: string, item: Pick<MyWorkTask, "pap
   return `/projects/${encodeURIComponent(projectId)}?${query}`;
 }
 
-export const automaticTaskActions = { REVIEW: "Đánh giá bài báo", DISCUSSION: "Giải quyết bất đồng", CONSENSUS: "Thảo luận và cập nhật đánh giá", STATEMENT: "Gửi quan điểm phân xử", ADJUDICATION: "Đưa ra kết luận phân xử", COORDINATION: "Điều phối phân xử", FULLTEXT: "Bổ sung toàn văn", INFORMATION: "Bổ sung thông tin" };
+export const automaticTaskActions = { REVIEW: "Đánh giá bài báo", DISCUSSION: "Giải quyết bất đồng", CONSENSUS: "Xem đề nghị kết thúc", STATEMENT: "Gửi quan điểm phân xử", ADJUDICATION: "Đưa ra kết luận phân xử", COORDINATION: "Điều phối phân xử", FULLTEXT: "Bổ sung toàn văn", INFORMATION: "Bổ sung thông tin" };
 export const automaticTaskStatuses = { TODO: "Cần làm", IN_PROGRESS: "Đang thực hiện", BLOCKED: "Đang vướng mắc", DONE: "Hoàn thành", EXPIRED: "Hết hạn", CANCELLED: "Đã hủy", REPLACED: "Đã chuyển bước" };
 export function automaticWorkTask(task: ScreeningAutomaticTask): MyWorkTask {
   return { paperId: task.paperId, roundId: task.roundId, title: task.title, kind: task.actionType, label: task.actionLabel ?? automaticTaskActions[task.actionType], description: task.reason, action: task.endedAt ? "Xem lại" : task.status === "BLOCKED" ? "Xem trạng thái" : task.actionType === "REVIEW" ? "Tiếp tục đánh giá" : automaticTaskActions[task.actionType], deadline: task.dueAt, obligation: task };
@@ -118,7 +118,7 @@ export function completedEvaluationGroups(summary: ScreeningWorkspaceSummary) {
   return groupPersonalEvaluations(personalEvaluations(summary)).filter(([latest]) => {
     if (!latest || latest.invalidated || !matchesEvaluationHistory(latest, "DECIDED")) return false;
     const paper = workPaperFor(summary, latest);
-    if (paper.status && !["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(paper.status)) return false;
+    if (paper.status && !["INCLUDED", "EXCLUDED", "BACKGROUND", "CLOSED_UNRESOLVED"].includes(paper.status)) return false;
     return !paper.invalidated && (latest.groupStatus !== "INCLUDED" || (paper.acceptedForAnalysis ?? latest.acceptedForAnalysis) !== false);
   });
 }
@@ -143,6 +143,7 @@ export function workCaseLabel(status?: string | null) {
 }
 export function workPaperStatus(paper: ScreeningCardPaper, evaluation?: ScreeningPersonalEvaluation, caseStatus?: string | null) {
   if (paper.invalidated || evaluation?.invalidated) return "Vòng đã mất hiệu lực";
+  if (paper.rescreening) return "Đang đánh giá lại";
   const group = evaluation?.groupStatus;
   if (group === "CONSENSUS_REQUIRED" || paper.status === "CONSENSUS_REQUIRED") return "Cần thảo luận";
   if (group === "CONSENSUS_IN_PROGRESS" || paper.status === "CONSENSUS_IN_PROGRESS") return "Đang thảo luận";

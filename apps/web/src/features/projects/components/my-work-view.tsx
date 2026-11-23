@@ -36,7 +36,7 @@ export function MyWorkView({ projectId, readOnly, onOpenPaper, onSwitchView }: {
       });
 
       if (ok && claimed?.paperId && claimed.roundId) {
-        toast.success("Đã nhận bài thành công! Giữ suất đánh giá trong 24 giờ.");
+        toast.success("Đã nhận bài. Mục tiêu hoàn tất trong 24 giờ; quá hạn vẫn có thể tiếp tục.");
         onOpenPaper(claimed.paperId, { roundId: claimed.roundId, section: "review" });
       } else if (ok) {
         toast.info("Không có bài báo nào đủ điều kiện trong hàng đợi hiện tại.");

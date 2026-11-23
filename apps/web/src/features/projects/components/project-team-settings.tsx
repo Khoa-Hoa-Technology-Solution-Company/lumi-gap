@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import type { IProject } from "@trend/shared-types";
 import { SlidersHorizontal, Users, Shield, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { ProjectMemberInvite } from "./project-member-invite";
 import { ProjectMentorSummary } from "./project-mentor-summary";
 import { ProjectGeneralSettings, ProjectPrivacySettings } from "./project-settings-form";
 import { ProjectSecurityPanel } from "./project-security-panel";
-import { canLeaveWorkspace, projectSectionHref } from "./workspace-common";
+import { canLeaveWorkspace } from "./workspace-common";
 import { ProjectLifecycleSection } from "./project-lifecycle-section";
 
 function Pagination({ page, totalPages, onChange, label }: { page: number; totalPages: number; onChange: (page: number) => void; label: string }) {
@@ -129,14 +129,17 @@ export function ProjectTeamSettings({ project }: { project: IProject }) {
 
       {settings ? (
         <section id="project-settings-panel" role="tabpanel" aria-labelledby="project-settings-tab">
-          <div className="max-w-2xl min-w-0 space-y-7">
-        {project.accessRole !== "OWNER" && <p className="text-sm text-muted-foreground">{t("Only the owner can change project settings.")}</p>}
-        <ProjectGeneralSettings key={`general:${project._id}`} project={project} />
-        <ProjectPrivacySettings key={`privacy:${project._id}`} project={project} />
-        <ProjectSecurityPanel project={project} />
-        <p className="text-sm text-muted-foreground"><Link to={projectSectionHref(project._id, "support")} className="text-primary underline-offset-4 hover:underline">{t("Looking for a mentor? Manage discovery in Academic Support → Mentor.")}</Link></p>
-        <ProjectLifecycleSection project={project} />
-      </div>
+          <div className="max-w-3xl min-w-0 space-y-6">
+            {project.accessRole !== "OWNER" ? (
+              <div role="status" className="rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                {t("Only the owner can change project settings.")}
+              </div>
+            ) : null}
+            <ProjectGeneralSettings key={`general:${project._id}`} project={project} />
+            <ProjectPrivacySettings key={`privacy:${project._id}`} project={project} />
+            <ProjectSecurityPanel key={`security:${project._id}`} project={project} />
+            <ProjectLifecycleSection project={project} />
+          </div>
         </section>
       ) : (
         <section id="project-people-panel" role="tabpanel" aria-labelledby="project-people-tab">

@@ -1,5 +1,5 @@
 export const submissionWorkflowVi = {
-  "Refresh review status": "Cập nhật trạng thái phản biện",
+  "Refresh review status": "Làm mới trạng thái",
   "Mở cơ hội phản biện cho giảng viên đã xác minh.": "Mở cơ hội phản biện cho giảng viên đã xác minh.",
   "Analyzed revision": "Phiên bản được phân tích",
   "This AI pre-review targets an earlier version. Run it again to analyze the current version.": "Đánh giá sơ bộ bằng AI này dành cho phiên bản cũ. Chạy lại để phân tích phiên bản hiện tại.",

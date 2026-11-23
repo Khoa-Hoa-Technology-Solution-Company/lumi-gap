@@ -1,35 +1,195 @@
+/* Unified, single-surface mentor chat — no box-in-box, composer always above the fold */
 .mentor-message-chat {
-  --chat-text-size: 16px;
-  --chat-text-leading: 1.6;
-  --chat-message-width: 65ch;
+  --chat-text-size: 14.5px;
+  --chat-text-leading: 1.55;
+  --chat-message-width: 66ch;
   min-width: 0;
-  margin-top: 16px;
+  margin-top: 12px;
   border: 1px solid hsl(var(--border));
   border-radius: 12px;
   overflow: hidden;
+  background: hsl(var(--card));
+}
+
+/* Centered, balanced conversation surface when mounted inside mentor project view */
+.mentor-project-page .project-conversation {
+  width: 100%;
+  max-width: 920px;
+  margin-inline: auto;
+}
+
+.project-mentor-channel .mentor-message-chat {
+  margin-top: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.mentor-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 0.25);
+}
+
+.mentor-chat-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mentor-chat-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+}
+
+.mentor-chat-header h2 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 650;
+  line-height: 1.3;
+  color: hsl(var(--foreground));
+}
+
+.mentor-chat-header-sub {
+  margin: 2px 0 0 !important;
+  font-size: 0.76rem;
+  line-height: 1.35 !important;
+  color: hsl(var(--muted-foreground));
+}
+
+.mentor-chat-header-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mentor-chat-picker select {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+}
+
+.mentor-message-chat .project-chat-body {
+  height: clamp(340px, calc(100dvh - 300px), 640px);
+}
+
+.project-mentor-channel .mentor-message-chat .project-chat-body {
+  height: clamp(320px, calc(100dvh - 285px), 660px);
+}
+
+.mentor-message-chat .project-chat-feed {
+  padding: 12px 20px 16px;
   background: hsl(var(--background));
 }
-.mentor-message-chat .project-chat-body { height: clamp(300px, calc(100dvh - 390px), 760px); }
+
+.mentor-chat-empty-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
+.mentor-message-chat .project-chat-empty {
+  gap: 8px;
+  padding: 24px 12px;
+}
+
+.mentor-message-chat .project-chat-empty h4 {
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+.mentor-message-chat .project-chat-empty p {
+  font-size: 13px;
+  max-width: 380px;
+}
+
 .mentor-message-chat .project-chat-bubble p { margin: 0; }
-.mentor-message-chat .project-chat-feed { padding-top: 8px; }
 .mentor-message-chat .project-chat-message-footer { min-height: 22px; }
-.mentor-message-chat .project-chat-compose textarea { width: 100%; }
+
+.mentor-message-chat .project-chat-compose {
+  padding: 10px 16px 12px;
+  background: hsl(var(--card));
+  border-top: 1px solid hsl(var(--border));
+}
+
+.mentor-message-chat .mentor-collab-composer { flex-shrink: 0; }
+.mentor-message-chat .project-chat-compose form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+
+.mentor-message-chat .project-chat-compose textarea {
+  grid-column: 1;
+  grid-row: 1;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 12px;
+  font-size: 14.5px;
+}
+
+.mentor-message-chat .project-chat-compose-toolbar {
+  grid-column: 2;
+  grid-row: 1;
+  padding: 4px;
+}
+.mentor-message-chat .project-chat-send-actions { flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 90px; }
+.mentor-message-chat .project-chat-send-actions button { min-height: 40px; }
+.mentor-message-chat .project-chat-message-footer button { gap: 5px; padding-inline: 6px; }
+.mentor-message-chat .project-chat-message-footer button:hover { color: hsl(var(--primary)); }
+.mentor-chat-starters { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+.mentor-chat-starters button { min-height: 40px; padding: 8px 12px; border: 1px solid hsl(var(--border)); border-radius: 8px; color: hsl(var(--foreground)); background: hsl(var(--background)); font-size: 13px; }
+.mentor-chat-starters button:hover { border-color: hsl(var(--primary)); color: hsl(var(--primary)); }
+.mentor-message-chat :focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: -2px; }
+
 .mentor-message-chat .project-chat-error { flex-wrap: wrap; }
-.mentor-message-chat .mentor-access-error { margin: 0; padding: 10px 16px; font-size: 14px; }
-.mentor-message-reply { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px 0; font-size: 13px; }
+.mentor-message-chat .mentor-access-error { margin: 0; padding: 10px 16px; font-size: 13.5px; }
+.mentor-message-reply { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px 0; font-size: 13px; }
 .mentor-message-reply > div { min-width: 0; }
 .mentor-message-chat .mentor-message-reply p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 2px 0 0; color: hsl(var(--muted-foreground)); }
 .mentor-message-reply-context { display: flex; align-items: center; gap: 6px; max-width: 70%; margin-top: 10px; color: hsl(var(--muted-foreground)); font-size: 12px; }
 .mentor-message-reply-context[data-own="true"] { margin-left: auto; justify-content: flex-end; }
 .mentor-message-reply-context span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mentor-message-reply-context svg { flex-shrink: 0; }
-.mentor-message-chat .mentor-message-readonly { margin: 0; padding: 12px 16px; border-top: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); font-size: 14px; }
-.mentor-conversation-workspace > header { margin-bottom: 12px; }
-.mentor-conversation-workspace > label { margin-block: 12px; }
+.mentor-message-chat button.mentor-message-reply-context { border: 0; border-radius: 6px; background: transparent; padding: 6px; min-height: 32px; text-align: left; }
+.mentor-message-chat button.mentor-message-reply-context:hover { color: hsl(var(--primary)); background: hsl(var(--muted)); }
+.mentor-message-chat [data-message-id][data-highlight="true"] { background: hsl(var(--primary) / .08); border-radius: 8px; outline: 2px solid hsl(var(--primary) / .4); }
+.mentor-message-chat .mentor-message-readonly { margin: 0; padding: 12px 16px; border-top: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); font-size: 13.5px; }
+
+.mentor-conversation-workspace { margin-block: 0 !important; }
+.mentor-conversation-workspace > header { margin-bottom: 0; }
+.mentor-conversation-workspace > label { margin-block: 10px; }
 .mentor-conversation-workspace > details summary { padding-block: 5px; font-size: 13px; color: hsl(var(--muted-foreground)); }
+
 @media (max-width: 640px) {
-  .mentor-message-chat .project-chat-body { height: clamp(420px, calc(100svh - 270px), 640px); }
+  .mentor-chat-header { padding: 10px 12px; }
+  .mentor-message-chat .project-chat-body,
+  .project-mentor-channel .mentor-message-chat .project-chat-body {
+    height: clamp(380px, calc(100svh - 260px), 600px);
+  }
+  .mentor-message-chat .project-chat-feed { padding: 10px 12px 12px; }
   .mentor-message-chat .project-chat-message-meta { flex-wrap: wrap; column-gap: 6px; row-gap: 2px; }
   .mentor-message-chat .project-chat-message-main { max-width: 86%; }
   .mentor-message-chat .project-chat-message-footer button { opacity: 1; }
+  .mentor-message-chat .project-chat-compose textarea { font-size: 16px; }
+  .mentor-message-chat .project-chat-send-actions button,
+  .mentor-message-chat .project-chat-message-footer button,
+  .mentor-message-chat button.mentor-message-reply-context,
+  .mentor-chat-starters button { min-height: 44px; }
 }

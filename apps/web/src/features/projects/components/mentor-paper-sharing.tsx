@@ -1,9 +1,10 @@
 import { lazy, Suspense, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Share2 } from "lucide-react";
+import { BookMarked, Search, Share2, Users } from "lucide-react";
 import type { MentorPaperAccessMode, MentorResourceSummary } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/i18n";
@@ -53,8 +54,107 @@ export function MentorSharedPaper({projectId,accessId,resource,version=0}:{proje
  </>}</div>}</details>;
 }
 
-export function MentorSharedResourceInbox(){
- const {t}=useI18n(),actor=useAuthStore(s=>s.user?.id),[page,setPage]=useState(1),[q,setQ]=useState("");
- const inbox=useQuery({queryKey:["mentor-access",actor,"inbox",page],queryFn:()=>mentorAccessApi.inbox(page),retry:false,refetchInterval:10000});
- return <section className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6"><header><h1 className="text-2xl font-semibold">{t("Tài liệu đã chia sẻ")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("Bài báo nhóm đã chia sẻ với bạn. Bản thảo cần đánh giá nằm trong Việc cần xử lý.")}</p></header><label className="block text-sm">{t("Lọc trên trang này")}<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={q} onChange={e=>setQ(e.target.value)} /></label>{inbox.isLoading?<p role="status">{t("Đang tải tài liệu…")}</p>:inbox.error?<div role="alert"><p>{t("Không thể tải tài liệu được chia sẻ.")}</p><Button onClick={()=>void inbox.refetch()} variant="outline">{t("Thử lại")}</Button></div>:!inbox.data?.items.length?<p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">{t("Chưa có tài liệu nào được chia sẻ với bạn.")}</p>:inbox.data.items.filter(i=>(i.resource.title+" "+i.projectTitle).toLocaleLowerCase().includes(q.toLocaleLowerCase())).map(item=><article key={item.id} className="rounded-lg border bg-card p-4"><p className="mb-2 text-xs text-muted-foreground">{item.projectTitle} · {t(item.resource.canComment?"Xem và góp ý":"Chỉ xem")} · {t("Nhóm chia sẻ")}</p><MentorSharedPaper projectId={item.projectId} accessId={item.accessId} resource={item.resource}/><Link className="mt-3 inline-block text-xs text-primary underline" to={"/mentor-workspace?view=project&projectId="+encodeURIComponent(item.projectId)+"&section=resources"}>{t("Xem trong dự án")}</Link></article>)}{inbox.data&&<nav className="flex justify-between gap-2" aria-label={t("Phân trang tài liệu")}><Button variant="outline" disabled={page===1} onClick={()=>setPage(p=>p-1)}>{t("Trang trước")}</Button><Button variant="outline" disabled={!inbox.data.hasNext} onClick={()=>setPage(p=>p+1)}>{t("Trang sau")}</Button></nav>}</section>;
+export function MentorSharedResourceInbox() {
+  const { t } = useI18n();
+  const actor = useAuthStore(s => s.user?.id);
+  const [page, setPage] = useState(1);
+  const [q, setQ] = useState("");
+  const inbox = useQuery({
+    queryKey: ["mentor-access", actor, "inbox", page],
+    queryFn: () => mentorAccessApi.inbox(page),
+    retry: false,
+    refetchInterval: 10000,
+  });
+
+  const items = inbox.data?.items ?? [];
+  const filteredItems = items.filter(i =>
+    `${i.resource.title} ${i.projectTitle}`.toLocaleLowerCase().includes(q.trim().toLocaleLowerCase()),
+  );
+  const showPagination = Boolean(inbox.data && (page > 1 || inbox.data.hasNext));
+
+  return (
+    <section className="space-y-5">
+      <header className="mentor-page-header">
+        <div className="min-w-0">
+          <h1>{t("mentorWorkspace.resources")}</h1>
+          <p>{t("Bài báo nhóm đã chia sẻ với bạn. Bản thảo cần đánh giá nằm trong Việc cần xử lý.")}</p>
+        </div>
+      </header>
+
+      {items.length > 0 ? (
+        <div className="relative max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+            type="search"
+            aria-label={t("Lọc trên trang này")}
+            placeholder={t("Lọc trên trang này")}
+            className="pl-9"
+            value={q}
+            onChange={e => setQ(e.target.value)}
+          />
+        </div>
+      ) : null}
+
+      {inbox.isLoading ? (
+        <p role="status" className="text-sm text-muted-foreground">{t("Đang tải tài liệu…")}</p>
+      ) : inbox.error ? (
+        <div role="alert" className="mentor-queue-empty">
+          <p>{t("Không thể tải tài liệu được chia sẻ.")}</p>
+          <Button onClick={() => void inbox.refetch()} variant="outline" size="sm">
+            {t("Thử lại")}
+          </Button>
+        </div>
+      ) : !items.length ? (
+        <div className="mentor-queue-empty">
+          <BookMarked size={26} aria-hidden="true" />
+          <h3>{t("Chưa có tài liệu nào được chia sẻ với bạn.")}</h3>
+          <p>{t("Bài báo nhóm đã chia sẻ với bạn. Bản thảo cần đánh giá nằm trong Việc cần xử lý.")}</p>
+          <Button asChild variant="outline" size="sm" className="gap-1.5">
+            <Link to="/mentor-workspace?view=projects">
+              <Users size={14} aria-hidden="true" />
+              <span>{t("mentorWorkspace.projects")}</span>
+            </Link>
+          </Button>
+        </div>
+      ) : !filteredItems.length ? (
+        <div className="mentor-queue-empty">
+          <p>{t("Không tìm thấy tài liệu phù hợp.")}</p>
+          <Button variant="outline" size="sm" onClick={() => setQ("")}>
+            {t("mentorWorkspace.clearFilters")}
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filteredItems.map(item => (
+            <article key={item.id} className="rounded-xl border border-border/80 bg-card p-5 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span>
+                  <strong className="font-semibold text-foreground">{item.projectTitle}</strong> ·{" "}
+                  {t(item.resource.canComment ? "Xem và góp ý" : "Chỉ xem")} · {t("Nhóm chia sẻ")}
+                </span>
+                <Link
+                  className="font-medium text-primary underline-offset-4 hover:underline"
+                  to={`/mentor-workspace?view=project&projectId=${encodeURIComponent(item.projectId)}&section=resources`}
+                >
+                  {t("Xem trong dự án")}
+                </Link>
+              </div>
+              <MentorSharedPaper projectId={item.projectId} accessId={item.accessId} resource={item.resource} />
+            </article>
+          ))}
+        </div>
+      )}
+
+      {showPagination ? (
+        <nav className="mentor-pagination" aria-label={t("Phân trang tài liệu")}>
+          <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>
+            {t("Trang trước")}
+          </Button>
+          <Button variant="outline" size="sm" disabled={!inbox.data?.hasNext} onClick={() => setPage(p => p + 1)}>
+            {t("Trang sau")}
+          </Button>
+        </nav>
+      ) : null}
+    </section>
+  );
 }

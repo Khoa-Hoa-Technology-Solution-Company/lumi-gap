@@ -19,6 +19,7 @@ export interface MentorWorkItem {
 export interface MentorProjectSummary {
   id: string; title: string; researchField: string | null; status: string;
   teamLead: string; teamSize: number; researchStage: string | null; pendingCount: number; updatedAt: string;
+  mentorRole?: string; startedAt?: string; sharedCount?: number; completedCount?: number; canChat?: boolean;
 }
 export interface MentorWorkspaceData {
   items: MentorWorkItem[];
@@ -26,6 +27,10 @@ export interface MentorWorkspaceData {
   projects: MentorProjectSummary[];
   projectMeta: { page: number; pageSize: number; total: number; totalPages: number };
   projectOptions: { id: string; title: string }[];
-  summary: { projects: number; needsResponse: number; overdue: number; blocked: number; manuscripts: number; invitations: number };
+  recentActivity?: MentorWorkItem[];
+  summary: {
+    projects: number; needsResponse: number; overdue: number; blocked: number; manuscripts: number; invitations: number;
+    completed?: number; waiting?: number; sharedResources?: number; totalStudents?: number;
+  };
   generatedAt: string;
 }

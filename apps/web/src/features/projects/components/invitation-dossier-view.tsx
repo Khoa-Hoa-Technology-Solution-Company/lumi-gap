@@ -20,6 +20,8 @@ import {
   ExternalLink,
   Info,
   Lock,
+  MessageSquareQuote,
+  Paperclip,
   ShieldCheck,
   Users,
 } from "lucide-react";
@@ -273,22 +275,33 @@ export function InvitationDossierView({
   attachments?: MentorshipAttachment[];
   showAccessNotice?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
 
   if (dossier?.presentation === "BRIEF") return <div className="space-y-5"><MentorInvitationBrief context={{ title: dossier.project.title, researchField: dossier.project.researchField, researchAreas: dossier.project.researchAreas, senderDisplayName: dossier.senderDisplayName ?? "", memberCount: dossier.team.teamMemberCount }} summary={dossier.project.abstract} message={dossier.whyThisLecturer.message} support={dossier.expectations.supportAreas} />{showAccessNotice && <div className="rounded-md border bg-muted/30 p-3 text-xs leading-5"><p className="font-medium">{t("supervisor.ifAccepted")}</p><p className="mt-1 text-muted-foreground">{t("supervisor.acceptedAccess")}</p></div>}</div>;
 
   if (!dossier) {
     return (
-      <div className="min-w-0 space-y-4 text-sm [overflow-wrap:anywhere]">
+      <div className="min-w-0 space-y-3.5 text-sm [overflow-wrap:anywhere]">
         {legacyProject && <MentorPreviewContent preview={legacyProject} />}
         {legacySender && <MentorInvitationSender sender={legacySender} />}
         {legacyMessage && (
-          <div className="space-y-1 rounded-md border p-3">
-            <p className="text-xs font-medium text-muted-foreground">{t("Guidance requested")}</p>
-            <p className="whitespace-pre-wrap text-sm leading-6">{legacyMessage}</p>
+          <div className="rounded-xl border border-primary/25 border-l-4 border-l-primary bg-primary/[0.04] p-3.5 space-y-1.5">
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-primary">
+              <MessageSquareQuote size={13} aria-hidden="true" />
+              <span>{t("Guidance requested")}</span>
+            </p>
+            <p className="whitespace-pre-wrap text-sm font-medium leading-6 text-foreground">{legacyMessage}</p>
           </div>
         )}
-        {Boolean(attachments?.length) && <InvitationAttachments attachments={attachments!} />}
+        {attachments?.length ? (
+          <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-2">
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <Paperclip size={13} aria-hidden="true" />
+              <span>{language === "vi" ? `Tệp đính kèm (${attachments.length})` : `Attachments (${attachments.length})`}</span>
+            </p>
+            <InvitationAttachments attachments={attachments} />
+          </div>
+        ) : null}
         {showAccessNotice && <MentorInvitationAccessNotice />}
       </div>
     );

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useProjects } from "@/features/projects/hooks/use-projects";
 import { useCreateReviewTemplate, usePublishReviewTemplate, useReviewTemplate, useSaveReviewTemplateVersion } from "@/features/reviews";
+import { useI18n } from "@/i18n";
 
 const artifactTypes = ["RESEARCH_PROPOSAL", "LITERATURE_REVIEW", "EVIDENCE_SYNTHESIS", "GAP_ANALYSIS", "RESEARCH_PLAN", "MANUSCRIPT", "GENERAL_REPORT"];
 const defaultLevels = [
@@ -18,6 +19,7 @@ const defaultLevels = [
 const emptyCriterion = (): ReviewTemplateCriterionInput => ({ title: "", description: "", required: true, allowNotApplicable: false });
 
 export function ReviewTemplateBuilderPage() {
+  const { t } = useI18n();
   const { embedded, param, navigate } = useReviewPageNavigation();
   const Container = embedded ? "section" : "main";
   const templateId = param("templateId");
@@ -81,7 +83,7 @@ export function ReviewTemplateBuilderPage() {
 
   if (editing && detail.isLoading) return <Container className="mx-auto max-w-5xl px-4 py-10"><div className="h-96 animate-pulse rounded-2xl bg-muted" /></Container>;
   return <Container className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
-    <Button variant="ghost" onClick={() => navigate("/review-templates")}><ArrowLeft className="h-4 w-4" />Back to templates</Button>
+    <Button variant="ghost" onClick={() => navigate("/review-templates")}><ArrowLeft className="h-4 w-4" />{t("reviewTemplates.backToTemplates")}</Button>
     <header className="mt-4 flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Template builder</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">{editing ? "Edit Review Template" : "Create Review Template"}</h1><p className="mt-2 text-sm text-muted-foreground">Publishing creates an immutable version. Later edits become a new version.</p></div><Button variant="outline" onClick={() => setPreview((value) => !value)}><Eye className="h-4 w-4" />{preview ? "Edit" : "Preview"}</Button></header>
 
     {preview ? <TemplatePreview name={name} mode={reviewMode} description={description} guidelines={payload.guidelines} criteria={payload.criteria} /> : <div className="mt-7 grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px]"><div className="space-y-8">

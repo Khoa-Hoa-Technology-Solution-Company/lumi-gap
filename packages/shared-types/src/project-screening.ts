@@ -45,6 +45,8 @@ export interface ScreeningSettings {
 export type ScreeningEvaluationStatus = "CONSENSUS_REQUIRED" | "CONSENSUS_IN_PROGRESS" | "WAITING_REVIEWER" | "CONFLICT" | "ADJUDICATING" | "INCLUDED" | "EXCLUDED" | "NEEDS_MORE_INFO" | "AWAITING_FINALIZATION" | "BACKGROUND" | "WAITING_FULLTEXT" | "ADVANCE_TO_FULLTEXT" | "CLOSED_UNRESOLVED";
 /** Read-only card projection; review choices are included only after protocol disclosure. */
 export interface ScreeningWorkPaper {
+  rescreening?: boolean;
+  publishedStatus?: ScreeningState | null;
   consensusDeadline?: string | null;
   invalidated?: boolean;
   roundId: string; paperId: string; title: string; authors: string[];
@@ -208,7 +210,7 @@ export interface ScreeningDiscussionTiming {
 }
 
 export interface ScreeningClosureDetails {
-  actorType: "SYSTEM" | "OWNER";
+  actorType: "SYSTEM" | "OWNER" | "REVIEWERS";
   actorId?: string;
   closedAt: string;
   reason: ScreeningClosureReason;
@@ -222,7 +224,34 @@ export interface ScreeningConsensusView {
   canConfirm: boolean;
   confirmations: Array<{ reviewerId: string; decision: "INCLUDE" | "EXCLUDE"; reason: string; confirmedAt: string }>;
 }
+export type ScreeningRescreenReasonCategory =
+  | "NEW_INFORMATION"
+  | "PREVIOUS_DECISION_ERROR"
+  | "CRITERIA_CHANGED"
+  | "OTHER";
+
+export interface ScreeningRescreenContext {
+  previousRoundId: string;
+  previousRoundNumber: number;
+  previousStatus: ScreeningState;
+  previousPhase?: ScreeningPhase;
+  reasonCategory?: ScreeningRescreenReasonCategory;
+  reason: string;
+  openedById: string;
+  openedByName: string;
+  openedAt: string;
+  criteriaVersion?: number;
+  invalidatedRoundIds?: string[];
+  removedReviewerIds?: string[];
+}
+
 export interface ScreeningRoundView {
+  rescreening?: boolean;
+  publishedResult?: { roundId: string; number: number; status: ScreeningState; phase?: ScreeningPhase } | null;
+  rescreenContext?: ScreeningRescreenContext | null;
+  canRescreenStages?: ScreeningPhase[];
+  canAssignReviewers?: boolean;
+  createdAt?: string;
   consensus?: ScreeningConsensusView | null;
   invalidated?: boolean;
   outcome?: ScreeningOutcome;
@@ -281,12 +310,12 @@ export interface ScreeningRoundView {
   active: boolean; settings: ScreeningSettings; unblindedAt: string | null; independenceCompromised: boolean;
   assignments: ScreeningAssignment[]; reviews: ScreeningReview[]; myReview: ScreeningReview | null;
   myAssignmentId: string | null; hiddenReviews: boolean; completed: number; assigned: number;
-  finalDecision: { id: string; version: number; decision: "INCLUDED" | "EXCLUDED" | "BACKGROUND"; source: "CONSENSUS" | "MANUAL"; reason: string; exclusionReason?: string | null; sourceMaterial?: string | null; resolverId: string | null; createdAt: string } | null;
+  finalDecision: { id: string; version: number; decision: "INCLUDED" | "EXCLUDED" | "BACKGROUND" | "CLOSED_UNRESOLVED"; source: "CONSENSUS" | "MANUAL"; reason: string; exclusionReason?: string | null; sourceMaterial?: string | null; resolverId: string | null; createdAt: string } | null;
   canReview: boolean; canManage: boolean; aiVisible: boolean;
 }
 export interface ScreeningAgreement {
   exclusionReason?: string; sourceMaterial?: string; retrieveFullText?: boolean;
-  id: string; decision: "INCLUDED" | "EXCLUDED" | "NEEDS_MORE_INFO"; reason: string; proposedById: string;
+  id: string; decision: "INCLUDED" | "EXCLUDED" | "NEEDS_MORE_INFO" | "CLOSED_UNRESOLVED"; reason: string; proposedById: string;
   reviewIds: string[]; confirmedByIds: string[]; requiredReviewerIds: string[];
   canConfirm: boolean; canDecline?: boolean; confirmations?: Array<{ reviewerId: string; confirmedAt: string }>; createdAt: string;
 }
@@ -342,6 +371,14 @@ export interface ScreeningPaperRow {
   authors?: string[]; paperLink?: string | null; fullTextAvailable?: boolean;
   citationCount?: number; openAccessStatus?: string; keywords?: string[];
   legacyStatus: string; legacyProvenance: boolean; round: ScreeningRoundView | null;
+  evidenceSummary?: {
+    status: "NOT_STARTED" | "AI_SUGGESTED" | "IN_PROGRESS" | "COMPLETED";
+    extractionCount: number;
+    verifiedCount: number;
+    eligible: boolean;
+  };
+  manuscriptCitationCount?: number;
+  citedInManuscripts?: Array<{ id: string; title: string; citationKey: string }>;
 }
 export interface ScreeningClaimResult { paperId: string; roundId: string; assignmentId: string; dueAt: string | null }
 export type ScreeningClaimNextResult = ScreeningClaimResult | { paperId: null; roundId: null; dueAt: null };
@@ -355,6 +392,7 @@ export interface ScreeningBoard extends WorkspacePage<ScreeningPaperRow> {
     background?: number;
     excluded?: number;
     unresolved?: number;
+    rescreening?: number;
   };
   tags?: string[];
   filters: { proposers: WorkspacePerson[]; reviewers: WorkspacePerson[] };
@@ -364,7 +402,24 @@ export interface ScreeningBoard extends WorkspacePage<ScreeningPaperRow> {
   settings: ScreeningSettings;
   myProgress: { assigned: number; completed: number; pending: number; overdue: number };
 }
+export interface ScreeningPrismaSummary {
+  identified: number;
+  screened: number;
+  included: number;
+  excluded: number;
+  closedUnresolved: number;
+  pending: number;
+  rescreeningInProgress: number;
+  excludedByStage: {
+    TITLE_ABSTRACT: { count: number; reasons: { reason: string; count: number }[] };
+    FULL_TEXT: { count: number; reasons: { reason: string; count: number }[] };
+  };
+}
 export interface ScreeningMetrics {
+  /** Published results, one paper per stage; closure is never a criteria exclusion. */
+  publishedSelection?: Record<ScreeningPhase, { included: number; excludedByCriteria: number; closedUnresolved: number }>;
+  rescreeningPapers?: number;
+  prismaSummary?: ScreeningPrismaSummary;
   reviewedPapers: number; finalizedPapers: number; legacyPapers: number;
   totalPapers: number; evaluatedPapers: number; fullyParticipated: number; fullyReviewed: number; agreements: number; disagreements: number; pendingReviews: number;
   submittedReviews: number; assignedReviews: number; completionRate: number | null; agreementRate: number | null; conflictRate: number | null;

@@ -28,7 +28,7 @@ export function ProjectsWorkspacePage() {
   // Public summary links remain available without loading a personal project library.
   if (!user || (user.systemRole !== "ADMIN" && !user.emailVerifiedAt)) return <Outlet />;
   // Old links must not hide projects behind controls that no longer exist.
-  if (["scope", "status", "sort"].some(key => params.has(key))) {
+  if ((id || user.academicRole !== "LECTURER") && ["scope", "status", "sort"].some(key => params.has(key))) {
     const search = new URLSearchParams(params);
     ["scope", "status", "sort"].forEach(key => search.delete(key));
     return <Navigate to={{ pathname: location.pathname, search: search.toString(), hash: location.hash }} replace />;
@@ -53,7 +53,7 @@ function WorkspaceSidebar({
   const user = useAuthStore(state => state.user);
   const userId = user?.id;
   const { data: projects, isLoading: projectsLoading, isFetching: projectsFetching, isError: projectsError } = useProjects();
-  const mentoring = useMentoredProjects();
+  const mentoring = useMentoredProjects(user?.academicRole !== "LECTURER");
   const { data: currentProject, isLoading: projectLoading, error: projectError } = useProject(id);
   const [params, setParams] = useSearchParams();
   const detailsRef = useRef<HTMLDetailsElement>(null);
@@ -68,7 +68,7 @@ function WorkspaceSidebar({
   const loading = !!id && !unavailable && !project && (projectsLoading || projectLoading);
   // The directory redirects as soon as its query settles. Opening its picker
   // before that decision flashes a dropdown on the first visit.
-  const directoryNeedsChoice = !id && !mentoring.isLoading && !mentoring.data?.length && !mentoring.isError && !["invitations", "trash"].includes(params.get("view") ?? "") && !projectsLoading && !projectsFetching && (
+  const directoryNeedsChoice = user?.academicRole !== "LECTURER" && !id && !mentoring.isLoading && !mentoring.data?.length && !mentoring.isError && !["invitations", "trash"].includes(params.get("view") ?? "") && !projectsLoading && !projectsFetching && (
     projectsError || params.get("create") === "1" ||
     !selectDirectoryProjects(projects ?? [], readProjectSearchFilters(params), userId, language).length
   );
@@ -162,8 +162,9 @@ function ProjectWorkspaceLoading() {
 
 export function ProjectWorkspaceStart() {
   const { data: projects, isLoading, isError, isFetching } = useProjects();
-  const mentoring = useMentoredProjects();
-  const userId = useAuthStore(state => state.user?.id);
+  const user = useAuthStore(state => state.user);
+  const userId = user?.id;
+  const mentoring = useMentoredProjects(user?.academicRole !== "LECTURER");
   const { t, language } = useI18n();
   const [params] = useSearchParams();
   const saved = readLastVisitedProject(userId);
@@ -172,6 +173,7 @@ export function ProjectWorkspaceStart() {
   const first = candidates.find(project => project.status !== "ARCHIVED") ?? candidates[0];
   if (params.get("view") === "trash") return <ProjectsListPage trashOnly />;
   if (params.get("view") === "invitations") return <ProjectsListPage invitationsOnly />;
+  if (user?.academicRole === "LECTURER") return <ProjectsListPage />;
   if (isLoading || mentoring.isLoading) return <ProjectWorkspaceLoading />;
   if (mentoring.isError || (!mentoring.error && mentoring.data?.length)) return <ProjectsListPage />;
   if (isFetching) return <ProjectWorkspaceLoading />;

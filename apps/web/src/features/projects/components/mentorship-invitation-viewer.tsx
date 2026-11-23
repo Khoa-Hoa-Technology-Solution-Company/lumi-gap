@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Calendar, CheckCircle2, Clock3, GraduationCap, Info, User } from "lucide-react";
 import type { MentorshipRequest } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,23 +42,99 @@ function InvitationViewer({ projectId, requestId, currentProjectId, onClose }: {
     lock.current = true; try { await mutation.mutateAsync(action); } catch { /* Keep the snapshot and show the error. */ } finally { lock.current = false; }
   };
   const recipientMentor = viewer === "RECIPIENT" && item?.direction === "PROJECT_TO_LECTURER";
+  const statusTone = item?.status === "ACCEPTED" ? "emerald" : item?.status === "PENDING" ? "amber" : "slate";
+  const statusBadgeClass = statusTone === "emerald"
+    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+    : statusTone === "amber"
+      ? "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300"
+      : "border-border bg-muted text-muted-foreground";
   return <Dialog open onOpenChange={open => { if (!open && !lock.current && !mutation.isPending) onClose(); }}>
     <DialogContent className="mentor-invitation-viewer" data-no-i18n showClose={!mutation.isPending} closeLabel={t("Close")} onInteractOutside={event => event.preventDefault()}>
-      <DialogHeader className="mentor-invitation-viewer-header"><DialogTitle>{t(viewer === "SENDER" ? "supervisor.sentTitle" : "supervisor.receivedTitle")}</DialogTitle><DialogDescription>{t("supervisor.snapshotDescription")}</DialogDescription></DialogHeader>
+      <DialogHeader className="mentor-invitation-viewer-header">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <DialogTitle>{t(viewer === "SENDER" ? "supervisor.sentTitle" : "supervisor.receivedTitle")}</DialogTitle>
+          {item ? (
+            <Badge variant="outline" className={`h-6 gap-1.5 px-2.5 text-xs font-semibold ${statusBadgeClass}`}>
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  statusTone === "emerald" ? "bg-emerald-500" : statusTone === "amber" ? "bg-amber-500" : "bg-muted-foreground/60"
+                }`}
+                aria-hidden="true"
+              />
+              <span>{t(item.status)}</span>
+            </Badge>
+          ) : null}
+        </div>
+        <DialogDescription>{t("supervisor.snapshotDescription")}</DialogDescription>
+      </DialogHeader>
       <div className="mentor-invitation-viewer-body" role="region" aria-label={t("supervisor.invitationContent")} tabIndex={0}>
       <div className="space-y-4">
       {query.isLoading && <p role="status">{t("Loading…")}</p>}
       {query.isError ? <div role="alert" className="space-y-2 text-sm"><p>{t(mentorshipError(query.error))}</p><Button size="sm" variant="outline" onClick={() => void query.refetch()}>{t("Reload invitation")}</Button></div> : item && <>
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3 text-sm"><div className="min-w-0 space-y-1">
-          {item.direction === "PROJECT_TO_LECTURER" && <p className="break-words"><span className="text-muted-foreground">{t("supervisor.recipient")}: </span><Link className="font-medium text-primary hover:underline" target="_blank" rel="noopener noreferrer" to={`/academics/${encodeURIComponent(item.mentorUser._id)}`}>{item.mentorUser.fullName}</Link></p>}
-          <p className="break-words"><span className="text-muted-foreground">{t("Requested by")}: </span>{item.requestedBy.fullName}</p>
-          {item.createdAt && <p className="text-xs text-muted-foreground">{t("supervisor.sentOn")}: {new Date(item.createdAt).toLocaleString()}</p>}
-        </div><Badge variant="secondary">{t(item.status)}</Badge></div>
-        {item.legacyPreview && <p role="status" className="text-xs text-muted-foreground">{t("supervisor.legacySnapshot")}</p>}
+        <div className="miv-meta-grid">
+          {item.direction === "PROJECT_TO_LECTURER" && (
+            <div className="miv-meta-item">
+              <span className="miv-meta-icon" aria-hidden="true"><GraduationCap size={15} /></span>
+              <div className="min-w-0">
+                <p className="miv-meta-label">{t("supervisor.recipient")}</p>
+                <Link className="block truncate text-sm font-semibold text-primary hover:underline" target="_blank" rel="noopener noreferrer" to={`/academics/${encodeURIComponent(item.mentorUser._id)}`}>
+                  {item.mentorUser.fullName}
+                </Link>
+              </div>
+            </div>
+          )}
+          <div className="miv-meta-item">
+            <span className="miv-meta-icon" aria-hidden="true"><User size={15} /></span>
+            <div className="min-w-0">
+              <p className="miv-meta-label">{t("Requested by")}</p>
+              <p className="truncate text-sm font-semibold text-foreground">{item.requestedBy.fullName}</p>
+            </div>
+          </div>
+          {item.createdAt && (
+            <div className="miv-meta-item">
+              <span className="miv-meta-icon" aria-hidden="true"><Calendar size={15} /></span>
+              <div className="min-w-0">
+                <p className="miv-meta-label">{t("supervisor.sentOn")}</p>
+                <p className="text-sm font-medium text-foreground">{new Date(item.createdAt).toLocaleString()}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {item.legacyPreview && (
+          <div role="status" className="flex items-start gap-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.05] px-3.5 py-2.5 text-xs leading-5 text-muted-foreground">
+            <Info size={14} className="mt-0.5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+            <span>{t("supervisor.legacySnapshot")}</span>
+          </div>
+        )}
+
         <InvitationDossierView dossier={item.dossier} legacyProject={item.project} legacySender={item.requestedBy} legacyMessage={item.message} attachments={item.attachments} showAccessNotice={false} />
-        {pending && viewer === "SENDER" && <p role="status" className="text-sm text-muted-foreground">{t(item.direction === "PROJECT_TO_LECTURER" ? "supervisor.waitingMentor" : "supervisor.waitingTeam")}</p>}
-        {pending && viewer === "RECIPIENT" && <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-xs leading-5"><p className="font-medium">{t("supervisor.ifAccepted")}</p><p className="text-muted-foreground">{t(recipientMentor ? "supervisor.acceptedAccess" : "supervisor.offerAccess")}</p></div>}
-        {!pending && <p role="status" className="text-sm font-medium">{t(item.status === "ACCEPTED" && recipientMentor ? "supervisor.accepted" : item.status)}</p>}
+
+        {pending && viewer === "SENDER" && (
+          <div role="status" className="flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-3.5 py-2.5 text-xs font-medium text-amber-800 dark:text-amber-300">
+            <Clock3 size={15} className="shrink-0" aria-hidden="true" />
+            <span>{t(item.direction === "PROJECT_TO_LECTURER" ? "supervisor.waitingMentor" : "supervisor.waitingTeam")}</span>
+          </div>
+        )}
+        {pending && viewer === "RECIPIENT" && (
+          <div className="space-y-1 rounded-xl border border-primary/20 bg-primary/[0.04] p-3.5 text-xs leading-5">
+            <p className="font-semibold text-foreground">{t("supervisor.ifAccepted")}</p>
+            <p className="text-muted-foreground">{t(recipientMentor ? "supervisor.acceptedAccess" : "supervisor.offerAccess")}</p>
+          </div>
+        )}
+        {!pending && (
+          <div
+            role="status"
+            className={`flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm font-semibold ${
+              statusTone === "emerald"
+                ? "border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-800 dark:text-emerald-300"
+                : "border-border bg-muted/40 text-foreground"
+            }`}
+          >
+            {statusTone === "emerald" ? <CheckCircle2 size={16} className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" /> : null}
+            <span>{t(item.status === "ACCEPTED" && recipientMentor ? "supervisor.accepted" : item.status)}</span>
+          </div>
+        )}
         {query.isFetching && <p role="status" className="text-xs text-muted-foreground">{t("Checking the latest invitation…")}</p>}
         {mutation.error && <p role="alert" className="text-sm text-destructive">{t(mentorshipError(mutation.error))}</p>}
       </>}
@@ -89,7 +165,7 @@ function InvitationViewer({ projectId, requestId, currentProjectId, onClose }: {
       <footer className="mentor-invitation-viewer-footer"><Button variant="outline" disabled={mutation.isPending} onClick={onClose}>{t("Close")}</Button>
         {!query.isError && pending && viewer === "SENDER" && item?.actions.cancel && !confirmWithdraw && <Button variant="outline" className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive" disabled={mutation.isPending || query.isFetching} onClick={() => setConfirmWithdraw(true)}>{t("supervisor.withdraw")}</Button>}
         {!query.isError && pending && viewer === "RECIPIENT" && <>{item?.actions.decline && <Button variant="outline" disabled={mutation.isPending || query.isFetching} onClick={() => void act("decline")}>{t("Decline")}</Button>}{item?.actions.accept && <Button disabled={mutation.isPending || query.isFetching} onClick={() => void act("accept")}>{t("supervisor.accept")}</Button>}</>}
-        {!query.isError && !pending && viewer === "RECIPIENT" && item?.actions.openProject && !currentProjectId && <Button asChild><Link to={recipientMentor ? mentorWorkspaceDestination(`/academic-support/projects/${encodeURIComponent(projectId)}`) : `/projects/${encodeURIComponent(projectId)}?tab=support`}>{t("Open project")}</Link></Button>}
+        {!query.isError && !pending && viewer === "RECIPIENT" && item?.actions.openProject && !currentProjectId && <Button asChild className="gap-1.5"><Link to={recipientMentor ? mentorWorkspaceDestination(`/academic-support/projects/${encodeURIComponent(projectId)}`) : `/projects/${encodeURIComponent(projectId)}?tab=support`}><span>{t("Open project")}</span><ArrowUpRight size={15} aria-hidden="true" /></Link></Button>}
       </footer>
     </DialogContent>
   </Dialog>;

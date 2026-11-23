@@ -1,3 +1,4 @@
+import { publishedScreeningRounds } from "./screening-effective.js";
 import type { WorkspaceDb } from "./workspace-access.js";
 import type { ScreeningSettings } from "@trend/shared-types";
 import { automaticFullTextStage } from "./screening.calculator.js";
@@ -6,10 +7,10 @@ import { automaticFullTextStage } from "./screening.calculator.js";
 export async function evidenceEligibility(tx: WorkspaceDb, projectId: string, paperIds?: string[]) {
   const [links, rounds, settingsExist] = await Promise.all([
     tx.projectPaper.findMany({ where: { projectId, ...(paperIds ? { paperId: { in: paperIds } } : {}) }, select: { paperId: true, screeningStatus: true } }),
-    tx.screeningRound.findMany({ where: { projectId, active: true, ...(paperIds ? { paperId: { in: paperIds } } : {}) }, select: { paperId: true, status: true, phase: true, settings: true, legacyNeedsAudit: true } }),
+    publishedScreeningRounds(tx, projectId, paperIds),
     tx.screeningSettings.count({ where: { projectId } }),
   ]);
-  const byPaper = new Map(rounds.map(round => [round.paperId, round]));
+  const byPaper = rounds;
   return new Map(links.map(link => {
     const round = byPaper.get(link.paperId);
     const settings = round?.settings as ScreeningSettings | undefined;

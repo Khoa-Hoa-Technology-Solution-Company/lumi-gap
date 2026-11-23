@@ -22,8 +22,26 @@ beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); host = docum
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 function MentorDestination() { const location = useLocation(); return <><h1>Mentor workspace</h1><output data-destination={`${location.pathname}${location.search}${location.hash}`} /></>; }
 async function render(path = "/") {
-  await act(async () => root.render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Routes><Route element={<MainLayout />}><Route path="/" element={<h1>Home content</h1>} /><Route path="/reviews/:assignmentId" element={<h1>Original review</h1>} /><Route path="/review-requests/:requestId" element={<h1>Original request</h1>} /><Route path="/review-templates/:templateId/edit" element={<h1>Original template</h1>} /></Route><Route path="/mentor-workspace" element={<MentorDestination />} /></Routes></MemoryRouter>));
+  await act(async () => root.render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Routes><Route element={<MainLayout />}><Route path="/" element={<h1>Home content</h1>} /><Route path="/projects" element={<h1>Original projects</h1>} /><Route path="/projects/:id" element={<h1>Full team project</h1>} /><Route path="/reviews/:assignmentId" element={<h1>Original review</h1>} /><Route path="/review-requests/:requestId" element={<h1>Original request</h1>} /><Route path="/review-templates/:templateId/edit" element={<h1>Original template</h1>} /></Route><Route path="/mentor-workspace" element={<MentorDestination />} /></Routes></MemoryRouter>));
 }
+it.each(["", "?view=trash", "?view=invitations", "?scope=OWNED&status=ACTIVE&sort=NAME&q=study&create=1#list"])("keeps a lecturer's personal projects outside the mentor shell: %s", async suffix => {
+  auth.user = { id: "lecturer", email: "lecturer@example.test", fullName: "Lecturer", academicRole: "LECTURER", systemRole: "USER" };
+  await render(`/projects${suffix}`);
+  expect(host.textContent).toContain("Original projects");
+  expect(host.querySelector("[data-destination]")).toBeNull();
+});
+it.each(["STUDENT", "RESEARCHER"])("keeps the existing project directory for %s", async academicRole => {
+  auth.user = { id: "member", email: "member@example.test", fullName: "Member", academicRole, systemRole: "USER" };
+  await render("/projects?view=trash");
+  expect(host.textContent).toContain("Original projects");
+  expect(host.querySelector("[data-destination]")).toBeNull();
+});
+it("preserves full project access for a lecturer who is an owner or member", async () => {
+  auth.user = { id: "lecturer", email: "lecturer@example.test", fullName: "Lecturer", academicRole: "LECTURER", systemRole: "USER" };
+  await render("/projects/owned?tab=members");
+  expect(host.textContent).toContain("Full team project");
+  expect(host.querySelector("[data-destination]")).toBeNull();
+});
 it.each([
   ["/reviews/assigned", "review", "assignmentId", "assigned"],
   ["/review-requests/request", "review-request", "requestId", "request"],
@@ -66,6 +84,8 @@ it("places the lecturer workspace only in the avatar menu and opens it", async (
   expect(document.querySelector('[role="menu"] a[href="/academic-support"]')).toBeNull();
   expect(document.querySelector('[role="menu"] a[href="/mentor-workspace?view=reviews"]')).not.toBeNull();
   expect(document.querySelector('[role="menu"] a[href="/mentor-workspace?view=templates"]')).not.toBeNull();
+  expect(document.querySelector('[role="menu"] a[href="/mentor-workspace?view=research-projects"]')).toBeNull();
+  expect(document.querySelector('[role="menu"] a[href="/projects"]')).not.toBeNull();
   await act(async () => { workspace.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
   const account = host.querySelector<HTMLButtonElement>('button[aria-label="Account"]')!;
   await act(async () => { account.focus(); account.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });

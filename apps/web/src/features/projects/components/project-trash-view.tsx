@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/i18n";
 import { usePermanentDeleteProject, useRestoreProject, useTrashedProjects } from "../hooks/use-projects";
 
-export function ProjectTrashView() {
+export function ProjectTrashView({ backTo = "/projects" }: { backTo?: string }) {
   const { t, language } = useI18n();
   const navigate = useNavigate();
   const trashQuery = useTrashedProjects();
@@ -74,7 +74,7 @@ export function ProjectTrashView() {
       <header className="project-directory-heading space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button variant="ghost" size="sm" asChild className="-ml-2 gap-1.5 text-muted-foreground">
-            <Link to="/projects">
+            <Link to={backTo}>
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
               {t("Back to projects")}
             </Link>
@@ -119,7 +119,7 @@ export function ProjectTrashView() {
             {t("Projects you move to Trash appear here for {{days}} days before permanent deletion.", { days: PROJECT_TRASH_RETENTION_DAYS })}
           </p>
           <Button variant="outline" className="mt-5" asChild>
-            <Link to="/projects">{t("Back to projects")}</Link>
+            <Link to={backTo}>{t("Back to projects")}</Link>
           </Button>
         </div>
       ) : (

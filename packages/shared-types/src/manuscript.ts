@@ -118,12 +118,19 @@ export interface ManuscriptSnapshot {
 }
 export interface ManuscriptReference {
   id: string; title: string; authors: string[]; year: number | null; doi: string | null; citationKey: string; bibtex: string;
+  journalName?: string | null;
+  screeningStatus?: string;
+  evidenceStatus?: "NOT_STARTED" | "AI_SUGGESTED" | "IN_PROGRESS" | "COMPLETED";
+  extractionCount?: number;
+  verifiedCount?: number;
+  inBib?: boolean;
+  metadataWarnings?: string[];
 }
 export interface ManuscriptContext {
   references: ManuscriptReference[];
   plan: { title: string; objective: string; questions: unknown } | null;
   gaps: Array<{ id: string; title: string; description: string; status: string; limitations: string | null }>;
-  evidence: Array<{ id: string; claim: string; interpretation: string; status: string; evidenceRole: string; limitations: string; gapId?: string }>;
+  evidence: Array<{ id: string; claim: string; interpretation: string; status: string; evidenceRole: string; limitations: string; gapId?: string; paperId?: string; sourceTitle?: string; locator?: string }>;
 }
 export interface ManuscriptComment {
   id: string; title: string; body: string; status: "OPEN" | "RESOLVED"; version: number;

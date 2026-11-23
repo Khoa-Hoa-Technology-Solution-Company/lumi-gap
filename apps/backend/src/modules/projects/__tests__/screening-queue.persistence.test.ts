@@ -73,14 +73,14 @@ describe.skipIf(!enabled).sequential("review queue end-to-end, PostgreSQL", () =
     expect((await queue(f.id, owner)).queueSummary?.available).toBe(0);
     expect((await service.claimNext(f.id, owner, key())).paperId).toBeNull();
   });
-  it("reopens expired unfinished slots while submitted reviews keep their slot", async () => {
+  it("keeps overdue unfinished reviews assigned while submitted reviews retain their slot", async () => {
     const f = await fixture(); await claim(f, a); await claim(f, b); await vote(f, a);
     await db.screeningAssignment.update({ where: { roundId_reviewerId: { roundId: f.roundId, reviewerId: b } }, data: { dueAt: new Date(Date.now() - 1000) } });
-    expect((await queue(f.id)).items[0]!.round).toMatchObject({ assigned: 1, completed: 1 });
-    expect((await service.workspaceSummary(f.id, b)).myActiveClaims).toHaveLength(0);
-    await expect(service.extend(f.id, b, f.roundId, key())).rejects.toBeDefined();
-    await claim(f, c); await vote(f, c);
-    expect((await service.detail(f.id, c, f.roundId)).status).toBe("INCLUDED");
+    expect((await queue(f.id)).items).toHaveLength(0);
+    expect((await service.workspaceSummary(f.id, b)).myActiveClaims).toHaveLength(1);
+    await expect(service.extend(f.id, b, f.roundId, key())).resolves.toMatchObject({ roundId: f.roundId, assignmentId: expect.any(String) });
+    await expect(claim(f, c)).rejects.toMatchObject({ statusCode: 409 }); await vote(f, b);
+    expect((await service.detail(f.id, b, f.roundId)).status).toBe("INCLUDED");
     expect(await db.screeningReview.count({ where: { projectId: f.id } })).toBe(2);
   });
   it("extends by exactly 24h and releases only the actor's unfinished claim", async () => {

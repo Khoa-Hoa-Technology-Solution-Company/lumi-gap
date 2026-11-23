@@ -16,11 +16,16 @@ export const projectEvidenceWorkspaceService = {
         tx.researchPlan.findUnique({ where: { projectId: project.id }, select: { questions: true } }),
       ]);
       const questions = (Array.isArray(plan?.questions) ? plan.questions : []) as unknown as PlanQuestion[];
-      const [papers, revisions, documents] = await Promise.all([
-        tx.paper.findMany({ where: { id: { in: links.map(link => link.paperId) } }, select: { id: true, title: true, doi: true, publicationYear: true, abstractText: true, pdfPath: true, openAccessUrl: true, uploadedAt: true } }),
+      const [papers, revisions, documents, authors, projectFiles] = await Promise.all([
+        tx.paper.findMany({ where: { id: { in: links.map(link => link.paperId) } }, select: { id: true, title: true, doi: true, publicationYear: true, journalName: true, paperLink: true, abstractText: true, pdfPath: true, openAccessUrl: true, uploadedAt: true } }),
         tx.projectWorkspaceRevision.findMany({ where: { projectId: project.id, entityKind: "EXTRACTION", entityId: { in: rows.map(row => row.id) } }, select: { id: true, entityId: true } }),
         tx.paperDocument.findMany({ where: { paperId: { in: links.map(link => link.paperId) } }, select: { paperId: true, status: true, contentHash: true, sourceHash: true } }),
+        tx.paperAuthor.findMany({ where: { paperId: { in: links.map(link => link.paperId) } }, orderBy: { position: "asc" }, select: { paperId: true, displayName: true } }),
+        tx.projectPaperFile.findMany({ where: { projectId: project.id, paperId: { in: links.map(link => link.paperId) } }, select: { paperId: true } }),
       ]);
+      const authorsByPaper = new Map<string, string[]>();
+      for (const author of authors) { const list = authorsByPaper.get(author.paperId) ?? []; list.push(author.displayName); authorsByPaper.set(author.paperId, list); }
+      const filesByPaper = new Set(projectFiles.map(file => file.paperId));
       const paperById = new Map(papers.map(paper => [paper.id, paper]));
       const documentByPaper = new Map(documents.map(document => [document.paperId, document]));
       const revisionIds = new Map<string, Set<string>>();
@@ -43,7 +48,10 @@ export const projectEvidenceWorkspaceService = {
         if (needle && ![paper.title, paper.doi ?? "", ...link.tags, ...matching.flatMap(row => [row.claim, row.methodology, row.results, row.limitations, row.context, row.population, row.quotation, ...row.themes])].some(value => value.toLocaleLowerCase().includes(needle))) return [];
         const selected = [...matching].sort((a, b) => Number(b.verificationStatus === "VERIFIED") - Number(a.verificationStatus === "VERIFIED"));
         const compact = (value: string) => value.length > 180 ? `${value.slice(0, 177)}…` : value;
-        return [{ paperId: paper.id, title: paper.title, doi: paper.doi, publicationYear: paper.publicationYear || null, ...access,
+        return [{ paperId: paper.id, title: paper.title, doi: paper.doi, publicationYear: paper.publicationYear || null,
+          authors: authorsByPaper.get(paper.id) ?? [], journalName: paper.journalName ?? null, paperLink: paper.paperLink ?? paper.openAccessUrl ?? null,
+          fullTextAvailable: Boolean(paper.openAccessUrl || paper.pdfPath || filesByPaper.has(paper.id)),
+          ...access,
           extractionCount: entries.length, verifiedCount: entries.filter(row => row.verificationStatus === "VERIFIED").length,
           themes: [...new Set([...link.tags, ...entries.flatMap(row => row.themes)])],
           questions: questions.filter(question => entries.some(row => row.relatedQuestions.some(related => related.id === question.id))).map(({ id, text }) => ({ id, text })),

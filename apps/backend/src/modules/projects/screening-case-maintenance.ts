@@ -4,7 +4,7 @@ import { withWorkspace } from "./workspace-access.js";
 import { maintainProjectConsensus } from "./screening-consensus.js";
 import { reconcileScreeningObligations } from "./screening-obligations.js";
 
-/** Existing notification-worker schedule also enforces consensus deadlines without browser activity. */
+/** Existing worker maintains progress reminders and obligations; deadlines never determine screening outcomes. */
 export async function maintainScreeningCases(caseId?: string) {
   const db = getPrisma();
   const legacy = caseId ? await db.screeningAdjudicationCase.findUnique({ where: { id: caseId }, select: { projectId: true } }) : null;

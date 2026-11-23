@@ -34,9 +34,9 @@ describe("my work actions", () => {
     expect(evaluationGroupLabel({ ...evaluation, groupStatus: "INCLUDED", acceptedForAnalysis: true })).toBe("Chấp nhận bài");
     expect(evaluationGroupLabel({ ...evaluation, caseStatus: "WAITING_ASSIGNMENT" })).toBe("Chờ phân công");
   });
-  it("omits expired claims and statements even before the next poll", () => {
+  it("keeps overdue review work while excluding expired legacy statements", () => {
     const deadline = "2000-01-01T00:00:00Z";
-    expect(myWorkTasks({ ...base, myActiveClaims: [{ paperId: "p", roundId: "r", assignmentId: "a", title: "Expired", phase: "TITLE_ABSTRACT", publicationYear: null, dueAt: deadline, expiresInSeconds: 0, canExtend: false, canRelease: false }], myTrackedDisputes: [{ paperId: "p2", roundId: "r2", title: "Expired statement", phase: "TITLE_ABSTRACT", status: "ADJUDICATING", caseStatus: "COLLECTING", needsMyStatement: true, myDecision: "INCLUDE", deadline }] }, false)).toEqual([]);
+    expect(myWorkTasks({ ...base, myActiveClaims: [{ paperId: "p", roundId: "r", assignmentId: "a", title: "Expired", phase: "TITLE_ABSTRACT", publicationYear: null, dueAt: deadline, expiresInSeconds: 0, canExtend: false, canRelease: false }], myTrackedDisputes: [{ paperId: "p2", roundId: "r2", title: "Expired statement", phase: "TITLE_ABSTRACT", status: "ADJUDICATING", caseStatus: "COLLECTING", needsMyStatement: true, myDecision: "INCLUDE", deadline }] }, false)).toMatchObject([{ kind: "REVIEW", roundId: "r" }]);
   });
   it("separates coordination tasks and generates refreshable links for every action", () => {
     const [task] = myWorkTasks({ ...base, pendingAdjudications: [{ paperId: "p", roundId: "r", title: "Assign", status: "ADJUDICATING", caseStatus: "WAITING_ASSIGNMENT" }] }, false);

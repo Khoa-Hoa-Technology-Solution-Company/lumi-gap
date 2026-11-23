@@ -142,7 +142,8 @@ export function ScreeningTaskCard({ projectId, summary, task, onOpen, href, now,
   const statement = task.kind === "STATEMENT";
   const adjudication = task.kind === "ADJUDICATION";
   const isClarification = paper.classification === "NEEDS_CLARIFICATION" || paper.classification === "NEEDS_MORE_INFORMATION" || paper.status === "NEEDS_MORE_INFO" && !paper.caseStatus;
-  const status = ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS"].includes(paper.status ?? "") ? workPaperStatus(paper, evaluation) : statement ? "Cần gửi quan điểm phân xử"
+  const status = paper.rescreening && task.kind === "REVIEW" ? "Đang đánh giá lại"
+    : ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS"].includes(paper.status ?? "") ? workPaperStatus(paper, evaluation) : statement ? "Cần gửi quan điểm phân xử"
     : ["FULLTEXT", "INFORMATION"].includes(task.kind) ? task.label
     : task.kind === "REVIEW" ? "Đang đánh giá"
     : task.kind === "DISCUSSION" ? paper.classification === "NEEDS_MORE_INFORMATION" ? "Cần đọc thêm" : isClarification ? "Cần làm rõ" : paper.classification === "EXCLUSION_REASON_MISMATCH" ? "Cần thống nhất lý do loại" : "Cần giải quyết bất đồng"

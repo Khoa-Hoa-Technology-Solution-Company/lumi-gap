@@ -20,6 +20,8 @@ import type {
   RespondMentorRelationshipRequest,
   CreateIntegrityCaseInput,
   IntegrityContainmentAction,
+  ProjectAuditEventsPage,
+  ProjectAuditEventsQuery,
   ProjectSecurityOverview,
   ResearchIntegrityCaseView,
   ProjectIntegrityOverview,
@@ -164,9 +166,15 @@ export const projectsApi = {
     const res = await api.post(`/projects/${id}/contributions/${proposalId}/confirm`, data);
     return res.data.data;
   },
-  async securityOverview(id: string): Promise<ProjectSecurityOverview> {
-    const res = await api.get(`/projects/${encodeURIComponent(id)}/security`);
+  async securityOverview(id: string, options?: { limit?: number }): Promise<ProjectSecurityOverview> {
+    const res = await api.get(`/projects/${encodeURIComponent(id)}/security`, {
+      params: options?.limit !== undefined ? { limit: options.limit } : undefined,
+    });
     return res.data.data;
+  },
+  async auditEvents(id: string, query: ProjectAuditEventsQuery = {}): Promise<ProjectAuditEventsPage> {
+    const res = await api.get(`/projects/${encodeURIComponent(id)}/security/audit-events`, { params: query });
+    return { items: res.data.data, meta: res.data.meta };
   },
   async integrityCases(id: string): Promise<ResearchIntegrityCaseView[]> {
     const res = await api.get(`/projects/${encodeURIComponent(id)}/integrity-cases`);

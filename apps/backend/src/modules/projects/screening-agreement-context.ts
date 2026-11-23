@@ -6,7 +6,7 @@ import { effectiveAssignments, screeningPeople } from "./screening-assignments.j
 
 const proposalSchema = z.object({
   exclusionReason: z.string().optional(), sourceMaterial: z.string().optional(), retrieveFullText: z.boolean().optional(),
-  proposalId: z.string().uuid(), decision: z.enum(["INCLUDED", "EXCLUDED", "NEEDS_MORE_INFO"]), reason: z.string().min(10).max(2000),
+  proposalId: z.string().uuid(), decision: z.enum(["INCLUDED", "EXCLUDED", "NEEDS_MORE_INFO", "CLOSED_UNRESOLVED"]), reason: z.string().min(10).max(2000),
   reviewIds: z.array(z.string().uuid()).min(2).max(10), reviewerIds: z.array(z.string().uuid()).min(2).max(10),
 });
 
@@ -35,6 +35,6 @@ export async function screeningAgreement(c: WorkspaceContext, row: ScreeningRoun
   const confirmations = await c.tx.screeningAudit.findMany({ where: { projectId: c.project.id, roundId: row.id, type: "AGREEMENT_CONFIRMED", details: { path: ["proposalId"], equals: proposal.proposalId } }, select: { actorId: true, createdAt: true } });
   const confirmedByIds = [...new Set(confirmations.map(a => a.actorId))].filter(id => proposal.reviewerIds.includes(id));
   return { exclusionReason: proposal.exclusionReason, sourceMaterial: proposal.sourceMaterial, retrieveFullText: proposal.retrieveFullText, id: proposal.proposalId, decision: proposal.decision, reason: proposal.reason, proposedById: event.actorId, reviewIds: proposal.reviewIds,
-    confirmations: confirmations.map(a => ({ reviewerId: a.actorId, confirmedAt: a.createdAt.toISOString() })), canDecline: allLive && confirmedByIds.length < proposal.reviewerIds.length && row.active && ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(row.status) && !row.finalizerId && event.actorId !== c.actorId && proposal.reviewerIds.includes(c.actorId) && !["ARCHIVED", "COMPLETED"].includes(c.project.status), requiredReviewerIds: proposal.reviewerIds, confirmedByIds, createdAt: event.createdAt.toISOString(),
-    canConfirm: allLive && row.active && ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(row.status) && !row.finalizerId && proposal.reviewerIds.includes(c.actorId) && !confirmedByIds.includes(c.actorId) && !["ARCHIVED", "COMPLETED"].includes(c.project.status) };
+    confirmations: confirmations.map(a => ({ reviewerId: a.actorId, confirmedAt: a.createdAt.toISOString() })), canDecline: allLive && confirmedByIds.length < proposal.reviewerIds.length && row.active && (proposal.decision === "CLOSED_UNRESOLVED" ? ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS"] : ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"]).includes(row.status) && !row.finalizerId && event.actorId !== c.actorId && proposal.reviewerIds.includes(c.actorId) && !["ARCHIVED", "COMPLETED"].includes(c.project.status), requiredReviewerIds: proposal.reviewerIds, confirmedByIds, createdAt: event.createdAt.toISOString(),
+    canConfirm: allLive && row.active && (proposal.decision === "CLOSED_UNRESOLVED" ? ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS"] : ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"]).includes(row.status) && !row.finalizerId && (proposal.decision !== "CLOSED_UNRESOLVED" || event.actorId !== c.actorId) && proposal.reviewerIds.includes(c.actorId) && !confirmedByIds.includes(c.actorId) && !["ARCHIVED", "COMPLETED"].includes(c.project.status) };
 }

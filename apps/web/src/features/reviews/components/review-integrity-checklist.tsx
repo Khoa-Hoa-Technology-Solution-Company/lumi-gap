@@ -1,7 +1,87 @@
+import { ShieldCheck } from "lucide-react";
 import { scientificIntegrityChecks, type AcademicReviewInput } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
+
 type Checks = NonNullable<AcademicReviewInput["integrityChecks"]>;
-export function ReviewIntegrityChecklist({ value, onChange, disabled }: { value: Checks; onChange: (value: Checks) => void; disabled: boolean }) {
+
+export function ReviewIntegrityChecklist({ value, onChange, disabled }: {
+  value: Checks;
+  onChange: (value: Checks) => void;
+  disabled: boolean;
+}) {
   const { t } = useI18n();
-  return <section data-no-i18n className="mt-6 rounded-xl border p-5"><details><summary className="cursor-pointer font-semibold">{t("Academic integrity and research ethics")} <span className="ml-2 text-xs font-normal text-muted-foreground">{scientificIntegrityChecks.filter(c=>value[c.key]?.status).length}/{scientificIntegrityChecks.length}</span></summary><p className="mt-2 text-xs text-muted-foreground">{t("Human checklist, separate from scores. A concern is not a misconduct verdict.")}</p>{scientificIntegrityChecks.map(check => <div className="mt-4" key={check.key}><label className="text-sm">{t(check.title)}<select disabled={disabled} className="mt-1 w-full rounded border bg-background p-2" value={value[check.key]?.status ?? ""} onChange={e => {if (!e.target.value) {const next={...value};delete next[check.key];onChange(next);} else onChange({...value,[check.key]:{...value[check.key],status:e.target.value as Checks[string]["status"]}});}}><option value="">{t("Not assessed")}</option><option value="CHECKED">{t("Checked against available information")}</option><option value="CONCERN">{t("Concern requiring human review")}</option>{check.allowNotApplicable && <option value="NOT_APPLICABLE">{t("Not applicable")}</option>}</select></label>{value[check.key]?.status === "CONCERN" && <textarea aria-label={t(check.title) + " note"} disabled={disabled} maxLength={2000} placeholder={t("Describe the concern and what needs checking")} className="mt-2 w-full rounded border bg-background p-2" value={value[check.key]?.note ?? ""} onChange={e => onChange({...value,[check.key]:{...value[check.key]!,note:e.target.value}})} />}</div>)}</details></section>;
+  const checkedCount = scientificIntegrityChecks.filter(c => value[c.key]?.status).length;
+
+  return (
+    <section id="review-integrity" data-no-i18n className="rw-card scroll-mt-24">
+      <details open={checkedCount > 0}>
+        <summary className="rw-card-summary">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="rw-step-badge" data-done={checkedCount === scientificIntegrityChecks.length ? "true" : undefined}>
+              <ShieldCheck size={14} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-foreground">{t("reviewWorkspace.integrityTitle")}</h2>
+              <p className="text-xs text-muted-foreground">{t("reviewWorkspace.integrityHint")}</p>
+            </div>
+          </div>
+          <span className="rw-progress-chip">
+            {checkedCount}/{scientificIntegrityChecks.length}
+          </span>
+        </summary>
+        <div className="rw-card-body space-y-3">
+          {scientificIntegrityChecks.map(check => (
+            <div className="rw-integrity-item" key={check.key}>
+              <label className="block text-sm font-medium text-foreground">
+                <span>{t(check.title)}</span>
+                <select
+                  disabled={disabled}
+                  className="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-sm font-normal"
+                  value={value[check.key]?.status ?? ""}
+                  onChange={e => {
+                    if (!e.target.value) {
+                      const next = { ...value };
+                      delete next[check.key];
+                      onChange(next);
+                    } else {
+                      onChange({
+                        ...value,
+                        [check.key]: {
+                          ...value[check.key],
+                          status: e.target.value as Checks[string]["status"],
+                        },
+                      });
+                    }
+                  }}
+                >
+                  <option value="">{t("Not assessed")}</option>
+                  <option value="CHECKED">{t("reviewWorkspace.integrity.checked")}</option>
+                  <option value="CONCERN">{t("reviewWorkspace.integrity.concern")}</option>
+                  {check.allowNotApplicable ? (
+                    <option value="NOT_APPLICABLE">{t("reviewWorkspace.integrity.notApplicable")}</option>
+                  ) : null}
+                </select>
+              </label>
+              {value[check.key]?.status === "CONCERN" ? (
+                <textarea
+                  aria-label={`${t(check.title)} note`}
+                  disabled={disabled}
+                  maxLength={2000}
+                  placeholder={t("reviewWorkspace.integrity.notePlaceholder")}
+                  className="mt-2 min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={value[check.key]?.note ?? ""}
+                  onChange={e =>
+                    onChange({
+                      ...value,
+                      [check.key]: { ...value[check.key]!, note: e.target.value },
+                    })
+                  }
+                />
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </details>
+    </section>
+  );
 }

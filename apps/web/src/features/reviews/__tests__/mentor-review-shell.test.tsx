@@ -7,6 +7,18 @@ import { ReviewDashboardPage } from "@/pages/reviews/review-dashboard";
 import { ReviewTemplatesPage } from "@/pages/reviews/review-templates";
 import { ReviewTemplateBuilderPage } from "@/pages/reviews/review-template-builder";
 import { useReviewPageNavigation } from "../hooks/use-review-page-navigation";
+import { mentorWorkspaceEn } from "@/i18n/locales/mentor-workspace";
+
+vi.mock("@/i18n", () => ({
+  useI18n: () => ({
+    language: "en",
+    t: (key: string, values: Record<string, string | number> = {}) => {
+      let result = mentorWorkspaceEn[key as keyof typeof mentorWorkspaceEn] ?? key;
+      for (const [name, value] of Object.entries(values)) result = result.replaceAll(`{{${name}}}`, String(value));
+      return result;
+    },
+  }),
+}));
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), save: vi.fn(), publish: vi.fn(), detail: vi.fn(), denied: false }));
 const template = {

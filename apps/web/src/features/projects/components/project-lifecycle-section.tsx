@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { PROJECT_TRASH_RETENTION_DAYS, type IProject, type ProjectStatus } from "@trend/shared-types";
-import { AlertTriangle, Archive, RotateCcw, Trash2 } from "lucide-react";
+import { PROJECT_TRASH_RETENTION_DAYS, type IProject } from "@trend/shared-types";
+import { AlertTriangle, Archive, LogOut, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,7 +13,6 @@ import {
   useDeleteProject,
   useLeaveProject,
   useRestoreProject,
-  useUpdateProject,
 } from "../hooks/use-projects";
 import { canLeaveWorkspace } from "./workspace-common";
 
@@ -96,7 +95,7 @@ export function ProjectLifecycleSection({ project }: { project: IProject }) {
       {owner ? (
         <section
           aria-labelledby="project-danger-zone-heading"
-          className="rounded-xl border border-destructive/40 bg-destructive/5 p-5 space-y-4"
+          className="rounded-xl border border-destructive/40 bg-destructive/5 p-5 sm:p-6 space-y-4"
         >
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" aria-hidden="true" />
@@ -157,27 +156,33 @@ export function ProjectLifecycleSection({ project }: { project: IProject }) {
             </div>
           </div>
         </section>
-      ) : null}
-
-      <details className="min-w-0 border-t pt-6">
-        <summary className="cursor-pointer text-sm font-semibold">{t("Advanced actions")}</summary>
-        <div className="mt-4 space-y-5">
-          {owner && !archived ? <ProjectStatusControl key={`${project._id}:${project.version}`} project={project} /> : null}
-          {!owner ? (
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="max-w-prose">
-                <h3 className="text-base font-semibold">{t("Leave project")}</h3>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  {t("Leaving removes your private workspace access. The owner can invite you again.")}
-                </p>
-              </div>
-              <Button type="button" variant="outline" className="text-destructive" onClick={() => void openAction("leave")}>
+      ) : (
+        <section
+          aria-labelledby="project-membership-leave-heading"
+          className="rounded-xl border border-border/80 bg-card p-5 sm:p-6 shadow-xs"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="max-w-prose">
+              <h3 id="project-membership-leave-heading" className="text-base font-semibold text-foreground">
                 {t("Leave project")}
-              </Button>
+              </h3>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                {t("Leaving removes your private workspace access. The owner can invite you again.")}
+              </p>
             </div>
-          ) : null}
-        </div>
-      </details>
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0 gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
+              disabled={pending}
+              onClick={() => void openAction("leave")}
+            >
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+              {t("Leave project")}
+            </Button>
+          </div>
+        </section>
+      )}
 
       <Dialog
         open={Boolean(action)}
@@ -242,49 +247,5 @@ export function ProjectLifecycleSection({ project }: { project: IProject }) {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-function ProjectStatusControl({ project }: { project: IProject }) {
-  const { t } = useI18n();
-  const [status, setStatus] = useState(project.status);
-  const update = useUpdateProject(project._id);
-
-  return (
-    <form
-      className="space-y-2"
-      onSubmit={async (event) => {
-        event.preventDefault();
-        if (update.isPending || status === project.status || !(await canLeaveWorkspace())) return;
-        try {
-          await update.mutateAsync({ status, expectedVersion: project.version });
-          toast.success(t("Project updated"));
-        } catch {
-          toast.error(t("Project settings changed. Refresh before saving again."));
-        }
-      }}
-    >
-      <label className="block space-y-2 text-sm">
-        <span className="font-medium">{t("Project lifecycle")}</span>
-        <select
-          className="project-form-select"
-          value={status}
-          disabled={update.isPending}
-          onChange={(event) => setStatus(event.target.value as ProjectStatus)}
-        >
-          {Object.entries({ PLANNING: "Planning", ACTIVE: "Active", ON_HOLD: "On hold", COMPLETED: "Completed" }).map(([key, label]) => (
-            <option key={key} value={key}>
-              {t(label)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="text-xs text-muted-foreground">
-        {t("Research stage is managed in Overview. Lifecycle controls whether the project is ongoing, paused or completed.")}
-      </p>
-      <Button variant="outline" type="submit" size="sm" disabled={status === project.status || update.isPending}>
-        {t("Update lifecycle")}
-      </Button>
-    </form>
   );
 }

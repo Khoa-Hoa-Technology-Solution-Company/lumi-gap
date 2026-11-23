@@ -24,3 +24,14 @@ export function mentorWorkspaceDestination(href: string): string {
   catch { return href; }
   return `/mentor-workspace?${params}${project[3] ?? ""}`;
 }
+
+/** Old embedded personal-library links belong to the research workspace. */
+export function researchProjectDirectoryDestination(params: URLSearchParams, hash = ""): string {
+  const search = new URLSearchParams();
+  for (const key of ["q", "scope", "status", "sort", "create"]) {
+    if (params.has(key)) search.set(key, params.get(key)!);
+  }
+  const directory = params.get("directory");
+  if (directory === "trash" || directory === "invitations") search.set("view", directory);
+  return `/projects${search.size ? `?${search}` : ""}${hash}`;
+}

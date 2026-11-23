@@ -2,29 +2,19 @@ import { useCallback, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Bell,
+  BookMarked,
   BookOpenCheck,
-  Shapes,
-  Check,
-  ChevronDown,
   ChevronsLeft,
   ChevronsRight,
+  Compass,
   ExternalLink,
-  FolderOpen,
-  GraduationCap,
   Inbox,
   LayoutDashboard,
   ListTodo,
-  SlidersHorizontal,
+  Users,
 } from "lucide-react";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -67,7 +57,24 @@ export interface AppSingleSidebarProps {
   collapsed?: boolean;
   onToggleCollapse?: (collapsed: boolean) => void;
   // Mentor-specific
-  activeMentorView?: "overview" | "work" | "projects" | "incoming" | "outgoing" | "active" | "history" | "discover" | "notifications" | "project" | "reviews" | "templates" | "template-builder" | "review" | "review-request" | "review-entry" | "resources";
+  activeMentorView?:
+    | "overview"
+    | "work"
+    | "projects"
+    | "incoming"
+    | "outgoing"
+    | "active"
+    | "history"
+    | "discover"
+    | "notifications"
+    | "project"
+    | "reviews"
+    | "templates"
+    | "template-builder"
+    | "review"
+    | "review-request"
+    | "review-entry"
+    | "resources";
   onSelectMentorView?: (view: "overview" | "work" | "projects") => void;
   mentorMetrics?: {
     projects: number;
@@ -82,6 +89,7 @@ export interface AppSingleSidebarProps {
     title: string;
     pendingCount: number;
   }>;
+  unreadNotificationCount?: number;
   // Research-specific
   currentProjectId?: string;
   researchProjects?: Array<{
@@ -95,13 +103,13 @@ export interface AppSingleSidebarProps {
 
 export function AppSingleSidebar({
   activeWorkspace,
-  canAccessMentor,
   collapsed = false,
   onToggleCollapse,
   activeMentorView = "overview",
   onSelectMentorView,
   mentorMetrics,
   recentProjects,
+  unreadNotificationCount = 0,
   currentProjectId,
   researchProjects,
   children,
@@ -110,13 +118,27 @@ export function AppSingleSidebar({
   const [searchParams] = useSearchParams();
   const user = useAuthStore(s => s.user);
 
-  const userIsLecturer = user?.academicRole === "LECTURER";
-  const isAdmin = user?.systemRole === "ADMIN";
-  const isMentorWorkspace = activeWorkspace === "mentor";
-  const canAccess =
-    canAccessMentor !== undefined
-      ? canAccessMentor
-      : Boolean(userIsLecturer || isAdmin || isMentorWorkspace);
+  const wrapTooltip = (node: ReactNode, label: string, count?: number, key?: string) =>
+    collapsed ? (
+      <Tooltip key={key}>
+        <TooltipTrigger asChild>{node}</TooltipTrigger>
+        <TooltipContent side="right">
+          {label}
+          {typeof count === "number" && count > 0 ? ` (${count})` : ""}
+        </TooltipContent>
+      </Tooltip>
+    ) : (
+      <div key={key}>{node}</div>
+    );
+
+  const isAcademicReviewActive = [
+    "reviews",
+    "review",
+    "review-request",
+    "review-entry",
+    "templates",
+    "template-builder",
+  ].includes(activeMentorView);
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -126,226 +148,157 @@ export function AppSingleSidebar({
         data-no-i18n
         aria-label={t("Sidebar navigation") || "Thanh điều hướng"}
       >
-        {/* Brand Header for Mentor Workspace (Admin-inspired) */}
+        {/* Brand Header for Mentor Workspace */}
         {activeWorkspace === "mentor" && !collapsed && (
           <div className="sidebar-brand-badge">
             <Link to="/home" className="flex items-center gap-2 group min-w-0" title="LumiGap">
               <img src={logoImage} alt="LumiGap" className="sidebar-brand-logo" />
-              <span className="rounded-md bg-indigo-600 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-xs">
+              <span className="rounded-md bg-blue-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-xs">
                 Mentor
               </span>
             </Link>
           </div>
         )}
 
-        {/* Workspace switcher is only shown in the mentor workspace. */}
-        {activeWorkspace === "mentor" && (
-          <div className="sidebar-workspace-switcher">
-            {canAccess ? (
-              <DropdownMenu>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className="workspace-switcher-trigger"
-                        aria-label={
-                          activeWorkspace === "mentor"
-                            ? `${t("mentorWorkspace.title")} (${t("Switch workspace")})`
-                            : `${t("Research workspace")} (${t("Switch workspace")})`
-                        }
-                      >
-                        <div
-                          className={cn(
-                            "workspace-switcher-icon-box",
-                            activeWorkspace === "mentor"
-                              ? "workspace-switcher-icon-mentor"
-                              : "workspace-switcher-icon-research"
-                          )}
-                        >
-                          {activeWorkspace === "mentor" ? (
-                            <GraduationCap className="h-5 w-5" aria-hidden="true" />
-                          ) : (
-                            <FolderOpen className="h-5 w-5" aria-hidden="true" />
-                          )}
-                        </div>
-                        {!collapsed && (
-                          <div className="workspace-switcher-text">
-                            <span className="workspace-switcher-name">
-                              {activeWorkspace === "mentor"
-                                ? t("mentorWorkspace.title")
-                                : (t("Research workspace") || "Không gian nghiên cứu")}
-                            </span>
-                            <span className="workspace-switcher-sub">
-                              {t("Switch workspace") || "Chuyển không gian"}
-                            </span>
-                          </div>
-                        )}
-                        {!collapsed && (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground ml-auto shrink-0" aria-hidden="true" />
-                        )}
-                      </button>
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  {collapsed && (
-                    <TooltipContent side="right">
-                      {activeWorkspace === "mentor" ? t("mentorWorkspace.title") : (t("Research workspace") || "Không gian nghiên cứu")}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
-
-                <DropdownMenuContent align="start" className="w-64 p-1.5 shadow-xl">
-                  <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground px-2 py-1.5">
-                    {t("Workspaces") || "Không gian làm việc"}
-                  </DropdownMenuLabel>
-
-                  <DropdownMenuItem asChild>
-                    <Link
-                      to="/projects"
-                      className="flex items-center gap-2.5 p-2 rounded-lg cursor-pointer"
-                    >
-                      <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
-                        <FolderOpen className="h-4 w-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold">{t("Research workspace") || "Không gian nghiên cứu"}</div>
-                        <div className="text-xs text-muted-foreground truncate">Quản lý đề tài & tài liệu</div>
-                      </div>
-                    </Link>
-                  </DropdownMenuItem>
-
-                  <DropdownMenuItem asChild>
-                    <Link
-                      to="/mentor-workspace?view=projects"
-                      className={cn(
-                        "flex items-center gap-2.5 p-2 rounded-lg cursor-pointer",
-                        activeWorkspace === "mentor" &&
-                          "bg-indigo-50 dark:bg-indigo-950/40 font-semibold text-indigo-700 dark:text-indigo-300"
-                      )}
-                    >
-                      <div className="h-8 w-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
-                        <GraduationCap className="h-4 w-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold flex items-center gap-1.5">
-                          <span>{t("mentorWorkspace.title")}</span>
-                          {mentorMetrics && mentorMetrics.needsResponse > 0 && (
-                            <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground truncate">Hướng dẫn nhóm & phản hồi</div>
-                      </div>
-                      {activeWorkspace === "mentor" && <Check className="h-4 w-4 text-indigo-600 shrink-0" />}
-                    </Link>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
-          </div>
-        )}
-
         {/* Workspace Navigation Body */}
         {activeWorkspace === "mentor" ? (
           <nav className="sidebar-main-nav" aria-label={t("mentorWorkspace.navigation")}>
+            {/* Group 1: Core Mentor Workspace (5 task-oriented items) */}
+            {!collapsed && (
+              <p className="sidebar-category-heading">{t("mentorWorkspace.navGroup.workspace")}</p>
+            )}
+
             {(
               [
                 { id: "overview", label: "overview", Icon: LayoutDashboard, count: undefined },
                 { id: "work", label: "work", Icon: ListTodo, count: mentorMetrics?.needsResponse },
-                { id: "projects", label: "projects", Icon: FolderOpen, count: mentorMetrics?.projects },
+                { id: "projects", label: "projects", Icon: Users, count: mentorMetrics?.projects },
               ] as const
             ).map(({ id, label, Icon, count }) => {
-              const isActive = activeMentorView === id;
+              const isActive = activeMentorView === id || (id === "projects" && activeMentorView === "project");
+              const text = t(`mentorWorkspace.${label}`);
               const buttonNode = (
                 <button
-                  key={id}
                   type="button"
                   className="sidebar-nav-item"
                   data-active={isActive ? "true" : undefined}
                   aria-current={isActive ? "page" : undefined}
-                  aria-label={t(`mentorWorkspace.${label}`)}
+                  aria-label={text}
                   onClick={() => onSelectMentorView?.(id)}
                 >
                   <Icon size={17} aria-hidden="true" className="sidebar-nav-icon" />
-                  {!collapsed && <span>{t(`mentorWorkspace.${label}`)}</span>}
-                  {!collapsed && typeof count === "number" ? (
+                  {!collapsed && <span className="truncate">{text}</span>}
+                  {!collapsed && typeof count === "number" && (id !== "work" || count > 0) ? (
                     <small className="sidebar-nav-badge" data-highlight={id === "work" && count > 0}>
                       {count}
                     </small>
                   ) : null}
                 </button>
               );
-
-              return collapsed ? (
-                <Tooltip key={id}>
-                  <TooltipTrigger asChild>{buttonNode}</TooltipTrigger>
-                  <TooltipContent side="right">
-                    {t(`mentorWorkspace.${label}`)} {typeof count === "number" ? `(${count})` : ""}
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                buttonNode
-              );
+              return wrapTooltip(buttonNode, text, count, id);
             })}
 
-            {/* Invitations Link */}
-            {(() => {
-              const linkNode = (
-                <Link
-                  to="/mentor-workspace?view=incoming"
-                  className="sidebar-nav-item"
-                  aria-current={["incoming", "outgoing", "active", "history"].includes(activeMentorView) ? "page" : undefined}
-                  aria-label={t("mentorWorkspace.invitations")}
-                >
-                  <Inbox size={17} aria-hidden="true" className="sidebar-nav-icon" />
-                  {!collapsed && <span>{t("mentorWorkspace.invitations")}</span>}
-                  {!collapsed && mentorMetrics && mentorMetrics.invitations > 0 ? (
-                    <small className="sidebar-nav-badge" data-highlight="true">
-                      {mentorMetrics.invitations}
-                    </small>
-                  ) : null}
-                </Link>
-              );
-              return collapsed ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>{linkNode}</TooltipTrigger>
-                  <TooltipContent side="right">
-                    {t("mentorWorkspace.invitations")}{" "}
-                    {mentorMetrics && mentorMetrics.invitations > 0 ? `(${mentorMetrics.invitations})` : ""}
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                linkNode
-              );
-            })()}
+            {wrapTooltip(
+              <Link
+                to="/mentor-workspace?view=incoming"
+                className="sidebar-nav-item"
+                data-active={["incoming", "outgoing", "active", "history"].includes(activeMentorView) ? "true" : undefined}
+                aria-current={["incoming", "outgoing", "active", "history"].includes(activeMentorView) ? "page" : undefined}
+                aria-label={t("mentorWorkspace.invitations")}
+              >
+                <Inbox size={17} aria-hidden="true" className="sidebar-nav-icon" />
+                {!collapsed && <span className="truncate">{t("mentorWorkspace.invitations")}</span>}
+                {!collapsed && mentorMetrics && mentorMetrics.invitations > 0 ? (
+                  <small className="sidebar-nav-badge" data-highlight="true">
+                    {mentorMetrics.invitations}
+                  </small>
+                ) : null}
+              </Link>,
+              t("mentorWorkspace.invitations"),
+              mentorMetrics?.invitations,
+              "incoming",
+            )}
 
-            {/* Notifications Link */}
-            {(() => {
-              const linkNode = (
-                <Link to="/mentor-workspace?view=notifications" aria-current={activeMentorView === "notifications" ? "page" : undefined} className="sidebar-nav-item" aria-label={t("mentorWorkspace.notifications")}>
-                  <Bell size={17} aria-hidden="true" className="sidebar-nav-icon" />
-                  {!collapsed && <span>{t("mentorWorkspace.notifications")}</span>}
-                </Link>
-              );
-              return collapsed ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>{linkNode}</TooltipTrigger>
-                  <TooltipContent side="right">{t("mentorWorkspace.notifications")}</TooltipContent>
-                </Tooltip>
-              ) : (
-                linkNode
-              );
-            })()}
+            {wrapTooltip(
+              <Link
+                to="/mentor-workspace?view=discover"
+                className="sidebar-nav-item"
+                data-active={activeMentorView === "discover" ? "true" : undefined}
+                aria-current={activeMentorView === "discover" ? "page" : undefined}
+                aria-label={t("mentorWorkspace.discovery")}
+              >
+                <Compass size={17} aria-hidden="true" className="sidebar-nav-icon" />
+                {!collapsed && <span className="truncate">{t("mentorWorkspace.discovery")}</span>}
+              </Link>,
+              t("mentorWorkspace.discovery"),
+              undefined,
+              "discover",
+            )}
 
-            {([
-              { view: "resources", label: "Tài liệu đã chia sẻ", Icon: FolderOpen, active: activeMentorView === "resources" },
-              { view: "reviews", label: "Review Center", Icon: BookOpenCheck, active: ["reviews", "review", "review-request", "review-entry"].includes(activeMentorView) },
-              { view: "templates", label: "Review Templates", Icon: Shapes, active: ["templates", "template-builder"].includes(activeMentorView) },
-            ] as const).map(({ view, label, Icon, active }) => {
-              const link = <Link to={`/mentor-workspace?view=${view}`} aria-label={t(label)} aria-current={active ? "page" : undefined} className="sidebar-nav-item"><Icon size={17} aria-hidden="true" className="sidebar-nav-icon" />{!collapsed && <span>{t(label)}</span>}</Link>;
-              return collapsed ? <Tooltip key={view}><TooltipTrigger asChild>{link}</TooltipTrigger><TooltipContent side="right">{t(label)}</TooltipContent></Tooltip> : <div key={view}>{link}</div>;
-            })}
+            {/* Group 2: Academic Review & Shared Resources */}
+            {!collapsed && (
+              <p className="sidebar-category-heading mt-3">{t("mentorWorkspace.navGroup.academic")}</p>
+            )}
 
-            {/* Recent Mentored Projects */}
+            {wrapTooltip(
+              <Link
+                to="/mentor-workspace?view=reviews"
+                className="sidebar-nav-item"
+                data-active={isAcademicReviewActive ? "true" : undefined}
+                aria-current={isAcademicReviewActive ? "page" : undefined}
+                aria-label={t("mentorWorkspace.reviewCenterTitle")}
+              >
+                <BookOpenCheck size={17} aria-hidden="true" className="sidebar-nav-icon" />
+                {!collapsed && <span className="truncate">{t("mentorWorkspace.reviewCenterTitle")}</span>}
+              </Link>,
+              t("mentorWorkspace.reviewCenterTitle"),
+              undefined,
+              "reviews",
+            )}
+
+            {wrapTooltip(
+              <Link
+                to="/mentor-workspace?view=resources"
+                className="sidebar-nav-item"
+                data-active={activeMentorView === "resources" ? "true" : undefined}
+                aria-current={activeMentorView === "resources" ? "page" : undefined}
+                aria-label={t("mentorWorkspace.resources")}
+              >
+                <BookMarked size={17} aria-hidden="true" className="sidebar-nav-icon" />
+                {!collapsed && <span className="truncate">{t("mentorWorkspace.resources")}</span>}
+              </Link>,
+              t("mentorWorkspace.resources"),
+              undefined,
+              "resources",
+            )}
+
+            {/* Group 3: Utilities */}
+            {!collapsed && (
+              <p className="sidebar-category-heading mt-3">{t("mentorWorkspace.navGroup.utilities")}</p>
+            )}
+
+            {wrapTooltip(
+              <Link
+                to="/mentor-workspace?view=notifications"
+                className="sidebar-nav-item"
+                data-active={activeMentorView === "notifications" ? "true" : undefined}
+                aria-current={activeMentorView === "notifications" ? "page" : undefined}
+                aria-label={t("mentorWorkspace.notifications")}
+              >
+                <Bell size={17} aria-hidden="true" className="sidebar-nav-icon" />
+                {!collapsed && <span className="truncate">{t("mentorWorkspace.notifications")}</span>}
+                {!collapsed && unreadNotificationCount > 0 ? (
+                  <small className="sidebar-nav-badge" data-highlight="true">
+                    {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+                  </small>
+                ) : null}
+              </Link>,
+              t("mentorWorkspace.notifications"),
+              unreadNotificationCount,
+              "notifications",
+            )}
+
+            {/* Recent Guided Teams */}
             {!collapsed && recentProjects && recentProjects.length > 0 && (
               <section className="mentor-recent sidebar-recent-section">
                 <h2>{t("mentorWorkspace.recent")}</h2>
@@ -354,7 +307,11 @@ export function AppSingleSidebar({
                     <Link
                       key={project.id}
                       to={mentorWorkspaceDestination(`/projects/${encodeURIComponent(project.id)}?tab=tasks`)}
-                      aria-current={activeMentorView === "project" && searchParams.get("projectId") === project.id ? "page" : undefined}
+                      aria-current={
+                        activeMentorView === "project" && searchParams.get("projectId") === project.id
+                          ? "page"
+                          : undefined
+                      }
                       title={project.title}
                       className="sidebar-recent-link"
                     >
@@ -367,21 +324,11 @@ export function AppSingleSidebar({
                 </div>
               </section>
             )}
-
-            {/* Discovery Settings Link */}
-            {!collapsed && (
-              <Link className="mentor-settings-link mt-4" aria-current={activeMentorView === "discover" ? "page" : undefined} to="/mentor-workspace?view=discover">
-                <SlidersHorizontal size={14} aria-hidden="true" />
-                <span>{t("mentorWorkspace.discovery")}</span>
-              </Link>
-            )}
           </nav>
         ) : (
           <nav className="sidebar-main-nav" aria-label={t("Research navigation") || "Điều hướng nghiên cứu"}>
-            {/* Slotted content (e.g. Project Picker / coord-project-picker) */}
             {children}
 
-            {/* Recent Research Projects (only shown when not collapsed and not inside a specific project) */}
             {!collapsed && !currentProjectId && researchProjects && researchProjects.length > 0 && (
               <section className="sidebar-recent-section">
                 <h3 className="sidebar-recent-heading">
@@ -414,22 +361,23 @@ export function AppSingleSidebar({
           </nav>
         )}
 
-        {/* Sidebar Footer User Info (Admin-inspired) */}
+        {/* Sidebar Footer User Info */}
         {activeWorkspace === "mentor" && (
           <div className="sidebar-user-box mt-auto">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-300 font-bold text-xs ring-1 ring-indigo-500/30 shrink-0">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-500/20 text-blue-300 font-bold text-xs ring-1 ring-blue-500/30 shrink-0">
               {user?.fullName?.charAt(0) || "M"}
             </div>
             {!collapsed && (
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-bold text-white">{user?.fullName || "Mentor"}</p>
-                <p className="truncate text-[10px] text-slate-400">{user?.email || ""}</p>
+                <p className="truncate text-xs font-semibold text-white">{user?.fullName || "Mentor"}</p>
+                <p className="truncate text-[11px] text-slate-400">{user?.email || ""}</p>
               </div>
             )}
             {!collapsed && (
               <Link
-                to="/projects"
-                title={t("Research workspace") || "Không gian nghiên cứu"}
+                to="/profile"
+                aria-label={t("Profile") || "Hồ sơ"}
+                title={t("Profile") || "Hồ sơ"}
                 className="rounded-lg p-1 text-slate-400 hover:bg-slate-700 hover:text-white shrink-0"
               >
                 <ExternalLink className="h-3.5 w-3.5" />

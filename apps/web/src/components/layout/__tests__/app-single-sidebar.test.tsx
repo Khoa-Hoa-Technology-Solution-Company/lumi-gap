@@ -149,7 +149,9 @@ it("renders full mentor workspace navigation with badges and recent projects", a
     "/mentor-workspace?view=work"
   );
 
-  expect(host.textContent).toContain("Không gian cố vấn");
+  expect(host.querySelector(".sidebar-brand-badge")).not.toBeNull();
+  expect(host.querySelector(".workspace-switcher-trigger")).toBeNull();
+  expect(host.textContent).not.toContain("Chuyển không gian");
   expect(host.textContent).toContain("Tổng quan");
   expect(host.textContent).toContain("Việc cần xử lý");
   expect(host.textContent).toContain("Dự án hướng dẫn");
@@ -157,6 +159,8 @@ it("renders full mentor workspace navigation with badges and recent projects", a
   expect(host.textContent).toContain("Thông báo");
   expect(host.textContent).toContain("Nghiên cứu AI y tế");
   expect(host.textContent).toContain("Xử lý ngôn ngữ tự nhiên");
+  expect(host.querySelector('a[href="/mentor-workspace?view=research-projects"]')).toBeNull();
+  expect(host.querySelector('a[href="/projects"]')).toBeNull();
 
   // Check badges
   const workBadge = host.querySelector('.sidebar-nav-item[data-active="true"] .sidebar-nav-badge');

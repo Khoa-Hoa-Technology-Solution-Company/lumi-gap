@@ -10,11 +10,13 @@ import {
   activityQuerySchema,
   addMemberSchema,
   addPaperSchema,
+  auditEventsQuerySchema,
   createProjectSchema,
   inviteMemberSchema,
   invitationTokenParamsSchema,
   projectController,
   removeMemberBodySchema,
+  securityOverviewQuerySchema,
   transferOwnershipSchema,
   updateProjectPaperSchema,
   updateProjectSchema,
@@ -127,7 +129,8 @@ projectRouter.get("/:id/team", validate(paramIdSchema, "params"), validate(teamQ
 projectRouter.post("/:id/leave", validate(paramIdSchema, "params"), projectController.leaveProject);
 projectRouter.post("/:id/transfer-ownership", validate(paramIdSchema, "params"), validate(transferOwnershipSchema, "body"), projectController.transferOwnership);
 projectRouter.get("/:id/activity", validate(paramIdSchema, "params"), validate(activityQuerySchema, "query"), projectController.listActivity);
-projectRouter.get("/:id/security", validate(paramIdSchema, "params"), projectController.getSecurityOverview);
+projectRouter.get("/:id/security", validate(paramIdSchema, "params"), validate(securityOverviewQuerySchema, "query"), projectController.getSecurityOverview);
+projectRouter.get("/:id/security/audit-events", validate(paramIdSchema, "params"), validate(auditEventsQuerySchema, "query"), projectController.listAuditEvents);
 
 const caseParams = paramIdSchema.extend({ caseId: z.string().uuid() });
 projectRouter.get("/:id/integrity-cases", validate(paramIdSchema, "params"), async (req, res) => {

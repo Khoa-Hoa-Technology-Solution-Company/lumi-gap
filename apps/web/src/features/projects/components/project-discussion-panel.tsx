@@ -53,7 +53,7 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers, mento
 
   return (
     <div className="project-conversation">
-      <div className="project-chat-channels" role="tablist" aria-label={t("Project discussion channels")}>
+      <div className={`project-chat-channels${channels.length === 1 ? " sr-only" : ""}`} role="tablist" aria-label={t("Project discussion channels")}>
         {channels.map((channel, index) => {
           const Icon = channel.icon;
           return <button
