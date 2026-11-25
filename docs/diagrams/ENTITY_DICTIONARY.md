@@ -1,8 +1,8 @@
 # Entity Dictionary - Overall Logical ERD (LumiGap)
 
-Companion to `OVERALL_LOGICAL_ERD.drawio` (Chen notation, version 1.2).
+Companion to `OVERALL_LOGICAL_ERD.drawio` (Chen notation, drawing version 1.2; dictionary version 1.3).
 
-**Source of truth.** Entities, attributes and keys come from the Prisma schema in `apps/backend/prisma/*.prisma`. Foreign keys and UNIQUE constraints were replayed from the 153 SQL migrations in `apps/backend/prisma/migrations` on `main` ca5280c. Most relations are declared only in SQL, not in Prisma. Each entity was also checked for read/write use in `apps/backend/src` services.
+**Source of truth.** Entities, attributes and keys come from the Prisma schema in `apps/backend/prisma/*.prisma`. Foreign keys and UNIQUE constraints were replayed from the 168 SQL migrations in `apps/backend/prisma/migrations` on `main` 40b22ffc. Most relations are declared only in SQL, not in Prisma. Each entity was also checked for read/write use in `apps/backend/src` services.
 
 **Cardinality rule.** An FK without a UNIQUE constraint gives 1:N. An FK covered by a UNIQUE constraint gives 1:1. A join table with two FKs gives N:M, drawn as one relationship diamond that carries the join table's attributes.
 
@@ -13,6 +13,8 @@ Companion to `OVERALL_LOGICAL_ERD.drawio` (Chen notation, version 1.2).
 **Weak entities.** An entity is drawn as weak (double rectangle) only when it has no key of its own and its primary key is the owner's key plus a partial key (dashed underline), joined to the owner by an identifying relationship (double diamond). The 39 strong entities all have their own UUID `id`. Some of them depend on another record in business terms (for example SubmissionRevision, ReviewTemplateVersion, HumanReview), but they still have their own key, so they are strong. Only `paper_authors` and `paper_topics` meet the rule: PK (paperId, position), with no own id. Version 1.0 drew them as N:M relationships. That was not correct, because authorId and topicId are nullable, so a row can exist without the second participant. Version 1.1 draws them as weak entities of Paper. They are the same two tables, so the scope is unchanged.
 
 **Version 1.2 (baseline refresh).** Re-checked against `main` ca5280c. The newer code adds 6 models (ManuscriptAiAcceptance, ManuscriptIntegrityAcknowledgement, ManuscriptIntegrityRecord, MentorshipApplication, MentorshipApplicationEvent, MentorshipApplicationNote) and 20 FKs. None of the 41 drawn entities lost a field, key or FK, so every drawn element is still valid and the drawing itself is unchanged. Two drawn entities gained nullable FKs to new models outside the overview: `MentorshipRequest.applicationId` to MentorshipApplication and `SubmissionRevision.integrityReportId` to ManuscriptIntegrityRecord. They are listed under category F below. The new models are not added, to keep the 41-entity scope.
+
+**Version 1.3 (baseline refresh, 25/11/2026).** Re-checked against `main` 40b22ffc (168 migrations, 244 models, no new model). The drawing is unchanged and all 849 checks still pass. Three drawn entities gained nullable foreign keys, listed below as not drawn: `Project.deletedById` to User (who moved the project to Trash; category A), `ReviewerAssignment.mentorAccessId` to MentorAccess (mentor review scope; category F) and `Submission.sourceManuscriptId` to DraftWorkspace (unique; the manuscript a mentor-feedback submission comes from; category D). Projects also gained deletedAt and purgeAt for the 30-day Trash.
 
 ## Summary
 
@@ -304,6 +306,7 @@ Totals: **39 strong + 2 weak entities**, **75 relationships** (5 x 1:1, 64 x 1:N
   | FK column | References | On delete | Unique | Nullable |
   |---|---|---|---|---|
   | `createdById` | User | SET NULL | no | yes |
+  | `deletedById` | User | SET NULL | no | yes |
   | `ownerId` | User | RESTRICT | no | no |
 
 - **Relationships on the diagram:** *owns* (1:N) with User; *is member of* (N:M) with User; *collects* (N:M) with Paper; *scopes report* (1:N) with Report; *scopes analysis* (1:N) with GapAnalysis; *has plan* (1:1) with ResearchPlan; *contains* (1:N) with ProjectTask; *requests mentor* (1:N) with MentorshipRequest; *is mentored in* (1:N) with MentorRelationship; *opens* (1:N) with RecruitmentOpening; *drafts in* (1:N) with DraftWorkspace; *submits* (1:N) with Submission; *showcases project* (1:N) with ForumPost; *defines rubric* (1:N) with ReviewTemplate; *scopes gap* (1:N) with ResearchGap
@@ -444,7 +447,7 @@ Totals: **39 strong + 2 weak entities**, **75 relationships** (5 x 1:1, 64 x 1:N
 - **Primary key:** `id` (UUID)
 - **Attributes on the diagram:** `id`, `projectId`, `sourceReportId`, `title`, `status`
 - **Other important attributes:** `createdById`
-- **Unique:** (sourceReportId)
+- **Unique:** (sourceReportId); (sourceManuscriptId)
 - **Foreign keys (all, from the migrations):**
 
   | FK column | References | On delete | Unique | Nullable |
@@ -452,6 +455,7 @@ Totals: **39 strong + 2 weak entities**, **75 relationships** (5 x 1:1, 64 x 1:N
   | `createdById` | User | RESTRICT | no | no |
   | `currentRevisionId` | SubmissionRevision | SET NULL | no | yes |
   | `projectId` | Project | RESTRICT | no | no |
+  | `sourceManuscriptId` | DraftWorkspace | RESTRICT | yes | yes |
   | `sourceReportId` | Report | SET NULL | yes | yes |
 
 - **Relationships on the diagram:** *submits* (1:N) with Project; *is submitted as* (1:1) with Report; *has revision* (1:N) with SubmissionRevision; *is pre-reviewed by* (1:N) with AiPreReview; *requests review* (1:N) with ReviewRequest; *is current revision of* (1:N) with SubmissionRevision
@@ -527,6 +531,7 @@ Totals: **39 strong + 2 weak entities**, **75 relationships** (5 x 1:1, 64 x 1:N
   |---|---|---|---|---|
   | `artifactRevisionId` | SubmissionRevision | RESTRICT | no | yes |
   | `assignedById` | User | RESTRICT | no | no |
+  | `mentorAccessId` | MentorAccess | SET NULL | no | yes |
   | `reviewRequestId` | ReviewRequest | CASCADE | yes | yes |
   | `reviewerId` | User | RESTRICT | no | no |
   | `submissionId` | Submission | CASCADE | no | no |
@@ -845,17 +850,17 @@ Totals: **39 strong + 2 weak entities**, **75 relationships** (5 x 1:1, 64 x 1:N
 Total-participation lines (double): **39**; all other entity-relationship lines are single (partial).
 
 
-## Foreign keys not drawn (51 of 120 FK constraints held by the drawn entities)
+## Foreign keys not drawn (54 of 123 FK constraints held by the drawn entities)
 
-The diagram shows **69** of the **120** FK constraints that the 41 drawn entities hold. It also shows the FKs of the 6 join tables drawn as N:M diamonds. The FKs below are real and enforced in the database, but they are **not** drawn. This is a deliberate overview choice, so the diagram is **not** a 100% complete picture of the schema's FKs.
+The diagram shows **69** of the **123** FK constraints that the 41 drawn entities hold. It also shows the FKs of the 6 join tables drawn as N:M diamonds. The FKs below are real and enforced in the database, but they are **not** drawn. This is a deliberate overview choice, so the diagram is **not** a 100% complete picture of the schema's FKs.
 
 | Category | Meaning | Count |
 |---|---|---|
-| A | Actor / audit reference (who created, decided, reviewed, uploaded, assigned or updated the record) | 22 |
+| A | Actor / audit reference (who created, decided, reviewed, uploaded, assigned or updated the record) | 23 |
 | B | Ownership or assignment link to User, omitted only to keep the User hub readable | 6 |
 | C | Denormalised copy: the same fact is reachable through relationships already drawn | 8 |
-| D | Secondary or technical pointer (current-version pointer, lineage, legacy alias, second scope, context link) | 5 |
-| F | Target model is outside the 41-entity overview | 10 |
+| D | Secondary or technical pointer (current-version pointer, lineage, legacy alias, second scope, context link) | 6 |
+| F | Target model is outside the 41-entity overview | 11 |
 
 | Cat. | FK column | References | Nullable | Detail |
 |---|---|---|---|---|
@@ -869,6 +874,7 @@ The diagram shows **69** of the **120** FK constraints that the 41 drawn entitie
 | A | `Paper.requestedById` | User | yes |  |
 | A | `Paper.uploadedById` | User | yes |  |
 | A | `Project.createdById` | User | yes |  |
+| A | `Project.deletedById` | User | yes |  |
 | A | `ProjectTask.completedById` | User | yes |  |
 | A | `ProjectTask.createdById` | User | no |  |
 | A | `RecruitmentApplication.decidedById` | User | yes |  |
@@ -899,6 +905,7 @@ The diagram shows **69** of the **120** FK constraints that the 41 drawn entitie
 | D | `ForumPost.researchGapId` | ResearchGap | yes | legacy column; the API maps a `researchGapId` input onto `linkedResearchGapId`, which is drawn |
 | D | `Notification.paperId` | Paper | yes | optional context link of a notification |
 | D | `ReviewTemplate.activeVersionId` | ReviewTemplateVersion | yes | pointer to the active version; the versions themselves are drawn through 'has version' |
+| D | `Submission.sourceManuscriptId` | DraftWorkspace | yes | 1:1 source link of a mentor-feedback submission to its manuscript (unique) |
 | D | `SubmissionRevision.sourceRevisionId` | SubmissionRevision | yes | revision lineage (self-reference) |
 | F | `DraftWorkspace.mainFileId` | ManuscriptFile | yes |  |
 | F | `MentorshipRequest.applicationId, projectId, mentorUserId` | MentorshipApplication | yes |  |
@@ -906,12 +913,13 @@ The diagram shows **69** of the **120** FK constraints that the 41 drawn entitie
 | F | `ProjectTask.milestoneId, projectId` | ProjectMilestone | yes |  |
 | F | `ResearchGap.corpusId` | LiteratureCorpus | yes |  |
 | F | `ResearchGap.latestClosureCheckId` | GapClosureCheck | yes |  |
+| F | `ReviewerAssignment.mentorAccessId` | MentorAccess | yes |  |
 | F | `SubmissionRevision.attributionCheckId` | ManuscriptAttributionCheck | yes |  |
 | F | `SubmissionRevision.integrityReportId` | ManuscriptIntegrityRecord | yes |  |
 | F | `SubmissionRevision.integrityReportId, manuscriptSnapshotId` | ManuscriptIntegrityRecord | yes |  |
 | F | `SubmissionRevision.manuscriptSnapshotId` | ManuscriptSnapshot | yes |  |
 
-## Models not drawn on the overview (196 of 243)
+## Models not drawn on the overview (197 of 244)
 
 The overview shows the core entity of each business flow. The models below are implemented, but they are detail, history, audit or infrastructure tables. Report 4 (Physical ERD) covers them per module.
 
@@ -928,7 +936,7 @@ The overview shows the core entity of each business flow. The models below are i
 | `mentorship-application.prisma` | MentorshipApplication, MentorshipApplicationEvent, MentorshipApplicationNote |
 | `mentorship-content.prisma` | MentorshipAttachment, MentorshipDraft, MentorshipRequestAttachment |
 | `migration.prisma` | DataMigrationCheckpoint, DataMigrationFailure, DataMigrationIdMap, DataMigrationRun |
-| `operations.prisma` | ApiProvider, ApiSyncConfig, ApiSyncRun, CorpusValidationRun, DeviceToken, IngestDeadLetter, McpToolRun, NotificationRead, OpenAlexIngestCampaign, OpenAlexIngestPageAttempt, OpenAlexIngestPartition, OpenAlexRefreshWatermark, PaperCohortMembership, ProjectTrendSnapshot, SearchLog, TopicBackfillRun, TrendExplanation, TrendTopicFollow |
+| `operations.prisma` | ApiProvider, ApiSyncConfig, ApiSyncRun, CorpusValidationRun, DeviceToken, IngestDeadLetter, McpToolRun, NotificationRead, OpenAlexIngestCampaign, OpenAlexIngestPageAttempt, OpenAlexIngestPartition, OpenAlexRefreshWatermark, PaperCohortMembership, ProjectTrendSnapshot, SearchLog, TopicBackfillRun, TopicWatch, TrendExplanation, TrendTopicFollow |
 | `project-allocation.prisma` | AllocationApproval, AllocationPeriod, AllocationRevision, AllocationShare, ContributionParticipant, ContributionReview, ProjectMembershipPeriod, ResearchEvidenceEvent, ResearchIntegrityCase, ResearchIntegrityEvent |
 | `project-research.prisma` | ProjectEvidenceItem, ProjectFeasibilityAssessment, ProjectLimitation, ProjectLimitationSource, ProjectMatrixCriterion, ProjectPaperFile, ProjectScreeningDecision |
 | `project-screening.prisma` | ScreeningAdjudicationCase, ScreeningAdjudicationConflict, ScreeningAdjudicationInvitation, ScreeningAdjudicationStatement, ScreeningAiSuggestion, ScreeningAssignment, ScreeningAudit, ScreeningFinalDecision, ScreeningLegacyRecord, ScreeningReview, ScreeningRound, ScreeningSettings |

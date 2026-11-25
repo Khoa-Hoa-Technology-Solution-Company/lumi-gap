@@ -117,5 +117,5 @@
 <polyline points="545.0,690.0 545.0,800.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
 <polygon points="545.0,800.0 551.0,787.0 539.0,787.0" fill="#44546A"/>
 <text x="625.0" y="749.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">SQL via DATABASE_URL</text>
-<text x="30.0" y="989.5" font-size="13" text-anchor="start" font-weight="normal" fill="#555">Source: Jenkinsfile and docker-compose.yml on main 0be3737. The hosting provider is not stated in the repository.</text>
+<text x="30.0" y="989.5" font-size="13" text-anchor="start" font-weight="normal" fill="#555">Source: Jenkinsfile and docker-compose.yml on main 40b22ffc. The hosting provider is not stated in the repository.</text>
 </svg>
