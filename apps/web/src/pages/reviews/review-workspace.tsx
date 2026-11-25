@@ -1,3 +1,4 @@
+import { ReadOnlyAssignmentView } from "@/features/reviews/components/mentor-review-follow-up";
 import { useReviewPageNavigation } from "@/features/reviews/hooks/use-review-page-navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { AssignedRevisionReader } from "@/features/reviews/components/assigned-revision-reader";
@@ -363,11 +364,16 @@ export function ReviewWorkspacePage() {
     sending.current = true;
     try {
       if (dirty) await save.mutateAsync(payload());
-      await submit.mutateAsync({ ...payload(), clientKey: submitKey.current });
+      const submitted = await submit.mutateAsync({ ...payload(), clientKey: submitKey.current });
       toast.success(t("reviewWorkspace.toast.submitted"));
       setDirty(false);
       setSaveState("saved");
-      if (workspace.request?.origin !== "MENTOR_GUIDANCE") navigate("/reviews");
+      if (workspace.request?.origin === "MENTOR_GUIDANCE" && workspace.request.id) {
+        const context = new URLSearchParams({ detailTab: "feedback" });
+        if (submitted?.review?.id) context.set("reviewId", submitted.review.id);
+        navigate(`/review-requests/${encodeURIComponent(workspace.request.id)}?${context}`, { replace: true });
+      } else if (embedded) navigate(`/reviews/${encodeURIComponent(assignmentId)}?reader=1`, { replace: true });
+      else navigate("/reviews");
     } catch (error) {
       const message = (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
       toast.error(message || t("reviewWorkspace.toast.submitError"));
@@ -376,6 +382,8 @@ export function ReviewWorkspacePage() {
       setSubmitOpen(false);
     }
   }
+
+  if (param("reader") === "1") return <ReadOnlyAssignmentView workspace={workspace} assignmentId={assignmentId} />;
 
   return (
     <Container className={embedded ? "rw-shell" : "rw-shell rw-shell-standalone"}>

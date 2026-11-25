@@ -2,6 +2,7 @@ import { mentorSharingEn } from "./mentor-sharing";
 import { submissionDetailEn } from "./submission-detail";
 import { registrationEn } from "./registration";
 import { mentorWorkspaceEn } from "./mentor-workspace";
+import { mentorLifecycleEn } from "./mentor-lifecycle";
 import { scientificReviewEn } from "./scientific-review";
 import { mentorJourneyEn } from "./mentor-journey";
 import { academicConnectionsEn } from "./academic-connections";
@@ -44,6 +45,7 @@ import { personalizationStrings } from "./personalization";
 
 export const en = {
   ...mentorWorkspaceEn,
+  ...mentorLifecycleEn,
   ...registrationEn,
   ...personalizationStrings,
   ...adminCatalogEn,

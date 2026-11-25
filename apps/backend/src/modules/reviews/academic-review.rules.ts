@@ -1,4 +1,31 @@
-import type { OverallAcademicAssessment, ParticipantScope, ReviewRequestStatus } from "@trend/shared-types";
+import type { FeedbackItemPriority, OverallAcademicAssessment, ParticipantScope, ReviewRequestStatus } from "@trend/shared-types";
+
+const SUGGESTION_KEY = "__suggestion__";
+const SUGGESTION_SUFFIX = ":suggestion";
+
+export function encodeFeedbackPriority(priority: FeedbackItemPriority, criterionKey?: string | null): { priority: "MAJOR" | "MINOR"; criterionKey?: string } {
+  if (priority === "SUGGESTION") {
+    return {
+      priority: "MINOR",
+      criterionKey: criterionKey ? `${criterionKey}${SUGGESTION_SUFFIX}`.slice(0, 80) : SUGGESTION_KEY,
+    };
+  }
+  return { priority, criterionKey: criterionKey ?? undefined };
+}
+
+export function decodeFeedbackItem<T extends { priority: string; criterionKey?: string | null }>(item: T): Omit<T, "priority" | "criterionKey"> & { priority: FeedbackItemPriority; criterionKey?: string } {
+  if (item.criterionKey === SUGGESTION_KEY) {
+    return { ...item, priority: "SUGGESTION", criterionKey: undefined };
+  }
+  if (item.criterionKey?.endsWith(SUGGESTION_SUFFIX)) {
+    return { ...item, priority: "SUGGESTION", criterionKey: item.criterionKey.slice(0, -SUGGESTION_SUFFIX.length) };
+  }
+  return { ...item, priority: (item.priority === "MAJOR" ? "MAJOR" : "MINOR") as FeedbackItemPriority, criterionKey: item.criterionKey ?? undefined };
+}
+
+export function isSuggestionRevisionItem(item: { criterionKey?: string | null }): boolean {
+  return item.criterionKey === SUGGESTION_KEY || Boolean(item.criterionKey?.endsWith(SUGGESTION_SUFFIX));
+}
 
 export function reviewOutcome(overall: OverallAcademicAssessment | undefined, requiredRevisionCount: number) {
   const needsRevision = overall === "NOT_READY" || overall === "MINOR_REVISION" || overall === "MAJOR_REVISION" || requiredRevisionCount > 0;

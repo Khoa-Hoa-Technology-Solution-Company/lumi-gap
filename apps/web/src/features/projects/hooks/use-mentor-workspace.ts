@@ -9,10 +9,11 @@ export function useMentorWorkspace(query: MentorWorkQuery, enabled = true) {
   const q = useDebouncedValue(query.q, 300);
   const projectSearch = useDebouncedValue(query.projectSearch, 300);
   const params = { ...query, q, projectSearch };
-  return useQuery({
+  const result = useQuery({
     queryKey: ["mentor-workspace", actor, params], queryFn: () => mentorWorkspaceApi.read(params),
     enabled: Boolean(actor && enabled), staleTime: 10000, refetchInterval: 30000,
-    placeholderData: (previous, previousQuery) => previousQuery?.queryKey[1] === actor ? previous : undefined,
     retry: false,
   });
+  const debouncing = query.q !== q || query.projectSearch !== projectSearch;
+  return { ...result, data: debouncing ? undefined : result.data, isLoading: result.isLoading || debouncing };
 }

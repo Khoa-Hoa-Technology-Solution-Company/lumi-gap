@@ -1,3 +1,5 @@
+import { scientificIntegrityChecks } from "@trend/shared-types";
+import { decodeFeedbackItem } from "../reviews/academic-review.rules.js";
 import { currentProjectIds, currentProjectMembership } from "../authorization/project-membership.js";
 import crypto from "node:crypto";
 import type { UserRole } from "@trend/shared-types";
@@ -139,6 +141,20 @@ async function accessibleRevisionIds(submissionId: string, userId: string) {
   const assignments = await readableReviewAssignments(prisma, submissionId, userId);
   const reviews = await prisma.humanReview.findMany({ where: { assignmentId: { in: assignments.map((item) => item.id) }, status: "SUBMITTED" }, select: { revisionId: true } });
   return [...new Set([...assignments.flatMap((item) => item.artifactRevisionId ? [item.artifactRevisionId] : []), ...reviews.map((item) => item.revisionId)])];
+}
+
+function sanitizeSharedIntegrityChecks(raw: unknown): Record<string, { status: string; note?: string }> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const allowedKeys = new Set<string>(scientificIntegrityChecks.map((item) => item.key));
+  const out: Record<string, { status: string; note?: string }> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!allowedKeys.has(key) || !value || typeof value !== "object" || Array.isArray(value)) continue;
+    const entry = value as { status?: unknown; note?: unknown };
+    if (entry.status !== "CHECKED" && entry.status !== "CONCERN" && entry.status !== "NOT_APPLICABLE") continue;
+    const note = entry.status === "CONCERN" && typeof entry.note === "string" && entry.note.trim() ? entry.note.trim() : undefined;
+    out[key] = note ? { status: entry.status, note } : { status: entry.status };
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 async function persistFile(file: UploadedPdf) {
@@ -491,14 +507,88 @@ export const submissionService = {
     const userMap = new Map(users.map((item) => [item.id, item.fullName]));
     const versions = await prisma.submissionRevision.findMany({ where: { submissionId: submission.id, ...(allowed ? { id: { in: allowed } } : {}) }, orderBy: { revisionNumber: "desc" } });
     const reviewIds = reviews.map(review => review.id);
-    const [responses, revisionItems] = await Promise.all([
+    const templateVersionIds = [...new Set(reviews.flatMap((review) => (review.templateVersionId ? [review.templateVersionId] : [])))];
+    const [responses, revisionItems, templateVersions, templateCriteria] = await Promise.all([
       prisma.reviewResponse.findMany({ where: { reviewId: { in: reviewIds } } }),
       prisma.reviewRevisionItem.findMany({ where: { reviewId: { in: reviewIds } }, orderBy: { position: "asc" } }),
+      templateVersionIds.length && typeof prisma.reviewTemplateVersion?.findMany === "function"
+        ? prisma.reviewTemplateVersion.findMany({
+            where: { id: { in: templateVersionIds } },
+            select: { id: true, reviewMode: true },
+          })
+        : Promise.resolve([]),
+      templateVersionIds.length && typeof prisma.reviewCriterion?.findMany === "function"
+        ? prisma.reviewCriterion.findMany({
+            where: { versionId: { in: templateVersionIds } },
+            select: { id: true, versionId: true, key: true, label: true, weight: true },
+          })
+        : Promise.resolve([]),
     ]);
+    const criterionIds = templateCriteria.map((c) => c.id);
+    const performanceLevels =
+      criterionIds.length && typeof prisma.reviewCriterionLevel?.findMany === "function"
+        ? await prisma.reviewCriterionLevel.findMany({
+            where: { criterionId: { in: criterionIds } },
+            select: { criterionId: true, score: true },
+          })
+        : [];
+    const maxScoreByCriterionId = new Map<string, number>();
+    for (const level of performanceLevels) {
+      if (level.score == null) continue;
+      const prev = maxScoreByCriterionId.get(level.criterionId);
+      if (prev === undefined || level.score > prev) maxScoreByCriterionId.set(level.criterionId, level.score);
+    }
+    const reviewModeByVersionId = new Map(templateVersions.map((tv) => [tv.id, tv.reviewMode]));
+    const criterionByVersionAndKey = new Map(
+      templateCriteria.map((c) => [
+        `${c.versionId}:${c.key}`,
+        { title: c.label, weight: c.weight, maxScore: maxScoreByCriterionId.get(c.id) ?? null },
+      ]),
+    );
     const revisionResponses = await prisma.reviewRevisionResponse.findMany({ where: { revisionItemId: { in: revisionItems.map(item => item.id) }, ...(access === "blind" ? { status: { not: "DRAFT" } } : {}) }, orderBy: { createdAt: "asc" } });
-    const reviewDetails = reviews.map(review => ({ id: review.id, reviewerId: review.reviewerId, reviewerName: access === "blind" ? "Your review" : userMap.get(review.reviewerId) ?? "Reviewer", reviewerAcademicRole: review.reviewerAcademicRole, revisionId: review.revisionId, roundNumber: review.roundNumber, templateVersionId: review.templateVersionId, weightedScore: review.weightedScore, overallAssessment: review.overallAssessment, keyStrengths: review.keyStrengths, keyConcerns: review.keyConcerns, overallComment: review.overallComment, submittedAt: review.submittedAt, requestId: assignments.find(item => item.id === review.assignmentId)?.reviewRequestId,
-      responses: responses.filter(response => response.reviewId === review.id),
-      requiredRevisions: revisionItems.filter(item => item.reviewId === review.id).map(item => ({ ...item, responses: revisionResponses.filter(response => response.revisionItemId === item.id) })),
+    const reviewDetails = reviews.map(review => ({
+      id: review.id,
+      reviewerId: review.reviewerId,
+      reviewerName: access === "blind" ? "Your review" : userMap.get(review.reviewerId) ?? "Reviewer",
+      reviewerAcademicRole: review.reviewerAcademicRole,
+      revisionId: review.revisionId,
+      roundNumber: review.roundNumber,
+      templateVersionId: review.templateVersionId,
+      reviewMode: review.templateVersionId ? reviewModeByVersionId.get(review.templateVersionId) ?? null : null,
+      weightedScore: review.weightedScore,
+      overallAssessment: review.overallAssessment,
+      keyStrengths: review.keyStrengths,
+      keyConcerns: review.keyConcerns,
+      overallComment: review.overallComment,
+      integrityChecks: sanitizeSharedIntegrityChecks((review as { integrityChecks?: unknown }).integrityChecks),
+      submittedAt: review.submittedAt,
+      requestId: assignments.find(item => item.id === review.assignmentId)?.reviewRequestId,
+      responses: responses
+        .filter(response => response.reviewId === review.id)
+        .map(response => {
+          const cleanKey = response.criterionKey.replace(/^rubric:/, "");
+          const meta = review.templateVersionId
+            ? criterionByVersionAndKey.get(`${review.templateVersionId}:${cleanKey}`) ??
+              criterionByVersionAndKey.get(`${review.templateVersionId}:${response.criterionKey}`)
+            : undefined;
+          return {
+            ...response,
+            criterionTitle: meta?.title ?? null,
+            weight: meta?.weight ?? null,
+            maxScore: meta?.maxScore ?? null,
+          };
+        }),
+      requiredRevisions: revisionItems
+        .filter(item => item.reviewId === review.id)
+        .map(item => {
+          const decoded = decodeFeedbackItem(item);
+          return {
+            ...item,
+            priority: decoded.priority,
+            criterionKey: decoded.criterionKey ?? null,
+            responses: revisionResponses.filter(response => response.revisionItemId === item.id),
+          };
+        }),
     }));
     const [project, author] = await Promise.all([
       prisma.project.findUniqueOrThrow({ where: { id: submission.projectId } }),

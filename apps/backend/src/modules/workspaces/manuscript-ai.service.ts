@@ -20,7 +20,7 @@ const outputSchema = z.object({
   citations: z.array(z.object({ paperId: z.string().uuid(), reason: z.string().max(700), supportQuote: z.string().trim().min(20).max(1000).optional() }).strict()).max(8),
 }).strict();
 type Output = z.infer<typeof outputSchema>;
-type Source = ManuscriptReference & { abstract: string; excerpts?: Array<{ quotation: string; locator: string }>; evidenceStatus: "PROJECT_SOURCE" | "REVIEWED_EVIDENCE" };
+type Source = Omit<ManuscriptReference, "evidenceStatus"> & { abstract: string; excerpts?: Array<{ quotation: string; locator: string }>; evidenceStatus: "PROJECT_SOURCE" | "REVIEWED_EVIDENCE" };
 
 // The compiler runs multiple passes. Earlier undefined citations can be resolved by the final pass.
 export function compiledManuscriptRepair(compilation: Pick<ManuscriptCompilation, "id" | "status" | "sourceVersion" | "diagnostics"> | null, version: number): ManuscriptAiResult | null {

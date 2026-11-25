@@ -750,3 +750,214 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+/* Dedicated PDF.js Academic Reader */
+.rw-pdf-viewer {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: hsl(var(--muted) / 0.35);
+}
+
+.rw-pdf-viewer[data-fullscreen="true"] {
+  background: hsl(var(--background));
+}
+
+.rw-pdf-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+}
+
+.rw-pdf-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.rw-pdf-group-end {
+  margin-left: auto;
+}
+
+.rw-pdf-divider {
+  width: 1px;
+  height: 18px;
+  background: hsl(var(--border));
+  margin: 0 2px;
+}
+
+.rw-pdf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: hsl(var(--foreground));
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.rw-pdf-btn:hover:not(:disabled) {
+  background: hsl(var(--muted));
+}
+
+.rw-pdf-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.rw-pdf-btn[data-active="true"] {
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+}
+
+.rw-pdf-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.rw-pdf-pill-btn:hover:not(:disabled) {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+.rw-pdf-pill-btn[data-active="true"] {
+  border-color: hsl(var(--primary) / 0.35);
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  font-weight: 600;
+}
+
+.rw-pdf-page-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rw-pdf-page-input {
+  width: 38px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  text-align: center;
+  font-size: 0.76rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground));
+}
+
+.rw-pdf-page-total,
+.rw-pdf-zoom-readout {
+  font-size: 0.74rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--muted-foreground));
+  min-width: 34px;
+  text-align: center;
+}
+
+.rw-pdf-search-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 0.3);
+}
+
+.rw-pdf-search-input {
+  flex: 1 1 160px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  padding: 0 8px;
+  font-size: 0.78rem;
+  color: hsl(var(--foreground));
+}
+
+.rw-pdf-search-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rw-pdf-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  padding: 14px;
+}
+
+.rw-pdf-scroll[data-fit="width"],
+.rw-pdf-scroll[data-fit="page"] {
+  overflow-x: hidden;
+}
+
+.rw-pdf-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.rw-pdf-page-slot {
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.rw-pdf-page-slot[data-highlighted="true"] {
+  box-shadow: 0 0 0 2px hsl(var(--primary)), 0 4px 14px rgba(15, 23, 42, 0.12);
+}
+
+.rw-pdf-canvas {
+  display: block;
+  margin: 0 auto;
+  background: #ffffff;
+}
+
+.rw-pdf-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+}
+
+.rw-pdf-fallback-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  font-size: 0.8rem;
+  font-weight: 500;
+}

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { mentorWorkspaceDestination, researchProjectDirectoryDestination } from "../utils/mentor-workspace-navigation";
+import { mentorWorkspaceDestination, researchProjectDirectoryDestination, safeMentorWorkReturn, withMentorWorkReturn } from "../utils/mentor-workspace-navigation";
 
 it.each([
   ["/projects", ""],
@@ -44,4 +44,12 @@ it.each([
   ["/reviews/mentor-entry/submission", "/mentor-workspace?view=review-entry&submissionId=submission"],
 ])("keeps the exact review/template selector for %s", (path, expected) => {
   expect(mentorWorkspaceDestination(path)).toBe(expected);
+});
+it("preserves reader, historical review and safe work context without accepting an external return URL", () => {
+  const back = "/mentor-workspace?view=work&workPage=2&workStatus=WAITING&workQ=method&workKind=REVIEW&workGroup=status";
+  const result = new URL(withMentorWorkReturn(mentorWorkspaceDestination("/review-requests/request?reader=1&reviewId=round-one&revisionId=v1"), back), "http://localhost");
+  expect(Object.fromEntries(result.searchParams)).toMatchObject({ view: "review-request", requestId: "request", reader: "1", reviewId: "round-one", revisionId: "v1" });
+  expect(result.searchParams.get("returnTo")).toBe(safeMentorWorkReturn(back));
+  expect(result.searchParams.get("returnTo")).toContain("workGroup=status");
+  for (const unsafe of ["https://evil.example/mentor-workspace?view=work", "//evil.example/mentor-workspace?view=work", "/mentor-workspace?view=review&assignmentId=other", "/mentor-workspace?view=project&projectId=../private", "/mentor-workspace?view=work#unexpected"]) expect(safeMentorWorkReturn(unsafe)).toBeUndefined();
 });

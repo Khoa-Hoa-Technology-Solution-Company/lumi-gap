@@ -4,13 +4,16 @@ import { useI18n } from "@/i18n";
 
 type Checks = NonNullable<AcademicReviewInput["integrityChecks"]>;
 
-export function ReviewIntegrityChecklist({ value, onChange, disabled }: {
+export function ReviewIntegrityChecklist({ value, onChange, disabled, variant }: {
+  variant?: "workspace" | "readonly";
   value: Checks;
   onChange: (value: Checks) => void;
   disabled: boolean;
 }) {
   const { t } = useI18n();
   const checkedCount = scientificIntegrityChecks.filter(c => value[c.key]?.status).length;
+
+  if (variant === "readonly") return <ul className="divide-y rounded-md border">{scientificIntegrityChecks.map(check => { const entry = value[check.key]; return <li key={check.key} className="space-y-1 p-3 text-sm"><strong>{t(check.title)}</strong><p>{t(entry?.status === "CHECKED" ? "reviewWorkspace.integrity.checked" : entry?.status === "CONCERN" ? "reviewWorkspace.integrity.concern" : entry?.status === "NOT_APPLICABLE" ? "reviewWorkspace.integrity.notApplicable" : "Not assessed")}</p>{entry?.status === "CONCERN" && entry.note && <p className="whitespace-pre-wrap">{entry.note}</p>}</li>; })}</ul>;
 
   return (
     <section id="review-integrity" data-no-i18n className="rw-card scroll-mt-24">

@@ -13,8 +13,9 @@ export function useSubmission(id: string, projectId?: string) {
   return useQuery({ queryKey: ["submissions", id, "detail", projectId ?? "standalone", actorId], queryFn: ({ signal }) => submissionsApi.detail(id, projectId, signal), enabled: Boolean(id) });
 }
 
-export function useSubmissionRevisions(id: string) {
-  return useQuery({ queryKey: ["submissions", id, "revisions"], queryFn: ({ signal }) => submissionsApi.revisions(id, signal), enabled: Boolean(id) });
+export function useSubmissionRevisions(id: string, reviewedRevisionId?: string) {
+  const actorId = useAuthStore(state => state.user?.id);
+  return useQuery({ queryKey: ["submissions", id, "revisions", actorId, reviewedRevisionId ?? null], queryFn: ({ signal }) => submissionsApi.revisions(id, signal), enabled: Boolean(id && actorId), retry: false, refetchOnWindowFocus: "always" });
 }
 
 export function useActiveMentors(projectId?: string) {

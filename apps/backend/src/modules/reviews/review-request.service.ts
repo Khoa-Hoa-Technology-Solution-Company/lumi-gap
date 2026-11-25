@@ -14,7 +14,7 @@ import { hydrateReviewTemplateVersion } from "./review-template.service.js";
 import { ACTIVE_REVIEW_REQUEST_STATUSES } from "./review.constants.js";
 import { assertMentorReviewAccess, acceptedMentorReviewPolicy, visibleMentorReviewAssignments } from "./mentor-review-access.js";
 import type { Prisma } from "../../generated/prisma/client.js";
-import { canCancelReviewRequest, canResubmitReviewRequest, canReviewerDeclineRequest, eligiblePeerReviewer, reviewDeadline } from "./academic-review.rules.js";
+import { canCancelReviewRequest, canResubmitReviewRequest, canReviewerDeclineRequest, decodeFeedbackItem, eligiblePeerReviewer, isSuggestionRevisionItem, reviewDeadline } from "./academic-review.rules.js";
 
 const ACTIVE_REQUEST_STATUSES = ACTIVE_REVIEW_REQUEST_STATUSES;
 
@@ -205,7 +205,7 @@ async function summary(row: Awaited<ReturnType<typeof requestRecord>>, viewerId?
     prisma.user.findUniqueOrThrow({ where: { id: row.requesterId }, select: { id: true, fullName: true, avatarUrl: true } }),
     prisma.submissionRevision.findUniqueOrThrow({ where: { id: row.artifactRevisionId } }),
     prisma.humanReview.findMany({ where: { assignmentId: assignment.id, ...(viewerId === assignment.reviewerId ? {} : { status: "SUBMITTED" }) }, orderBy: { roundNumber: "asc" } }),
-    prisma.project.findUniqueOrThrow({ where: { id: row.projectId }, select: { id: true, legacyMongoId: true } }),
+    prisma.project.findUniqueOrThrow({ where: { id: row.projectId }, select: { id: true, legacyMongoId: true, title: true } }),
   ]);
   const [reviewer, sourceReport] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: assignment.reviewerId }, select: { id: true, fullName: true, avatarUrl: true, institution: true } }),
@@ -213,13 +213,13 @@ async function summary(row: Awaited<ReturnType<typeof requestRecord>>, viewerId?
   ]);
   return {
     id: publicDatabaseId(row), origin: row.origin, status: row.status, message: row.message ?? undefined, dueAt: row.dueAt ?? undefined,
-    createdAt: row.createdAt, updatedAt: row.updatedAt, completedAt: row.completedAt ?? undefined,
+    createdAt: row.createdAt, updatedAt: row.updatedAt, respondedAt: row.respondedAt ?? undefined, completedAt: row.completedAt ?? undefined,
     requester: { ...requester, id: publicDatabaseId(requester) }, reviewer: { ...reviewer, id: publicDatabaseId(reviewer) },
     mentorRelationshipActive: Boolean(await prisma.mentorRelationship.findFirst({ where: { projectId: submission.projectId, mentorUserId: assignment.reviewerId, status: "ACTIVE" } })),
     assignment: { id: publicDatabaseId(assignment), status: assignment.status, dueAt: assignment.dueAt ?? undefined },
     artifact: {
       submissionId: publicDatabaseId(submission), title: submission.title, type: submission.submissionType,
-      projectId: publicDatabaseId(project), revisionId: publicDatabaseId(revision), revisionNumber: revision.revisionNumber,
+      projectId: publicDatabaseId(project), projectTitle: project.title, revisionId: publicDatabaseId(revision), revisionNumber: revision.revisionNumber,
       contentType: revision.contentType, sourceReportId: sourceReport ? publicDatabaseId(sourceReport) : undefined,
     },
     latestReview: reviews.at(-1) ? {
@@ -488,8 +488,10 @@ export const reviewRequestService = {
     if (revision.submissionId !== request.submissionId || assignment.submissionId !== request.submissionId || assignment.artifactRevisionId !== request.artifactRevisionId) throw AppError.conflict("Review assignment does not match the target artifact");
     const reviewDetails = await Promise.all(reviews.map(async (review) => ({
       ...review, id: publicDatabaseId(review),
+      artifactRevision: await prisma.submissionRevision.findFirstOrThrow({ where: { id: review.revisionId, submissionId: request.submissionId }, select: { id: true, revisionNumber: true, contentType: true } }),
+      templateVersion: review.templateVersionId ? await hydrateReviewTemplateVersion(review.templateVersionId) : undefined,
       responses: await prisma.reviewResponse.findMany({ where: { reviewId: review.id } }),
-      requiredRevisions: await Promise.all((await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } })).map(async (item) => ({ ...item, responses: await prisma.reviewRevisionResponse.findMany({ where: { revisionItemId: item.id, ...(actor.id === assignment.reviewerId ? { status: { not: "DRAFT" } } : {}) }, orderBy: { createdAt: "asc" } }) }))),
+      requiredRevisions: await Promise.all((await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } })).map(async (item) => ({ ...decodeFeedbackItem(item), responses: await prisma.reviewRevisionResponse.findMany({ where: { revisionItemId: item.id, ...(actor.id === assignment.reviewerId ? { status: { not: "DRAFT" } } : {}) }, orderBy: { createdAt: "asc" } }) }))),
     })));
     return {
       ...base, canRespond, templateVersion, artifactContent: actor.id === assignment.reviewerId && !canWork ? undefined : revision.contentSnapshot ?? undefined,
@@ -735,12 +737,14 @@ export const reviewRequestService = {
       if (responseMap.size !== input.responses.length || input.responses.some((response) => !items.some((item) => item.id === response.revisionItemId || publicDatabaseId(item) === response.revisionItemId))) {
         throw AppError.badRequest("Revision responses must refer to this request's open revision items");
       }
-      const missing = items.filter((item) => !responseMap.get(publicDatabaseId(item)) && !responseMap.get(item.id));
+      const missing = items.filter((item) => !isSuggestionRevisionItem(item) && !responseMap.get(publicDatabaseId(item)) && !responseMap.get(item.id));
       if (missing.length) throw AppError.badRequest("Respond to every required revision before resubmitting", { missingRevisionItemIds: missing.map(publicDatabaseId) });
       for (const item of items) {
+        const text = responseMap.get(publicDatabaseId(item)) ?? responseMap.get(item.id);
+        if (!text && isSuggestionRevisionItem(item)) continue;
         const existingResponse = await tx.reviewRevisionResponse.findUnique({where:{revisionItemId_submissionRevisionId:{revisionItemId:item.id,submissionRevisionId:revised.id}}});
         if (existingResponse && existingResponse.status !== "DRAFT") throw AppError.conflict("A submitted response is immutable");
-        await tx.reviewRevisionResponse.upsert({where:{revisionItemId_submissionRevisionId:{revisionItemId:item.id,submissionRevisionId:revised.id}}, create:{revisionItemId:item.id,submissionRevisionId:revised.id,responseText:responseMap.get(publicDatabaseId(item)) ?? responseMap.get(item.id)!,status:"ADDRESSED"},update:{responseText:responseMap.get(publicDatabaseId(item)) ?? responseMap.get(item.id)!,status:"ADDRESSED"}});
+        await tx.reviewRevisionResponse.upsert({where:{revisionItemId_submissionRevisionId:{revisionItemId:item.id,submissionRevisionId:revised.id}}, create:{revisionItemId:item.id,submissionRevisionId:revised.id,responseText:text!,status:"ADDRESSED"},update:{responseText:text!,status:"ADDRESSED"}});
         await tx.reviewRevisionItem.update({ where: { id: item.id }, data: { status: "ADDRESSED" } });
       }
       await tx.reviewRequest.update({ where: { id: request.id }, data: { status: "RESUBMITTED", artifactRevisionId: revised.id } });

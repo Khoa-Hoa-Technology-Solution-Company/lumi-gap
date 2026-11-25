@@ -15,6 +15,9 @@ export interface MentorWorkItem {
   href: string; action: "VIEW" | "REVIEW" | "RESPOND";
   accessIssue?: "MANUSCRIPT_NOT_SHARED";
   canContactTeam?: boolean;
+  readOnly?: boolean;
+  roundNumber?: number;
+  submittedAt?: string;
 }
 export interface MentorProjectSummary {
   id: string; title: string; researchField: string | null; status: string;
@@ -23,6 +26,8 @@ export interface MentorProjectSummary {
 }
 export interface MentorWorkspaceData {
   items: MentorWorkItem[];
+  /** Counts share project/search/kind scope, excluding status, item and pagination. */
+  facets?: Record<NonNullable<MentorWorkQuery["status"]>, number>;
   meta: { page: number; pageSize: number; total: number; totalPages: number };
   projects: MentorProjectSummary[];
   projectMeta: { page: number; pageSize: number; total: number; totalPages: number };

@@ -165,7 +165,7 @@ export interface ManuscriptAiInput {
 export interface ManuscriptAiResult {
   text: string; explanation: string;
   needsContext?: boolean;
-  citations: Array<ManuscriptReference & { reason: string; evidenceStatus: "PROJECT_SOURCE" | "REVIEWED_EVIDENCE"; support?: { quote: string; locator: string; kind: "ABSTRACT" | "REVIEWED_EXCERPT" } }>;
+  citations: Array<Omit<ManuscriptReference, "evidenceStatus"> & { reason: string; evidenceStatus: "PROJECT_SOURCE" | "REVIEWED_EVIDENCE"; support?: { quote: string; locator: string; kind: "ABSTRACT" | "REVIEWED_EXCERPT" } }>;
   warnings: string[];
   scope?: { fileId: string; path: string; sourceSequence: number; sourceVersion: number };
   /** Server assessment; compiler success is never inferred from model prose. */
