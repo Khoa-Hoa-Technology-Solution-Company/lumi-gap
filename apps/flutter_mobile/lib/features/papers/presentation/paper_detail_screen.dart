@@ -13,7 +13,6 @@ import 'package:flutter_mobile/features/papers/presentation/paper_detail/paper_d
 import 'package:flutter_mobile/features/papers/presentation/paper_detail/paper_header_card.dart';
 import 'package:flutter_mobile/features/papers/presentation/paper_detail/paper_insights_section.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 /// One paper: what it is, what to do with it, and what LumiGap knows about
 /// it. The sections live in `paper_detail/`; this screen only lays them out.
@@ -46,16 +45,16 @@ class PaperDetailScreen extends ConsumerWidget {
 
     final Widget body;
     if (paper != null) {
-      final fullText = paper.openAccessUrl;
       body = Column(
         children: [
           Expanded(
-            child: ListView(
+            child: RefreshIndicator(
+              onRefresh: () => ref.refresh(paperProvider(id).future),
+              child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               children: [
                 PaperHeaderCard(paper: paper),
-                const SizedBox(height: 12),
-                PaperActionsPanel(paper: paper, paperId: id),
                 const SizedBox(height: 12),
                 PaperAbstractSection(paper: paper),
                 const SizedBox(height: 12),
@@ -73,11 +72,11 @@ class PaperDetailScreen extends ConsumerWidget {
                 PaperProjectCta(paperId: id),
               ],
             ),
+            ),
           ),
           // A bar of its own, not a layer over the list, so it never hides
-          // the last section.
-          if (fullText != null)
-            DecoratedBox(
+          // the last section. The paper's actions stay within thumb reach.
+          DecoratedBox(
               decoration: BoxDecoration(
                 color: context.lumi.surface,
                 border: Border(top: BorderSide(color: context.lumi.line)),
@@ -85,16 +84,8 @@ class PaperDetailScreen extends ConsumerWidget {
               child: SafeArea(
                 top: false,
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: () =>
-                          unawaited(launchUrl(Uri.parse(fullText))),
-                      icon: const Icon(Icons.open_in_new, size: 18),
-                      label: Text(context.t('Open full text')),
-                    ),
-                  ),
+                  padding: const EdgeInsets.fromLTRB(8, 4, 16, 4),
+                  child: PaperActionsPanel(paper: paper, paperId: id),
                 ),
               ),
             ),
@@ -112,7 +103,7 @@ class PaperDetailScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.t('Paper Detail')),
+        title: Text(context.t('Paper')),
         actions: [
           IconButton(
             tooltip: context.t('Copy link'),

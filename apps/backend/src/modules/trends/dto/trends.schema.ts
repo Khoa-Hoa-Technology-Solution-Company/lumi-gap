@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TREND_CITATION_BANDS } from "@trend/shared-types";
+import { TREND_CITATION_BANDS, TREND_SIZE_BANDS } from "@trend/shared-types";
 
 const csvListSchema = z.preprocess(
   (value) => {
@@ -27,7 +27,7 @@ const citationBandListSchema = z.preprocess(
 
 /** Page of the tested topics: only one verdict (optional), from `offset`. */
 const topicPageSchema = {
-  verdict: z.enum(["rising", "stable", "declining", "insufficient"]).optional(),
+  verdict: z.enum(["rising", "saturated", "past_peak", "stable", "declining", "insufficient"]).optional(),
   offset: z.coerce.number().int().min(0).max(1000).default(0),
 };
 
@@ -56,11 +56,16 @@ export const TrendsOverviewQuerySchema = z
     limit: z.coerce.number().int().min(1).max(50).default(10),
     /** Topics with fewer total papers than this are noise — hide them. */
     minPapers: z.coerce.number().int().min(1).max(1000).default(3),
-    /** "trend" = verdict order (trend.verdict.ts compareByTrend). The legacy
-     *  values "momentum" and "growth" are accepted and mean "trend". */
-    sortBy: z.preprocess(
-      (value) => (value === "momentum" || value === "growth" ? "trend" : value),
-      z.enum(["trend", "total"]).default("trend"),
+    /** "trend" = verdict order (trend.verdict.ts compareByTrend). */
+    sortBy: z.enum(["trend", "total"]).default("trend"),
+    /** Only topics of these size bands (trend.cross-topic.ts), comma-separated; empty = all. */
+    sizeBands: z.preprocess(
+      (value) => {
+        if (value === undefined) return undefined;
+        const values = Array.isArray(value) ? value : [value];
+        return values.flatMap((item) => String(item).split(",")).map((item) => item.trim()).filter(Boolean);
+      },
+      z.array(z.enum(TREND_SIZE_BANDS)).max(3).optional(),
     ),
     ...topicPageSchema,
     ...trendFacetFiltersSchema,
@@ -119,6 +124,14 @@ export const TrendCompareQuerySchema = TopicTrendQuerySchema.and(
 );
 
 export type TrendCompareQuery = z.infer<typeof TrendCompareQuerySchema>;
+
+/** Query params for GET /api/v1/trends/emerging. The window is fixed (trend.emerging.ts), so there is no year range. */
+export const TrendEmergingQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(30).default(10),
+  ...trendFacetFiltersSchema,
+});
+
+export type TrendEmergingQuery = z.infer<typeof TrendEmergingQuerySchema>;
 
 export const TrendTopicCandidatesQuerySchema = z
   .object({

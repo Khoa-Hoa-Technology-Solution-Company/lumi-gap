@@ -20,6 +20,8 @@ Future<void> showGapDetailSheet(
 }) {
   final router = GoRouter.of(context);
   return showModalBottomSheet<void>(
+    // Over the bottom navigation bar, dimming it too.
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -105,21 +107,23 @@ class _GapDetail extends StatelessWidget {
           ],
         ),
         if (gap.description.trim().isNotEmpty) ...[
-          heading(context.t('Summary Description')),
+          heading(context.t('Summary description')),
           Text(gap.description, style: theme.textTheme.bodyMedium),
         ],
         // Only the reasoning the API recorded; none is never made up.
         if (gap.rationale.trim().isNotEmpty) ...[
-          heading(context.t('AI Reasoning & Grounding')),
+          heading(context.t('AI reasoning & grounding')),
           Text(gap.rationale, style: theme.textTheme.bodyMedium),
         ],
-        heading(context.t('Validation Metrics')),
+        heading(context.t('Validation metrics')),
         Wrap(
           spacing: 16,
           runSpacing: 4,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            GapConfidenceBar(value: gap.confidence),
+            GapConfidenceLabel(level: gap.gapConfidence),
+            if (gap.evidenceConfidence case final score?)
+              GapConfidenceBar(value: score),
             Text(
               context.plural(
                 gap.evidenceCount,
@@ -134,7 +138,7 @@ class _GapDetail extends StatelessWidget {
         const SizedBox(height: 16),
         GapClosureSection(gap: gap),
         if (papers.isNotEmpty || bareIds.isNotEmpty) ...[
-          heading(context.t('Grounding Evidence Papers')),
+          heading(context.t('Grounding evidence papers')),
           for (final p in papers)
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -175,7 +179,7 @@ class _GapDetail extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: onSearch,
                 icon: const Icon(Icons.search, size: 18),
-                label: Text(context.t('Search Solutions')),
+                label: Text(context.t('Search solutions')),
               ),
             ),
             const SizedBox(width: 8),
@@ -183,7 +187,7 @@ class _GapDetail extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: onDraftProposal,
                 icon: const Icon(Icons.edit_note, size: 18),
-                label: Text(context.t('Draft Proposal')),
+                label: Text(context.t('Draft proposal')),
               ),
             ),
           ],
@@ -196,7 +200,7 @@ class _GapDetail extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: () => onStatusChange('dismissed'),
                   icon: const Icon(Icons.close, size: 18),
-                  label: Text(context.t('Reject Gap')),
+                  label: Text(context.t('Reject gap')),
                 ),
               ),
               const SizedBox(width: 8),
@@ -204,7 +208,7 @@ class _GapDetail extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: () => onStatusChange('resolved'),
                   icon: const Icon(Icons.check, size: 18),
-                  label: Text(context.t('Validate Gap')),
+                  label: Text(context.t('Validate gap')),
                 ),
               ),
             ],

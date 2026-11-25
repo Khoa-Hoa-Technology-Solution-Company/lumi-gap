@@ -28,11 +28,14 @@ import { ManuscriptIntegrationTabs } from "./manuscript-integration-tabs";
 import { useGithubDialogOpen } from "./github-connection";
 import { ManuscriptIntegrations } from "./manuscript-integrations";
 import { ManuscriptFeedbackLink } from "./manuscript-feedback-link";
+import { MentorManuscriptDialog } from "@/features/submissions/components/mentor-manuscript-dialog";
+import { projectSubmissionPath } from "@/features/submissions/project-submission-path";
 import { ManuscriptCommentThread } from "./manuscript-comment-thread";
 import { ManuscriptPdf } from "./manuscript-pdf";
 import { ManuscriptOutline } from "./manuscript-outline";
 import { ManuscriptWriting } from "./manuscript-writing";
 import { ManuscriptSourceToolbar } from "./manuscript-source-toolbar";
+import { ManuscriptCitationPicker, detectBibliographySetup, extractCitedKeysFromTex, extractKeysFromBib } from "./manuscript-citation-picker";
 import { structureAt } from "./latex-structures";
 import type { StructureDraft } from "./manuscript-structure-dialog";
 import { ManuscriptAttributionDialog } from "./components/manuscript-attribution-dialog";
@@ -89,6 +92,9 @@ function ManuscriptWorkspace() {
   const mobilePane = useSyncExternalStore(subscribeMobilePane, getMobilePane);
   const [filesOpen, setFilesOpen] = useState(true), [asideOpen, setAsideOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [mentorSendOpen, setMentorSendOpen] = useState(false);
+  const [citationPickerOpen, setCitationPickerOpen] = useState(false);
+  const [refTab, setRefTab] = useState<"ALL" | "SELECTED" | "CITED">("ALL");
   const [structure, setStructure] = useState<StructureDraft>();
   const [visual, setVisual] = useState(false);
   const [tracking, setTracking] = useState<{ target: AiSelection; path: string; request?: import("@trend/shared-types").CreateManuscriptSuggestion }>();
@@ -172,14 +178,15 @@ function ManuscriptWorkspace() {
     if (!githubReturned || snapshotId) return;
     setGithubVisited(true); setAside("github"); setAsideOpen(true); setPane("preview"); setGithubReturned(false);
   }, [githubReturned, snapshotId, setGithubReturned]);
-  const addCitation = (paperId: string) => run(async () => {
+  const addCitation = (paperId: string, command = "\\cite") => run(async () => {
     const active = view.current, source = provider;
     if (alternateEditor.current || !active || !source || !canWrite || !selected?.path.endsWith(".tex")) throw new Error("CITATION_NOT_READY");
+    const safeCommand = ["\\cite", "\\citep", "\\citet", "\\autocite", "\\parencite", "\\textcite"].includes(command) ? command : "\\cite";
     const selection = active.state.selection.main;
     const target = captureAiSelection(selected.id, source.text, selection.from, selection.to);
     const ensureTarget = () => {
       const state = source.getSnapshot(), range = resolveAiSelection(target, source.fileId, source.text, true);
-      if (alternateEditor.current || !range || !state.canWrite || !state.ready || state.pending || active !== view.current || active.state.readOnly || active.state.doc.toString() !== source.text.toString()) throw new Error("CITATION_SOURCE_CHANGED");
+      if (alternateEditor.current || !range || !state.canWrite || !state.ready || !active || state.pending || active !== view.current || active.state.readOnly || active.state.doc.toString() !== source.text.toString()) throw new Error("CITATION_SOURCE_CHANGED");
       return range;
     };
     await flush();
@@ -188,7 +195,7 @@ function ManuscriptWorkspace() {
     void context.refetch();
     const range = ensureTarget();
     source.undoManager.stopCapturing();
-    active.dispatch({ changes: { from: range.from, to: range.to, insert: `\\cite{${citation}}` } });
+    active.dispatch({ changes: { from: range.from, to: range.to, insert: `${safeCommand}{${citation}}` } });
     source.undoManager.stopCapturing(); active.focus(); setPane("editor");
   });
   const createSnapshot = () => run(async () => { await flush(); const minimumSequences = Object.fromEntries([...providers.current.entries()].map(([file, p]) => [file, p.getSnapshot().sequence])); await manuscriptsApi.snapshot(projectId, id, { label: label.trim(), clientKey: snapshotKey, minimumSequences }); setLabel(""); setSnapshotKey(crypto.randomUUID()); await versions.refetch(); });
@@ -360,15 +367,50 @@ function ManuscriptWorkspace() {
     openSide("comments");
   };
   const cited = provider ? [...provider.text.toString().matchAll(/\\cite(?:[A-Za-z]*)\{([^}]+)\}/g)].flatMap(match => match[1]!.split(",")) : [];
-  const bibliography = files.find(f => f.path === "references.bib"), bibContent = bibliography ? providers.current.get(bibliography.id)?.text.toString() : undefined;
+  const bibliography = files.find(f => f.path === "references.bib") ?? files.find(f => f.kind === "TEXT" && f.path.endsWith(".bib"));
+  const bibContent = bibliography ? providers.current.get(bibliography.id)?.text.toString() : undefined;
   const missing = bibContent === undefined ? [] : cited.filter(c => !new RegExp(`@[A-Za-z]+\\s*\\{\\s*${c.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*,`).test(bibContent));
+  const texSources = files
+    .filter(f => f.kind === "TEXT" && f.path.endsWith(".tex"))
+    .map(f => providers.current.get(f.id)?.text.toString() ?? (f.id === selected?.id && provider ? provider.text.toString() : ""))
+    .filter(Boolean);
+  const effectiveTexSources = texSources.length ? texSources : provider ? [provider.text.toString()] : [];
+  const bibFilePaths = files.filter(f => f.kind === "TEXT" && f.path.endsWith(".bib")).map(f => f.path);
+  const bibSetup = detectBibliographySetup(effectiveTexSources, bibFilePaths);
+  const citedKeySet = extractCitedKeysFromTex(effectiveTexSources);
+  const bibKeySet = extractKeysFromBib(bibContent);
+  const compiledSuccess = !pendingAny && compilations.data?.latest?.status === "SUCCESS" && compilations.data.latest.sourceVersion === (snapshot.data?.sourceVersion ?? detail.data?.version);
+  const canCiteHere = Boolean(selectedAvailable && !tracking && !visual && canWrite && sync.canWrite && !busy && selected?.path.endsWith(".tex"));
   return <div className="writing-workspace" data-no-i18n>
+    {!snapshotId ? (
+      <ManuscriptCitationPicker
+        open={citationPickerOpen}
+        onOpenChange={setCitationPickerOpen}
+        projectId={projectId}
+        references={context.data?.references ?? []}
+        isLoading={context.isLoading}
+        citedKeys={citedKeySet}
+        bibKeys={bibKeySet}
+        compiledSuccess={compiledSuccess}
+        bibSetup={bibSetup}
+        canInsert={canCiteHere}
+        busy={busy}
+        onInsert={(paperId, cmd) => addCitation(paperId, cmd)}
+      />
+    ) : null}
+    <MentorManuscriptDialog open={mentorSendOpen} onOpenChange={setMentorSendOpen} projectId={projectId} manuscriptId={id} prepareSnapshot={async () => {
+      if (alternateEditor.current || trackedDirty || visualDirty) throw new Error(t("Finish or cancel the open editing proposal before preparing a review version."));
+      await flush();
+      const minimumSequences = Object.fromEntries([...providers.current].map(([file, source]) => [file, source.getSnapshot().sequence]));
+      return manuscriptsApi.snapshot(projectId, id, { label: t("Mentor feedback snapshot"), clientKey: crypto.randomUUID(), minimumSequences, reuseUnchanged: true });
+    }} onSent={result => { setMentorSendOpen(false); navigate(projectSubmissionPath(projectId, result.submissionId)); }} />
     {structure ? <Suspense fallback={<p role="status">{t("Loading…")}</p>}><StructureDialog draft={structure} onClose={() => setStructure(undefined)} onApply={(target, text) => applyWritingSuggestion(target, text, "replace", undefined, [], true)} /></Suspense> : null}
     <nav className="writing-breadcrumbs" aria-label={t("Manuscript navigation")}><Link to={`/projects/${projectId}`}>{t("Project")}</Link><ChevronRight aria-hidden="true" /><Link to={`/projects/${projectId}?tab=manuscripts`}>{t("Manuscripts")}</Link><ChevronRight aria-hidden="true" /><span>{title}</span></nav>
     <header className="writing-toolbar"><div className="writing-title"><Link aria-label={t("Back to project")} to={`/projects/${projectId}?tab=manuscripts`}><ArrowLeft className="h-4 w-4" /></Link><div><h1 title={title}>{title}</h1><span className="writing-draft-label">{snapshotId ? `${t("Immutable version")} · ${snapshot.data?.label}` : t("Working draft")}</span></div></div>
       <div className="writing-online" aria-label={t("Online collaborators")}>{online.map(person => <span key={person.user.id} title={person.user.name} style={{ borderColor: person.user.color }} aria-label={person.user.name}>{person.user.name.split(" ").map(part => part[0]).join("").slice(0, 2)}</span>)}</div>
       <span role="status" className={`writing-sync ${displayedSync === "SAVED" ? "is-saved" : ""}`}>{snapshotId ? t("Read-only") : pendingAny || selected?.kind === "TEXT" ? t(syncLabels[displayedSync]) : t("Persisted file")}</span>
       <div className="writing-toolbar-actions">
+        {!snapshotId && canWrite ? <Button size="sm" variant="outline" onClick={() => setMentorSendOpen(true)}>{t("Send for mentor feedback")}</Button> : null}
         {!snapshotId ? <Button size="sm" variant="ghost" aria-label="GitHub" aria-pressed={asideOpen && aside === "github"} onClick={() => openSide("github")}><Github className="h-4 w-4" aria-hidden="true" /><span>GitHub</span></Button> : null}
         {!snapshotId && canWrite ? <ManuscriptIntegrations project={projectId} manuscript={id} prepare={prepareIntegration} onChanged={() => { void detail.refetch(); void context.refetch(); }} /> : null}
         {!snapshotId ? <Button size="sm" variant="ghost" aria-label={t("AI Assistant")} title={t("AI Assistant")} aria-pressed={asideOpen && aside === "ai"} disabled={!canWrite} onClick={() => openSide("ai")}><Sparkles className="h-4 w-4" aria-hidden="true" /><span>{t("AI Assistant")}</span></Button> : null}
@@ -421,7 +463,7 @@ function ManuscriptWorkspace() {
           selectFile(tabs[next]!.id);
           event.currentTarget.closest('[role="tablist"]')?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
         }}><FileText aria-hidden="true" /><span>{file.path.split("/").pop()}</span></button>{file.id !== mainFileId ? <button aria-label={t("Close file {{name}}", { name: file.path })} onClick={() => void closeFile(file.id)}><X /></button> : null}</div>)}</header>
-        <div hidden={Boolean(tracking) || (visual && !snapshotId && selected?.path.endsWith(".tex"))}><ManuscriptSourceToolbar onStructure={openStructure} filename={selected?.path ?? ""} getView={() => view.current} canEdit={Boolean(selectedAvailable && provider && sync.canWrite)} canStructure={Boolean(selectedAvailable && provider && sync.canWrite && sync.ready && !sync.pending)} canSearch={selected?.kind === "TEXT" && (Boolean(snapshotId) || sync.ready)} canComment={Boolean(selectedAvailable && provider && sync.canWrite && cursor.length)} onComment={commentSelection} /></div>
+        <div hidden={Boolean(tracking) || (visual && !snapshotId && selected?.path.endsWith(".tex"))}><ManuscriptSourceToolbar onStructure={openStructure} filename={selected?.path ?? ""} getView={() => view.current} canEdit={Boolean(selectedAvailable && provider && sync.canWrite)} canStructure={Boolean(selectedAvailable && provider && sync.canWrite && sync.ready && !sync.pending)} canCite={canCiteHere} onOpenCitationPicker={!snapshotId ? () => setCitationPickerOpen(true) : undefined} canSearch={selected?.kind === "TEXT" && (Boolean(snapshotId) || sync.ready)} canComment={Boolean(selectedAvailable && provider && sync.canWrite && cursor.length)} onComment={commentSelection} /></div>
         <div id="writing-source-document" className="writing-source-document">
         {!snapshotId && provider && selected?.kind === "TEXT" && selected.path.endsWith(".tex") ? <div className="writing-editor-modes"><button aria-pressed={!visual && !tracking} onClick={() => void editorMode(false)}>{t("Source")}</button><button aria-pressed={visual && !tracking} onClick={() => void editorMode(true)}>{t("Visual writing")}</button>{canWrite ? <button aria-pressed={Boolean(tracking)} disabled={!selectedAvailable || !sync.canWrite || !sync.ready || Boolean(tracking)} onClick={startTracking}>{t("Track changes")}</button> : null}</div> : null}
         <div className="writing-source-code-host" hidden={Boolean(tracking) || (visual && !snapshotId && selected?.path.endsWith(".tex"))}>
@@ -456,10 +498,71 @@ function ManuscriptWorkspace() {
           const sealed = await manuscriptsApi.snapshot(projectId, id, { label: t("Writing contributions"), clientKey: crypto.randomUUID(), minimumSequences, reuseUnchanged: true, writingEvidence: true });
           await versions.refetch(); return sealed.id;
         }} /> : null}
-        {aside === "references" ? <div className="writing-context"><Input aria-label={t("Search project references")} placeholder={t("Search project references")} value={filter} onChange={e => setFilter(e.target.value)} /><h2>{t("Project literature")}</h2>{context.isLoading ? <p>{t("Loading references…")}</p> : context.error ? <p className="writing-error">{t("Could not load research context.")}</p> : context.data?.references.filter(p => `${p.title} ${p.authors.join(" ")}`.toLowerCase().includes(filter.toLowerCase())).map(p => <article key={p.id}><h3>{p.title}</h3><p>{p.authors.join(", ")}{p.year ? ` (${p.year})` : ""}</p>{p.doi ? <small>DOI: {p.doi}</small> : null}<code>{p.citationKey}</code><Button size="sm" variant="outline" disabled={!selectedAvailable || Boolean(tracking) || visual || !canWrite || !sync.canWrite || busy || !selected?.path.endsWith(".tex")} onClick={() => void addCitation(p.id)}>{t("Insert citation")}</Button></article>)}{missing.length ? <p role="alert" className="writing-error">{t("Missing citation keys")}: {missing.join(", ")}</p> : null}
+        {aside === "references" ? <div className="writing-context">
+          <div className="writing-ref-header-row">
+            <h2>{t("Project literature")}</h2>
+            {!snapshotId && (
+              <Button size="sm" variant="outline" disabled={!canCiteHere} onClick={() => setCitationPickerOpen(true)}>
+                Trích dẫn tài liệu
+              </Button>
+            )}
+          </div>
+          <Input aria-label={t("Search project references")} placeholder={t("Search project references")} value={filter} onChange={e => setFilter(e.target.value)} />
+          <div className="writing-ref-filter-pills" role="group" aria-label="Bộ lọc tài liệu tham khảo">
+            <button type="button" className={refTab === "ALL" ? "is-active" : ""} onClick={() => setRefTab("ALL")}>Tất cả tài liệu</button>
+            <button type="button" className={refTab === "SELECTED" ? "is-active" : ""} onClick={() => setRefTab("SELECTED")}>Bài đã chọn</button>
+            <button type="button" className={refTab === "CITED" ? "is-active" : ""} onClick={() => setRefTab("CITED")}>Tài liệu tham khảo trong bản thảo này</button>
+          </div>
+          <div className="writing-ref-summary-box" aria-label="Tài liệu tham khảo trong bản thảo này">
+            <strong>Tài liệu tham khảo trong bản thảo này</strong>
+            <div className="writing-ref-summary-stats">
+              <span>Có trong .bib: <strong>{context.data?.references.filter(r => r.inBib || bibKeySet.has(r.citationKey)).length ?? 0}</strong></span>
+              <span>Đã trích dẫn trong .tex: <strong>{citedKeySet.size}</strong></span>
+              <span>Biên dịch: <strong>{compiledSuccess ? "Đã biên dịch thành công" : "Chưa biên dịch bản hiện tại"}</strong></span>
+            </div>
+          </div>
+          {context.isLoading ? <p>{t("Loading references…")}</p> : context.error ? <p className="writing-error">{t("Could not load research context.")}</p> : context.data?.references
+            .filter(p => {
+              const inBib = Boolean(p.inBib || bibKeySet.has(p.citationKey));
+              const inTex = citedKeySet.has(p.citationKey);
+              if (refTab === "SELECTED" && p.screeningStatus !== "INCLUDED") return false;
+              if (refTab === "CITED" && !inBib && !inTex) return false;
+              return `${p.title} ${p.authors.join(" ")} ${p.doi ?? ""} ${p.citationKey}`.toLowerCase().includes(filter.toLowerCase());
+            })
+            .map(p => {
+              const inBib = Boolean(p.inBib || bibKeySet.has(p.citationKey));
+              const inTex = citedKeySet.has(p.citationKey);
+              const isResolved = compiledSuccess && inBib && inTex && !missing.includes(p.citationKey);
+              return (
+                <article key={p.id} className="writing-ref-item">
+                  <h3>{p.title}</h3>
+                  <p>{p.authors.join(", ")}{p.year ? ` (${p.year})` : ""}{p.journalName ? ` · ${p.journalName}` : ""}</p>
+                  {p.doi ? <small>DOI: {p.doi}</small> : null}
+                  <div className="writing-ref-status-row">
+                    <code>{p.citationKey}</code>
+                    {p.screeningStatus === "INCLUDED" && <span className="writing-ref-chip is-selected">Đã chọn</span>}
+                    {p.evidenceStatus === "COMPLETED" && <span className="writing-ref-chip is-evidence">Đã đối chiếu bằng chứng</span>}
+                    {inBib && <span className="writing-ref-chip is-bib">Có trong .bib</span>}
+                    {inTex && <span className="writing-ref-chip is-tex">Đã trích dẫn trong .tex</span>}
+                    {isResolved && <span className="writing-ref-chip is-compiled">Đã biên dịch thành công</span>}
+                  </div>
+                  {Boolean(p.metadataWarnings?.length) && (
+                    <p className="writing-small writing-ref-warning" role="status">
+                      Cảnh báo metadata: {p.metadataWarnings!.join(", ")}
+                    </p>
+                  )}
+                  <div className="writing-ref-actions">
+                    <Button size="sm" variant="outline" disabled={!selectedAvailable || Boolean(tracking) || visual || !canWrite || !sync.canWrite || busy || !selected?.path.endsWith(".tex")} onClick={() => void addCitation(p.id)}>{t("Insert citation")}</Button>
+                    <Link className="writing-ref-link" to={`/projects/${encodeURIComponent(projectId)}?tab=papers&view=library&source=${encodeURIComponent(p.id)}`}>Mở bài báo</Link>
+                    <Link className="writing-ref-link" to={`/projects/${encodeURIComponent(projectId)}?tab=papers&view=evidence&extract=${encodeURIComponent(p.id)}`}>Xem bằng chứng</Link>
+                  </div>
+                </article>
+              );
+            })}
+          {missing.length ? <p role="alert" className="writing-error">{t("Missing citation keys")}: {missing.join(", ")}</p> : null}
           <h2>{t("Research questions")}</h2><p>{context.data?.plan?.objective || t("No research plan recorded.")}</p>{Array.isArray(context.data?.plan?.questions) ? context.data.plan.questions.map((q: unknown, index: number) => <p key={index}>{typeof q === "string" ? q : q && typeof q === "object" ? String((q as { question?: string; text?: string }).question ?? (q as { text?: string }).text ?? "") : ""}</p>) : null}
           <h2>{t("Research gaps")}</h2><p className="writing-small">{t("Gap candidates and evidence are research context, not established scientific conclusions.")}</p>{context.data?.gaps.map(g => <details key={g.id}><summary>{g.title}</summary><p>{g.description}</p><span>{t(g.status)}</span>{g.limitations ? <p>{g.limitations}</p> : null}<Link to={`/projects/${projectId}?tab=gaps`} target="_blank" rel="noreferrer">{t("Open related research gap")}</Link></details>)}
-          <h2>{t("Supporting evidence and limitations")}</h2>{context.data?.evidence.map(e => <details key={e.id}><summary>{e.claim}</summary><p>{e.interpretation}</p><p>{t(e.evidenceRole)}</p><p>{e.limitations}</p><span>{t(e.status)}</span></details>)}
+          <h2>{t("Supporting evidence and limitations")}</h2>{context.data?.evidence.map(e => <details key={e.id}><summary>{e.claim}</summary>{e.sourceTitle ? <p className="writing-small"><strong>Nguồn:</strong> {e.sourceTitle}{e.locator ? ` (${e.locator})` : ""}</p> : null}<p>{e.interpretation}</p><p>{t(e.evidenceRole)}</p><p>{e.limitations}</p><span>{t(e.status)}</span><div className="writing-ref-actions"><Link className="writing-ref-link" to={`/projects/${encodeURIComponent(projectId)}?tab=papers&view=evidence&evidence=${encodeURIComponent(e.id)}`}>Xem bản ghi bằng chứng</Link>{e.paperId ? <Link className="writing-ref-link" to={`/projects/${encodeURIComponent(projectId)}?tab=papers&view=library&source=${encodeURIComponent(e.paperId)}`}>Mở bài báo gốc</Link> : null}</div></details>)}
         </div> : null}
         <div className="writing-context" hidden={aside !== "comments"}><h2>{t("Manuscript comments")}</h2><p className="writing-small">{snapshotId ? t("Feedback stays attached to this immutable version.") : t("Selections use collaborative anchors. Removed text is shown as a historical quote.")}</p>{comments.error ? <p className="writing-error">{t("Could not load comments.")}</p> : null}<label>{t("Filter comments")}<select value={commentFilter} onChange={e => setCommentFilter(e.target.value)}><option value="ALL">{t("All comments")}</option><option value="OPEN">{t("Open")}</option><option value="RESOLVED">{t("Resolved")}</option></select></label>{commentItems.map(thread => <ManuscriptCommentThread hidden={aside !== "comments" || (mobilePane ? pane !== "preview" : !asideOpen) || (commentFilter !== "ALL" && thread.status !== commentFilter)} projectId={projectId} userId={userId} key={thread.id} thread={thread} provider={provider} canResolve={snapshotId ? Boolean(snapshot.data?.canResolve) : canWrite} canReply={canComment} onNavigate={target => { void (async () => { if (tracking && target === selected?.id && !await stopTracking()) return false; return selectFile(target); })().then(allowed => { if (allowed) { setVisual(false); setCommentTarget(thread); setPane("editor"); } }); }} onReply={(body, clientKey) => run(async () => { await manuscriptsApi.reply(projectId, thread.id, body, clientKey); await comments.refetch(); })} onResolve={(conclusion, status, expectedVersion) => run(async () => { await manuscriptsApi.resolve(projectId, thread.id, status, expectedVersion, conclusion); await comments.refetch(); })} />)}
           {comments.hasNextPage ? <Button size="sm" variant="outline" disabled={comments.isFetchingNextPage} onClick={() => void comments.fetchNextPage()}>{t("Load older comments")}</Button> : null}
@@ -467,7 +570,7 @@ function ManuscriptWorkspace() {
         </div>
         {!snapshotId && suggestionsVisited ? <div hidden={aside !== "suggestions"} className="writing-ai-scroll"><ManuscriptSuggestions project={projectId} manuscript={id} user={userId} canWrite={canWrite} canCapture={selectedAvailable && !tracking && !visual && sync.canWrite && sync.ready && !sync.pending} refresh={() => { void detail.refetch(); }} capture={() => { const { input } = captureWritingTarget(); if (input.sourceSequence === undefined) throw new Error("Wait for synchronization"); return { fileId: input.fileId, from: input.from, to: input.to, sourceSequence: input.sourceSequence, original: input.original }; }} /></div> : null}
         {aside === "versions" ? <div className="writing-context"><h2>{t("Immutable source versions")}</h2><p className="writing-small">{t("Snapshots include server-persisted files. Unsynchronized edits must finish saving first.")}</p>{canWrite ? <form onSubmit={event => { event.preventDefault(); void createSnapshot(); }}><label>{t("Snapshot name")}<Input value={label} maxLength={160} onChange={e => setLabel(e.target.value)} required /></label><Button size="sm" disabled={busy || !label.trim() || pendingAny}>{t("Create snapshot")}</Button></form> : null}
-          {versions.error ? <p className="writing-error">{t("Could not load version history.")}</p> : versions.data?.map(version => <article className="writing-history-entry" key={version.id}><h3>{version.label}</h3><p>{t("Source revision")} {version.sourceVersion} · {version.createdBy.name}</p><small>{new Date(version.createdAt).toLocaleString()}</small><p className="writing-small">{version.collaboration ? t("Source, comments and tracked changes retained") + " · " + version.collaboration.comments + " / " + version.collaboration.suggestions : t("Source-only snapshot")}</p><div className="writing-actions">{version.submissionId ? <Link to={`/submissions/${version.submissionId}`}>{t("Open submitted version")}</Link> : null}<Link to={`?snapshot=${version.id}`}>{t("View version")}<ChevronRight className="h-3 w-3" /></Link>{canWrite ? <button disabled={busy} onClick={() => void run(async () => { await flush(); const restored = await manuscriptsApi.restore(projectId, id, version.id, `${title.slice(0, 125)} (${version.label.slice(0, 20)})`, crypto.randomUUID()); navigate(`/projects/${projectId}/manuscripts/${restored.id}`); })}>{t("Restore as new draft")}</button> : null}</div>
+          {versions.error ? <p className="writing-error">{t("Could not load version history.")}</p> : versions.data?.map(version => <article className="writing-history-entry" key={version.id}><h3>{version.label}</h3><p>{t("Source revision")} {version.sourceVersion} · {version.createdBy.name}</p><small>{new Date(version.createdAt).toLocaleString()}</small><p className="writing-small">{version.collaboration ? t("Source, comments and tracked changes retained") + " · " + version.collaboration.comments + " / " + version.collaboration.suggestions : t("Source-only snapshot")}</p><div className="writing-actions">{version.submissionId ? <Link to={`/submissions/${version.submissionId}`}>{t("Open submitted version")}</Link> : null}<Link to={`/projects/${projectId}?tab=chat&channel=team-chat&shareKind=MANUSCRIPT_SNAPSHOT&shareId=${version.id}`}>{t("Share with team")}</Link><Link to={`?snapshot=${version.id}`}>{t("View version")}<ChevronRight className="h-3 w-3" /></Link>{canWrite ? <button disabled={busy} onClick={() => void run(async () => { await flush(); const restored = await manuscriptsApi.restore(projectId, id, version.id, `${title.slice(0, 125)} (${version.label.slice(0, 20)})`, crypto.randomUUID()); navigate(`/projects/${projectId}/manuscripts/${restored.id}`); })}>{t("Restore as new draft")}</button> : null}</div>
             <ManuscriptProjectDiff key={`${version.id}:project`} project={projectId} manuscript={id} baseline={version} versions={versions.data ?? []} current={canWrite ? async () => { await flush(); const minimumSequences = Object.fromEntries([...providers.current].map(([file, source]) => [file, source.getSnapshot().sequence])); return manuscriptsApi.snapshot(projectId, id, { label: "History comparison", clientKey: crypto.randomUUID(), minimumSequences, reuseUnchanged: true }); } : undefined} />{selected?.kind === "TEXT" && provider && sync.ready ? <ManuscriptVersionDiff key={`${version.id}:${selected.id}`} project={projectId} manuscript={id} snapshot={version.id} file={selected} readCurrent={async () => { await flush(); return provider.text.toString(); }} /> : null}{canWrite && <p><Link to={`/projects/${encodeURIComponent(projectId)}?tab=support`}>{t("To receive feedback from an advisor, select approved manuscript sections in Find Advisor.")}</Link></p>}
             {canWrite ? <div className="pt-2"><ManuscriptAttributionDialog projectId={projectId} manuscriptId={id} snapshotId={version.id} snapshotLabel={version.label} sourceVersion={version.sourceVersion} canWrite={canWrite} onPublished={sealed => navigate(`/submissions/${sealed.submissionId}`)} /></div> : null}
           </article>)}

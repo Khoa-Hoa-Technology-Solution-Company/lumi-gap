@@ -36,6 +36,24 @@ describe("resolvePostAuthPath", () => {
     expect(resolvePostAuthPath(member)).toBe("/home");
   });
 
+  it("lands lecturers in the mentor workspace while preserving verification and onboarding", () => {
+    const lecturer = { ...member, academicRole: "LECTURER" as const };
+    expect(resolvePostAuthPath(lecturer)).toBe("/mentor-workspace");
+    expect(resolvePostAuthPath({ ...lecturer, emailVerifiedAt: undefined })).toBe("/verify-email");
+    expect(resolvePostAuthPath({ ...lecturer, onboarding: { completed: false } })).toBe("/onboarding/academic-profile");
+    expect(resolvePostAuthPath({ ...lecturer, systemRole: "ADMIN" })).toBe("/admin");
+  });
+
+  it("preserves explicit lecturer destinations and rejects unsafe return paths", () => {
+    const lecturer = { ...member, academicRole: "LECTURER" as const };
+    expect(resolvePostAuthPath(lecturer, "/invitations/example")).toBe("/invitations/example");
+    expect(resolvePostAuthPath(lecturer, "/projects/abc?tab=tasks")).toBe("/projects/abc?tab=tasks");
+    expect(resolvePostAuthPath(lecturer, "/home")).toBe("/home");
+    for (const path of ["https://example.test/phishing", "//example.test", "/\\example.test", "/login", "/admin"]) {
+      expect(resolvePostAuthPath(lecturer, path)).toBe("/mentor-workspace");
+    }
+  });
+
   it("sends an admin to the admin workspace", () => {
     expect(resolvePostAuthPath({ ...member, role: "admin", systemRole: "ADMIN" })).toBe("/admin");
   });

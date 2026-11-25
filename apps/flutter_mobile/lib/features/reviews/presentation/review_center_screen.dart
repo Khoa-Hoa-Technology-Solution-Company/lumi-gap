@@ -17,7 +17,7 @@ import 'package:go_router/go_router.dart';
 String reviewTabLabel(ReviewTab tab) => switch (tab) {
   ReviewTab.incoming => tk('Incoming'),
   ReviewTab.sent => tk('Sent'),
-  ReviewTab.progress => tk('In Progress'),
+  ReviewTab.progress => tk('In progress'),
   ReviewTab.completed => tk('Completed'),
 };
 
@@ -82,15 +82,6 @@ class _ReviewCenterScreenState extends ConsumerState<ReviewCenterScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           children: [
-            Text(
-              context.t(
-                'Manage invitations, active assessments, feedback you requested, and review history.',
-              ),
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: context.lumi.foregroundSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
             _TabChips(
               selected: _tab,
               counts: {
@@ -163,6 +154,8 @@ class _TabChips extends StatelessWidget {
                 '${context.t(reviewTabLabel(tab))} ${counts[tab] ?? 0}',
               ),
               selected: tab == selected,
+              // Tabs, not a multi-select filter: no check mark.
+              showCheckmark: false,
               onSelected: (_) => onChanged(tab),
             ),
             const SizedBox(width: 8),
@@ -180,7 +173,7 @@ class _Empty extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = switch (tab) {
-      ReviewTab.incoming => context.t('No Incoming Reviews'),
+      ReviewTab.incoming => context.t('No incoming reviews'),
       ReviewTab.sent => context.t('No active requests sent'),
       ReviewTab.progress => context.t('No reviews in progress'),
       ReviewTab.completed => context.t('No completed review history'),
@@ -314,8 +307,8 @@ class ReviewRequestCard extends ConsumerWidget {
                             icon: const Icon(Icons.open_in_new, size: 18),
                             label: Text(
                               r.latestRoundStatus == 'DRAFT'
-                                  ? context.t('Continue Review')
-                                  : context.t('Start Review'),
+                                  ? context.t('Continue review')
+                                  : context.t('Start review'),
                             ),
                           ),
                   ),

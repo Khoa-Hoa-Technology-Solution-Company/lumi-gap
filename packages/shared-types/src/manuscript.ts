@@ -19,10 +19,8 @@ export interface ManuscriptPdfImport {
   };
 }
 
-export const MANUSCRIPT_TYPES = ["RESEARCH_PAPER", "RESEARCH_PROPOSAL", "THESIS", "TECHNICAL_REPORT"] as const;
-export type ManuscriptType = typeof MANUSCRIPT_TYPES[number];
-export const MANUSCRIPT_TEMPLATES = ["ARTICLE", "PROPOSAL", "REPORT", "IEEE_CONFERENCE", "PRESENTATION", "THESIS", "ELSEVIER", "SPRINGER", "APS", "BLANK"] as const;
-export type ManuscriptTemplate = typeof MANUSCRIPT_TEMPLATES[number];
+import type { ManuscriptType, ManuscriptTemplate, ManuscriptTemplateMetadata } from "./manuscript-templates.js";
+export * from "./manuscript-templates.js";
 export interface ManuscriptSourceVersionLink { projectId: string; manuscriptId: string; snapshotId: string; }
 export type ManuscriptFileKind = "TEXT" | "ASSET" | "FOLDER";
 export interface ManuscriptFile {
@@ -33,13 +31,44 @@ export interface ManuscriptFeedbackSummary {
   snapshotId: string; snapshotLabel: string; requestedAt: string;
   status: "PENDING" | "RESPONDED" | "RESOLVED" | "ENDED";
 }
+export type ManuscriptOwnershipScope = "PERSONAL_DRAFT" | "COLLABORATIVE";
+export type ManuscriptDeleteBlockReason =
+  | "PROJECT_ARCHIVED"
+  | "COLLABORATIVE_MANUSCRIPT"
+  | "HAS_SUBMISSIONS_OR_REVIEWS"
+  | "NOT_CREATOR_OR_OWNER"
+  | "ALREADY_DELETED";
+export interface ManuscriptRemoteBindingSummary { provider: "GITHUB"; repository: string; branch: string; }
+export interface ManuscriptGovernanceSummary {
+  ownershipScope: ManuscriptOwnershipScope;
+  createdBy: { id: string; name: string };
+  contributors: Array<{ id: string; name: string }>;
+  contributorCount: number;
+  snapshotCount: number;
+  submissionCount: number;
+  reviewThreadCount: number;
+  commentCount: number;
+  hasReviewsOrSubmissions: boolean;
+  remoteBinding: ManuscriptRemoteBindingSummary | null;
+  canArchive: boolean;
+  canUnarchive: boolean;
+  canRestore: boolean;
+  deleteBlockedReason: ManuscriptDeleteBlockReason | null;
+  requiresCoAuthorApprovalForDelete: boolean;
+  approvalStatus: "NOT_APPLICABLE" | "REQUIRES_COAUTHOR_APPROVAL" | "PROTECTED_RECORD";
+}
 export interface ManuscriptSummary {
   id: string; projectId: string; title: string; description: string; documentType: ManuscriptType;
+  documentTypeLabel?: string | null;
+  templateMetadata?: ManuscriptTemplateMetadata | null;
   template: ManuscriptTemplate; version: number; mainFileId: string | null; archived: boolean;
+  archivedAt?: string | null;
+  deletedAt?: string | null;
   createdAt: string; updatedAt: string; canWrite: boolean;
   canDelete?: boolean;
   collaborators?: Array<{ id: string; name: string }>;
   latestFeedback?: ManuscriptFeedbackSummary | null;
+  governance?: ManuscriptGovernanceSummary;
 }
 export interface ManuscriptDetail extends ManuscriptSummary {
   canManageGithub?: boolean;
@@ -63,13 +92,14 @@ export interface ManuscriptCompilationState {
 }
 export interface CreateManuscript {
   title: string; documentType: ManuscriptType; template: ManuscriptTemplate; description: string;
+  documentTypeLabel?: string;
   clientKey: string; researchLink?: { kind: "QUESTION" | "GAP"; id: string } | null;
 }
 export interface SnapshotFile {
   id: string; path: string; kind: ManuscriptFileKind; sequence: number; checksum: string | null;
   text?: string; sizeBytes: number; mimeType: string | null;
 }
-export interface ManuscriptManifest { title: string; documentType: ManuscriptType; mainFileId: string; files: SnapshotFile[]; }
+export interface ManuscriptManifest { title: string; documentType: ManuscriptType; documentTypeLabel?: string | null; templateMetadata?: ManuscriptTemplateMetadata | null; mainFileId: string; files: SnapshotFile[]; }
 export interface CreateManuscriptSnapshot {
   label: string; clientKey: string; minimumSequences: Record<string, number>;
   /** Reuse an identical saved source version when compiling repeatedly. */
@@ -88,12 +118,19 @@ export interface ManuscriptSnapshot {
 }
 export interface ManuscriptReference {
   id: string; title: string; authors: string[]; year: number | null; doi: string | null; citationKey: string; bibtex: string;
+  journalName?: string | null;
+  screeningStatus?: string;
+  evidenceStatus?: "NOT_STARTED" | "AI_SUGGESTED" | "IN_PROGRESS" | "COMPLETED";
+  extractionCount?: number;
+  verifiedCount?: number;
+  inBib?: boolean;
+  metadataWarnings?: string[];
 }
 export interface ManuscriptContext {
   references: ManuscriptReference[];
   plan: { title: string; objective: string; questions: unknown } | null;
   gaps: Array<{ id: string; title: string; description: string; status: string; limitations: string | null }>;
-  evidence: Array<{ id: string; claim: string; interpretation: string; status: string; evidenceRole: string; limitations: string; gapId?: string }>;
+  evidence: Array<{ id: string; claim: string; interpretation: string; status: string; evidenceRole: string; limitations: string; gapId?: string; paperId?: string; sourceTitle?: string; locator?: string }>;
 }
 export interface ManuscriptComment {
   id: string; title: string; body: string; status: "OPEN" | "RESOLVED"; version: number;

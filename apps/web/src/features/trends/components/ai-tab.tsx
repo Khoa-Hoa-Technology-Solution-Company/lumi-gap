@@ -25,12 +25,8 @@ interface AITabProps {
   explainHistoryQuery: Pick<UseQueryResult<TrendExplanationHistoryResponse, Error>, "data" | "isLoading" | "isError">;
   yearFrom: number;
   yearTo: number;
-  domains: string[];
-  fields: string[];
   subfields: string[];
   topicsFilter: string[];
-  domainIds: string[];
-  fieldIds: string[];
   subfieldIds: string[];
   topicIds: string[];
   paperKinds: string[];
@@ -58,12 +54,8 @@ export function AITab({
   explainHistoryQuery,
   yearFrom,
   yearTo,
-  domains,
-  fields,
   subfields,
   topicsFilter,
-  domainIds,
-  fieldIds,
   subfieldIds,
   topicIds,
   paperKinds,
@@ -88,12 +80,8 @@ export function AITab({
     minPapers: 1,
     yearFrom,
     yearTo,
-    domains,
-    fields,
     subfields,
     topics: topicsFilter,
-    domainIds,
-    fieldIds,
     subfieldIds,
     topicIds,
     paperKinds,
@@ -106,12 +94,8 @@ export function AITab({
     debouncedTopicSearch,
     yearFrom,
     yearTo,
-    domains,
-    fields,
     subfields,
     topicsFilter,
-    domainIds,
-    fieldIds,
     subfieldIds,
     topicIds,
     paperKinds,
@@ -149,7 +133,7 @@ export function AITab({
     ].join("\n");
     await navigator.clipboard?.writeText(markdown);
   };
-  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, { yearFrom, yearTo, domainIds, domains, fieldIds, fields, subfieldIds, subfields, topicIds, topicsFilter, paperKinds, openAccessStatuses, providers, sources, languages, citationBands });
+  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, { yearFrom, yearTo, subfieldIds, subfields, topicIds, topicsFilter, paperKinds, openAccessStatuses, providers, sources, languages, citationBands });
 
   return (
     <div className="space-y-6">
@@ -313,18 +297,6 @@ export function AITab({
                 <strong className="text-slate-800 dark:text-slate-200 font-bold truncate max-w-[180px] capitalize">
                   {(() => {
                     const parts: string[] = [];
-                    if (domainIds.length > 0) {
-                      const name = data.facets?.domains?.find(d => d.openalexId === domainIds[0] || d.id === domainIds[0])?.name || domainIds[0];
-                      if (name) parts.push(name);
-                    } else if (domains.length > 0 && domains[0]) {
-                      parts.push(domains[0]);
-                    }
-                    if (fieldIds.length > 0) {
-                      const name = data.facets?.fields?.find(f => f.openalexId === fieldIds[0] || f.id === fieldIds[0])?.name || fieldIds[0];
-                      if (name) parts.push(name);
-                    } else if (fields.length > 0 && fields[0]) {
-                      parts.push(fields[0]);
-                    }
                     if (subfieldIds.length > 0) {
                       const name = data.facets?.subfields?.find(s => s.openalexId === subfieldIds[0] || s.id === subfieldIds[0])?.name || subfieldIds[0];
                       if (name) parts.push(name);
@@ -337,7 +309,7 @@ export function AITab({
                     } else if (topicsFilter.length > 0 && topicsFilter[0]) {
                       parts.push(topicsFilter[0]);
                     }
-                    return parts.length > 0 ? parts.join(" > ") : "All Domains";
+                    return parts.length > 0 ? parts.join(" > ") : t("Information Technology scope");
                   })()}
                 </strong>
               </div>
@@ -351,12 +323,8 @@ export function AITab({
                   topicId: activeFocusTopicId,
                   yearFrom,
                   yearTo,
-                  domains,
-                  fields,
                   subfields,
                   topics: topicsFilter,
-                  domainIds,
-                  fieldIds,
                   subfieldIds,
                   topicIds,
                   paperKinds,

@@ -73,7 +73,7 @@ class MyPapersScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(context.t('My Papers'))),
+      appBar: AppBar(title: Text(context.t('My papers'))),
       // The empty list carries the same action in its message.
       floatingActionButton: query.value?.isNotEmpty ?? false
           ? FloatingActionButton.extended(

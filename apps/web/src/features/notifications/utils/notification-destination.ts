@@ -5,6 +5,7 @@ export function getNotificationDestination(
   notification: Pick<NotificationItem, "type" | "targetKind" | "targetId"> & Partial<Pick<NotificationItem, "paperId" | "title" | "screeningRoundId" | "mentorshipRequestId" | "verificationRequestId" | "allocationRevisionId" | "workContributionId" | "contributionEvaluationId" | "manuscriptId" | "manuscriptSnapshotId" | "integrityRecordId" | "trendTopic" | "trendTopicId">>,
   isAdmin: boolean,
 ): string | null {
+  if (notification.type.startsWith("MENTOR_ROLE_") && notification.targetKind === "project" && notification.targetId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=support`;
   if (notification.type.startsWith("MANUSCRIPT_ATTRIBUTION_") && notification.targetId && notification.manuscriptId && notification.manuscriptSnapshotId) return `/projects/${encodeURIComponent(notification.targetId)}/manuscripts/${encodeURIComponent(notification.manuscriptId)}/attribution/${encodeURIComponent(notification.manuscriptSnapshotId)}`;
   if (notification.type === "MANUSCRIPT_INTEGRITY_DECLARATION" && notification.targetId && notification.manuscriptId && notification.manuscriptSnapshotId && notification.integrityRecordId) return `/projects/${encodeURIComponent(notification.targetId)}/manuscripts/${encodeURIComponent(notification.manuscriptId)}/integrity?snapshot=${encodeURIComponent(notification.manuscriptSnapshotId)}&declaration=${encodeURIComponent(notification.integrityRecordId)}`;
   if (notification.type === "SCREENING_DISCUSSION_MESSAGE" && notification.targetKind === "project" && notification.targetId && notification.paperId && notification.screeningRoundId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=papers&view=my-work&paper=${encodeURIComponent(notification.paperId)}&round=${encodeURIComponent(notification.screeningRoundId)}&section=discussion`;
@@ -28,6 +29,7 @@ export function getNotificationDestination(
   if (notification.type.startsWith("LECTURER_VERIFICATION_")) return `/settings/verification/lecturer${verificationQuery}`;
   if (notification.type === "MENTORSHIP_APPLICATION_UPDATE") return "/academic-support?view=outgoing";
   if (notification.type === "MENTORSHIP_APPLICANT_UPDATE" && notification.targetId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=support`;
+  if (notification.type === "MENTOR_RESOURCE_SHARED") return "/mentor-workspace?view=resources";
   if (notification.type.startsWith("MENTORSHIP_") || notification.type.startsWith("PROJECT_MENTORSHIP_")) {
     if (["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED"].includes(notification.type)) {
       const query = new URLSearchParams({ view: "incoming" });
@@ -36,13 +38,14 @@ export function getNotificationDestination(
     }
     if (notification.type.endsWith("_ACCEPTED")) return "/academic-support?view=active";
     if (["_DECLINED", "_CANCELLED", "_EXPIRED", "_ENDED", "_POSITION_FILLED"].some(suffix => notification.type.endsWith(suffix))) return "/academic-support?view=history";
-    if (notification.type === "MENTORSHIP_SUGGESTED" && notification.targetId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=support`;
+    if ((notification.type === "MENTORSHIP_SUGGESTED" || notification.type.startsWith("MENTORSHIP_SUGGESTION_")) && notification.targetId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=support`;
     return notification.targetId ? `/academic-support?projectId=${encodeURIComponent(notification.targetId)}` : "/academic-support";
   }
   if (notification.type.startsWith("academic_verification_")) return "/settings/academic";
   // Reviewers can respond in the review center without project membership.
-  if (["REVIEW_REQUESTED", "REVISION_RESUBMITTED", "REVIEW_REQUEST_CANCELLED"].includes(notification.type)) return "/reviews";
-  if (["REVIEW_REQUEST_ACCEPTED", "REVIEW_REQUEST_DECLINED", "REVIEW_SUBMITTED", "REVISION_REQUESTED"].includes(notification.type)) {
+  if (notification.type === "SUBMISSION_REVISED") return "/mentor-workspace?view=work";
+  if (notification.type === "REVIEW_REQUEST_CANCELLED") return "/reviews";
+  if (["REVIEW_REQUESTED", "REVISION_RESUBMITTED", "REVIEW_REQUEST_ACCEPTED", "REVIEW_REQUEST_DECLINED", "REVIEW_SUBMITTED", "REVISION_REQUESTED"].includes(notification.type)) {
     if (notification.targetKind === "review_request" && notification.targetId) return `/review-requests/${encodeURIComponent(notification.targetId)}`;
     if (["REVIEW_SUBMITTED", "REVISION_REQUESTED"].includes(notification.type) && notification.targetKind === "project" && notification.targetId) {
       return `/projects/${encodeURIComponent(notification.targetId)}?tab=reports`;

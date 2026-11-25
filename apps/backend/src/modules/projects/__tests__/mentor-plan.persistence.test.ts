@@ -34,7 +34,10 @@ describe.skipIf(!enabled).sequential("controlled mentor recruitment (PostgreSQL)
     const result = await change({ action: "add", mentorUserId: lecturers[index], mentorRole: role });
     return result.candidates.find(c => c.mentorUserId === lecturers[index])!;
   }
-  const send = (index = 0, role: "PRIMARY" | "SECONDARY" = "PRIMARY", extra = {}) => consent.request(project, owner, { mentorUserId: lecturers[index], mentorRole: role, message: "Mời hỗ trợ thiết kế và đánh giá nghiên cứu", ...extra });
+  const send = async (index = 0, role: "PRIMARY" | "SECONDARY" = "PRIMARY", extra = {}) => {
+    const current = await plan.read(project, owner), candidate = current.candidates.find(c => c.mentorUserId === lecturers[index]);
+    return consent.request(project, owner, { mentorUserId: lecturers[index], mentorRole: role, message: "Mời hỗ trợ thiết kế và đánh giá nghiên cứu", ...(candidate ? { candidateId: candidate.id, expectedPlanVersion: current.version } : {}), ...extra });
+  };
   beforeEach(async () => {
     env.EMAIL_DELIVERY_MODE = "disabled";
     vi.mocked(authMailService.sendMentorship).mockClear();
@@ -65,7 +68,7 @@ describe.skipIf(!enabled).sequential("controlled mentor recruitment (PostgreSQL)
     await db.user.update({ where: { id: lecturers[1] }, data: { isActive: false } });
     await expect(add(1)).rejects.toMatchObject({ statusCode: 403 });
   });
-  it("reorders/removes only unsent candidates and enforces the same-role queue on every send path", async () => {
+  it("reorders/removes only unsent candidates and enforces the queue for explicitly planned invitations", async () => {
     const a = await add(0), b = await add(1);
     await expect(send(1)).rejects.toMatchObject({ statusCode: 409 });
     await change({ action: "move", candidateId: b.id, offset: -1 });
@@ -76,10 +79,8 @@ describe.skipIf(!enabled).sequential("controlled mentor recruitment (PostgreSQL)
     await expect(change({ action: "move", candidateId: b.id, offset: 1 })).rejects.toMatchObject({ statusCode: 409 });
     expect((await db.mentorshipRequest.findUniqueOrThrow({ where: { id: invitation.id } })).candidateId).toBe(b.id);
   });
-  it("defaults to primary first and allows explicit parallel roles with secondary acceptance first", async () => {
+  it("does not require primary-first or parallel mode to accept a historical secondary invitation", async () => {
     await add(0); await add(1, "SECONDARY");
-    await expect(send(1, "SECONDARY")).rejects.toMatchObject({ statusCode: 409 });
-    await change({ action: "configure", parallelInvitations: true });
     const a = await send(0), b = await send(1, "SECONDARY");
     expect(await db.mentorshipRequest.count({ where: { projectId: project, status: "PENDING" } })).toBe(2);
     await consent.accept(project, b.id, lecturers[1]);
@@ -164,9 +165,9 @@ describe.skipIf(!enabled).sequential("controlled mentor recruitment (PostgreSQL)
     await expect(db.mentorshipRequest.update({ where: { id: a.id }, data: { message: "Silently changed" } })).rejects.toThrow();
     await expect(db.mentorshipRequest.update({ where: { id: a.id }, data: { mentorRole: "SECONDARY" } })).rejects.toThrow();
   });
-  it("gives new invitations 6 days without changing the deadline on retries", async () => {
+  it("keeps new invitations without a deadline on retries", async () => {
     const key = crypto.randomUUID(), a = await send(0, "PRIMARY", { idempotencyKey: key });
-    expect(new Date(a.expiresAt!).getTime() - new Date(a.createdAt).getTime()).toBeCloseTo(6 * 86400000, -3);
+    expect(a.expiresAt).toBeUndefined();
     const b = await send(0, "PRIMARY", { idempotencyKey: key }); expect(b.expiresAt).toBe(a.expiresAt);
   });
   it("stops planning for assigned or departed roles until the owner explicitly reopens recruitment", async () => {

@@ -1,5 +1,5 @@
+import { useReviewPageNavigation } from "@/features/reviews/hooks/use-review-page-navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
 import type { AcademicReviewMode, ReviewTemplateCriterionInput, ReviewTemplateSource } from "@trend/shared-types";
 import { ArrowDown, ArrowLeft, ArrowUp, Eye, Plus, Save, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useProjects } from "@/features/projects/hooks/use-projects";
 import { useCreateReviewTemplate, usePublishReviewTemplate, useReviewTemplate, useSaveReviewTemplateVersion } from "@/features/reviews";
+import { useI18n } from "@/i18n";
 
 const artifactTypes = ["RESEARCH_PROPOSAL", "LITERATURE_REVIEW", "EVIDENCE_SYNTHESIS", "GAP_ANALYSIS", "RESEARCH_PLAN", "MANUSCRIPT", "GENERAL_REPORT"];
 const defaultLevels = [
@@ -18,8 +19,10 @@ const defaultLevels = [
 const emptyCriterion = (): ReviewTemplateCriterionInput => ({ title: "", description: "", required: true, allowNotApplicable: false });
 
 export function ReviewTemplateBuilderPage() {
-  const { templateId } = useParams();
-  const navigate = useNavigate();
+  const { t } = useI18n();
+  const { embedded, param, navigate } = useReviewPageNavigation();
+  const Container = embedded ? "section" : "main";
+  const templateId = param("templateId");
   const detail = useReviewTemplate(templateId);
   const projects = useProjects();
   const create = useCreateReviewTemplate();
@@ -78,9 +81,9 @@ export function ReviewTemplateBuilderPage() {
     }
   }
 
-  if (editing && detail.isLoading) return <main className="mx-auto max-w-5xl px-4 py-10"><div className="h-96 animate-pulse rounded-2xl bg-muted" /></main>;
-  return <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
-    <Button variant="ghost" onClick={() => navigate("/review-templates")}><ArrowLeft className="h-4 w-4" />Back to templates</Button>
+  if (editing && detail.isLoading) return <Container className="mx-auto max-w-5xl px-4 py-10"><div className="h-96 animate-pulse rounded-2xl bg-muted" /></Container>;
+  return <Container className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
+    <Button variant="ghost" onClick={() => navigate("/review-templates")}><ArrowLeft className="h-4 w-4" />{t("reviewTemplates.backToTemplates")}</Button>
     <header className="mt-4 flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Template builder</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">{editing ? "Edit Review Template" : "Create Review Template"}</h1><p className="mt-2 text-sm text-muted-foreground">Publishing creates an immutable version. Later edits become a new version.</p></div><Button variant="outline" onClick={() => setPreview((value) => !value)}><Eye className="h-4 w-4" />{preview ? "Edit" : "Preview"}</Button></header>
 
     {preview ? <TemplatePreview name={name} mode={reviewMode} description={description} guidelines={payload.guidelines} criteria={payload.criteria} /> : <div className="mt-7 grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px]"><div className="space-y-8">
@@ -90,7 +93,7 @@ export function ReviewTemplateBuilderPage() {
 
       <section><h2 className="text-lg font-semibold">Review Guidelines</h2><p className="mt-1 text-sm text-muted-foreground">How the reviewer should perform the review. Enter one guideline per line.</p><textarea className="mt-3 min-h-40 w-full rounded-md border bg-background px-3 py-2 text-sm leading-6" value={guidelines} onChange={(event) => setGuidelines(event.target.value)} /></section>
     </div><aside className="lg:sticky lg:top-24 lg:self-start"><div className="rounded-xl border bg-card p-4"><p className="text-sm font-semibold">Version policy</p><p className="mt-2 text-xs leading-5 text-muted-foreground">Drafts remain editable. Publishing locks this version for historical reviews and makes it available in the review request picker.</p><div className="mt-4 grid gap-2"><Button variant="outline" onClick={() => save(false)} disabled={create.isPending || saveVersion.isPending}><Save className="h-4 w-4" />Save Draft</Button><Button onClick={() => save(true)} disabled={create.isPending || saveVersion.isPending || publish.isPending}><Send className="h-4 w-4" />Publish Template</Button></div></div></aside></div>}
-  </main>;
+  </Container>;
 }
 
 function TemplatePreview({ name, mode, description, guidelines, criteria }: { name: string; mode: AcademicReviewMode; description: string; guidelines: string[]; criteria: ReviewTemplateCriterionInput[] }) {

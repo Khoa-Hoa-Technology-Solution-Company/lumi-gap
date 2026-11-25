@@ -109,6 +109,12 @@ IconButton _readAll(WidgetTester tester) => tester.widget<IconButton>(
       ),
     );
 
+/// An unread row can be swiped; a read one cannot.
+final Finder _swipeable = find.descendant(
+  of: find.byKey(const ValueKey('notification-1')),
+  matching: find.byType(Dismissible),
+);
+
 void main() {
   group('notification kinds', () {
     test('internal codes become readable labels, unknown ones none', () {
@@ -189,6 +195,55 @@ void main() {
       expect(api.markedRead, ['1']);
       expect(find.text('paper p1'), findsOneWidget);
       expect(find.textContaining('Exception'), findsNothing);
+    });
+
+    testWidgets('swiping an unread row marks it read once, without opening',
+        (tester) async {
+      final api = _FakeNotificationsApi([
+        _n('1', kind: 'paper', targetId: 'p1'),
+      ]);
+      await _pump(tester, api);
+      expect(_swipeable, findsOneWidget);
+      await tester.drag(find.text('Title 1'), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+      expect(api.markedRead, ['1']);
+      // Stays in the list (there is no delete), now read, and not opened.
+      expect(find.text('Title 1'), findsOneWidget);
+      expect(_swipeable, findsNothing);
+      expect(find.text('paper p1'), findsNothing);
+    });
+
+    testWidgets('a failed swipe shows the row unread again and says so',
+        (tester) async {
+      final api = _FakeNotificationsApi([_n('1')])
+        ..markReadError = httpFailure(500);
+      await _pump(tester, api);
+      await tester.drag(find.text('Title 1'), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+      expect(api.markedRead, ['1']);
+      expect(_swipeable, findsOneWidget);
+      expect(find.text('Something went wrong. Please try again.'), findsOneWidget);
+    });
+
+    testWidgets('a read row cannot be swiped', (tester) async {
+      final api = _FakeNotificationsApi([_n('1', isRead: true)]);
+      await _pump(tester, api);
+      expect(find.text('Title 1'), findsOneWidget);
+      expect(_swipeable, findsNothing);
+    });
+
+    testWidgets('long-press offers Open and Mark as read', (tester) async {
+      final api = _FakeNotificationsApi([
+        _n('1', kind: 'paper', targetId: 'p1'),
+      ]);
+      await _pump(tester, api);
+      await tester.longPress(find.text('Title 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Open'), findsOneWidget);
+      await tester.tap(find.text('Mark as read'));
+      await tester.pumpAndSettle();
+      expect(api.markedRead, ['1']);
+      expect(find.text('paper p1'), findsNothing);
     });
 
     testWidgets('a read notification is not marked again', (tester) async {

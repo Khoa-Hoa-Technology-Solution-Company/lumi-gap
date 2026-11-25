@@ -106,6 +106,12 @@ export function ScreeningAnalytics({ projectId }: { projectId: string }) {
         </div>
       </div>
 
+      {m.publishedSelection && <section className="min-w-0 space-y-3 rounded-lg border p-4" aria-label="Kết quả sàng lọc đã công bố">
+        <h4 className="font-semibold">Kết quả đã công bố</h4>
+        <p className="text-sm text-muted-foreground">Mỗi bài tính một lần theo giai đoạn quyết định hiện hành. {m.rescreeningPapers ?? 0} bài đang đánh giá lại vẫn giữ kết quả trước đến khi vòng mới chốt.</p>
+        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="p-2">Giai đoạn</th><th className="p-2">Đã chọn</th><th className="p-2">Loại theo tiêu chí</th><th className="p-2">Không đạt đồng thuận</th></tr></thead><tbody>{(["TITLE_ABSTRACT", "FULL_TEXT"] as const).map(phase => <tr key={phase} className="border-t"><th className="p-2 font-normal">{phase === "FULL_TEXT" ? "Toàn văn" : "Tiêu đề và tóm tắt"}</th><td className="p-2">{m.publishedSelection![phase].included}</td><td className="p-2">{m.publishedSelection![phase].excludedByCriteria}</td><td className="p-2">{m.publishedSelection![phase].closedUnresolved}</td></tr>)}</tbody></table></div>
+        <p className="text-xs text-muted-foreground">Không đạt đồng thuận là chính sách xử lý của nhóm, cần trình bày riêng khi báo cáo quy trình lựa chọn nghiên cứu.</p>
+      </section>}
       {/* Grid: Distribution & Workload */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Status Distribution */}
@@ -167,6 +173,61 @@ export function ScreeningAnalytics({ projectId }: { projectId: string }) {
           </div>
         </div>
       </div>
+
+      {/* PRISMA Summary & Re-screening Integrity Notice */}
+      {m.prismaSummary && (
+        <div className="rounded-2xl border border-border/80 bg-card p-5 sm:p-6 shadow-xs space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h4 className="text-base font-bold text-foreground">Tổng hợp PRISMA theo kết quả hiệu lực</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Mỗi bài báo chỉ được tính 1 lần theo kết quả đã chốt gần nhất, không đếm trùng qua nhiều vòng đánh giá lại.
+              </p>
+            </div>
+            {(m.rescreeningPapers ?? m.prismaSummary.rescreeningInProgress) > 0 && (
+              <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs">
+                {m.rescreeningPapers ?? m.prismaSummary.rescreeningInProgress} bài đang đánh giá lại
+              </Badge>
+            )}
+          </div>
+
+          {(m.rescreeningPapers ?? m.prismaSummary.rescreeningInProgress) > 0 && (
+            <div role="status" className="flex items-start gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
+              <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+              <p className="leading-relaxed">
+                Hiện có <strong>{m.rescreeningPapers ?? m.prismaSummary.rescreeningInProgress} bài báo</strong> đang trong vòng đánh giá lại chưa hoàn tất. Số liệu bên dưới vẫn giữ kết quả đã chốt trước đó cho đến khi cả hai reviewer hoàn tất vòng mới.
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="p-3 rounded-xl border border-border/70 bg-muted/20">
+              <div className="text-xs text-muted-foreground">Nhận diện (Identified)</div>
+              <div className="text-xl font-bold text-foreground mt-1">{m.prismaSummary.identified}</div>
+            </div>
+            <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
+              <div className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">Đã chọn (Included)</div>
+              <div className="text-xl font-bold text-foreground mt-1">{m.prismaSummary.included}</div>
+            </div>
+            <div className="p-3 rounded-xl border border-rose-500/30 bg-rose-500/5">
+              <div className="text-xs text-rose-700 dark:text-rose-400 font-medium">Đã loại theo tiêu chí</div>
+              <div className="text-xl font-bold text-foreground mt-1">{m.prismaSummary.excluded}</div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">
+                Tóm tắt: {m.prismaSummary.excludedByStage.TITLE_ABSTRACT.count} · Toàn văn: {m.prismaSummary.excludedByStage.FULL_TEXT.count}
+              </div>
+            </div>
+            <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/5">
+              <div className="text-xs text-amber-800 dark:text-amber-300 font-medium">Không đạt đồng thuận</div>
+              <div className="text-xl font-bold text-foreground mt-1">{m.prismaSummary.closedUnresolved}</div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">Tách biệt với Loại theo tiêu chí</div>
+            </div>
+            <div className="p-3 rounded-xl border border-border/70 bg-muted/20">
+              <div className="text-xs text-muted-foreground">Đang xử lý / Chưa chốt</div>
+              <div className="text-xl font-bold text-foreground mt-1">{m.prismaSummary.pending}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Exclusion Reasons */}
       <div className="rounded-2xl border border-border/80 bg-card p-5 sm:p-6 shadow-xs space-y-3">

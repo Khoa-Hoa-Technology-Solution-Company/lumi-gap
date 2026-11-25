@@ -8,10 +8,11 @@ import type { MentorAccessWorkspace } from "@trend/shared-types";
 import { ProjectDetailPage } from "@/pages/projects/project-detail";
 import { ProjectsWorkspacePage, ProjectWorkspaceStart } from "@/pages/projects/projects-workspace";
 
-const mocks = vi.hoisted(() => ({ detail: vi.fn(), list: vi.fn(), workspace: vi.fn(), tasks: vi.fn(), feedback: vi.fn(), comment: vi.fn(), mine: vi.fn(), actor: "mentor" }));
+const mocks = vi.hoisted(() => ({ detail: vi.fn(), list: vi.fn(), workspace: vi.fn(), work: vi.fn(), tasks: vi.fn(), feedback: vi.fn(), comment: vi.fn(), mine: vi.fn(), actor: "mentor" }));
 vi.mock("../api/projects.api", () => ({ projectsApi: { detail: mocks.detail, list: mocks.list, listMyInvitations: async () => [] } }));
 vi.mock("../api/academic-support.api", () => ({ academicSupportApi: { mine: mocks.mine } }));
 vi.mock("../api/mentor-access.api", () => ({ mentorAccessApi: mocks }));
+vi.mock("../api/mentor-workspace.api", () => ({ mentorWorkspaceApi: { read: mocks.work } }));
 vi.mock("../api/screening.api", () => ({ screeningApi: { adjudicationTasks: async () => [], automaticTasks: async () => [] } }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (s: (state: unknown) => unknown) => s({ user: { id: mocks.actor, systemRole: "USER", emailVerifiedAt: "2026-11-01" } }) }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key, language: "vi" }) }));
@@ -36,6 +37,7 @@ beforeEach(() => {
   mocks.feedback.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, hasNext: false });
   mocks.comment.mockResolvedValue({ id: "message" });
   mocks.tasks.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, hasNext: false });
+  mocks.work.mockResolvedValue({ items: [], meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 }, projectOptions: [] });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
@@ -72,26 +74,26 @@ it("keeps mentor chat visible when an internal team or AI channel is requested",
 });
 it("opens the mentor's own tasks at tab=tasks using the shared project navigation", async () => {
   data.policies[0]!.policy.permissions.push("TASKS_VIEW");
-  mocks.tasks.mockResolvedValue({ items: [
-    { id: "own-task", title: "Read my assigned manuscript", description: "Review the study design", status: "IN_PROGRESS", dueAt: null, blockedReason: "", submissionId: "submission" },
-  ], total: 1, page: 1, pageSize: 20, hasNext: false });
+  mocks.work.mockResolvedValue({ items: [
+    { id: "TASK:own-task", sourceId: "own-task", kind: "TASK", title: "Read my assigned manuscript", description: "Review the study design", projectId: "project", projectTitle: "Actual research project", sender: "Owner", status: "IN_PROGRESS", priority: "HIGH", dueAt: null, updatedAt: "2026-11-01", version: 1, needsAction: true, overdue: false, blocked: false, href: "/submissions/submission", action: "VIEW" },
+  ], meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 }, projectOptions: [] });
   await mount("/projects/project?tab=tasks&taskAssignee=another-user&taskMine=0");
   for (let attempt = 0; attempt < 10 && !host.textContent?.includes("Read my assigned manuscript"); attempt++) await tick();
   expect(host.querySelector("aside .coord-workspace-nav")).not.toBeNull();
-  expect(host.querySelector('aside [aria-current="page"]')?.textContent).toContain("Tasks & milestones");
+  expect(host.querySelector('aside [aria-current="page"]')?.textContent).toContain("Team tasks");
   expect(host.querySelectorAll('aside [role="tab"]')).toHaveLength(3);
-  expect(host.textContent).toContain("Công việc của tôi");
+  expect(host.textContent).toContain("mentorWorkspace.projectWork");
   expect(host.textContent).toContain("Read my assigned manuscript");
-  expect(mocks.tasks).toHaveBeenCalledWith("project", 1);
+  expect(mocks.work).toHaveBeenCalledWith(expect.objectContaining({ projectId: "project", status: "ACTIONABLE" }));
   expect(host.querySelector('a[href="/submissions/submission"]')).not.toBeNull();
   expect(host.querySelector(".project-conversation")).toBeNull();
   expect(host.textContent).not.toContain("Create task");
 });
 it("loads only personal tasks even when the mentor cannot view shared project tasks", async () => {
   await mount("/projects/project?tab=tasks");
-  for (let attempt = 0; attempt < 10 && !mocks.tasks.mock.calls.length; attempt++) await tick();
-  expect(mocks.tasks).toHaveBeenCalledWith("project", 1);
-  expect(host.textContent).toContain("Cần tôi phân xử");
+  for (let attempt = 0; attempt < 10 && !mocks.work.mock.calls.length; attempt++) await tick();
+  expect(mocks.work).toHaveBeenCalledWith(expect.objectContaining({ projectId: "project", status: "ACTIONABLE" }));
+  expect(host.textContent).not.toContain("Cần tôi phân xử");
 });
 it("lists accepted mentorship projects at /projects even without any team membership", async () => {
   mocks.mine.mockResolvedValue({ relationships: [

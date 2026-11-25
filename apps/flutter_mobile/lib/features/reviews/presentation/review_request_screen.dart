@@ -138,7 +138,7 @@ class _ReviewRequestScreenState extends ConsumerState<ReviewRequestScreen> {
               FilledButton.icon(
                 onPressed: () => unawaited(openWebPage(context, ref, '/reviews/${Uri.encodeComponent(r.assignmentId)}')),
                 icon: const Icon(Icons.open_in_new, size: 18),
-                label: Text(r.latestRoundStatus == 'DRAFT' ? context.t('Continue Review') : context.t('Start Review')),
+                label: Text(r.latestRoundStatus == 'DRAFT' ? context.t('Continue review') : context.t('Start review')),
               ),
             if (answerNew || (working && r.canWithdraw)) ...[
               const SizedBox(height: 8),
@@ -160,7 +160,7 @@ class _ReviewRequestScreenState extends ConsumerState<ReviewRequestScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(context.t('Respond and Submit Revision'), style: theme.textTheme.titleMedium),
+                  Text(context.t('Respond and submit revision'), style: theme.textTheme.titleMedium),
                   const SizedBox(height: 4),
                   Text(context.t('Update the artifact first, then explain how each required revision was addressed.'), style: secondary),
                   const SizedBox(height: 12),
@@ -174,7 +174,7 @@ class _ReviewRequestScreenState extends ConsumerState<ReviewRequestScreen> {
             ),
           ],
           const SizedBox(height: 24),
-          LumiSectionHeader(title: context.t('Review History')),
+          LumiSectionHeader(title: context.t('Review history')),
           if (r.rounds.isEmpty)
             LumiCard(child: Text(context.t('The reviewer has not submitted feedback yet.'), style: secondary))
           else
@@ -240,7 +240,7 @@ class _RoundCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(context.t('Review Round {{n}}', {'n': round.roundNumber}), style: secondary),
+          Text(context.t('Review round {{n}}', {'n': round.roundNumber}), style: secondary),
           Text(
             round.overallAssessment == null ? _code(round.status) : _code(round.overallAssessment!),
             style: theme.textTheme.titleMedium,
@@ -250,12 +250,12 @@ class _RoundCard extends StatelessWidget {
               context.t('Submitted {{date}}', {'date': formatShortDate(round.submittedAt!, context.appLocale)}),
               style: secondary,
             ),
-          part(context.t('Key Strengths'), round.keyStrengths),
-          part(context.t('Key Concerns'), round.keyConcerns),
-          part(context.t('Overall Comment'), round.overallComment),
+          part(context.t('Key strengths'), round.keyStrengths),
+          part(context.t('Key concerns'), round.keyConcerns),
+          part(context.t('Overall comment'), round.overallComment),
           if (round.requiredRevisions.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Text(context.t('Required Revisions'), style: theme.textTheme.titleSmall),
+            Text(context.t('Required revisions'), style: theme.textTheme.titleSmall),
             for (final item in round.requiredRevisions)
               Padding(
                 padding: const EdgeInsets.only(top: 8),

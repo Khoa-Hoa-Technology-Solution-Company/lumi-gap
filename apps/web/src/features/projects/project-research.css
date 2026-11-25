@@ -1,4 +1,4 @@
-.research-workflow { color: hsl(var(--foreground)); }
+.research-workflow { color: hsl(var(--foreground)); min-width: 0; max-width: 100%; }
 .research-views {
   display: inline-flex;
   gap: 8px;
@@ -99,3 +99,35 @@
 .research-candidate{display:grid;gap:10px;text-align:left;background:#fff;padding:24px 12px;border-bottom:1px solid var(--project-line,#e2e8f0);transition:background-color .16s ease-out}
 .research-candidate:hover{background:#f5f9ff}.research-candidate:focus-visible{outline:2px solid #2563eb;outline-offset:-2px}
 .research-candidate strong{font-size:18px;line-height:1.45;font-weight:600}.research-candidate p{max-width:75ch;font-size:14px;line-height:1.6;color:#475569}.research-candidate .research-state{justify-self:start}
+
+/* Keep Literature Clusters filter toolbar controls uniformly aligned regardless of legacy .research-workflow label/select overrides */
+.research-workflow .literature-clusters-toolbar label,
+.literature-clusters-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  gap: 0;
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+.research-workflow .literature-clusters-toolbar select,
+.literature-clusters-toolbar select {
+  height: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0 0.625rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  border-radius: 0.5rem;
+}
+.research-workflow .literature-clusters-toolbar input[type="search"],
+.literature-clusters-toolbar input[type="search"] {
+  height: 2.25rem;
+  min-height: 2.25rem;
+  font-size: 0.75rem;
+}
+@media (max-width: 760px) {
+  .research-workflow .literature-clusters-toolbar :is(button, select),
+  .literature-clusters-toolbar :is(button, select) {
+    min-height: 2.25rem;
+  }
+}

@@ -8,6 +8,7 @@ export const uploadSinglePdf = (multer as any)({
   storage,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
+    files: 1, fields: 20, parts: 22, fieldSize: 512 * 1024,
   },
   fileFilter: (_req: any, file: any, cb: any) => {
     if (file.mimetype !== "application/pdf") {

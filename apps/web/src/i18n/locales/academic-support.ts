@@ -1,4 +1,8 @@
 export const academicSupportEn = {
+  "The account uses test address {{email}}, which cannot receive messages in a real inbox.": "The account uses test address {{email}}, which cannot receive messages in a real inbox.",
+  "Email delivery is not enabled on this server. Your preference is saved, but messages cannot be sent yet.": "Email delivery is not enabled on this server. Your preference is saved, but messages cannot be sent yet.",
+  "New mentorship invitations and decisions will be emailed to {{email}}.": "New mentorship invitations and decisions will be emailed to {{email}}.",
+  "Email notifications are off. Enable them to receive new mentorship invitations and decisions at {{email}}.": "Email notifications are off. Enable them to receive new mentorship invitations and decisions at {{email}}.",
   "With mentors": "With mentors",
   "Talk with mentors": "Talk with mentors",
   "Find lecturers, track invitations and manage shared content.": "Find lecturers, track invitations and manage shared content.",
@@ -551,6 +555,8 @@ export const academicSupportEn = {
   "Both parties must agree before mentor access is granted.": "Both parties must agree before mentor access is granted.",
   "Explain the guidance you are seeking or offering.": "Explain the guidance you are seeking or offering.",
   "View Project Preview": "View Project Preview",
+  "Review Invitation Dossier": "Review Invitation Dossier",
+  "Research Mentorship Invitation Dossier": "Research Mentorship Invitation Dossier",
   "Only the shared preview is available before acceptance.": "Only the shared preview is available before acceptance.",
   "Academic Mentor": "Academic Mentor",
   "Mentorship active": "Mentorship active",
@@ -765,6 +771,10 @@ export const academicSupportEn = {
 } as const;
 
 export const academicSupportVi = {
+  "The account uses test address {{email}}, which cannot receive messages in a real inbox.": "Tài khoản dùng địa chỉ thử nghiệm {{email}}, không thể nhận thư trong hộp thư thật.",
+  "Email delivery is not enabled on this server. Your preference is saved, but messages cannot be sent yet.": "Máy chủ chưa bật dịch vụ email. Tùy chọn được lưu nhưng hiện chưa thể gửi thư.",
+  "New mentorship invitations and decisions will be emailed to {{email}}.": "Email về lời mời và quyết định hướng dẫn mới sẽ được gửi đến {{email}}.",
+  "Email notifications are off. Enable them to receive new mentorship invitations and decisions at {{email}}.": "Email thông báo đang tắt. Bật để nhận lời mời và quyết định hướng dẫn mới tại {{email}}.",
   "With mentors": "Với cố vấn",
   "Talk with mentors": "Trao đổi với cố vấn",
   "Find lecturers, track invitations and manage shared content.": "Tìm giảng viên hướng dẫn, theo dõi lời mời và quản lý nội dung chia sẻ.",
@@ -1313,10 +1323,12 @@ export const academicSupportVi = {
   "Incoming Requests": "Lời mời đến",
   "Active Teams": "Nhóm đang hướng dẫn",
   "Invite as Mentor": "Mời làm mentor",
-  "Send Invitation": "Gửi lời mời",
+  "Send Invitation": "Gửi lời mời hướng dẫn",
   "Both parties must agree before mentor access is granted.": "Hai bên cần đồng ý trước khi quyền mentor được cấp.",
   "Explain the guidance you are seeking or offering.": "Mô tả nhu cầu hướng dẫn hoặc cách bạn có thể hỗ trợ.",
-  "View Project Preview": "Xem thông tin nhóm",
+  "View Project Preview": "Xem hồ sơ mời hướng dẫn",
+  "Review Invitation Dossier": "Xem hồ sơ mời hướng dẫn",
+  "Research Mentorship Invitation Dossier": "Hồ sơ mời hướng dẫn nghiên cứu",
   "Only the shared preview is available before acceptance.": "Trước khi chấp nhận, bạn chỉ được xem tóm tắt đã chia sẻ.",
   "Academic Mentor": "Mentor học thuật",
   "Mentorship active": "Đang hướng dẫn",

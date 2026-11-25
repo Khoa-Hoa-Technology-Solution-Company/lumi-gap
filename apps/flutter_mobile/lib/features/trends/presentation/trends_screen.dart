@@ -2,20 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
-import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/trends/components/trends_ai_tab.dart';
 import 'package:flutter_mobile/features/trends/components/trends_compare_tab.dart';
+import 'package:flutter_mobile/features/trends/components/trends_emerging_tab.dart';
 import 'package:flutter_mobile/features/trends/components/trends_scope_tab.dart';
 import 'package:flutter_mobile/features/trends/components/trends_signals_tab.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-enum _TrendsTab { signals, compare, explain }
+enum _TrendsTab { signals, compare, emerging, explain }
 
-const int _defaultYearFrom = scopeDefaultYearFrom;
-const int _defaultYearTo = scopeDefaultYearTo;
+final int _defaultYearFrom = scopeDefaultYearFrom;
+final int _defaultYearTo = scopeDefaultYearTo;
 const int _defaultMinPapers = scopeDefaultMinPapers;
 
 /// How many parts of [p] differ from the default scope: the badge on the
@@ -28,9 +28,8 @@ int trendScopeActiveCount(TrendsOverviewParams p) {
     (p.minPapers ?? _defaultMinPapers) != _defaultMinPapers,
     f.paperKinds.isNotEmpty,
     f.openAccessStatuses.isNotEmpty,
-    f.domainIds.isNotEmpty,
-    f.fieldIds.isNotEmpty,
     f.subfieldIds.isNotEmpty,
+    p.sizeBands.isNotEmpty,
   ].where((changed) => changed).length;
 }
 
@@ -47,35 +46,45 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen> {
   int _yearFrom = _defaultYearFrom;
   int _yearTo = _defaultYearTo;
   int _minPapers = _defaultMinPapers;
-  final String _sortBy = 'momentum';
+  // Verdict order (rising first), the only ranking besides total papers.
+  final String _sortBy = 'trend';
   TrendScopeFilters _scopeFilters = const TrendScopeFilters();
+  List<String> _sizeBands = const [];
+
+  // The emerging list costs a slow first request: it is only built once the
+  // tab has been opened, then kept like the other tabs.
+  bool _emergingOpened = false;
 
   String? _aiTabInitialTopic;
 
   TrendsOverviewParams get _params => TrendsOverviewParams(
-        yearFrom: _yearFrom,
-        yearTo: _yearTo,
-        minPapers: _minPapers,
-        sortBy: _sortBy,
-        limit: 30,
-        scopeFilters: _scopeFilters,
-      );
+    yearFrom: _yearFrom,
+    yearTo: _yearTo,
+    minPapers: _minPapers,
+    sortBy: _sortBy,
+    limit: 30,
+    scopeFilters: _scopeFilters,
+    sizeBands: _sizeBands,
+  );
 
   void _explain(String topic) => setState(() {
-        _aiTabInitialTopic = topic;
-        _tab = _TrendsTab.explain;
-      });
+    _aiTabInitialTopic = topic;
+    _tab = _TrendsTab.explain;
+  });
 
   void _apply(TrendsOverviewParams p) => setState(() {
-        _yearFrom = p.yearFrom ?? _defaultYearFrom;
-        _yearTo = p.yearTo ?? _defaultYearTo;
-        _minPapers = p.minPapers ?? _defaultMinPapers;
-        _scopeFilters = p.scopeFilters;
-      });
+    _yearFrom = p.yearFrom ?? _defaultYearFrom;
+    _yearTo = p.yearTo ?? _defaultYearTo;
+    _minPapers = p.minPapers ?? _defaultMinPapers;
+    _scopeFilters = p.scopeFilters;
+    _sizeBands = p.sizeBands;
+  });
 
   Future<void> _openScope(TrendsOverview? overview) async {
     if (overview == null) return;
     final picked = await showModalBottomSheet<TrendsOverviewParams>(
+      // Over the bottom navigation bar, dimming it too.
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -97,6 +106,7 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen> {
         actions: [
           LumiFilterButton(
             activeCount: active,
+            onHero: true,
             onPressed: () => _openScope(query.value),
           ),
           const SizedBox(width: 12),
@@ -110,10 +120,14 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen> {
               options: [
                 (_TrendsTab.signals, context.t('Signals')),
                 (_TrendsTab.compare, context.t('Compare')),
+                (_TrendsTab.emerging, context.t('Emerging')),
                 (_TrendsTab.explain, context.t('Explain')),
               ],
               selected: _tab,
-              onChanged: (t) => setState(() => _tab = t),
+              onChanged: (t) => setState(() {
+                _tab = t;
+                if (t == _TrendsTab.emerging) _emergingOpened = true;
+              }),
             ),
           ),
           Expanded(
@@ -123,16 +137,24 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen> {
               data: (overview) => IndexedStack(
                 index: _tab.index,
                 children: [
-                  TrendsSignalsTab(
-                    overview: overview,
-                    params: params,
-                    onExplainTopic: _explain,
+                  RefreshIndicator(
+                    onRefresh: () =>
+                        ref.refresh(trendsOverviewProvider(params).future),
+                    child: TrendsSignalsTab(
+                      overview: overview,
+                      params: params,
+                      onExplainTopic: _explain,
+                    ),
                   ),
                   TrendsCompareTab(
                     overview: overview,
                     params: params,
                     onExplainTopic: _explain,
                   ),
+                  if (_emergingOpened)
+                    TrendsEmergingTab(params: params)
+                  else
+                    const SizedBox.shrink(),
                   TrendsAiTab(
                     overview: overview,
                     params: params,
@@ -140,9 +162,17 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen> {
                   ),
                 ],
               ),
-              loading: () => const LumiPageSkeleton(height: 120),
-              error: (error, _) =>
-                  AppErrorState(message: context.t(failureMessageKey(error))),
+              // The shape of Signals: the strongest topic, then its rows.
+              loading: () => const LumiPageSkeleton(
+                leadHeight: 240,
+                rows: 5,
+                height: 64,
+              ),
+              error: (error, _) => LumiErrorState(
+                message: context.t(failureMessageKey(error)),
+                retrying: query.isLoading,
+                onRetry: () => ref.invalidate(trendsOverviewProvider(params)),
+              ),
             ),
           ),
         ],

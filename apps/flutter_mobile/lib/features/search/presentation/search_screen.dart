@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
-import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
 import 'package:flutter_mobile/features/search/data/search_api.dart';
 import 'package:flutter_mobile/features/search/domain/search_filters.dart';
 import 'package:flutter_mobile/features/search/presentation/search_active_filters.dart';
 import 'package:flutter_mobile/features/search/presentation/search_filter_sheet.dart';
+import 'package:flutter_mobile/features/search/presentation/search_placeholder.dart';
 import 'package:flutter_mobile/features/search/presentation/search_result_card.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,6 +39,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   bool _isLoadingMore = false;
   bool _hasMore = true;
   List<Paper> _loadedPapers = [];
+
+  /// Query of the latest search the user ran, or null before the first one:
+  /// "No search results" is only true once something was searched.
+  String? _searchedQuery;
+
+  /// Why the first page failed (offline, server down): shown with a retry,
+  /// never as "No search results", which would be false.
+  Object? _loadError;
 
   // Filters the reader changes in the sheet; replaced only on "Apply".
   SearchFilters _filters = const SearchFilters();
@@ -156,6 +164,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final seq = ++_searchSeq;
     if (_searchController.text.trim().isEmpty) {
       setState(() {
+        _searchedQuery = null;
+        _loadError = null;
         _page = 1;
         _loadedPapers = [];
         _hasMore = false;
@@ -166,6 +176,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
     if (reset) {
       setState(() {
+        _searchedQuery = _searchController.text.trim();
+        _loadError = null;
         _page = 1;
         _loadedPapers = [];
         _hasMore = true;
@@ -224,13 +236,29 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       });
     } on Object catch (e) {
       if (!mounted || seq != _searchSeq) return;
+      final firstPage = _loadedPapers.isEmpty;
       setState(() {
         _isLoadingMore = false;
         _hasMore = false;
+        if (firstPage) _loadError = e;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t(failureMessageKey(e)))),
-      );
+      // A later page: the results stay, and Try again asks for it once more.
+      if (!firstPage) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.t(failureMessageKey(e))),
+            persist: false,
+            action: SnackBarAction(
+              label: context.t('Try again'),
+              onPressed: () {
+                if (!mounted) return;
+                setState(() => _hasMore = true);
+                unawaited(_performSearch());
+              },
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -317,6 +345,52 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     return context.t('Until {{year}}', {'year': to});
   }
 
+  /// Active filters as removable chips, in the order they are shown.
+  List<(String, VoidCallback)> _activeFilterChips(BuildContext context) =>
+      [
+        if (_filters.yearFrom != null || _filters.yearTo != null)
+          (
+            _yearLabel(),
+            () => _removeFilter(
+              _filters.copyWith(
+                yearFrom: () => null,
+                yearTo: () => null,
+              ),
+            ),
+          ),
+        if (_filters.paperKind != null)
+          (
+            context.t(paperKindLabel(_filters.paperKind!)),
+            () => _removeFilter(_filters.copyWith(paperKind: () => null)),
+          ),
+        if (_filters.openAccess ?? false)
+          (
+            context.t('Open access'),
+            () =>
+                _removeFilter(_filters.copyWith(openAccess: () => null)),
+          ),
+        for (final id in _domainIds)
+          (
+            context.t('Domain: {{id}}', {'id': id}),
+            () => _removeScopeId(_domainIds, id),
+          ),
+        for (final id in _fieldIds)
+          (
+            context.t('Field: {{id}}', {'id': id}),
+            () => _removeScopeId(_fieldIds, id),
+          ),
+        for (final id in _subfieldIds)
+          (
+            context.t('Subfield: {{id}}', {'id': id}),
+            () => _removeScopeId(_subfieldIds, id),
+          ),
+        for (final id in _topicIds)
+          (
+            context.t('Topic: {{id}}', {'id': id}),
+            () => _removeScopeId(_topicIds, id),
+          ),
+      ];
+
   @override
   Widget build(BuildContext context) {
     // Saved papers, from one list request rather than one per result.
@@ -328,12 +402,17 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               if (b.targetKind == 'paper') b.targetId,
           };
 
+    final chips = _activeFilterChips(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.t('Search Papers')),
+        title: Text(context.t('Search papers')),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_list),
+            icon: Badge(
+              isLabelVisible: chips.isNotEmpty,
+              label: Text('${chips.length}'),
+              child: const Icon(Icons.filter_list),
+            ),
             onPressed: () => unawaited(_openFilters()),
             tooltip: context.t('Filters'),
           ),
@@ -356,87 +435,32 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       hintText: context.t('Search term or query...'),
                       prefixIcon: const Icon(Icons.search, size: 20),
                     ),
+                    // The keyboard's search key runs the search; there is no
+                    // separate button.
                     textInputAction: TextInputAction.search,
                     onSubmitted: (_) => unawaited(_performSearch(reset: true)),
                   ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: () => unawaited(_performSearch(reset: true)),
-                  child: Text(context.t('Search')),
                 ),
               ],
             ),
           ),
 
-          SearchActiveFilters(
-            chips: [
-              if (_filters.yearFrom != null || _filters.yearTo != null)
-                (
-                  _yearLabel(),
-                  () => _removeFilter(
-                    _filters.copyWith(
-                      yearFrom: () => null,
-                      yearTo: () => null,
-                    ),
-                  ),
-                ),
-              if (_filters.paperKind != null)
-                (
-                  context.t(paperKindLabel(_filters.paperKind!)),
-                  () => _removeFilter(_filters.copyWith(paperKind: () => null)),
-                ),
-              if (_filters.openAccess ?? false)
-                (
-                  context.t('Open Access'),
-                  () =>
-                      _removeFilter(_filters.copyWith(openAccess: () => null)),
-                ),
-              for (final id in _domainIds)
-                (
-                  context.t('Domain: {{id}}', {'id': id}),
-                  () => _removeScopeId(_domainIds, id),
-                ),
-              for (final id in _fieldIds)
-                (
-                  context.t('Field: {{id}}', {'id': id}),
-                  () => _removeScopeId(_fieldIds, id),
-                ),
-              for (final id in _subfieldIds)
-                (
-                  context.t('Subfield: {{id}}', {'id': id}),
-                  () => _removeScopeId(_subfieldIds, id),
-                ),
-              for (final id in _topicIds)
-                (
-                  context.t('Topic: {{id}}', {'id': id}),
-                  () => _removeScopeId(_topicIds, id),
-                ),
-            ],
-          ),
+          SearchActiveFilters(chips: chips          ),
 
           // Results List
           Expanded(
             child: _loadedPapers.isEmpty
-                ? (_isLoadingMore
-                      // Clipped, not scrollable: on a short screen the
-                      // last placeholder is simply cut off.
-                      ? const SingleChildScrollView(
-                          physics: NeverScrollableScrollPhysics(),
-                          padding: EdgeInsets.all(16),
-                          child: LumiSkeleton(rows: 4, height: 132),
-                        )
-                      : SingleChildScrollView(
-                          child: LumiEmptyState(
-                            icon: Icons.search_off_outlined,
-                            title: context.t('No search results'),
-                            message: context.t(
-                              'Enter a keyword above or relax/clear filters in the top-right button to find broader publications.',
-                            ),
-                          ),
-                        ))
-                : ListView.builder(
+                ? SearchPlaceholder(
+                    loading: _isLoadingMore,
+                    error: _loadError,
+                    searched: _searchedQuery != null,
+                    onRetry: () => unawaited(_performSearch(reset: true)),
+                  )
+                : RefreshIndicator(
+                    onRefresh: () => _performSearch(reset: true),
+                    child: ListView.builder(
                     controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: _loadedPapers.length + (_hasMore ? 1 : 0),
                     itemBuilder: (context, index) {
@@ -466,6 +490,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                             unawaited(context.push('/paper/${paper.id}')),
                       );
                     },
+                  ),
                   ),
           ),
         ],

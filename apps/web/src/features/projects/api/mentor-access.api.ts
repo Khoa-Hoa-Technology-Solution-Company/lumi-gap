@@ -1,18 +1,21 @@
 import { api } from "@/services/api-client";
-import type { MentorAssignedTask, MentorAccessWorkspace, MentorAccessPage, MentorSharedResource, MentorShareInput, MentorResourceKind, MentorPolicyInput, MentorFeedback, MentorAgreement } from "@trend/shared-types";
+import type { MentorResourceInboxItem, MentorPaperShareInput, MentorAssignedTask, MentorAccessWorkspace, MentorAccessPage, MentorSharedResource, MentorShareInput, MentorResourceKind, MentorPolicyInput, MentorFeedback, MentorAgreement } from "@trend/shared-types";
 const base = (id: string) => `/projects/${encodeURIComponent(id)}/mentor-access`;
 const get = async <T>(id: string, suffix = "", params?: object): Promise<T> => (await api.get(`${base(id)}${suffix}`, { params })).data.data;
 const send = async (id: string, suffix: string, body: unknown, method = "post") => (await api.request({ url: `${base(id)}${suffix}`, method, data: body })).data.data;
 export const mentorAccessApi = {
+  inbox: async (page = 1): Promise<MentorAccessPage<MentorResourceInboxItem>> => (await api.get("/projects/academic-support/resources", { params: { page }, timeout: 20000 })).data.data,
+  sharePaper: (id: string, accessId: string, body: MentorPaperShareInput): Promise<MentorSharedResource> => send(id, `/${accessId}/shares`, body),
   tasks: (id: string, page = 1) => get<MentorAccessPage<MentorAssignedTask>>(id, "/tasks", { page }),
-  workspace: (id: string, page = 1) => get<MentorAccessWorkspace>(id, "", { page }),
+  workspace: (id: string, page = 1, activeOnly = false) => get<MentorAccessWorkspace>(id, "", { page, ...(activeOnly ? { activeOnly: "true" } : {}) }),
   catalog: (id: string, kind: MentorResourceKind, page: number, q: string) => get<MentorAccessPage<MentorShareInput>>(id, "/catalog", { kind, page, q }),
   configure: (id: string, accessId: string, body: MentorPolicyInput & { expectedVersion: number; reason: string }) => send(id, `/${accessId}`, body, "put"),
   revoke: (id: string, accessId: string, body: object) => send(id, `/${accessId}/revoke`, body),
   share: (id: string, accessId: string, body: MentorShareInput & { expectedVersion: number }): Promise<MentorSharedResource> => send(id, `/${accessId}/shares`, body),
+  resourcePdf: async (id: string, accessId: string, shareId: string, signal?: AbortSignal): Promise<Blob> => (await api.get(base(id)+`/${accessId}/shares/${shareId}/pdf`, {responseType:"blob",signal,timeout:30000})).data,
   resource: (id: string, accessId: string, shareId: string) => get<MentorSharedResource>(id, `/${accessId}/shares/${shareId}`),
   unshare: (id: string, accessId: string, shareId: string, body: object) => send(id, `/${accessId}/shares/${shareId}/revoke`, body),
-  feedback: (id: string, accessId: string, page: number) => get<MentorAccessPage<MentorFeedback>>(id, `/${accessId}/feedback`, { page }),
+  feedback: (id: string, accessId: string, page: number, shareId?: string) => get<MentorAccessPage<MentorFeedback>>(id, `/${accessId}/feedback`, { page, ...(shareId ? { shareId } : {}) }),
   comment: (id: string, accessId: string, body: object) => send(id, `/${accessId}/feedback`, body),
   handle: (id: string, accessId: string, feedbackId: string, body: object) => send(id, `/${accessId}/feedback/${feedbackId}`, body, "put"),
   history: (id: string, accessId: string, page: number) => get<MentorAccessPage<{ id: string; type: string; actorId: string; actorName: string; createdAt: string; details: Record<string, unknown> }>>(id, `/${accessId}/history`, { page }),

@@ -21,6 +21,8 @@ IconData themeModeIcon(ThemeMode mode) => switch (mode) {
 /// Bottom sheet with the three theme choices; a choice applies immediately.
 Future<void> showThemeModeSheet(BuildContext context) {
   return showModalBottomSheet<void>(
+    // Over the bottom navigation bar, dimming it too.
+    useRootNavigator: true,
     context: context,
     builder: (_) => const ThemeModeSheet(),
   );

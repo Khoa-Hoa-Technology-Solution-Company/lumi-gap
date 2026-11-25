@@ -52,7 +52,7 @@ describe.sequential("peer-review versions and authorization (PostgreSQL)", () =>
     await prisma.submission.update({ where: { id: submission.id }, data: { currentRevisionId: revision.id } });
     return { submission, revision };
   }
-  const input = (assessment: AcademicReviewInput["overallAssessment"] = "STRONG", level = highLevel): AcademicReviewInput => ({ overallAssessment: assessment, responses: [{ criterionKey: "method", performanceLevelId: level, comment: "Method evidence" }, { criterionKey: "evidence", performanceLevelId: otherLevel, comment: "Cited evidence" }], requiredRevisions: assessment === "MAJOR_REVISION" ? [{ priority: "MAJOR", description: "Explain the sampling method" }] : [] });
+  const input = (assessment: AcademicReviewInput["overallAssessment"] = "STRONG", level = highLevel): AcademicReviewInput => ({ overallAssessment: assessment, overallComment: "Assessment based on the submitted methods and cited evidence.", responses: [{ criterionKey: "method", performanceLevelId: level, comment: "Method evidence" }, { criterionKey: "evidence", performanceLevelId: otherLevel, comment: "Cited evidence" }], requiredRevisions: assessment === "MAJOR_REVISION" ? [{ priority: "MAJOR", description: "Explain the sampling method" }] : [] });
   async function invite(submissionId: string, reviewerId = externalLecturer) { return reviewRequestService.create({ submissionId, reviewerId, templateVersionId: version }, author); }
 
   it("reports action permissions separately for the owner, an author and an archived project", async () => {
@@ -167,7 +167,8 @@ describe.sequential("peer-review versions and authorization (PostgreSQL)", () =>
     expect(history.versions[0].reviews).toHaveLength(0); expect(history.versions[1].reviews[0].weightedScore).toBeCloseTo(7 / 3);
     await expect(reviewRequestService.resubmit(request.id, author, { revisionId: revision.id, responses: [] })).rejects.toMatchObject({ statusCode: 400 });
     const resubmits = await Promise.allSettled([1, 2].map(() => reviewRequestService.resubmit(request.id, author, { revisionId: revised.id, responses: [{ revisionItemId: submitted.requiredRevisions[0].id, responseText: "Sampling described in section 2" }] })));
-    expect(resubmits.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(resubmits.filter((result) => result.status === "fulfilled")).toHaveLength(2);
+    expect(await getPrisma().reviewRevisionResponse.count({where:{submissionRevisionId:revised.id}})).toBe(1);
     const workspace = await reviewService.getReview(request.assignment.id, externalLecturer);
     expect(workspace.review).toBeUndefined(); expect(workspace.roundNumber).toBe(2); expect(workspace.artifactRevision?.id).toBe(revised.id);
     await expect(reviewService.saveReview(request.assignment.id, externalLecturer, { ...input(), expectedRevisionId: revision.id, expectedRoundNumber: 1 }, false)).rejects.toMatchObject({ statusCode: 409 });
@@ -200,7 +201,8 @@ describe.sequential("peer-review versions and authorization (PostgreSQL)", () =>
   it("uses aggregate status and serializes accept/submit races", async () => {
     const { submission } = await article(); const one = await invite(submission.id, lecturer), two = await invite(submission.id, externalLecturer);
     const accepts = await Promise.allSettled([reviewRequestService.accept(one.id, lecturer), reviewRequestService.accept(one.id, lecturer)]);
-    expect(accepts.filter((item) => item.status === "fulfilled")).toHaveLength(1);
+    expect(accepts.filter((item) => item.status === "fulfilled")).toHaveLength(2);
+    expect(await getPrisma().notification.count({where:{targetUuid:one.id,type:"REVIEW_REQUEST_ACCEPTED",userId:author}})).toBe(1);
     await reviewRequestService.accept(two.id, externalLecturer);
     const submits = await Promise.allSettled([reviewService.saveReview(one.assignment.id, lecturer, input(), true), reviewService.saveReview(one.assignment.id, lecturer, input(), true)]);
     expect(submits.filter((item) => item.status === "fulfilled")).toHaveLength(1);

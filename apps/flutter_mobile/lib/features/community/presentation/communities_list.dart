@@ -40,6 +40,8 @@ class _CommunitiesListState extends ConsumerState<CommunitiesList> {
 
   Future<void> _pickSort() async {
     final picked = await showModalBottomSheet<CommunitySort>(
+      // Over the bottom navigation bar, dimming it too.
+      useRootNavigator: true,
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(

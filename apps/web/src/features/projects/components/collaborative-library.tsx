@@ -1,8 +1,9 @@
+import { MentorPaperSharing } from "./mentor-paper-sharing";
 import { ScreeningStatus } from "./screening-common";
-import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { BookOpen, Plus, Search, ArrowRight, SlidersHorizontal, ArrowUpDown, X, Filter, RotateCcw, LayoutGrid, List } from "lucide-react";
-import type { ScreeningPaperRow } from "@trend/shared-types";
+import type { ScreeningPaperRow, ScreeningBoard } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -40,7 +41,14 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
   const [notesPaper, setNotesPaper] = useState<ScreeningPaperRow | null>(null);
   const query = { q, pageSize: 12, sort, filter: "ALL" as const, ...(status ? { status } : {}), ...(proposer ? { proposerId: proposer } : {}), ...(reviewer ? { reviewerId: reviewer } : {}), ...(tag ? { tag } : {}) };
   const data = useResearchResource(projectId, ["library", q, status, proposer, reviewer, tag, sort, page], () => screeningApi.board(projectId, { ...query, page }), true, () => !readOnly, 15000);
-  const board = data.data, focusId = params.get("source"), local = board?.items.find(p => p.paperId === focusId);
+  const latestBoardRef = useRef<ScreeningBoard | null>(null);
+  if (data.data) {
+    latestBoardRef.current = data.data;
+  }
+  const board = data.data ?? latestBoardRef.current;
+  const progress = board?.progress;
+  const summary = board?.librarySummary;
+  const focusId = params.get("source"), local = board?.items.find(p => p.paperId === focusId);
   const focus = useResearchResource(projectId, ["library-source", focusId], () => screeningApi.board(projectId, { source: focusId!, page: 1, pageSize: 1 }), Boolean(focusId && board && !local));
   const focused = local ?? focus.data?.items[0];
   const position = board?.items.findIndex(p => p.paperId === focusId) ?? -1;
@@ -91,7 +99,7 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
   const advancedFilterCount = (proposer ? 1 : 0) + (reviewer ? 1 : 0) + (tag ? 1 : 0);
   const isPillAll = !status && !proposer && !reviewer && !tag;
   const isPillIncluded = status === "INCLUDED";
-  const isPillInReview = status === "IN_REVIEW";
+  const isPillUndecided = status === "UNDECIDED" || status === "IN_REVIEW" || status === "NOT_REVIEWED";
   const isPillBackground = status === "BACKGROUND";
   const isPillExcluded = status === "EXCLUDED";
   const isPillDisagreement = status === "NEEDS_RESOLUTION";
@@ -107,6 +115,17 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
   const [selected, setSelected] = useState<Map<string, string>>(new Map()), [makingSet, setMakingSet] = useState(false);
   const move = async (next: URLSearchParams) => { if (await canLeaveWorkspace()) setParams(next); };
   const open = (id: string | null) => { const next = new URLSearchParams(params); if (id) next.set("source", id); else next.delete("source"); void move(next); };
+  const openEvidenceForPaper = (paperId: string, status?: "NOT_STARTED" | "AI_SUGGESTED" | "IN_PROGRESS" | "COMPLETED") => {
+    const next = new URLSearchParams(params);
+    next.set("view", "evidence");
+    if (!readOnly && status !== "COMPLETED") {
+      next.set("extract", paperId);
+    } else {
+      next.set("extract", paperId);
+    }
+    next.delete("source");
+    void move(next);
+  };
   const analyzeSet = (id: string, saved = false) => { const next = new URLSearchParams(params); next.set("tab", "gaps"); next.set("analysisSet", id); next.delete("source"); next.delete("view"); if (saved) setParams(next); else void move(next); };
   function toggle(p: ScreeningPaperRow) { setSelected(old => { const next = new Map(old); if (next.has(p.paperId)) next.delete(p.paperId); else if (next.size < 10) next.set(p.paperId, p.title); return next; }); }
   const change = (run: () => void) => { void canLeaveWorkspace().then(ok => { if (ok) { run(); setPage(1); } }); };
@@ -212,8 +231,8 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
             onClick={resetFilters}
           >
             <span>Tất cả</span>
-            {board?.progress.total !== undefined && (
-              <span className="library-pill-count">{board.progress.total}</span>
+            {progress?.total !== undefined && (
+              <span className="library-pill-count">{progress.total}</span>
             )}
           </button>
           <button
@@ -222,28 +241,21 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
             onClick={() => change(() => setStatus(isPillIncluded ? "" : "INCLUDED"))}
           >
             <span>Đã chọn</span>
-            {board?.librarySummary?.selected !== undefined && (
-              <span className="library-pill-count">{board.librarySummary.selected}</span>
+            {summary?.selected !== undefined && (
+              <span className="library-pill-count">{summary.selected}</span>
             )}
           </button>
           <button
             type="button"
-            className={`library-pill pill-in-review ${isPillInReview ? "active" : ""}`}
-            onClick={() => change(() => setStatus(isPillInReview ? "" : "IN_REVIEW"))}
+            className={`library-pill pill-in-review ${isPillUndecided ? "active" : ""}`}
+            onClick={() => change(() => setStatus(isPillUndecided ? "" : "UNDECIDED"))}
           >
-            <span>Đang sàng lọc</span>
-            {board ? (
-              <span className="library-pill-count">
-                {board.librarySummary?.attention ?? board.progress.total - board.progress.finalized}
-              </span>
+            <span>Chưa quyết định</span>
+            {summary?.attention !== undefined ? (
+              <span className="library-pill-count">{summary.attention}</span>
+            ) : progress ? (
+              <span className="library-pill-count">{progress.total - progress.finalized}</span>
             ) : null}
-          </button>
-          <button
-            type="button"
-            className={`library-pill pill-background ${isPillBackground ? "active" : ""}`}
-            onClick={() => change(() => setStatus(isPillBackground ? "" : "BACKGROUND"))}
-          >
-            <span>Tài liệu nền</span>
           </button>
           <button
             type="button"
@@ -251,22 +263,42 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
             onClick={() => change(() => setStatus(isPillExcluded ? "" : "EXCLUDED"))}
           >
             <span>Đã loại</span>
+            {summary?.excluded !== undefined && (
+              <span className="library-pill-count">{summary.excluded}</span>
+            )}
           </button>
           <button
             type="button"
-            className={`library-pill pill-unresolved ${isPillClosedUnresolved ? "active" : ""}`}
-            onClick={() => change(() => setStatus(isPillClosedUnresolved ? "" : "CLOSED_UNRESOLVED"))}
+            className={`library-pill pill-needs-resolution ${isPillDisagreement ? "active" : ""}`}
+            onClick={() => change(() => setStatus(isPillDisagreement ? "" : "NEEDS_RESOLUTION"))}
           >
-            <span>Không đồng thuận</span>
+            <span>Cần thống nhất</span>
+            {summary?.discussion !== undefined && (
+              <span className="library-pill-count">{summary.discussion}</span>
+            )}
           </button>
-          {Boolean(board?.librarySummary?.discussion) && (
+          <button
+            type="button"
+            className={`library-pill pill-background ${isPillBackground ? "active" : ""}`}
+            onClick={() => change(() => setStatus(isPillBackground ? "" : "BACKGROUND"))}
+          >
+            <span>Tài liệu nền</span>
+            {summary?.background !== undefined ? (
+              <span className="library-pill-count">{summary.background}</span>
+            ) : progress?.legacy ? (
+              <span className="library-pill-count">{progress.legacy}</span>
+            ) : null}
+          </button>
+          {(Boolean(summary?.unresolved) || isPillClosedUnresolved) && (
             <button
               type="button"
-              className={`library-pill pill-needs-resolution ${isPillDisagreement ? "active" : ""}`}
-              onClick={() => change(() => setStatus(isPillDisagreement ? "" : "NEEDS_RESOLUTION"))}
+              className={`library-pill pill-unresolved ${isPillClosedUnresolved ? "active" : ""}`}
+              onClick={() => change(() => setStatus(isPillClosedUnresolved ? "" : "CLOSED_UNRESOLVED"))}
             >
-              <span>Có bất đồng</span>
-              <span className="library-pill-count">{board?.librarySummary?.discussion}</span>
+              <span>Không đồng thuận</span>
+              {summary?.unresolved !== undefined && (
+                <span className="library-pill-count">{summary.unresolved}</span>
+              )}
             </button>
           )}
         </div>
@@ -299,7 +331,7 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
               value={status}
               onChange={e => { const value = e.target.value; change(() => setStatus(value)); }}
             >
-              <option value="">Tất cả trạng thái</option><option value="CONFLICT">Có bất đồng về kết luận</option><option value="NEEDS_CLARIFICATION">Cần làm rõ</option><option value="NEEDS_MORE_INFORMATION">Cần đọc thêm</option><option value="EXCLUSION_REASON_MISMATCH">Cần thống nhất lý do loại</option><option value="RESOLVED">Đã giải quyết</option>
+              <option value="">Tất cả trạng thái</option><option value="UNDECIDED">Chưa quyết định</option><option value="CONFLICT">Có bất đồng về kết luận</option><option value="NEEDS_CLARIFICATION">Cần làm rõ</option><option value="NEEDS_MORE_INFORMATION">Cần đọc thêm</option><option value="EXCLUSION_REASON_MISMATCH">Cần thống nhất lý do loại</option><option value="RESOLVED">Đã giải quyết</option>
               {Object.entries(states).map(([value, label]) => (
                 <option value={value} key={value}>{label}</option>
               ))}
@@ -346,12 +378,29 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
         </div>
       </div>
     </div>
-    {data.isLoading ? <WorkspaceLoading /> : data.isError ? <ScreeningError error={data.error} retry={() => void data.refetch()} /> : board && <>
-      {board.progress.legacy > 0 && <p className="library-legacy">Có {board.progress.legacy} bài mang phân loại từ quy trình cũ. Nhóm vẫn đọc được tài liệu; phân loại cũ không được tính là đánh giá hoặc quyết định chọn mới.</p>}
+    {!board && data.isLoading ? <WorkspaceLoading /> : data.isError ? <ScreeningError error={data.error} retry={() => void data.refetch()} /> : board && <div className={`library-content-container ${data.isFetching ? "is-fetching" : ""}`}>
+      {data.isFetching && (
+        <div className="library-fetching-bar" aria-hidden="true">
+          <div className="library-fetching-bar-indicator" />
+        </div>
+      )}
+      {board.progress.legacy > 0 && (
+        <div className="library-legacy-alert">
+          <BookOpen size={14} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+          <p>Có {board.progress.legacy} bài mang phân loại từ quy trình cũ. Nhóm vẫn đọc được tài liệu; phân loại cũ không được tính là đánh giá hoặc quyết định chọn mới.</p>
+        </div>
+      )}
       {!board.items.length && <div className="library-empty"><BookOpen size={24} /><h3>{board.progress.total ? "Không có bài khớp bộ lọc" : "Bắt đầu từ những bài nhóm đang đọc"}</h3><p>{board.progress.total ? "Thử đổi từ khóa hoặc bộ lọc để tìm lại tài liệu." : "Thêm từ kho bài, OpenAlex, DOI, BibTeX hoặc PDF riêng của dự án."}</p>{!readOnly && !board.progress.total && <Button size="sm" onClick={onAdd}><Plus size={14} />Thêm bài đầu tiên</Button>}</div>}
       <div className={`library-list ${viewMode === "grid" ? "is-grid" : "is-list"}`}>
         {board.items.map(p => {
           const round = p.round, disagreement = round && !round.hiddenReviews && new Set(round.reviews.map(r => r.decision)).size > 1;
+          const isSelectedPaper = Boolean(p.evidenceSummary?.eligible ?? (round && (round.status === "INCLUDED" || round.publishedResult?.status === "INCLUDED") && round.extractionReady !== false));
+          const evStatus = p.evidenceSummary?.status ?? "NOT_STARTED";
+          const evCount = p.evidenceSummary?.extractionCount ?? 0;
+          const evVerified = p.evidenceSummary?.verifiedCount ?? 0;
+          const showEvidenceProgress = isSelectedPaper || evCount > 0;
+          const evidenceActionLabel = evStatus === "COMPLETED" ? "Xem bằng chứng" : evStatus === "IN_PROGRESS" || evStatus === "AI_SUGGESTED" ? "Tiếp tục phân tích" : "Phân tích bằng chứng";
+          const sourceHref = p.paperLink || (p.doi && /^10\.\d{4,9}\/\S+$/i.test(p.doi) ? `https://doi.org/${encodeURIComponent(p.doi)}` : null);
           return (
             <article key={p.paperId} className="library-paper">
               <header className="library-paper-header">
@@ -372,6 +421,11 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
                       {p.journalName}
                     </span>
                   )}
+                  {p.doi && (
+                    <span className="library-paper-doi-chip" title={`DOI: ${p.doi}`}>
+                      DOI: {p.doi}
+                    </span>
+                  )}
                   {p.fullTextAvailable && (
                     <span className="library-paper-fulltext-chip" title="Có nguồn toàn văn">
                       Có toàn văn
@@ -380,6 +434,12 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
                 </div>
 
                 <div className="library-paper-header-right">
+                  {!readOnly && <Link className="text-xs text-muted-foreground hover:text-primary" to={`/projects/${projectId}?tab=chat&channel=team-chat&shareKind=PAPER&shareId=${p.paperId}`}>Chia sẻ với nhóm</Link>}
+                  {round?.rescreening && round.publishedResult && (
+                    <span className="text-[11px] text-muted-foreground" title="Kết quả đã chốt vẫn có hiệu lực đến khi vòng mới hoàn tất">
+                      Hiện hành: {round.publishedResult.status === "INCLUDED" ? "Đã chọn" : round.publishedResult.status === "EXCLUDED" ? "Đã loại" : round.publishedResult.status === "CLOSED_UNRESOLVED" ? "Không đồng thuận" : round.publishedResult.status}
+                    </span>
+                  )}
                   <ScreeningStatus className="library-selection-state" status={round?.status ?? "NOT_REVIEWED"} round={round} />
                 </div>
               </header>
@@ -397,7 +457,34 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
                   </p>
                 )}
 
-                {p.abstractText && <p className="library-abstract">{p.abstractText}</p>}
+                {(showEvidenceProgress || (p.manuscriptCitationCount ?? 0) > 0) && (
+                  <div className="library-paper-workflow-row" aria-label="Tiến độ bằng chứng và trích dẫn">
+                    {showEvidenceProgress && (
+                      <span
+                        className={`library-evidence-chip is-${evStatus.toLowerCase()}`}
+                        data-evidence-status={evStatus}
+                      >
+                        {evStatus === "COMPLETED"
+                          ? `Bằng chứng: Đã đối chiếu (${evVerified}/${evCount})`
+                          : evStatus === "AI_SUGGESTED"
+                          ? `Bằng chứng: AI gợi ý · Cần kiểm chứng (${evCount})`
+                          : evStatus === "IN_PROGRESS"
+                          ? `Bằng chứng: Đang phân tích (${evCount})`
+                          : "Bằng chứng: Chưa phân tích"}
+                      </span>
+                    )}
+                    {(p.manuscriptCitationCount ?? 0) > 0 && (
+                      <Link
+                        to={p.citedInManuscripts?.[0] ? `/projects/${projectId}/manuscripts/${p.citedInManuscripts[0].id}` : `/projects/${projectId}?tab=manuscripts`}
+                        className="library-manuscript-chip"
+                        data-manuscript-citations={p.manuscriptCitationCount}
+                        title={p.citedInManuscripts?.map(m => `${m.title} (\\cite{${m.citationKey}})`).join(", ")}
+                      >
+                        Đã trích dẫn trong {p.manuscriptCitationCount} bản thảo
+                      </Link>
+                    )}
+                  </div>
+                )}
 
                 {Boolean(p.tags?.length) && (
                   <div className="library-tags">
@@ -445,8 +532,25 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
                 </div>
 
                 <div className="library-paper-footer-right">
+                  {sourceHref && (
+                    <Button asChild variant="ghost" size="sm" className="library-source-btn">
+                      <a href={sourceHref} target="_blank" rel="noopener noreferrer">
+                        {p.fullTextAvailable ? "Mở PDF" : "Xem nguồn"}
+                      </a>
+                    </Button>
+                  )}
+                  {showEvidenceProgress && (
+                    <Button
+                      variant={isSelectedPaper ? "default" : "outline"}
+                      size="sm"
+                      className="library-evidence-btn"
+                      onClick={() => openEvidenceForPaper(p.paperId, evStatus)}
+                    >
+                      <span>{evidenceActionLabel}</span>
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" className="library-action-btn" onClick={() => open(p.paperId)}>
-                    <span>{round?.myReview ? "Xem & cập nhật" : "Đọc & đánh giá"}</span>
+                    <span>{round?.myReview ? "Xem & cập nhật" : isSelectedPaper ? "Mở chi tiết" : "Đọc & đánh giá"}</span>
                     <ArrowRight size={13} aria-hidden="true" />
                   </Button>
                 </div>
@@ -456,7 +560,7 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
         })}
       </div>
       {board && board.total > 0 && <ScreeningPager page={page} total={board.total} hasNext={board.hasNext} onPage={setPage} />}
-    </>}
+    </div>}
     {selected.size > 0 && !readOnly && <div className="library-selection-bar" role="region" aria-label="Bộ bài đang chọn"><span><strong>{selected.size}/10</strong> bài trong bộ phân tích</span><Button variant="ghost" size="sm" onClick={() => setSelected(new Map())}>Bỏ chọn</Button><Button disabled={selected.size < 2} onClick={() => setMakingSet(true)}>Đưa vào phân tích<ArrowRight size={14} /></Button><small>Cần 2–10 bài. Có thể tạo bộ nháp trước khi chốt.</small></div>}
     {focusId && <Dialog open onOpenChange={v => { if (!v) open(null); }}><DialogContent closeLabel="Đóng" className="screening-workspace library-paper-dialog" data-no-i18n onOpenAutoFocus={e => e.preventDefault()}>
       <div className="library-dialog-header">
@@ -476,8 +580,27 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
         <ScreeningPaperDetail settings={board?.settings} collaborative={board?.settings.reviewMode === "COLLABORATIVE"} key={`detail-${focused.paperId}`} projectId={projectId} paper={focused} people={board?.people ?? []} readOnly={readOnly} />
         <footer className="library-dialog-footer">
           <div className="screening-actions">
+            {!readOnly && <MentorPaperSharing projectId={projectId} paperId={focused.paperId} />}
             <Button size="sm" variant="outline" onClick={() => setNotesPaper(focused)}>Ghi chú tài liệu</Button>
-            <Button size="sm" disabled={focused.round?.finalDecision?.decision !== "INCLUDED" || focused.round?.extractionReady === false} variant="outline" onClick={() => { const next = new URLSearchParams(params); next.set("view", "evidence"); next.set("extract", focused.paperId); next.delete("source"); void move(next); }}>Thêm trích xuất nghiên cứu</Button>
+            {(focused.citedInManuscripts?.length ?? 0) > 0 && (
+              <Button asChild size="sm" variant="ghost">
+                <Link to={`/projects/${projectId}/manuscripts/${focused.citedInManuscripts![0]!.id}`}>
+                  Mở bản thảo đã trích dẫn ({focused.manuscriptCitationCount})
+                </Link>
+              </Button>
+            )}
+            <Button
+              size="sm"
+              disabled={!focused.evidenceSummary?.eligible && (focused.round?.finalDecision?.decision !== "INCLUDED" || focused.round?.extractionReady === false) && (focused.evidenceSummary?.extractionCount ?? 0) === 0}
+              variant={focused.round?.finalDecision?.decision === "INCLUDED" || focused.evidenceSummary?.eligible ? "default" : "outline"}
+              onClick={() => openEvidenceForPaper(focused.paperId, focused.evidenceSummary?.status)}
+            >
+              {focused.evidenceSummary?.status === "COMPLETED"
+                ? "Xem bằng chứng"
+                : focused.evidenceSummary?.status === "IN_PROGRESS" || focused.evidenceSummary?.status === "AI_SUGGESTED"
+                ? "Tiếp tục phân tích"
+                : "Phân tích bằng chứng"}
+            </Button>
           </div>
         </footer>
       </>}

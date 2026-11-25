@@ -209,7 +209,6 @@ export const researchHomeVi = {
   "Find literature that matters": "Tìm tài liệu thực sự liên quan",
   "Search by meaning, not just keywords. Start with the question you actually want to answer.": "Tìm theo ý nghĩa, bắt đầu từ câu hỏi bạn thật sự muốn giải đáp.",
   "See the bigger picture": "Nhìn thấy bức tranh toàn cảnh",
-  "Follow how a field evolves, compare topics, and find the conversations gaining momentum.": "Theo dõi sự phát triển của lĩnh vực, so sánh chủ đề và nhận ra hướng nghiên cứu đang được quan tâm.",
   "Turn reading into direction": "Từ tài liệu đến hướng nghiên cứu",
   "Collect papers, connect evidence, and examine candidate gaps in a shared research project.": "Tập hợp bài báo, kết nối bằng chứng và xem xét khoảng trống trong cùng một dự án.",
   "Research papers orbit a lens, revealing a new connection at the center.": "Các tài liệu xoay quanh một thấu kính, hé lộ kết nối mới ở trung tâm.",

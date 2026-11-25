@@ -17,9 +17,25 @@ async function source(projectId: string, actorId: string, paperId: string, write
 export const projectPaperAnalysisService = {
   async get(projectId: string, actorId: string, paperId: string): Promise<ProjectPaperAnalysis> {
     const { paper, link } = await source(projectId, actorId, paperId);
-    const knowledge = await knowledgeService.get(publicDatabaseId(paper));
-    return { paperId: paper.id, title: paper.title, screeningStatus: link.screeningStatus as ProjectScreeningStatus,
-      analysis: paper.aiAnalysis as unknown as PaperAiAnalysis | null, knowledge };
+    const [knowledge, authors, files] = await Promise.all([
+      knowledgeService.get(publicDatabaseId(paper)),
+      withWorkspace(projectId, actorId, {}, c => c.tx.paperAuthor.findMany({ where: { paperId: paper.id }, orderBy: { position: "asc" }, select: { displayName: true } })),
+      withWorkspace(projectId, actorId, {}, c => c.tx.projectPaperFile.count({ where: { projectId: c.project.id, paperId: paper.id } })),
+    ]);
+    return {
+      paperId: paper.id,
+      title: paper.title,
+      screeningStatus: link.screeningStatus as ProjectScreeningStatus,
+      analysis: paper.aiAnalysis as unknown as PaperAiAnalysis | null,
+      knowledge,
+      authors: authors.map(a => a.displayName),
+      publicationYear: paper.publicationYear || null,
+      journalName: paper.journalName ?? null,
+      doi: paper.doi ?? null,
+      abstractText: paper.abstractText ?? null,
+      paperLink: paper.paperLink ?? paper.openAccessUrl ?? null,
+      fullTextAvailable: Boolean(paper.openAccessUrl || paper.pdfPath || files > 0),
+    };
   },
   async request(projectId: string, actorId: string, paperId: string) {
     const current = await source(projectId, actorId, paperId, true);

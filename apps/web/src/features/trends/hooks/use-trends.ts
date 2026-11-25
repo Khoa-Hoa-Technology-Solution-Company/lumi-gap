@@ -67,6 +67,17 @@ export function useTrendCompare(params: TrendCompareParams, enabled = true) {
   });
 }
 
+/** Emerging keyword signals; the first uncached call can take ~15 s, so fetch it only while its tab is open. */
+export function useTrendEmerging(params: TrendEmergingParams, enabled = true) {
+  return useQuery({
+    queryKey: ["trendEmerging", params],
+    queryFn: () => trendsApi.emerging(params),
+    enabled,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useTrendTopicCandidates(params: TrendTopicCandidatesParams, enabled = true) {
   return useQuery({
     queryKey: ["trendTopicCandidates", params],

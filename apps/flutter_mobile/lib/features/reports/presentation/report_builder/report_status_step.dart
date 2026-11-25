@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
-import 'package:flutter_mobile/core/widgets/confirm_dialog.dart';
+import 'package:flutter_mobile/core/utils/haptics.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_action_sheet.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_confirm_sheet.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
@@ -105,14 +107,14 @@ class ReportStatusStep extends StatelessWidget {
                     onPressed: () =>
                         unawaited(context.push('/report/${r.id}')),
                     icon: const Icon(Icons.visibility_outlined, size: 18),
-                    label: Text(context.t('View Full Report')),
+                    label: Text(context.t('View full report')),
                   ),
                 ),
                 const SizedBox(width: 12),
               ],
               OutlinedButton(
                 onPressed: onNewReport,
-                child: Text(context.t('New Report')),
+                child: Text(context.t('New report')),
               ),
             ],
           ),
@@ -148,14 +150,49 @@ class MyReportsList extends StatelessWidget {
   final Set<String> deleting;
 
   Future<void> _confirmDelete(BuildContext context, String id) async {
-    final ok = await ConfirmDialog.show(
+    final ok = await showLumiConfirmSheet(
       context,
       title: context.t('Delete report'),
       message: context.t('Delete this report? This cannot be undone.'),
       confirmText: context.t('Delete'),
-      isDestructive: true,
+      destructive: true,
     );
     if (ok ?? false) await onDelete(id);
+  }
+
+  void _open(ReportListItem report) =>
+      ReportState.parse(report.status) == ReportState.ready
+          ? onOpen(report.id)
+          : onFollow(report.id);
+
+  /// The row's actions (long-press or the overflow button): open it, or
+  /// delete it after a confirmation (a report delete cannot be undone).
+  Future<void> _showActions(BuildContext context, ReportListItem report) async {
+    final action = await showLumiActionSheet<String>(
+      context,
+      title: report.topic ?? report.query,
+      actions: [
+        LumiSheetAction(
+          value: 'open',
+          label: context.t('Open'),
+          icon: Icons.open_in_new,
+        ),
+        LumiSheetAction(
+          value: 'delete',
+          label: context.t('Delete report'),
+          icon: Icons.delete_outline,
+          destructive: true,
+          enabled: !deleting.contains(report.id),
+        ),
+      ],
+    );
+    if (!context.mounted) return;
+    switch (action) {
+      case 'open':
+        _open(report);
+      case 'delete':
+        await _confirmDelete(context, report.id);
+    }
   }
 
   @override
@@ -166,9 +203,11 @@ class MyReportsList extends StatelessWidget {
       children: [
         for (final report in reports)
           InkWell(
-            onTap: () => ReportState.parse(report.status) == ReportState.ready
-                ? onOpen(report.id)
-                : onFollow(report.id),
+            onTap: () => _open(report),
+            onLongPress: () {
+              unawaited(Haptics.select());
+              unawaited(_showActions(context, report));
+            },
             child: Padding(
               padding: const EdgeInsetsDirectional.fromSTEB(16, 14, 4, 14),
               child: Row(
@@ -214,12 +253,10 @@ class MyReportsList extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    tooltip: context.t('Delete report'),
-                    onPressed: deleting.contains(report.id)
-                        ? null
-                        : () => unawaited(_confirmDelete(context, report.id)),
+                    tooltip: context.t('More report actions'),
+                    onPressed: () => unawaited(_showActions(context, report)),
                     icon: Icon(
-                      Icons.delete_outline,
+                      Icons.more_vert,
                       color: lumi.foregroundSecondary,
                     ),
                   ),

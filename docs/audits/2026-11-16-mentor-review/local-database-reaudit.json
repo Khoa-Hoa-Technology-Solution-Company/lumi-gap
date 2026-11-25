@@ -1,0 +1,394 @@
+{
+  "generatedAt": "2026-11-16T13:33:46.666Z",
+  "readOnly": true,
+  "migrations": {
+    "checkedIn": 145,
+    "applied": 155,
+    "absentFromCheckout": [
+      "20261106180000_mentorship_applicant_pool",
+      "20261106181000_mentorship_application_submission_keys",
+      "20261106190000_manuscript_integrity_center",
+      "20261106191000_integrity_report_snapshot_scope",
+      "20261107001000_integrity_ai_acceptance_scope",
+      "20261107100000_orcid_oauth_identity",
+      "20261107101000_lecturer_research_specializations",
+      "20261108090000_two_reviewer_consensus",
+      "20261108110000_screening_evaluation_consensus",
+      "20261111090000_shared_research_classification",
+      "20261111091000_mentorship_support_preferences",
+      "20261111092000_keyword_classification_provenance",
+      "20261111110000_attribution_publication_policy"
+    ],
+    "pending": [
+      "20261102090000_papers_openalex_id_unique",
+      "20261107113000_orcid_verified_unique",
+      "20261110090000_screening_team_workflow"
+    ],
+    "checksumMismatches": [
+      "20260925000100_academic_profile_experience",
+      "20260927001000_project_invitation_tokens",
+      "20261001000100_forum_public_slugs",
+      "20261003000300_forum_categories",
+      "20261014000300_project_workspace_collaboration",
+      "20261029150000_contribution_matrix_evidence",
+      "20261030160000_research_trust_integrity_security",
+      "20261030161000_research_ledger_retention_fk"
+    ],
+    "lineEndingDifferences": [
+      "20260924000100_postgresql_foundation",
+      "20260924000200_relations_constraints_search",
+      "20260924000300_data_migration_control",
+      "20260924000400_identity_authorization",
+      "20260924000500_legacy_email_verification_backfill",
+      "20260924000600_legacy_email_verification_recovery",
+      "20260925000200_backfill_academic_profile_handles",
+      "20260925000300_super_admin_user_management",
+      "20260926000100_academic_identity_links",
+      "20260926000200_position_verification_evidence",
+      "20260926000300_academic_profile_discoverability",
+      "20260926000400_display_name_change_limit",
+      "20260926000500_project_workspace",
+      "20260926000600_one_active_password_reset_token",
+      "20260926000700_project_literature_screening",
+      "20260926000800_academic_review_system",
+      "20260927000900_research_forum_communities",
+      "20260929000100_identity_affiliation_admission_foundation",
+      "20260929000200_internal_lecturer_mentorship",
+      "20260929000300_external_lecturer_review_invitations",
+      "20260929000400_fpt_onboarding_options",
+      "20260929000500_structured_gap_evidence_provenance",
+      "20260930000100_forum_metrics_and_views",
+      "20260930000200_forum_view_cooldown_counter",
+      "20260930000300_forum_participant_lookup",
+      "20260930000400_forum_visible_reply_backfill",
+      "20261001000200_forum_public_slugs_nullable",
+      "20261001000200_forum_readable_slugs",
+      "20261001000300_forum_reactions",
+      "20261001000400_forum_notification_levels",
+      "20261002000100_forum_edit_history",
+      "20261002000200_forum_post_numbers",
+      "20261002000300_forum_helpful_reactions",
+      "20261002000400_forum_view_history",
+      "20261002000500_forum_single_reaction",
+      "20261002000600_forum_trust_safety_v1",
+      "20261003000100_forum_appeal_state",
+      "20261003000200_forum_moderation_targets",
+      "20261031220000_mentor_recruitment_plan",
+      "20261102170000_screening_adjudication_invitation_reason"
+    ],
+    "referenceMatches": [
+      {
+        "name": "20260925000100_academic_profile_experience",
+        "found": true,
+        "matchesApplied": false
+      },
+      {
+        "name": "20260927001000_project_invitation_tokens",
+        "found": true,
+        "matchesApplied": false
+      },
+      {
+        "name": "20261001000100_forum_public_slugs",
+        "found": true,
+        "matchesApplied": false
+      },
+      {
+        "name": "20261003000300_forum_categories",
+        "found": true,
+        "matchesApplied": false
+      },
+      {
+        "name": "20261014000300_project_workspace_collaboration",
+        "found": true,
+        "matchesApplied": false
+      },
+      {
+        "name": "20261029150000_contribution_matrix_evidence",
+        "found": true,
+        "matchesApplied": false
+      },
+      {
+        "name": "20261030160000_research_trust_integrity_security",
+        "found": true,
+        "matchesApplied": false
+      },
+      {
+        "name": "20261030161000_research_ledger_retention_fk",
+        "found": true,
+        "matchesApplied": false
+      },
+      {
+        "name": "20261106180000_mentorship_applicant_pool",
+        "found": true,
+        "matchesApplied": true
+      },
+      {
+        "name": "20261106181000_mentorship_application_submission_keys",
+        "found": true,
+        "matchesApplied": true
+      },
+      {
+        "name": "20261106190000_manuscript_integrity_center",
+        "found": true,
+        "matchesApplied": true
+      },
+      {
+        "name": "20261106191000_integrity_report_snapshot_scope",
+        "found": true,
+        "matchesApplied": true
+      },
+      {
+        "name": "20261107001000_integrity_ai_acceptance_scope",
+        "found": true,
+        "matchesApplied": true
+      },
+      {
+        "name": "20261107100000_orcid_oauth_identity",
+        "found": true,
+        "matchesApplied": true
+      },
+      {
+        "name": "20261107101000_lecturer_research_specializations",
+        "found": true,
+        "matchesApplied": true
+      },
+      {
+        "name": "20261108090000_two_reviewer_consensus",
+        "found": true,
+        "matchesApplied": true
+      },
+      {
+        "name": "20261108110000_screening_evaluation_consensus",
+        "found": true,
+        "matchesApplied": true
+      },
+      {
+        "name": "20261111090000_shared_research_classification",
+        "found": true,
+        "matchesApplied": true
+      },
+      {
+        "name": "20261111091000_mentorship_support_preferences",
+        "found": true,
+        "matchesApplied": true
+      },
+      {
+        "name": "20261111092000_keyword_classification_provenance",
+        "found": true,
+        "matchesApplied": true
+      },
+      {
+        "name": "20261111110000_attribution_publication_policy",
+        "found": true,
+        "matchesApplied": true
+      }
+    ],
+    "historicalMatches": [
+      {
+        "name": "20260925000100_academic_profile_experience",
+        "commitsChecked": 1,
+        "matchingCommit": null
+      },
+      {
+        "name": "20260927001000_project_invitation_tokens",
+        "commitsChecked": 1,
+        "matchingCommit": null
+      },
+      {
+        "name": "20261001000100_forum_public_slugs",
+        "commitsChecked": 1,
+        "matchingCommit": null
+      },
+      {
+        "name": "20261003000300_forum_categories",
+        "commitsChecked": 2,
+        "matchingCommit": "6180d6571721a47995a8df918976b9e116a3343c"
+      },
+      {
+        "name": "20261014000300_project_workspace_collaboration",
+        "commitsChecked": 1,
+        "matchingCommit": null
+      },
+      {
+        "name": "20261029150000_contribution_matrix_evidence",
+        "commitsChecked": 1,
+        "matchingCommit": null
+      },
+      {
+        "name": "20261030160000_research_trust_integrity_security",
+        "commitsChecked": 1,
+        "matchingCommit": null
+      },
+      {
+        "name": "20261030161000_research_ledger_retention_fk",
+        "commitsChecked": 1,
+        "matchingCommit": null
+      }
+    ],
+    "failed": [],
+    "rolledBack": [
+      "20260925000100_academic_profile_experience",
+      "20260925000100_academic_profile_experience",
+      "20260929000100_identity_affiliation_admission_foundation",
+      "20260929000100_identity_affiliation_admission_foundation",
+      "20261102090000_papers_openalex_id_unique",
+      "20261102090000_papers_openalex_id_unique"
+    ]
+  },
+  "reviewSchema": [
+    {
+      "column_name": "mentor_access_id",
+      "data_type": "uuid"
+    }
+  ],
+  "relevantIndexes": [
+    {
+      "indexname": "reviewer_assignments_mentor_access_id_idx",
+      "indexdef": "CREATE INDEX reviewer_assignments_mentor_access_id_idx ON public.reviewer_assignments USING btree (mentor_access_id)"
+    },
+    {
+      "indexname": "papers_openalex_id_idx",
+      "indexdef": "CREATE INDEX papers_openalex_id_idx ON public.papers USING btree (openalex_id)"
+    }
+  ],
+  "scopedGrantForeignKey": [
+    {
+      "conname": "reviewer_assignments_mentor_access_id_fkey",
+      "definition": "FOREIGN KEY (mentor_access_id) REFERENCES mentor_access(id) ON DELETE SET NULL"
+    }
+  ],
+  "pendingMigrationPreflight": {
+    "verifiedOrcidDuplicateGroups": 0,
+    "verifiedOrcidIndexes": [
+      {
+        "indexname": "academic_identity_links_one_orcid_per_user",
+        "indexdef": "CREATE UNIQUE INDEX academic_identity_links_one_orcid_per_user ON public.academic_identity_links USING btree (user_id) WHERE ((provider)::text = 'ORCID'::text)"
+      },
+      {
+        "indexname": "academic_identity_links_verified_orcid_unique",
+        "indexdef": "CREATE UNIQUE INDEX academic_identity_links_verified_orcid_unique ON public.academic_identity_links USING btree (identifier) WHERE (((provider)::text = 'ORCID'::text) AND ((verification_status)::text = 'PROVIDER_CONNECTED'::text))"
+      }
+    ],
+    "screeningStatusConstraint": [
+      {
+        "definition": "CHECK (((status)::text = ANY ((ARRAY['NOT_REVIEWED'::character varying, 'IN_REVIEW'::character varying, 'NEEDS_RESOLUTION'::character varying, 'NEEDS_MORE_INFO'::character varying, 'ADJUDICATING'::character varying, 'AWAITING_FINALIZATION'::character varying, 'INCLUDED'::character varying, 'EXCLUDED'::character varying, 'BACKGROUND'::character varying, 'WAITING_FULLTEXT'::character varying, 'CONSENSUS_REQUIRED'::character varying, 'CONSENSUS_IN_PROGRESS'::character varying])::text[])))"
+      }
+    ],
+    "screeningStatuses": [
+      {
+        "status": "ADJUDICATING",
+        "count": 1
+      },
+      {
+        "status": "AWAITING_FINALIZATION",
+        "count": 1
+      },
+      {
+        "status": "EXCLUDED",
+        "count": 9
+      },
+      {
+        "status": "INCLUDED",
+        "count": 6
+      },
+      {
+        "status": "IN_REVIEW",
+        "count": 9
+      },
+      {
+        "status": "NEEDS_MORE_INFO",
+        "count": 1
+      },
+      {
+        "status": "NOT_REVIEWED",
+        "count": 19
+      }
+    ]
+  },
+  "openalex": {
+    "duplicates": [
+      {
+        "openalex_id": "W4408906838",
+        "copies": 2,
+        "first_created": "2026-10-07T02:00:19.592Z",
+        "last_created": "2026-10-07T02:00:23.444Z"
+      },
+      {
+        "openalex_id": "W7117755904",
+        "copies": 2,
+        "first_created": "2026-10-07T02:00:19.290Z",
+        "last_created": "2026-10-07T02:00:19.357Z"
+      },
+      {
+        "openalex_id": "W7143437711",
+        "copies": 2,
+        "first_created": "2026-10-07T02:00:27.849Z",
+        "last_created": "2026-10-07T02:00:28.098Z"
+      },
+      {
+        "openalex_id": "W7163581084",
+        "copies": 2,
+        "first_created": "2026-10-07T02:00:23.578Z",
+        "last_created": "2026-11-01T03:01:49.655Z"
+      },
+      {
+        "openalex_id": "W7165643298",
+        "copies": 2,
+        "first_created": "2026-10-07T02:00:08.238Z",
+        "last_created": "2026-10-07T02:00:08.262Z"
+      },
+      {
+        "openalex_id": "W7169673593",
+        "copies": 2,
+        "first_created": "2026-10-07T02:00:11.635Z",
+        "last_created": "2026-10-07T02:00:19.683Z"
+      },
+      {
+        "openalex_id": "W7214542315",
+        "copies": 2,
+        "first_created": "2026-10-07T02:00:39.710Z",
+        "last_created": "2026-10-07T02:00:39.735Z"
+      }
+    ],
+    "duplicateReferences": [
+      {
+        "schema": "public",
+        "table": "paper_authors",
+        "column": "paper_id",
+        "count": 27
+      },
+      {
+        "schema": "public",
+        "table": "paper_documents",
+        "column": "paper_id",
+        "count": 5
+      },
+      {
+        "schema": "public",
+        "table": "paper_keywords",
+        "column": "paper_id",
+        "count": 146
+      },
+      {
+        "schema": "public",
+        "table": "paper_source_records",
+        "column": "paper_id",
+        "count": 14
+      },
+      {
+        "schema": "public",
+        "table": "paper_topics",
+        "column": "paper_id",
+        "count": 42
+      }
+    ]
+  },
+  "reviewData": {
+    "mentor_requests": 0,
+    "scoped_grants": 0,
+    "mismatched_requests": 0,
+    "mismatched_feedback": 0,
+    "duplicate_active_assignments": 0,
+    "possibly_placeholder_snapshots": 0
+  }
+}

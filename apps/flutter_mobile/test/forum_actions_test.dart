@@ -44,11 +44,10 @@ void main() {
       final api = await _pump(tester);
       await _menu(tester, 'More discussion actions', 'Report content');
       expect(find.textContaining('not ordinary academic disagreement'), findsOneWidget);
-      await tester.tap(find.text('Off topic'));
+      // Every reason is one tap away in the sheet.
+      await tester.tap(find.text('Spam'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Spam').last);
-      await tester.pumpAndSettle();
-      await tester.enterText(find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)), '  Same link posted ten times  ');
+      await tester.enterText(find.descendant(of: find.byType(BottomSheet), matching: find.byType(TextField)), '  Same link posted ten times  ');
       await tester.tap(find.text('Submit report'));
       await tester.pumpAndSettle();
       expect(api.calls, ['report post p1 SPAM Same link posted ten times']);
@@ -182,6 +181,35 @@ void main() {
     await _menu(tester, 'More discussion actions', 'Share');
     expect(copied, endsWith('/forum/post-p1'));
     expect(find.text('Copied link to clipboard'), findsOneWidget);
+  });
+
+  testWidgets("long-press on someone else's reply: share, copy, report only", (tester) async {
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String;
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    final reply = sampleReply('r1');
+    await _pump(tester, replies: [reply]);
+    await tester.longPress(find.text(reply.content));
+    await tester.pumpAndSettle();
+    expect(find.text('Share response'), findsOneWidget);
+    expect(find.text('Report response'), findsOneWidget);
+    expect(find.text('Edit response'), findsNothing);
+    expect(find.text('Delete response'), findsNothing);
+    await tester.tap(find.text('Copy text'));
+    await tester.pumpAndSettle();
+    expect(copied, reply.content);
+    expect(find.text('Copied to clipboard'), findsOneWidget);
+  });
+
+  testWidgets('tapping Reply on a response focuses the reply box', (tester) async {
+    await _pump(tester, replies: [sampleReply('r1')]);
+    await tester.tap(find.widgetWithText(TextButton, 'Reply'));
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.focusNode?.hasFocus, isTrue);
   });
 
   testWidgets('the feed filters by thread type and category together', (tester) async {

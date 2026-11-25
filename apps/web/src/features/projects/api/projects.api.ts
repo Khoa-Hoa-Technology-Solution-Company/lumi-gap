@@ -1,5 +1,7 @@
 import type {
   IProject,
+  TrashedProjectItem,
+  ProjectSoftDeleteResponse,
   CreateProjectRequest,
   UpdateProjectRequest,
   AddProjectMemberRequest,
@@ -18,6 +20,8 @@ import type {
   RespondMentorRelationshipRequest,
   CreateIntegrityCaseInput,
   IntegrityContainmentAction,
+  ProjectAuditEventsPage,
+  ProjectAuditEventsQuery,
   ProjectSecurityOverview,
   ResearchIntegrityCaseView,
   ProjectIntegrityOverview,
@@ -44,6 +48,10 @@ export const projectsApi = {
   async list(): Promise<IProject[]> {
     return projectPages<IProject>(API_ROUTES.projects.list);
   },
+  async listTrash(): Promise<TrashedProjectItem[]> {
+    const res = await api.get(API_ROUTES.projects.trash);
+    return res.data.data;
+  },
   async detail(id: string): Promise<IProject> {
     const res = await api.get(API_ROUTES.projects.detail(id));
     return res.data.data;
@@ -56,8 +64,12 @@ export const projectsApi = {
     const res = await api.put(API_ROUTES.projects.update(id), data);
     return res.data.data;
   },
-  async delete(id: string): Promise<void> {
-    await api.delete(API_ROUTES.projects.delete(id));
+  async delete(id: string): Promise<ProjectSoftDeleteResponse> {
+    const res = await api.delete(API_ROUTES.projects.delete(id));
+    return res.data.data;
+  },
+  async permanentDelete(id: string): Promise<void> {
+    await api.delete(API_ROUTES.projects.permanentDelete(id));
   },
   async addPaper(id: string, data: AddProjectPaperRequest): Promise<IProject> {
     const res = await api.post(API_ROUTES.projects.addPaper(id), data);
@@ -154,9 +166,15 @@ export const projectsApi = {
     const res = await api.post(`/projects/${id}/contributions/${proposalId}/confirm`, data);
     return res.data.data;
   },
-  async securityOverview(id: string): Promise<ProjectSecurityOverview> {
-    const res = await api.get(`/projects/${encodeURIComponent(id)}/security`);
+  async securityOverview(id: string, options?: { limit?: number }): Promise<ProjectSecurityOverview> {
+    const res = await api.get(`/projects/${encodeURIComponent(id)}/security`, {
+      params: options?.limit !== undefined ? { limit: options.limit } : undefined,
+    });
     return res.data.data;
+  },
+  async auditEvents(id: string, query: ProjectAuditEventsQuery = {}): Promise<ProjectAuditEventsPage> {
+    const res = await api.get(`/projects/${encodeURIComponent(id)}/security/audit-events`, { params: query });
+    return { items: res.data.data, meta: res.data.meta };
   },
   async integrityCases(id: string): Promise<ResearchIntegrityCaseView[]> {
     const res = await api.get(`/projects/${encodeURIComponent(id)}/integrity-cases`);

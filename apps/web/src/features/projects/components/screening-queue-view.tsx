@@ -50,7 +50,7 @@ export function ScreeningQueueView({ projectId, readOnly, onOpenPaper, onAddPape
         catch (error) { failure = error; throw error; }
       });
       if (ok && result?.paperId && result.roundId) {
-        toast.success(t("Review claimed. Your slot is held for 24 hours."));
+        toast.success(t("Review claimed. Aim to finish within 24 hours; overdue reviews stay open."));
         onOpenPaper(result.paperId, { roundId: result.roundId, section: "review" });
       } else {
         await cache.invalidateQueries({ queryKey: ["project-research", actorId, projectId] });
@@ -72,7 +72,7 @@ export function ScreeningQueueView({ projectId, readOnly, onOpenPaper, onAddPape
   return <section className="screening-queue-container" aria-label={t("Review queue")}>
     <header className="screening-queue-header">
       <div><div className="queue-heading"><h2>{t("Review queue")}</h2>{board && <span className="queue-count-badge">{t("{{count}} papers available", { count: available })}</span>}</div>
-        <p className="queue-description">{t("One review already submitted? Those papers come first. Claims last 24 hours.")}</p></div>
+        <p className="queue-description">{t("Papers awaiting a second review come first. Aim to finish within 24 hours; overdue reviews stay open.")}</p></div>
       {!readOnly && available > 0 && <Button type="button" onClick={() => void claim()} disabled={command.isPending || claimingId !== null} title={t("Claim the next priority paper from the entire queue")}>{t(claimingId === "next" ? "Claiming…" : "Claim next paper")}</Button>}
     </header>
     <div className="queue-search-input-wrap"><Search size={16} className="queue-search-icon" aria-hidden="true" /><Input type="search" maxLength={200} aria-label={t("Search title, author, DOI or keywords")} placeholder={t("Search title, author, DOI or keywords")} value={search} onChange={event => setSearch(event.target.value)} className="queue-search-input" /></div>

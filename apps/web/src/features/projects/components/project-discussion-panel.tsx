@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Users, Sparkles, Bot, LockKeyhole, GraduationCap } from "lucide-react";
+import { Users, Sparkles, LockKeyhole, GraduationCap } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/i18n";
 import { ProjectTeamChatPanel } from "./project-team-chat-panel";
@@ -17,7 +17,7 @@ interface ProjectDiscussionPanelProps {
   mentorView?: boolean;
 }
 
-type ChatMode = "team-chat" | "private-ai" | "team-ai";
+type ChatMode = "team-chat" | "private-ai";
 type Channel = ChatMode | "mentors";
 
 export function ProjectDiscussionPanel(props: ProjectDiscussionPanelProps) {
@@ -31,7 +31,7 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers, mento
   const currentUser = useAuthStore((s) => s.user);
   const [params, setParams] = useSearchParams();
   const requestedChannel = params.get("channel");
-  const activeMode: Channel = mentorView ? "mentors" : ["private-ai", "team-ai", "mentors"].includes(requestedChannel ?? "") ? requestedChannel as Channel : "team-chat";
+  const activeMode: Channel = mentorView ? "mentors" : ["private-ai", "mentors"].includes(requestedChannel ?? "") ? requestedChannel as Channel : "team-chat";
   useEffect(() => {
     document.getElementById(`${id}-${activeMode}`)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [activeMode, id]);
@@ -41,20 +41,19 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers, mento
     setParams(current => { const next = new URLSearchParams(current); next.set("channel", mode); return next; }, { replace: true });
     return true;
   };
-  const [drafts, setDrafts] = useState<Record<ChatMode, string>>({ "team-chat": "", "private-ai": "", "team-ai": "" });
+  const [drafts, setDrafts] = useState<Record<ChatMode, string>>({ "team-chat": "", "private-ai": "" });
   useUnsavedWorkspace(Object.values(drafts).some(value => Boolean(value.trim())));
   const setDraft = (mode: ChatMode, value: string) => setDrafts(current => ({ ...current, [mode]: value }));
   const clearSentDraft = (mode: ChatMode, content: string) => setDrafts(current => current[mode].trim() === content ? { ...current, [mode]: "" } : current);
   const channels = mentorView ? [{ id: "mentors" as const, label: t("With mentors"), icon: GraduationCap }] : [
     { id: "team-chat" as const, label: t("Team Chat"), icon: Users },
     { id: "private-ai" as const, label: t("My AI"), icon: Sparkles },
-    { id: "team-ai" as const, label: t("Team AI Room"), icon: Bot },
     { id: "mentors" as const, label: t("With mentors"), icon: GraduationCap },
   ];
 
   return (
     <div className="project-conversation">
-      <div className="project-chat-channels" role="tablist" aria-label={t("Project discussion channels")}>
+      <div className={`project-chat-channels${channels.length === 1 ? " sr-only" : ""}`} role="tablist" aria-label={t("Project discussion channels")}>
         {channels.map((channel, index) => {
           const Icon = channel.icon;
           return <button
@@ -87,7 +86,7 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers, mento
             projectId={projectId}
             paperCount={paperCount}
             currentUserName={currentUser?.fullName || currentUser?.email || t("You")}
-            scope={activeMode === "private-ai" ? "private" : "team"}
+            scope="private"
             onAddPapers={onAddPapers}
             draft={drafts[activeMode]}
             onDraftChange={value => setDraft(activeMode, value)}

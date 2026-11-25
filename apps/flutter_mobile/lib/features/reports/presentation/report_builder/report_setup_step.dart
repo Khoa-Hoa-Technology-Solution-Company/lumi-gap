@@ -102,7 +102,7 @@ class ReportSetupStep extends StatelessWidget {
             items: [
               DropdownMenuItem(
                 value: ReportLanguage.auto,
-                child: Text(context.t('Auto-detect Language')),
+                child: Text(context.t('Auto-detect language')),
               ),
               DropdownMenuItem(
                 value: ReportLanguage.en,
@@ -125,7 +125,7 @@ class ReportSetupStep extends StatelessWidget {
             value: deepAnalysis,
             onChanged: loading ? null : onDeepAnalysis,
             title: Text(
-              context.t('Deep Analysis'),
+              context.t('Deep analysis'),
               style: theme.textTheme.titleSmall,
             ),
             subtitle: Text(
@@ -150,7 +150,7 @@ class ReportSetupStep extends StatelessWidget {
                         color: lumi.onPrimary,
                       ),
                     )
-                  : Text(context.t('Preview Evidence Pack')),
+                  : Text(context.t('Preview evidence pack')),
             ),
           ),
         ],

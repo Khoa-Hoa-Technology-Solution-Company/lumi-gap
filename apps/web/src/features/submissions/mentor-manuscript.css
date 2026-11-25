@@ -1,0 +1,22 @@
+.mentor-manuscript-dialog[role="dialog"] { width: min(720px, calc(100vw - 32px)); max-width: 720px; max-height: 90dvh; overflow-y: auto; overscroll-behavior: contain; }
+.mentor-send-form, .mentor-send-form > fieldset { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.mentor-send-form fieldset { border: 0; margin: 0; padding: 0; min-inline-size: 0; }
+.mentor-send-form label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 500; }
+.mentor-send-form select, .mentor-send-form textarea { width: 100%; border: 1px solid hsl(var(--input)); border-radius: 6px; padding: 9px 11px; background: hsl(var(--background)); color: hsl(var(--foreground)); font: inherit; }
+.mentor-send-form textarea { resize: vertical; min-height: 70px; }
+.mentor-send-form select:focus-visible, .mentor-send-form textarea:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.mentor-send-metadata { display: flex; flex-direction: column; gap: 4px; padding-block: 4px 12px; border-bottom: 1px solid hsl(var(--border)); overflow-wrap: anywhere; }
+.mentor-send-metadata strong { font-size: 17px; }
+.mentor-send-metadata span, .mentor-send-hint { font-size: 12px; line-height: 1.6; color: hsl(var(--muted-foreground)); }
+.mentor-send-source legend { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.mentor-send-form .mentor-send-source label { flex-direction: row; align-items: baseline; margin-bottom: 10px; }
+.mentor-send-source input { accent-color: hsl(var(--primary)); }
+.mentor-send-snapshot { display: flex; flex-direction: column; gap: 10px; }
+.mentor-send-snapshot > button { align-self: flex-start; }
+.mentor-send-preview { font-size: 13px; }
+.mentor-send-preview summary { cursor: pointer; padding-block: 8px; font-weight: 600; }
+.mentor-send-preview .writing-pdf-viewport { max-height: 360px; overflow: auto; }
+.mentor-send-form pre { max-height: 160px; overflow: auto; font-size: 11px; white-space: pre-wrap; }
+.mentor-send-form footer { display: flex; justify-content: flex-end; gap: 10px; position: sticky; bottom: -24px; margin-bottom: -24px; background: hsl(var(--background)); border-top: 1px solid hsl(var(--border)); padding: 16px 0 24px; z-index: 2; }
+.mentor-send-form [role="alert"] { font-size: 13px; overflow-wrap: anywhere; }
+@media(max-width:600px) { .mentor-manuscript-dialog { padding: 18px; } .mentor-send-form footer { bottom: -18px; margin-bottom: -18px; padding-bottom: 18px; } .mentor-send-form footer button { font-size: 12px; padding-inline: 12px; } }

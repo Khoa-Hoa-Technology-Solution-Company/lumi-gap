@@ -108,7 +108,7 @@ it.each([false, true])("allows fulltext evidence and RQ input with fixed stage, 
   mocks.detail.mockResolvedValue(full);
   mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, fullTextAvailable: true, round: full }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
-  if (editing) await click("Sửa lựa chọn");
+  if (editing) await click("Đổi đánh giá của tôi");
   const source = [...document.querySelectorAll("label")].find(l => l.textContent?.startsWith("Nguồn toàn văn đã đọc"))!.querySelector("input")!;
   const rq = document.querySelector<HTMLInputElement>('.assessment-questions input[type="checkbox"]')!;
   expect(source.disabled).toBe(false);
@@ -129,7 +129,7 @@ it("preserves the include rationale while editing and blocks clearing it", async
   mocks.detail.mockResolvedValue(reviewed);
   mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: reviewed }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
-  await click("Sửa lựa chọn");
+  await click("Đổi đánh giá của tôi");
   const area = [...document.querySelectorAll("label")].find(l => l.textContent?.startsWith("Lý do / Căn cứ phù hợp"))!.querySelector("textarea")!;
   expect(area.value).toBe(reviewed.myReview.comment);
   await fill("Lý do / Căn cứ phù hợp", "   ");
@@ -154,7 +154,7 @@ it("blocks an already-open rationale edit when the peer submits and retains the 
   mocks.detail.mockResolvedValue(reviewed);
   mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: reviewed }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
-  await click("Sửa lựa chọn");
+  await click("Đổi đánh giá của tôi");
   await fill("Lý do / Căn cứ phù hợp", "Bản nháp đang chỉnh sửa");
   const completed = { ...reviewed, completed: 2, assignments: reviewed.assignments.map(a => ({ ...a, completed: true })) };
   mocks.detail.mockResolvedValue(completed);
@@ -184,7 +184,7 @@ it("keeps the edit action when my first ballot is visible but the other reviewer
   mocks.detail.mockResolvedValue(waiting);
   mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: waiting }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
-  await click("Sửa lựa chọn");
+  await click("Đổi đánh giá của tôi");
   expect(document.querySelector<HTMLInputElement>('input[type="radio"][value="INCLUDE"]')?.checked).toBe(true);
   expect([...document.querySelectorAll("textarea")].some(area => area.value === mine.comment)).toBe(true);
 });
@@ -357,7 +357,7 @@ it("requires the assigned finalizer to confirm and explain a final decision", as
   expect(document.body.textContent).not.toContain("Xác nhận và lưu lịch sử");
 });
 it("blocks uncertain reviews from finalization in the UI", async () => {
-  const uncertain = { ...round, status: "NEEDS_RESOLUTION" as const, canReview: false, canFinalize: true, hiddenReviews: false, completed: 2, unblindedAt: "2026-10-29T01:00:00Z", reviews: [{ id: "unsure", assignmentId: "peer", reviewerId: "peer", revision: 1, decision: "UNSURE" as const, exclusionReason: "", comment: "Need full text", submittedAt: "2026-10-29T01:00:00Z" }] };
+  const uncertain = { ...round, consensus: { startedAt: new Date().toISOString(), deadline: new Date(Date.now() + 48 * 3600000).toISOString(), status: "CONSENSUS_REQUIRED" as const, canConfirm: false, canUpdate: false, confirmations: [] }, status: "NEEDS_RESOLUTION" as const, canReview: false, canFinalize: true, hiddenReviews: false, completed: 2, unblindedAt: "2026-10-29T01:00:00Z", reviews: [{ id: "unsure", assignmentId: "peer", reviewerId: "peer", revision: 1, decision: "UNSURE" as const, exclusionReason: "", comment: "Need full text", submittedAt: "2026-10-29T01:00:00Z" }] };
   mocks.detail.mockResolvedValue(uncertain); mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0], round: uncertain }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
   expect(document.body.textContent).toContain("Hai Reviewer chưa thống nhất");

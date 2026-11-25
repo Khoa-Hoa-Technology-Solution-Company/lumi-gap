@@ -20,6 +20,8 @@ Future<void> showTrendTopicSheet(
 }) {
   final router = GoRouter.of(context);
   return showModalBottomSheet<void>(
+    // Over the bottom navigation bar, dimming it too.
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -63,23 +65,24 @@ class _TopicSheet extends StatelessWidget {
     final years = topic.yearlyBreakdown;
 
     Widget metric(String label, String value, Color color) => Expanded(
-          child: Column(
-            children: [
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.labelMedium
-                    ?.copyWith(color: lumi.foregroundSecondary),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.titleSmall?.copyWith(color: color),
-              ),
-            ],
+      child: Column(
+        children: [
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: lumi.foregroundSecondary,
+            ),
           ),
-        );
+          const SizedBox(height: 4),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleSmall?.copyWith(color: color),
+          ),
+        ],
+      ),
+    );
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -92,14 +95,19 @@ class _TopicSheet extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               context.t('Scope: {{field}}', {'field': field}),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: lumi.foregroundSecondary),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: lumi.foregroundSecondary,
+              ),
             ),
           ],
           const SizedBox(height: 16),
           Row(
             children: [
-              metric(context.t('Trend'), context.t(verdict.text), verdict.color),
+              metric(
+                context.t('Trend'),
+                context.t(verdict.text),
+                verdict.color,
+              ),
               metric(
                 context.t('Change'),
                 trendChangeText(context, topic.classification) ?? '—',
@@ -112,6 +120,44 @@ class _TopicSheet extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          // Cross-topic labels: descriptive, they never change the verdict.
+          if ((topic.crossTopic != null) ||
+              (topic.taxonomy?.isApplication ?? false)) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (topic.crossTopic?.clear ?? false) const TrendClearPill(),
+                if (topic.taxonomy?.isApplication ?? false)
+                  const TrendApplicationPill(),
+                if (topic.crossTopic != null)
+                  Text(
+                    context.t(trendSizeBandLabel(topic.crossTopic!.sizeBand)),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: lumi.foregroundSecondary,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+          Text(
+            context.t(trendVerdictMeaning(topic.classification.verdict)),
+            style: theme.textTheme.bodyMedium,
+          ),
+          if (topic.classification.yearsUsed > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              context.t('Complete years used: {{count}}', {
+                'count': topic.classification.yearsUsed,
+              }),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: lumi.foregroundSecondary,
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           // Raw counts per year: descriptive, the verdict above is the trend.
           Text(
@@ -122,8 +168,9 @@ class _TopicSheet extends StatelessWidget {
           if (years.length < 2)
             Text(
               context.t('Not enough yearly data to draw a line.'),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: lumi.foregroundSecondary),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: lumi.foregroundSecondary,
+              ),
             )
           else
             SizedBox(
@@ -148,8 +195,9 @@ class _TopicSheet extends StatelessWidget {
                         interval: years.length > 6 ? 2 : 1,
                         getTitlesWidget: (value, _) => Text(
                           '${value.toInt()}',
-                          style: theme.textTheme.labelSmall
-                              ?.copyWith(color: lumi.foregroundSecondary),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: lumi.foregroundSecondary,
+                          ),
                         ),
                       ),
                     ),
@@ -180,7 +228,7 @@ class _TopicSheet extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: onSearch,
                   icon: const Icon(Icons.search, size: 18),
-                  label: Text(context.t('Search Papers')),
+                  label: Text(context.t('Search papers')),
                 ),
               ),
               const SizedBox(width: 8),
@@ -188,7 +236,7 @@ class _TopicSheet extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: onReport,
                   icon: const Icon(Icons.description_outlined, size: 18),
-                  label: Text(context.t('Generate Report')),
+                  label: Text(context.t('Generate report')),
                 ),
               ),
             ],
@@ -199,7 +247,7 @@ class _TopicSheet extends StatelessWidget {
             child: OutlinedButton.icon(
               onPressed: onExplain,
               icon: const Icon(Icons.summarize_outlined, size: 18),
-              label: Text(context.t('Explain Trend with AI')),
+              label: Text(context.t('Explain trend with AI')),
             ),
           ),
         ],

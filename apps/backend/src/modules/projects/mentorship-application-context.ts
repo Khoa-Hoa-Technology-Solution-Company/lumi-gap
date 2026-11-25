@@ -33,9 +33,15 @@ export async function applicationEvent(db: ApplicationDb, row: MentorshipApplica
 }
 export async function applicationNotify(db: ApplicationDb, row: MentorshipApplication, recipientId: string, ownerView: boolean) {
   const profile = await db.academicProfile.findUnique({ where: { userId: recipientId }, select: { notificationLocale: true } });
+  const isVi = profile?.notificationLocale === "vi";
+  const isNewOffer = ownerView && row.status === "APPLIED";
   await notificationService.create({ userId: recipientId, type: ownerView ? "MENTORSHIP_APPLICANT_UPDATE" : "MENTORSHIP_APPLICATION_UPDATE",
-    title: profile?.notificationLocale === "vi" ? "Hồ sơ ứng tuyển cố vấn có cập nhật" : "Mentoring application updated",
-    message: profile?.notificationLocale === "vi" ? "Mở danh sách ứng tuyển để xem trạng thái hoặc câu hỏi mới." : "Open mentoring applications to review the update.",
+    title: isNewOffer
+      ? (isVi ? "Có đề nghị hỗ trợ nhóm mới" : "New mentoring support offer")
+      : (isVi ? "Đề nghị hỗ trợ nhóm có cập nhật" : "Mentoring support offer updated"),
+    message: isNewOffer
+      ? (isVi ? "Một giảng viên vừa đề nghị hỗ trợ dự án của bạn. Mở mục Cố vấn để xem hồ sơ học thuật và lời nhắn." : "A lecturer offered to support your project. Open Academic Support to review their profile and message.")
+      : (isVi ? "Mở danh sách đề nghị hỗ trợ để xem trạng thái hoặc trao đổi mới." : "Open mentoring support offers to review the update."),
     targetKind: "project", targetId: row.projectId, eventKey: `MENTORSHIP_APPLICATION:${row.id}:${row.version}:${recipientId}`,
     emailStatus: "SKIPPED" }, db);
 }

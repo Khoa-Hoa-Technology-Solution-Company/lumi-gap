@@ -43,10 +43,6 @@ interface CompareTabProps {
   scopeParams?: {
     yearFrom: number;
     yearTo: number;
-    domainIds: string[];
-    domains: string[];
-    fieldIds: string[];
-    fields: string[];
     subfieldIds: string[];
     subfields: string[];
     topicIds: string[];
@@ -83,14 +79,12 @@ export function CompareTab({
   const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, { ...scopeParams, yearFrom, yearTo });
 
   // Helper taxonomy lookups
-  const getDomainName = (id: string) => data.facets?.domains?.find(d => d.openalexId === id || d.id === id)?.name || id;
-  const getFieldName = (id: string) => data.facets?.fields?.find(f => f.openalexId === id || f.id === id)?.name || id;
   const getSubfieldName = (id: string) => data.facets?.subfields?.find(s => s.openalexId === id || s.id === id)?.name || id;
   const getTopicName = (id: string) => data.facets?.topics?.find(t => t.openalexId === id || t.id === id)?.name || id;
 
   // Derive active scope string
   const activeScopeText = React.useMemo(() => {
-    const fullScope = data.dataSource === "openalex" ? "Scope: All OpenAlex works" : "Scope: Full active dataset";
+    const fullScope = t("Scope: Information Technology scope");
     if (!scopeParams) return fullScope;
     const parts: string[] = [];
 
@@ -100,13 +94,9 @@ export function CompareTab({
       }
     };
 
-    const mappedDomains = scopeParams.domainIds.length > 0 ? scopeParams.domainIds.map(getDomainName) : scopeParams.domains;
-    const mappedFields = scopeParams.fieldIds.length > 0 ? scopeParams.fieldIds.map(getFieldName) : scopeParams.fields;
     const mappedSubfields = scopeParams.subfieldIds.length > 0 ? scopeParams.subfieldIds.map(getSubfieldName) : scopeParams.subfields;
     const mappedTopics = scopeParams.topicIds.length > 0 ? scopeParams.topicIds.map(getTopicName) : scopeParams.topicsFilter;
 
-    addFilterNames("Domain", mappedDomains);
-    addFilterNames("Field", mappedFields);
     addFilterNames("Subfield", mappedSubfields);
     addFilterNames("Topic", mappedTopics);
     addFilterNames("Type", scopeParams.paperKinds);
@@ -118,7 +108,7 @@ export function CompareTab({
 
     if (parts.length === 0) return fullScope;
     return `Scope: ${parts.join(" / ")}`;
-  }, [data, scopeParams]);
+  }, [data, scopeParams, t]);
 
   const isRefetching = compareQuery.isFetching && !!compareQuery.data;
 
@@ -149,10 +139,6 @@ export function CompareTab({
     minPapers: 1,
     yearFrom,
     yearTo,
-    domainIds: scopeParams?.domainIds ?? [],
-    domains: scopeParams?.domains ?? [],
-    fieldIds: scopeParams?.fieldIds ?? [],
-    fields: scopeParams?.fields ?? [],
     subfieldIds: scopeParams?.subfieldIds ?? [],
     subfields: scopeParams?.subfields ?? [],
     topicIds: scopeParams?.topicIds ?? [],
@@ -302,14 +288,14 @@ export function CompareTab({
 
     if (fastest && highestCit) {
       if (fastest.topic.topic === highestCit.topic.topic) {
-        return t("Recommendation: {{topic}} is the strongest scoped candidate, with a significant rise in its field share ({{change}}) and the highest citation impact. Focus on this direction.", {
+        return t("Recommendation: {{topic}} is the strongest scoped candidate, with a significant rise in its share of publications ({{change}}) and the highest citation impact. Focus on this direction.", {
           topic: fastest.topic.topic,
           change: formatRelativeChange(fastest.classification, t) ?? "",
         });
       }
       return hasPp
-        ? t("Recommendation: {{topic}} has the strongest significant rise in its field share, but {{other}} has the larger share of highly cited papers. Check PP(top 10%) before choosing a report direction.", { topic: fastest.topic.topic, other: highestCit.topic.topic })
-        : t("Recommendation: {{topic}} has the strongest significant rise in its field share, but {{other}} may be more citation-efficient. Use Avg citations before choosing a report direction.", { topic: fastest.topic.topic, other: highestCit.topic.topic });
+        ? t("Recommendation: {{topic}} has the strongest significant rise in its share of publications, but {{other}} has the larger share of highly cited papers. Check PP(top 10%) before choosing a report direction.", { topic: fastest.topic.topic, other: highestCit.topic.topic })
+        : t("Recommendation: {{topic}} has the strongest significant rise in its share of publications, but {{other}} may be more citation-efficient. Use Avg citations before choosing a report direction.", { topic: fastest.topic.topic, other: highestCit.topic.topic });
     }
     return t("Compare trend verdicts, volumes, and citation metrics to decide your research direction.");
   }, [selectedTopics, compareQuery.data, topRising, highestCitations, hasPp, t]);
@@ -442,7 +428,7 @@ export function CompareTab({
 
       {/* 2. Candidate Source Explanation */}
       <div className="bg-slate-50/50 dark:bg-slate-900/10 border-l-2 border-slate-350 dark:border-slate-700 p-3.5 rounded-r-xl select-none text-xs text-slate-600 dark:text-slate-400 font-semibold">
-        Start with top scoped topics, or search all topic candidates inside the current Data Scope. Search checks topic names plus OpenAlex domain, field, and subfield labels.
+        {t("Start with top scoped topics, or search all topic candidates inside the current Data Scope. Search checks topic names and subfield names.")}
       </div>
 
       {/* 3. Topic Search / Add Control */}

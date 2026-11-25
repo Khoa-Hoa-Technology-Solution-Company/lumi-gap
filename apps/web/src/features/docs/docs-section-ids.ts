@@ -14,6 +14,7 @@ export const DOCS_SECTIONS = {
   trendDefinition: "trend-definition",
   trendData: "trend-data-scope",
   trendShare: "trend-share",
+  trendEda: "trend-eda",
   trendMannKendall: "trend-mann-kendall",
   trendSenSlope: "trend-sen-slope",
   trendRelativeChange: "trend-relative-change",

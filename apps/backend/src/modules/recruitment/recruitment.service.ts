@@ -9,7 +9,7 @@ function whereId(value: string): { id: string } | { legacyMongoId: string } {
   return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value };
 }
 async function userId(value: string) { const row = await getPrisma().user.findUnique({ where: whereId(value), select: { id: true } }); if (!row) throw AppError.notFound("User not found"); return row.id; }
-async function project(value: string) { const row = await getPrisma().project.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("Project not found"); return row; }
+async function project(value: string) { const row = await getPrisma().project.findUnique({ where: whereId(value) }); if (!row || Boolean(row.deletedAt)) throw AppError.notFound("Project not found"); return row; }
 async function opening(value: string) { const row = await getPrisma().recruitmentOpening.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("Recruitment opening not found"); return row; }
 async function application(value: string) { const row = await getPrisma().recruitmentApplication.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("Recruitment application not found"); return row; }
 async function assertProjectOwner(projectId: string, actorId: string, role?: UserRole) {

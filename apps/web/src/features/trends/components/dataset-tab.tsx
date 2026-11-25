@@ -8,6 +8,7 @@ import { DatasetScopeNextActions } from "./dataset-scope-next-actions";
 import { ActiveScopeChips, type ActiveChipItem } from "./active-scope-chips";
 import { DatasetScopeBuilder } from "./dataset-scope-builder";
 import { formatLanguageName } from "@/utils/language";
+import { useI18n } from "@/i18n";
 import { DataSourceBadge, ScopeNotice } from "./trend-data-source";
 
 type DatasetTrendTab = "overview" | "topics" | "dataset" | "compare" | "ai";
@@ -16,10 +17,6 @@ interface DatasetTabProps {
   data: TrendsOverview;
   yearFrom: number;
   yearTo: number;
-  domainIds: string[];
-  domains: string[];
-  fieldIds: string[];
-  fields: string[];
   subfieldIds: string[];
   subfields: string[];
   topicIds: string[];
@@ -42,10 +39,6 @@ export function DatasetTab({
   data,
   yearFrom,
   yearTo,
-  domainIds,
-  domains,
-  fieldIds,
-  fields,
   subfieldIds,
   subfields,
   topicIds,
@@ -63,26 +56,13 @@ export function DatasetTab({
   hasAnyFilter = false,
   isUpdating = false,
 }: DatasetTabProps) {
+  const { t } = useI18n();
 
   const totalInWindow = data.totalPapersInWindow ?? 0;
 
   // 1. Derives active taxonomy path
   const scopeString = useMemo(() => {
     const parts: string[] = [];
-    if (domainIds.length > 0) {
-      const name = data.facets?.domains?.find(d => d.openalexId === domainIds[0] || d.id === domainIds[0])?.name || domainIds[0];
-      if (name) parts.push(name);
-    } else if (domains.length > 0 && domains[0]) {
-      parts.push(domains[0]);
-    }
-
-    if (fieldIds.length > 0) {
-      const name = data.facets?.fields?.find(f => f.openalexId === fieldIds[0] || f.id === fieldIds[0])?.name || fieldIds[0];
-      if (name) parts.push(name);
-    } else if (fields.length > 0 && fields[0]) {
-      parts.push(fields[0]);
-    }
-
     if (subfieldIds.length > 0) {
       const name = data.facets?.subfields?.find(s => s.openalexId === subfieldIds[0] || s.id === subfieldIds[0])?.name || subfieldIds[0];
       if (name) parts.push(name);
@@ -97,36 +77,18 @@ export function DatasetTab({
       parts.push(topicsFilter[0]);
     }
 
-    return parts.length > 0 ? parts.join(" → ") : "All OpenAlex Domains";
-  }, [data, domainIds, domains, fieldIds, fields, subfieldIds, subfields, topicIds, topicsFilter]);
+    return parts.length > 0 ? parts.join(" → ") : t("Information Technology scope");
+  }, [data, subfieldIds, subfields, topicIds, topicsFilter, t]);
 
   const scopeTarget = useMemo(() => {
-    return scopeString !== "All OpenAlex Domains"
+    return scopeString !== t("Information Technology scope")
       ? scopeString.split(" → ").pop() || scopeString
       : "research trends";
-  }, [scopeString]);
+  }, [scopeString, t]);
 
   // 2. Extracts active filter chips info
   const activeChips = useMemo(() => {
     const chips: ActiveChipItem[] = [];
-
-    // Domains
-    domainIds.forEach(id => {
-      const name = data.facets?.domains?.find(d => d.openalexId === id || d.id === id)?.name || id;
-      chips.push({ facet: "Domains", val: id, label: `Domain: ${name}`, openalexId: id });
-    });
-    domains.forEach(name => {
-      chips.push({ facet: "Domains", val: name, label: `Domain: ${name}` });
-    });
-
-    // Fields
-    fieldIds.forEach(id => {
-      const name = data.facets?.fields?.find(f => f.openalexId === id || f.id === id)?.name || id;
-      chips.push({ facet: "Fields", val: id, label: `Field: ${name}`, openalexId: id });
-    });
-    fields.forEach(name => {
-      chips.push({ facet: "Fields", val: name, label: `Field: ${name}` });
-    });
 
     // Subfields
     subfieldIds.forEach(id => {
@@ -179,11 +141,12 @@ export function DatasetTab({
 
     return chips;
   }, [
-    data, domainIds, domains, fieldIds, fields, subfieldIds, subfields, topicIds, topicsFilter,
+    data, subfieldIds, subfields, topicIds, topicsFilter,
     paperKinds, openAccessStatuses, providers, sources, languages, citationBands
   ]);
 
-  const hasParentSelected = domainIds.length > 0 || domains.length > 0;
+  // A subfield or topic is selected; otherwise the lists show the whole Information Technology scope.
+  const hasParentSelected = subfieldIds.length > 0 || subfields.length > 0 || topicIds.length > 0 || topicsFilter.length > 0;
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -214,10 +177,6 @@ export function DatasetTab({
             <DatasetScopeBuilder
               data={data}
               isUpdating={isUpdating}
-              domainIds={domainIds}
-              domains={domains}
-              fieldIds={fieldIds}
-              fields={fields}
               subfieldIds={subfieldIds}
               subfields={subfields}
               topicIds={topicIds}
@@ -254,10 +213,6 @@ export function DatasetTab({
             <DatasetScopeNextActions
               yearFrom={yearFrom}
               yearTo={yearTo}
-              domainIds={domainIds}
-              domains={domains}
-              fieldIds={fieldIds}
-              fields={fields}
               subfieldIds={subfieldIds}
               subfields={subfields}
               topicIds={topicIds}
@@ -299,11 +254,11 @@ export function DatasetTab({
         <div className="px-4 py-3 bg-slate-50/50 dark:bg-slate-900/10 border-l-2 border-slate-300 dark:border-slate-700 rounded-r-xl text-[11px] text-slate-555 dark:text-slate-400 select-none">
           {data.dataSource === "openalex" ? (
             <p className="leading-relaxed">
-              <strong>Dataset Scope Basis:</strong> Paper counts come from OpenAlex aggregate queries over its whole database, filtered by the year range and the Data Scope. Domain, field, subfield, and topic hierarchy is the OpenAlex taxonomy.
+              <strong>Dataset Scope Basis:</strong> Paper counts come from OpenAlex aggregate queries over its whole database, filtered by the year range and the Data Scope. {t("Subfield and topic names follow the OpenAlex taxonomy.")}
             </p>
           ) : (
             <p className="leading-relaxed">
-              <strong>Dataset Scope Basis:</strong> Active paper statistics calculated inside the filtered data window. Domain, field, subfield, and topic taxonomy hierarchy mappings are powered by OpenAlex.
+              <strong>Dataset Scope Basis:</strong> Active paper statistics calculated inside the filtered data window. {t("Subfield and topic names follow the OpenAlex taxonomy.")}
             </p>
           )}
         </div>

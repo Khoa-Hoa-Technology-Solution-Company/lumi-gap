@@ -17,6 +17,7 @@ const approachSchema = z.enum(["EXPLORATORY", "LITERATURE_REVIEW", "EMPIRICAL", 
 export const createProjectSchema = z.object({
   researchClassification: researchClassificationSchema.optional(),
   title: z.string().trim().min(1).max(100),
+  keywords: z.array(z.string().trim().min(1).max(80)).max(10).optional(),
   description: z.string().trim().max(5000).optional(),
   researchField: z.string().trim().max(200).optional(),
   status: projectStatusSchema.exclude(["ARCHIVED"]).optional(),
@@ -75,6 +76,15 @@ export const inviteMemberSchema = z.object({
 export const removeMemberBodySchema = z.object({ reason: z.string().trim().max(1000).optional() }).strict().default({});
 export const transferOwnershipSchema = z.object({ userId: databaseIdSchema });
 export const activityQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) });
+export const securityOverviewQuerySchema = z.object({ limit: z.coerce.number().int().min(0).max(100).default(40) }).strict();
+export const auditEventsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).max(10000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(20),
+  q: z.string().trim().max(120).optional(),
+  category: z.enum(["MEMBERSHIP", "MANUSCRIPT", "ACCESS_EXPORT", "SETTINGS_PRIVACY", "INTEGRITY_SECURITY"]).optional(),
+  from: z.string().trim().max(40).optional(),
+  to: z.string().trim().max(40).optional(),
+}).strict();
 export const projectDirectoryQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(100000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(100),
@@ -100,6 +110,14 @@ export class ProjectController {
   async resendInvitation(req: Request, res: Response) {
     const result = await projectService.resendInvitation(String(req.params.id), String(req.params.invitationId), req.user!.sub);
     res.json({ success: true, data: result });
+  }
+
+  async listTrash(req: Request, res: Response) {
+    res.json({ success: true, data: await projectService.listTrashedProjects(req.user!.sub) });
+  }
+
+  async permanentDeleteProject(req: Request, res: Response) {
+    res.json({ success: true, data: await projectService.permanentDeleteProject(req.params.id as string, req.user!.sub) });
   }
 
   async restoreProject(req: Request, res: Response) {
@@ -132,8 +150,8 @@ export class ProjectController {
   }
 
   async deleteProject(req: Request, res: Response) {
-    await projectService.deleteProject(req.params.id as string, req.user!.sub);
-    res.json({ success: true, data: { deleted: true } });
+    const result = await projectService.deleteProject(req.params.id as string, req.user!.sub);
+    res.json({ success: true, data: result });
   }
 
   async addPaper(req: Request, res: Response) {
@@ -215,8 +233,16 @@ export class ProjectController {
 
   async getSecurityOverview(req: Request, res: Response) {
     res.setHeader("Cache-Control", "private, no-store");
-    const overview = await researchLedgerService.getProjectSecurityOverview(String(req.params.id), req.user!.sub);
+    const { limit } = securityOverviewQuerySchema.parse(req.query);
+    const overview = await researchLedgerService.getProjectSecurityOverview(String(req.params.id), req.user!.sub, limit);
     res.json({ success: true, data: overview });
+  }
+
+  async listAuditEvents(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const query = auditEventsQuerySchema.parse(req.query);
+    const result = await researchLedgerService.listProjectAuditEvents(String(req.params.id), req.user!.sub, query);
+    res.json({ success: true, data: result.items, meta: result.meta });
   }
 
   async listActivity(req: Request, res: Response) {

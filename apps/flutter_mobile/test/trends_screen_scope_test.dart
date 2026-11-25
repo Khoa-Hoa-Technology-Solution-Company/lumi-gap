@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
+import 'package:flutter_mobile/features/trends/components/trends_scope_tab.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:flutter_mobile/features/trends/presentation/trends_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,28 +35,36 @@ Future<List<TrendsOverviewParams>> _pump(WidgetTester tester) async {
   return asked;
 }
 
-Future<void> _pickFromYear(WidgetTester tester, int year) async {
-  await tester.tap(find.text('2020').first);
+/// Opens the year dropdown that shows [current] and picks [year].
+Future<void> _pickYear(WidgetTester tester, int current, int year) async {
+  await tester.tap(find.text('$current').first);
   await tester.pumpAndSettle();
   await tester.tap(find.text('$year').last);
   await tester.pumpAndSettle();
 }
 
+Future<void> _pickFromYear(WidgetTester tester, int year) =>
+    _pickYear(tester, scopeDefaultYearFrom, year);
+
 void main() {
   test('the scope badge counts what differs from the default', () {
     expect(
       trendScopeActiveCount(
-        const TrendsOverviewParams(yearFrom: 2020, yearTo: 2026, minPapers: 1),
+        TrendsOverviewParams(
+          yearFrom: scopeDefaultYearFrom,
+          yearTo: scopeDefaultYearTo,
+          minPapers: 1,
+        ),
       ),
       0,
     );
     expect(
       trendScopeActiveCount(
-        const TrendsOverviewParams(
-          yearFrom: 2022,
-          yearTo: 2026,
+        TrendsOverviewParams(
+          yearFrom: scopeDefaultYearFrom + 2,
+          yearTo: scopeDefaultYearTo,
           minPapers: 1,
-          scopeFilters: TrendScopeFilters(paperKinds: ['article']),
+          scopeFilters: const TrendScopeFilters(paperKinds: ['article']),
         ),
       ),
       2,
@@ -88,16 +97,20 @@ void main() {
     expect(find.byTooltip('Filters, 1 active'), findsOneWidget);
   });
 
-  testWidgets('a "from" year after "to" moves "to" with it: never backwards',
-      (tester) async {
+  testWidgets('a "from" year after "to" moves "to" with it: never backwards', (
+    tester,
+  ) async {
     final asked = await _pump(tester);
     await tester.tap(find.byTooltip('Filters'));
     await tester.pumpAndSettle();
-    await _pickFromYear(tester, 2027);
+    final to = scopeDefaultYearFrom + 4;
+    final from = scopeDefaultYearFrom + 8;
+    await _pickYear(tester, scopeDefaultYearTo, to);
+    await _pickFromYear(tester, from);
     await tester.tap(find.text('Apply'));
     await tester.pumpAndSettle();
-    expect(asked.last.yearFrom, 2027);
-    expect(asked.last.yearTo, 2027);
+    expect(asked.last.yearFrom, from);
+    expect(asked.last.yearTo, from);
   });
 
   testWidgets('the three views switch without losing the screen', (

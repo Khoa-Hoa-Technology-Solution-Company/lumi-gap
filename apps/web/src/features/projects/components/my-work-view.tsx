@@ -9,7 +9,7 @@ import { WorkspaceLoading } from "./workspace-common";
 import { ScreeningAdjudicationDialog } from "./screening-adjudication";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { evaluationStatusLabels, myWorkTasks, personalEvaluations, groupPersonalEvaluations, workPaperFor, workPaperStatus, sectionForTask, type MyWorkTask } from "../my-work-model";
+import { evaluationStatusLabels, myWorkTasks, completedEvaluationGroups, workPaperFor, workPaperStatus, sectionForTask, completedReviewsLabel, type MyWorkTask } from "../my-work-model";
 import { EvaluationMetadata, EvaluationSummary, EvaluationPaperCard, ScreeningTaskCard, WorkPaperCard } from "./screening-paper-card";
 import { useScreeningClock } from "../hooks/use-screening-clock";
 
@@ -36,7 +36,7 @@ export function MyWorkView({ projectId, readOnly, onOpenPaper, onSwitchView }: {
       });
 
       if (ok && claimed?.paperId && claimed.roundId) {
-        toast.success("Đã nhận bài thành công! Giữ suất đánh giá trong 24 giờ.");
+        toast.success("Đã nhận bài. Mục tiêu hoàn tất trong 24 giờ; quá hạn vẫn có thể tiếp tục.");
         onOpenPaper(claimed.paperId, { roundId: claimed.roundId, section: "review" });
       } else if (ok) {
         toast.info("Không có bài báo nào đủ điều kiện trong hàng đợi hiện tại.");
@@ -53,7 +53,10 @@ export function MyWorkView({ projectId, readOnly, onOpenPaper, onSwitchView }: {
   if (summaryQuery.isError) return <ScreeningError error={summaryQuery.error} retry={() => void summaryQuery.refetch()} />;
   if (!summary) return null;
   const tasks = myWorkTasks(summary, readOnly, now);
-  const evaluations = groupPersonalEvaluations(personalEvaluations(summary));
+  const openTask = (task: MyWorkTask) => ["STATEMENT", "ADJUDICATION", "COORDINATION"].includes(task.kind)
+    ? setAdjudication({ roundId: task.roundId, section: sectionForTask(task) })
+    : onOpenPaper(task.paperId, { roundId: task.roundId, section: sectionForTask(task) });
+  const evaluations = completedEvaluationGroups(summary);
   const q = searchQuery.trim().toLocaleLowerCase();
   const matches = (title: string) => !q || title.toLocaleLowerCase().includes(q);
 
@@ -79,7 +82,7 @@ export function MyWorkView({ projectId, readOnly, onOpenPaper, onSwitchView }: {
   const filteredEvaluations = evaluations.filter(([e]) => matches(e!.title) && (statusFilter === "ALL" || e!.groupStatus === statusFilter));
   const acceptedPapers = summary.acceptedPapers ?? [];
   const filteredAccepted = acceptedPapers.filter(p => matches(p.title));
-  const tabs = [{ value: "TODO", label: "Cần xử lý", count: tasks.length }, { value: "REVIEWED", label: "Đã đánh giá", count: evaluations.length }, { value: "ACCEPTED", label: "Bài được chấp nhận", count: acceptedPapers.length }] as const;
+  const tabs = [{ value: "TODO", label: "Cần xử lý", count: tasks.length }, { value: "REVIEWED", label: completedReviewsLabel, count: evaluations.length }, { value: "ACCEPTED", label: "Bài được chấp nhận", count: acceptedPapers.length }] as const;
   return <div className="space-y-5 min-w-0">
     <div role="tablist" aria-label="Việc của tôi" className="flex gap-3 overflow-x-auto border-b border-border sm:gap-5">
       {tabs.map(tab => <button key={tab.value} type="button" role="tab" id={`${id}-${tab.value}`} aria-controls={`${id}-panel`} aria-selected={activeTab === tab.value} tabIndex={activeTab === tab.value ? 0 : -1}
@@ -100,10 +103,10 @@ export function MyWorkView({ projectId, readOnly, onOpenPaper, onSwitchView }: {
       </button>)}
     </div>
     <div className="screening-my-work-toolbar">
-      <p>{activeTab === "TODO" ? `${tasks.length} việc đang chờ bạn xử lý` : activeTab === "ACCEPTED" ? "Các bài được nhóm chấp nhận để phân tích." : "Phiếu của bạn và kết quả hiện tại của nhóm."}</p>
+      <p>{activeTab === "TODO" ? `${tasks.length} việc đang chờ bạn xử lý` : activeTab === "ACCEPTED" ? "Các bài được nhóm chấp nhận để phân tích." : "Chỉ gồm bài bạn đã gửi phiếu và nhóm đã có kết quả cuối cùng."}</p>
       <div className="screening-my-work-controls">
         {activeTab === "REVIEWED" && <select aria-label="Trạng thái kết quả nhóm" value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
-          <option value="ALL">Tất cả trạng thái</option>{Object.entries(evaluationStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          <option value="ALL">Tất cả kết quả</option>{Object.entries(evaluationStatusLabels).filter(([value]) => ["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(value)).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>}
         <div className="screening-my-work-search"><Search size={15} aria-hidden="true"  />
           <Input aria-label="Tìm bài báo" placeholder="Tìm theo tên bài báo…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="h-9 pl-9" />
@@ -123,11 +126,11 @@ export function MyWorkView({ projectId, readOnly, onOpenPaper, onSwitchView }: {
     <div role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${activeTab}`} className="min-w-0">
       {activeTab === "TODO" ? <section aria-label="Cần tôi giải quyết" className="space-y-3">
         {filteredTasks.map(task => <ScreeningTaskCard key={task.roundId} projectId={projectId} summary={summary} task={task} now={now} readOnly={readOnly}
-          onOpen={() => ["STATEMENT", "ADJUDICATION", "COORDINATION"].includes(task.kind) ? setAdjudication({ roundId: task.roundId, section: sectionForTask(task) }) : onOpenPaper(task.paperId, { roundId: task.roundId, section: sectionForTask(task) })} />)}
+          onOpen={() => openTask(task)} />)}
         {filteredTasks.length === 0 && <div className="py-10 text-center">
           <FileText size={28} aria-hidden="true" className="mx-auto mb-3 text-muted-foreground" />
           <h3 className="text-sm font-semibold">{q || taskFilter !== "ALL" ? "Không tìm thấy bài phù hợp" : "Bạn không còn việc cần xử lý"}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{q || taskFilter !== "ALL" ? "Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm." : "Các phiếu đã gửi và tiến độ của nhóm nằm trong mục Đã đánh giá."}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{q || taskFilter !== "ALL" ? "Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm." : `Bài có kết quả cuối cùng sẽ xuất hiện trong mục ${completedReviewsLabel}.`}</p>
         </div>}
         {!readOnly && !q && <div className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm">
           <p className="text-muted-foreground">{summary.eligibleQueueCount > 0 ? `Có ${summary.eligibleQueueCount} bài báo đang chờ người đánh giá.` : "Hiện chưa có suất đánh giá phù hợp."}</p>
@@ -149,7 +152,7 @@ export function MyWorkView({ projectId, readOnly, onOpenPaper, onSwitchView }: {
         {filteredEvaluations.map(([item, ...history]) => <EvaluationPaperCard key={item!.paperId} summary={summary} item={item!} onOpen={() => onOpenPaper(item!.paperId, { roundId: item!.roundId, section: "history" })}>
           {history.length > 0 && <details className="text-xs"><summary className="cursor-pointer text-muted-foreground">Các vòng đã đánh giá trước ({history.length})</summary><div className="space-y-3 pt-3">{history.map(e => <div key={e.roundId} className="space-y-2"><EvaluationMetadata item={e} /><EvaluationSummary item={e} paper={workPaperFor(summary, e)} /><Button size="sm" variant="link" onClick={() => onOpenPaper(e.paperId, { roundId: e.roundId, section: "history" })}>Xem vòng này</Button></div>)}</div></details>}
         </EvaluationPaperCard>)}
-        {filteredEvaluations.length === 0 && <div className="py-10 text-center"><FileText size={28} aria-hidden="true" className="mx-auto mb-3 text-muted-foreground" /><h3 className="text-sm font-semibold">{evaluations.length ? "Không tìm thấy bài phù hợp" : "Bạn chưa gửi phiếu đánh giá nào"}</h3><p className="mt-1 text-sm text-muted-foreground">{evaluations.length ? "Thử thay đổi bộ lọc hoặc từ khóa." : "Sau khi gửi phiếu, bạn có thể xem lại đánh giá và theo dõi kết quả tại đây."}</p></div>}
+        {filteredEvaluations.length === 0 && <div className="py-10 text-center"><FileText size={28} aria-hidden="true" className="mx-auto mb-3 text-muted-foreground" /><h3 className="text-sm font-semibold">{evaluations.length ? "Không tìm thấy bài phù hợp" : "Chưa có bài đã đánh giá xong"}</h3><p className="mt-1 text-sm text-muted-foreground">{evaluations.length ? "Thử thay đổi bộ lọc hoặc từ khóa." : "Bài chỉ xuất hiện khi bạn đã gửi phiếu và nhóm có kết quả cuối cùng. Phiếu trước đó vẫn được giữ trong lịch sử bài báo."}</p></div>}
       </section>}
     </div>
     {adjudication && <ScreeningAdjudicationDialog projectId={projectId} roundId={adjudication.roundId} focusSection={adjudication.section} open onClose={() => { setAdjudication(null); void summaryQuery.refetch(); }} />}

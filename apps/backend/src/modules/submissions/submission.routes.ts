@@ -8,6 +8,7 @@ import { validate } from "../../common/middleware/validate.js";
 import { objectIdSchema } from "../../common/validation/database-id.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { submissionService } from "./submission.service.js";
+import { mentorManuscriptContextSchema, mentorManuscriptSendSchema } from "./dto/mentor-manuscript.schema.js";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 
 const submissionParamsSchema = z.object({ id: objectIdSchema });
@@ -104,7 +105,7 @@ function uploadedPdf(req: Request) {
 
 function parseArrayFields(body: Record<string, unknown>) {
   const copy = { ...body };
-  for (const key of ["authorIds", "declaredConflictUserIds", "researchQuestions", "keywords"] as const) {
+  for (const key of ["authorIds", "declaredConflictUserIds", "researchQuestions", "keywords", "responses"] as const) {
     if (typeof copy[key] === "string") {
       try {
         copy[key] = JSON.parse(copy[key] as string);
@@ -135,6 +136,15 @@ submissionRouter.get("/active-mentors", validate(z.object({ projectId: objectIdS
   res.json({ success: true, data: await submissionService.listActiveMentors(String(req.query.projectId), req.user!.sub) });
 });
 
+submissionRouter.get("/mentor-feedback/context", validate(mentorManuscriptContextSchema, "query"), async (req, res) => {
+  res.json({ success: true, data: await submissionService.mentorFeedbackContext(mentorManuscriptContextSchema.parse(req.query), req.user!.sub, req.user!.role) });
+});
+submissionRouter.post("/mentor-feedback", requirePermission("submission:create"), createRateLimiter("submissions:mentor-feedback", { windowMs: 60_000, limit: 10 }), uploadSinglePdf, async (req, res) => {
+  const input = mentorManuscriptSendSchema.parse(parseArrayFields(req.body));
+  const file = optionalUploadedPdf(req);
+  res.status(201).json({ success: true, data: await submissionService.sendMentorFeedback(input, file, req.user!.sub, req.user!.role) });
+});
+
 submissionRouter.get("/", validate(projectScopeSchema, "query"), async (req, res) => {
   const { projectId } = projectScopeSchema.parse(req.query);
   res.json({ success: true, data: await submissionService.listMine(req.user!.sub, req.user!.role, projectId) });
@@ -155,7 +165,7 @@ submissionRouter.get("/:id", validate(submissionParamsSchema, "params"), validat
   res.json({ success: true, data: await submissionService.get(String(req.params.id), req.user!.sub, req.user!.role, projectId) });
 });
 
-submissionRouter.post("/:id/feedback", validate(submissionParamsSchema, "params"), validate(feedbackSchema), async (req, res) => {
+submissionRouter.post("/:id/feedback", deprecatedForReviewRequests, validate(submissionParamsSchema, "params"), validate(feedbackSchema), async (req, res) => {
   const data = await submissionService.submitFeedback(String(req.params.id), req.body, req.user!.sub, req.user!.role);
   res.status(201).json({ success: true, data });
 });
@@ -182,6 +192,10 @@ submissionRouter.post("/:id/revisions", requirePermission("submission:revise"), 
   res.status(201).json({ success: true, data });
 });
 
+const mentorReviewEntryLimiter = createRateLimiter("submissions:mentorReviewEntry", { windowMs: 60_000, limit: 30, keyGenerator: req => req.user!.sub, standardHeaders: true, legacyHeaders: false });
+submissionRouter.post("/:id/mentor-review", mentorReviewEntryLimiter, validate(submissionParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await submissionService.prepareMentorReview(String(req.params.id), req.user!.sub) });
+});
 submissionRouter.get("/:id/revisions", validate(submissionParamsSchema, "params"), async (req, res) => {
   res.json({ success: true, data: await submissionService.listRevisions(String(req.params.id), req.user!.sub, req.user!.role) });
 });
@@ -197,6 +211,7 @@ submissionRouter.post("/:id/ai-pre-review", aiPreReviewLimiter, validate(submiss
 });
 
 submissionRouter.get("/:id/revisions/:revisionId/download", validate(revisionParamsSchema, "params"), async (req, res) => {
+  res.set({ "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" });
   const result = await submissionService.resolveDownload(String(req.params.id), String(req.params.revisionId), req.user!.sub, req.user!.role);
   if (result.kind === "redirect") {
     res.redirect(result.url);
@@ -204,7 +219,8 @@ submissionRouter.get("/:id/revisions/:revisionId/download", validate(revisionPar
   }
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
-  res.sendFile(result.path);
+  if (result.kind === "buffer") { res.send(result.content); return; }
+  res.sendFile(result.path, { cacheControl: false });
 });
 
 submissionRouter.post("/:id/reviewer-assignments", deprecatedForReviewRequests, requirePermission("review:assign"), validate(submissionParamsSchema, "params"), validate(assignSchema), async (req, res) => {

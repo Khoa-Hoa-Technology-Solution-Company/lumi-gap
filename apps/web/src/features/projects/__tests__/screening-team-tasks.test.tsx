@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ScreeningAutomaticTask, ScreeningWorkspaceSummary, WorkspaceTask, WorkspaceTaskStatus } from "@trend/shared-types";
 import { WorkspaceTasksPanel } from "../components/workspace-tasks";
-const mocks = vi.hoisted(() => ({ workspaceSummary: vi.fn(), taskBoard: vi.fn(), tasks: vi.fn(), milestones: vi.fn(), people: vi.fn(), moveTask: vi.fn(), saveTask: vi.fn() }));
+const mocks = vi.hoisted(() => ({ workspaceSummary: vi.fn(), automaticTasksPage: vi.fn(), taskBoard: vi.fn(), tasks: vi.fn(), milestones: vi.fn(), people: vi.fn(), moveTask: vi.fn(), saveTask: vi.fn() }));
 vi.mock("../api/screening.api", () => ({ screeningApi: mocks }));
 vi.mock("../api/workspace.api", () => ({ workspaceApi: mocks }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: { user: { id: string } }) => unknown) => select({ user: { id: "reviewer" } }) }));
@@ -35,6 +35,7 @@ async function render(url = "/projects/project?tab=tasks&view=screening&screenin
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.resetAllMocks();
   mocks.workspaceSummary.mockResolvedValue(summary); mocks.milestones.mockResolvedValue(empty); mocks.people.mockResolvedValue(empty); mocks.moveTask.mockResolvedValue({});
+  mocks.automaticTasksPage.mockResolvedValue(empty);
   mocks.taskBoard.mockImplementation(async (_id, query) => ({ boardVersion: 4, columns: Object.fromEntries((["TODO", "IN_PROGRESS", "BLOCKED", "DONE"] as WorkspaceTaskStatus[]).map(status => [status, { ...empty, items: status === 'TODO' && (!query.q || manual.title.includes(query.q)) ? [manual] : [], total: status === 'TODO' && (!query.q || manual.title.includes(query.q)) ? 1 : 0 }])) }));
   mocks.tasks.mockResolvedValue({ ...empty, items: [manual], total: 1 });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
@@ -47,7 +48,7 @@ it("places real screening work alongside manual tasks inside To do without anoth
   const todo = container.querySelector('.task-column[data-status="TODO"]')!;
   expect(todo.querySelector('.task-column-count')?.textContent).toBe('4');
   expect(todo.querySelectorAll('.task-card')).toHaveLength(4);
-  expect(container.querySelectorAll('.task-section-nav button')).toHaveLength(2);
+  expect(container.querySelector('.task-section-nav')).toBeNull();
   expect(container.querySelector('[role="tablist"]')).toBeNull();
   expect(container.textContent).not.toContain('Đánh giá tài liệu');
   expect(container.textContent).not.toContain('Đã đánh giá');
@@ -113,8 +114,6 @@ it("places backend obligations in their real columns and keeps expired/replaced 
     expect(container.querySelector(`.task-column[data-status="${status}"] [data-screening-round="${id}-round"]`)).not.toBeNull();
   }
   expect(container.querySelectorAll('.task-board [data-screening-round="expired-round"], .task-board [data-screening-round="replaced-round"]')).toHaveLength(0);
-  const history = container.querySelector('.coord-history-panel')!;
-  expect(history.textContent).toContain("Hết hạn"); expect(history.textContent).toContain("Đã chuyển bước");
   expect(container.querySelector('.task-screening-card a')?.getAttribute('href')).toContain('automaticTask=todo');
   expect(container.querySelector('.task-screening-card a')?.getAttribute('href')).toContain('taskReturn=');
   expect(container.querySelectorAll('.task-screening-card select, .task-screening-card .task-drag-handle')).toHaveLength(0);

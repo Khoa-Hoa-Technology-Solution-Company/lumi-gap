@@ -1,0 +1,43 @@
+{
+  "api": {
+    "checks": 100,
+    "passed": 100,
+    "failed": 0,
+    "perRole": {
+      "ANONYMOUS": 1,
+      "OWNER": 11,
+      "MEMBER": 10,
+      "PENDING_MENTOR": 12,
+      "OUTSIDER": 12,
+      "ACCEPTED_UNSHARED": 15,
+      "PAPER_VIEW": 13,
+      "CROSS_PROJECT": 1,
+      "PAPER_COMMENT": 4,
+      "PAPER_COMMENT_RETRY": 1,
+      "DOWNGRADED_VIEW": 2,
+      "REVIEW_V1": 5,
+      "OTHER_REVIEWER": 1,
+      "CANCELLED_REVIEW": 1,
+      "REMAINING_DIRECT_SHARE": 2,
+      "REVOKED_PAPER": 4,
+      "ENDED_MENTOR": 5
+    }
+  },
+  "signedDownloadRegression": {
+    "before": {
+      "observedStatus": 302,
+      "source": "apps/backend/.cache/mentor-permissions-signed-url-before.log"
+    },
+    "after": {
+      "expectedStatus": 200,
+      "noLocation": true,
+      "cacheControl": "private, no-store",
+      "source": "apps/backend/.cache/mentor-permissions-review-after.log"
+    },
+    "transport": "Storage adapter mocked; authenticated API and database real. Slow-reader revocation checked with a controlled storage delay."
+  },
+  "browser": {
+    "stepsCompleted": 6,
+    "pageErrors": []
+  }
+}

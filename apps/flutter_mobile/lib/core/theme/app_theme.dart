@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/theme/lumi_tints.dart';
 
 class AppTheme {
   static ThemeData get lightTheme => _build(LumiColors.light, Brightness.light);
@@ -9,6 +10,7 @@ class AppTheme {
 
   static ThemeData _build(LumiColors c, Brightness brightness) {
     final isDark = brightness == Brightness.dark;
+    final tints = isDark ? LumiTints.dark : LumiTints.light;
     final text = AppTypography.textTheme(c.foreground);
     final onPrimaryText = AppTypography.textTheme(c.onPrimary);
     final radius8 = BorderRadius.circular(8);
@@ -70,20 +72,40 @@ class AppTheme {
       canvasColor: c.background,
       dividerColor: c.line,
       extensions: <ThemeExtension<dynamic>>[c],
+      // The one floating action of a screen: solid brand blue (direction A).
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: c.primary,
+        foregroundColor: c.onPrimary,
+        elevation: 6,
+        highlightElevation: 8,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(16)),
+        ),
+        extendedTextStyle: text.labelLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      // Every screen's header is the brand band (direction A): blue, white
+      // title and icons, rounded at its lower edge, white status bar icons.
+      // Root tabs use LumiHeroAppBar with the same look; the project screen
+      // squares it to continue into its header.
       appBarTheme: AppBarTheme(
-        backgroundColor: c.surface,
-        foregroundColor: c.foreground,
+        backgroundColor: tints.hero,
+        foregroundColor: tints.onHero,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         toolbarHeight: 64,
-        titleTextStyle: text.headlineSmall,
-        shape: Border(bottom: BorderSide(color: c.line)),
-        // Status bar icons follow the theme, not the bar colour: a bar with a
-        // transparent background would otherwise get light icons on a light
-        // page.
-        systemOverlayStyle:
-            isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+        iconTheme: IconThemeData(color: tints.onHero),
+        actionsIconTheme: IconThemeData(color: tints.onHero),
+        titleTextStyle: text.headlineSmall?.copyWith(
+          color: tints.onHero,
+          fontWeight: FontWeight.w800,
+        ),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+        ),
+        systemOverlayStyle: SystemUiOverlayStyle.light,
       ),
       // An "off" switch must still be seen: Material draws its track
       // outline in `outline` (`line`), which in dark mode is the card
@@ -119,13 +141,15 @@ class AppTheme {
           return IconThemeData(color: selected ? c.primary : c.muted, size: 24);
         }),
       ),
+      // Plain `Card`s are inner panels (inside a section card, admin
+      // lists): hairline border and radius 16, under LumiCard's 20.
       cardTheme: CardThemeData(
         color: c.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: radius8,
+          borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: c.line),
         ),
       ),

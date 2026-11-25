@@ -1,0 +1,46 @@
+$ pnpm db:generate && tsc --noEmit
+$ prisma generate --config prisma7.config.ts
+Loaded Prisma config from prisma7.config.ts.
+
+Prisma schema loaded from prisma.
+
+✔ Generated Prisma Client (7.10.0) to .\src\generated\prisma in 1.99s
+
+src/modules/workspaces/manuscript-ai.service.ts(85,40): error TS2339: Property 'doi' does not exist on type 'never'.
+  The intersection 'Source' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-ai.service.ts(88,40): error TS2339: Property 'id' does not exist on type 'never'.
+  The intersection 'Source' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-ai.service.ts(92,36): error TS2339: Property 'excerpts' does not exist on type 'never'.
+  The intersection 'Source' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-ai.service.ts(92,51): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/modules/workspaces/manuscript-ai.service.ts(93,50): error TS2339: Property 'abstract' does not exist on type 'never'.
+  The intersection 'Source' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-ai.service.ts(95,58): error TS2700: Rest types may only be created from object types.
+src/modules/workspaces/manuscript-ai.service.ts(97,20): error TS2339: Property 'id' does not exist on type 'never'.
+  The intersection 'Source' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-ai.service.ts(100,30): error TS2339: Property 'citationKey' does not exist on type 'never'.
+  The intersection 'Source' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-ai.service.ts(100,83): error TS2339: Property 'id' does not exist on type 'never'.
+  The intersection 'Source' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-ai.service.ts(101,60): error TS2700: Rest types may only be created from object types.
+src/modules/workspaces/manuscript-ai.service.ts(105,94): error TS2322: Type 'any[]' is not assignable to type 'never[]'.
+  Type 'any' is not assignable to type 'never'.
+    The intersection 'ManuscriptReference & { reason: string; evidenceStatus: "PROJECT_SOURCE" | "REVIEWED_EVIDENCE"; support?: { quote: string; locator: string; kind: "ABSTRACT" | "REVIEWED_EXCERPT"; } | undefined; }' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-ai.service.ts(217,13): error TS2322: Type '{ abstract: string; excerpts: { quotation: string; locator: string; }[]; evidenceStatus: string; id: string; title: string; authors: string[]; year: number | null; doi: string | null; citationKey: string; ... 6 more ...; metadataWarnings?: string[] | undefined; }[]' is not assignable to type 'never[]'.
+  Type '{ abstract: string; excerpts: { quotation: string; locator: string; }[]; evidenceStatus: string; id: string; title: string; authors: string[]; year: number | null; doi: string | null; citationKey: string; ... 6 more ...; metadataWarnings?: string[]; }' is not assignable to type 'never'.
+    The intersection 'Source' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-ai.service.ts(218,77): error TS2339: Property 'abstract' does not exist on type 'never'.
+  The intersection 'Source' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-ai.service.ts(218,97): error TS2339: Property 'excerpts' does not exist on type 'never'.
+  The intersection 'Source' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-ai.service.ts(218,111): error TS7006: Parameter 'excerpt' implicitly has an 'any' type.
+src/modules/workspaces/manuscript-ai.service.ts(220,96): error TS2339: Property 'citationKey' does not exist on type 'never'.
+  The intersection 'Source' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-ai.service.ts(231,66): error TS2339: Property 'id' does not exist on type 'never'.
+  The intersection 'ManuscriptReference & { reason: string; evidenceStatus: "PROJECT_SOURCE" | "REVIEWED_EVIDENCE"; support?: { quote: string; locator: string; kind: "ABSTRACT" | "REVIEWED_EXCERPT"; } | undefined; }' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-integrity.service.ts(246,79): error TS2339: Property 'id' does not exist on type 'never'.
+  The intersection 'ManuscriptReference & { reason: string; evidenceStatus: "PROJECT_SOURCE" | "REVIEWED_EVIDENCE"; support?: { quote: string; locator: string; kind: "ABSTRACT" | "REVIEWED_EXCERPT"; } | undefined; }' was reduced to 'never' because property 'evidenceStatus' has conflicting types in some constituents.
+src/modules/workspaces/manuscript-integrity.service.ts(247,70): error TS2339: Property 'citationKey' does not exist on type 'never'.
+D:\lumi-gap\apps\backend:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] backend@0.1.0 typecheck: `pnpm db:generate && tsc --noEmit`
+Exit status 2

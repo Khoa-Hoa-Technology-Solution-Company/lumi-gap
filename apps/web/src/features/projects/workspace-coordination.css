@@ -620,6 +620,7 @@
     overflow: hidden;
     display: grid;
     grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     gap: 28px;
   }
   .projects-app-shell .project-browser-sidebar {
@@ -632,6 +633,29 @@
     position: relative;
     top: 0;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  }
+  /* Every flex ancestor must shrink before the section menu can scroll.
+     Keep overflow visible here so the project switcher can open outside it. */
+  .projects-app-shell .project-browser-sidebar > .app-single-sidebar {
+    flex: 1;
+    min-height: 0;
+    max-height: 100%;
+  }
+  .projects-app-shell .project-browser-sidebar .sidebar-main-nav {
+    flex: 1;
+    min-height: 0;
+    margin-bottom: 12px;
+  }
+  .projects-app-shell .project-browser-sidebar .sidebar-recent-section {
+    flex-shrink: 1;
+    min-height: 0;
+    max-height: 25%;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .projects-app-shell .project-browser-sidebar .sidebar-footer {
+    flex-shrink: 0;
+    margin-top: 0;
   }
   .projects-app-shell .coord-project-picker {
     flex-shrink: 0;
@@ -659,5 +683,38 @@
     padding-right: 8px;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
+  }
+  .projects-app-shell .sidebar-collapsed .project-browser-sidebar { padding: 12px 6px; }
+  .projects-app-shell .sidebar-collapsed .coord-project-picker > summary {
+    justify-content: center;
+    padding: 4px;
+    min-height: 44px;
+  }
+  .projects-app-shell .sidebar-collapsed .coord-project-picker > summary > div > div:last-child,
+  .projects-app-shell .sidebar-collapsed .coord-project-picker > summary > svg { display: none; }
+  .projects-app-shell .sidebar-collapsed .coord-project-picker-popover {
+    left: calc(100% + 12px);
+    top: 0;
+    width: 300px;
+    max-width: calc(100vw - 100px);
+  }
+  .projects-app-shell .sidebar-collapsed .coord-workspace-nav { padding-right: 0; scrollbar-gutter: auto; }
+  .projects-app-shell .sidebar-collapsed .coord-nav-label,
+  .projects-app-shell .sidebar-collapsed .coord-section-name,
+  .projects-app-shell .sidebar-collapsed .coord-nav-tabs button > small { display: none !important; }
+  .projects-app-shell .sidebar-collapsed .coord-nav-group { margin-bottom: 8px; }
+  .projects-app-shell .sidebar-collapsed .coord-nav-tabs button {
+    justify-content: center;
+    min-height: 44px;
+    padding: 8px 0;
+  }
+  .projects-app-shell .sidebar-collapsed .sidebar-collapse-button { justify-content: center; min-height: 44px; padding: 8px 0; }
+  .projects-app-shell .sidebar-collapsed .sidebar-collapse-button svg { flex-shrink: 0; }
+}
+
+@media (max-width: 767px) {
+  .project-browser-sidebar > .app-single-sidebar {
+    height: auto;
+    min-height: 0;
   }
 }

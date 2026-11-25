@@ -25,6 +25,7 @@ export async function casePacket(c: WorkspaceContext, round: ScreeningRound): Pr
 export async function latestCase(c: WorkspaceContext, roundId: string) {
   return c.tx.screeningAdjudicationCase.findFirst({ where: { projectId: c.project.id, roundId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
 }
+
 export async function caseCoordinator(c: WorkspaceContext, round: ScreeningRound, row: ScreeningAdjudicationCase) {
   if (!c.role || row.reviewerIds.includes(c.actorId)) return false;
   const policy = round.settings as { adjudicationCoordinatorIds?: string[] };

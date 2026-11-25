@@ -3,6 +3,7 @@ import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/theme/lumi_tints.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
@@ -110,7 +111,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
         Card(
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(16),
             side: BorderSide(color: theme.dividerColor),
           ),
           child: Padding(
@@ -175,7 +176,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                     icon: _syncing
                         ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: context.lumi.surface))
                         : Icon(Icons.sync, color: context.lumi.surface),
-                    label: Text(context.t('Start OpenAlex Sync'), style: TextStyle(color: context.lumi.onPrimary, fontWeight: FontWeight.w600)),
+                    label: Text(context.t('Start OpenAlex sync'), style: TextStyle(color: context.lumi.onPrimary, fontWeight: FontWeight.w600)),
                   ),
                 ),
               ],
@@ -183,7 +184,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        Text(context.t('Sync Runs History'), style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,)),
+        Text(context.t('Sync runs history'), style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,)),
         const SizedBox(height: 10),
         runs.when(
           data: (items) => Column(
@@ -201,7 +202,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                 elevation: 0,
                 margin: const EdgeInsets.only(bottom: 12),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(16),
                   side: BorderSide(color: theme.dividerColor),
                 ),
                 child: ListTile(
@@ -245,7 +246,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                 Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(16),
                     side: BorderSide(color: theme.dividerColor),
                   ),
                   child: Padding(
@@ -258,7 +259,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(context.t('Embedding Coverage'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                            Text(context.t('Embedding coverage'), style: const TextStyle(fontWeight: FontWeight.w600)),
                             Text('${pct.toStringAsFixed(1)}%', style: TextStyle(fontWeight: FontWeight.w600, color: context.lumi.primary)),
                           ],
                         ),
@@ -308,7 +309,7 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
                             ),
                             onPressed: _embedding ? null : _triggerEmbedding,
                             icon: Icon(Icons.memory_outlined, color: context.lumi.onPrimary),
-                            label: Text(context.t('Trigger Embedding Job'), style: TextStyle(color: context.lumi.onPrimary, fontWeight: FontWeight.w600)),
+                            label: Text(context.t('Trigger embedding job'), style: TextStyle(color: context.lumi.onPrimary, fontWeight: FontWeight.w600)),
                           ),
                         ),
                       ],
@@ -349,13 +350,15 @@ class _AdminSyncScreenState extends ConsumerState<AdminSyncScreen> {
             // Scrolls instead of clipping labels on a narrow screen.
             isScrollable: true,
             tabAlignment: TabAlignment.start,
-            indicatorColor: context.lumi.primary,
-            labelColor: context.lumi.primary,
-            unselectedLabelColor: context.lumi.muted,
+            // On the blue app bar.
+            indicatorColor: context.tints.onHero,
+            labelColor: context.tints.onHero,
+            unselectedLabelColor: context.tints.onHeroSoft,
+            dividerHeight: 0,
             tabs: [
-              Tab(text: context.t('Sync Runs')),
+              Tab(text: context.t('Sync runs')),
               Tab(text: context.t('Embeddings')),
-              Tab(text: context.t('Pipeline Health')),
+              Tab(text: context.t('Pipeline health')),
             ],
           ),
         ),

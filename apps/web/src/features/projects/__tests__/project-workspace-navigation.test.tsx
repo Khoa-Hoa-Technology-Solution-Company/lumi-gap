@@ -5,16 +5,22 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate, useParams } from
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { IProject } from "@trend/shared-types";
 import { ProjectsWorkspacePage, ProjectWorkspaceStart } from "@/pages/projects/projects-workspace";
-import { projectWorkspaceHref } from "../utils/project-workspace-navigation";
+import {
+  consumePostLogoutProjectPath,
+  projectWorkspaceHref,
+  readLastVisitedProject,
+  storePostLogoutProjectPath,
+} from "../utils/project-workspace-navigation";
 
 vi.mock("../hooks/use-mentored-projects", () => ({ useMentoredProjects: () => ({ data: [], isLoading: false, isError: false }) }));
 
-const mocks = vi.hoisted(() => ({ projects: vi.fn(), project: vi.fn(), mentorEntry: vi.fn(), invitations: vi.fn(), respond: vi.fn(), user: { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" } as { id: string; systemRole: string; emailVerifiedAt: string } | null }));
+const mocks = vi.hoisted(() => ({ projects: vi.fn(), project: vi.fn(), mentorEntry: vi.fn(), invitations: vi.fn(), respond: vi.fn(), user: { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" } as { id: string; systemRole: string; emailVerifiedAt: string; academicRole?: string } | null }));
 vi.mock("../hooks/use-mentor-project-entry", () => ({ useMentorProjectEntry: mocks.mentorEntry }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, string | number>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values?.[name] ?? "")) }) }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (selector: (state: { user: typeof mocks.user }) => unknown) => selector({ user: mocks.user }) }));
 vi.mock("../hooks/use-projects", () => ({
   useProjects: mocks.projects,
+  useTrashedProjects: () => ({ data: [], isLoading: false, isError: false, isFetching: false, refetch: vi.fn() }),
   useProject: mocks.project,
   useCreateProject: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useMyProjectInvitations: mocks.invitations,
@@ -45,6 +51,7 @@ async function fillSearch(value: string) {
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.clearAllMocks();
+  window.localStorage.clear();
   mocks.user = { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" };
   mocks.projects.mockReturnValue({ data: [owned, shared, archived], isLoading: false, isFetching: false, isError: false });
   mocks.project.mockReturnValue({ data: undefined, isLoading: false });
@@ -52,7 +59,7 @@ beforeEach(() => {
   mocks.invitations.mockReturnValue({ data: [], isLoading: false, refetch: vi.fn() });
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); window.localStorage.clear(); vi.unstubAllGlobals(); });
 
 it("opens the most recently updated non-archived project without a directory click, then switches in place", async () => {
   await render("/projects?scope=OWNED&status=ARCHIVED&sort=NAME");
@@ -64,6 +71,15 @@ it("opens the most recently updated non-archived project without a directory cli
   expect(container.querySelector("aside")).toBe(sidebar);
   await act(async () => [...container.querySelectorAll("button")].find(button => button.textContent === "Back")!.click());
   expect(container.querySelector("output")?.textContent).toBe("/projects/shared");
+});
+
+it("shows a lecturer's personal directory and preserves filters without auto-opening a project or picker", async () => {
+  mocks.user!.academicRole = "LECTURER";
+  await render("/projects?scope=OWNED&status=ACTIVE&sort=NAME");
+  expect(container.querySelector("output")?.textContent).toBe("/projects?scope=OWNED&status=ACTIVE&sort=NAME");
+  expect([...container.querySelectorAll('.project-browser-panel .project-directory-title')].map(link => link.textContent)).toEqual([owned.title]);
+  expect(container.querySelector<HTMLDetailsElement>(".coord-project-picker")?.open).toBe(false);
+  expect(container.querySelector('.mentor-workspace-shell')).toBeNull();
 });
 
 it("keeps filters and the selected section when switching, removes project-specific IDs, and resets project drafts", async () => {
@@ -172,6 +188,25 @@ it("uses fresh project detail for the selected sidebar title and counts while th
   expect(container.querySelector("#project-tab-members small")?.textContent).toBe("3");
 });
 
+it("keeps project navigation functional when collapsed and restores the project switcher on expansion", async () => {
+  await render("/projects/shared?tab=submissions");
+  await act(async () => container.querySelector<HTMLButtonElement>(".sidebar-collapse-button")!.click());
+  expect(container.querySelector('.app-single-sidebar')?.getAttribute('data-collapsed')).toBe('true');
+  expect(container.querySelectorAll('.coord-nav-tabs [role="tab"]')).toHaveLength(11);
+  const papers = container.querySelector<HTMLButtonElement>('#project-tab-papers')!;
+  expect(papers.getAttribute('aria-label')).toBe('Literature');
+  expect(papers.querySelector('svg')).not.toBeNull();
+  await act(async () => papers.click());
+  expect(container.querySelector('output')?.textContent).toBe('/projects/shared?tab=papers');
+  await act(async () => papers.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown', bubbles:true})));
+  expect(document.activeElement?.id).toBe('project-tab-gaps');
+  expect(container.querySelector('output')?.textContent).toBe('/projects/shared?tab=gaps');
+  expect(container.querySelector('.coord-project-picker summary')?.getAttribute('aria-label')).toBe('Switch project');
+  await act(async () => container.querySelector<HTMLButtonElement>('.sidebar-collapse-button')!.click());
+  expect(container.querySelector('.app-single-sidebar')?.getAttribute('data-collapsed')).toBe('false');
+  expect(container.querySelector('.coord-project-picker')).not.toBeNull();
+});
+
 it("does not offer private sections when a fresh detail is a public summary despite an old library row", async () => {
   mocks.project.mockReturnValue({ data: { ...shared, accessRole: undefined, isPublicSummary: true }, isLoading: false });
   await render("/projects/shared");
@@ -214,4 +249,42 @@ it("shows invitation loading and failure independently of cached projects", asyn
   expect(container.querySelector(".project-browser-panel [role=alert]")?.textContent).toContain("Could not load project invitations.");
   await act(async () => container.querySelector<HTMLButtonElement>(".project-browser-panel button")!.click());
   expect(retry).toHaveBeenCalledOnce();
+});
+
+it("remembers the last visited project and section tab when exiting and returning to /projects", async () => {
+  await render("/projects/owned?tab=manuscripts");
+  expect(readLastVisitedProject("me")).toEqual({ projectId: "owned", tab: "manuscripts" });
+
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await render("/projects");
+  expect(container.querySelector("output")?.textContent).toBe("/projects/owned?tab=manuscripts");
+});
+
+it("does not save a public summary or unavailable project as the returning workspace, and falls back when the saved project disappears", async () => {
+  mocks.project.mockReturnValue({ data: { ...shared, accessRole: undefined, isPublicSummary: true }, isLoading: false });
+  await render("/projects/shared?tab=manuscripts");
+  expect(readLastVisitedProject("me")).toBeNull();
+
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  mocks.project.mockReturnValue({ data: undefined, isLoading: false });
+  await render("/projects/owned");
+  expect(readLastVisitedProject("me")).toEqual({ projectId: "owned" });
+
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  mocks.projects.mockReturnValue({ data: [shared], isLoading: false, isFetching: false, isError: false });
+  await render("/projects");
+  expect(container.querySelector("output")?.textContent).toBe("/projects/shared");
+});
+
+it("stores and consumes post-logout project paths per authenticated user only", () => {
+  storePostLogoutProjectPath("me", "/projects/6ab33f1537802fe30d38753b?tab=manuscripts");
+  storePostLogoutProjectPath("me-ignored", "/home");
+
+  expect(consumePostLogoutProjectPath("other-user")).toBeUndefined();
+  expect(consumePostLogoutProjectPath("me-ignored")).toBeUndefined();
+  expect(consumePostLogoutProjectPath("me")).toBe("/projects/6ab33f1537802fe30d38753b?tab=manuscripts");
+  expect(consumePostLogoutProjectPath("me")).toBeUndefined();
 });

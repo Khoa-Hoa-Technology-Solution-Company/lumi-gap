@@ -20,6 +20,7 @@ const emptyPage = { items: [], page: 1, pageSize: 20, total: 0, hasNext: false }
 let host: HTMLDivElement, root: Root, client: QueryClient;
 async function tick() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); }); }
 async function mount() { await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/academic-support/projects/project?view=resources"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Routes><Route path="/academic-support/projects/:projectId" element={<MentorProjectPage />} /></Routes></MemoryRouter></QueryClientProvider>)); await tick(); await tick(); }
+async function mountEmbedded() { await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/mentor-workspace?view=project&projectId=project&section=resources"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><MentorProjectPage embedded /></MemoryRouter></QueryClientProvider>)); await tick(); await tick(); }
 function button(label: string) { return [...document.querySelectorAll<HTMLButtonElement>("button")].find(value => value.textContent?.trim() === label)!; }
 async function click(label: string) { expect(button(label), label).toBeDefined(); await act(async () => button(label).click()); await tick(); }
 async function fill(label: string, value: string) {
@@ -32,6 +33,18 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } }); host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); host.remove(); vi.unstubAllGlobals(); });
+
+it("loads only the selected project's granted resources inside the mentor workspace", async () => {
+  await mountEmbedded();
+  expect(mocks.workspace).toHaveBeenCalledWith("project", 1);
+  expect(host.textContent).toContain("Tóm tắt được duyệt");
+  expect(host.querySelector('a[href="/mentor-workspace?view=projects"]')).not.toBeNull();
+  expect(host.querySelector('main')).toBeNull();
+  mocks.workspace.mockRejectedValue({ isAxiosError: true, response: { status: 403 } });
+  await act(async () => { await client.invalidateQueries({ queryKey: ["mentor-access", "mentor", "project", "workspace"] }); }); await tick();
+  expect(host.textContent).not.toContain("Tóm tắt được duyệt");
+  expect(button("Gửi phản hồi")).toBeUndefined();
+});
 
 it("renders only approved section text with no source, exports or team navigation", async () => {
   await mount(); expect(host.querySelector("h2")?.textContent).toBe("Nhóm nghiên cứu"); expect(host.textContent).toContain("Tóm tắt được duyệt"); expect(mocks.resource).not.toHaveBeenCalled();
@@ -89,9 +102,11 @@ it("keeps completed projects readable and disables new collaboration", async () 
 it("paginates mentor feedback independently", async () => {
   mocks.feedback.mockResolvedValue({ ...emptyPage, total: 21, hasNext: true }); await mount(); await click("Trang sau"); expect(mocks.feedback).toHaveBeenLastCalledWith("project", "access", 2);
 });
-it("retains a stale permission draft until the owner explicitly reloads", async () => {
-  mocks.actorId = "owner"; const view = { ...structuredClone(base), viewerId: "owner", canManage: true }; mocks.workspace.mockResolvedValue(view); await mount(); await click("Cấu hình quyền và chia sẻ"); await fill("Lý do thay đổi", "Cập nhật theo trao đổi");
-  const newer = structuredClone(view); newer.policies[0]!.policy.version++; mocks.workspace.mockResolvedValue(newer);
-  await act(async () => { await client.invalidateQueries({ queryKey: ["mentor-access", "owner", "project", "workspace"] }); }); await tick();
-  expect(button("Lưu quyền và nội dung đã duyệt").disabled).toBe(true); expect(document.body.textContent).toContain("Bản nháp vẫn được giữ"); expect(mocks.configure).not.toHaveBeenCalled();
+it("keeps the owner resource view simple and removes the technical permission editor", async () => {
+  mocks.actorId = "owner"; mocks.workspace.mockResolvedValue({ ...structuredClone(base), viewerId: "owner", canManage: true }); await mount();
+  expect(host.textContent).toContain("Tài liệu đã chia sẻ");
+  expect(button("Cấu hình quyền và chia sẻ")).toBeUndefined();
+  expect(host.textContent).not.toContain("Observer");
+  expect(host.textContent).not.toContain("Lý do thay đổi");
+  expect(mocks.configure).not.toHaveBeenCalled();
 });

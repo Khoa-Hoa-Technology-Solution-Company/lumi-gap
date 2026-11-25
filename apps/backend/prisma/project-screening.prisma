@@ -150,7 +150,7 @@ model ScreeningFinalDecision {
   projectId String @map("project_id") @db.Uuid
   roundId String @map("round_id") @db.Uuid
   roundVersion Int @map("round_version")
-  decision String @db.VarChar(16)
+  decision String @db.VarChar(24)
   source String @db.VarChar(16)
   reason String
   resolverId String? @map("resolver_id") @db.Uuid

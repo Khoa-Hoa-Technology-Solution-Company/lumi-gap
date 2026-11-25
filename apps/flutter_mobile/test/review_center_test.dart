@@ -113,7 +113,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.accepted, ['rr-REQUESTED']);
     expect(find.text('Review request accepted'), findsOneWidget);
-    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'In Progress 1')).selected, isTrue);
+    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'In progress 1')).selected, isTrue);
   });
 
   testWidgets('without a verified lecturer position no answer is offered', (tester) async {
@@ -144,14 +144,14 @@ void main() {
     final api = await _pump(tester, const ReviewCenterScreen(), ReviewCenter(incoming: [sampleReview(status: 'ACCEPTED')], sent: const []));
     api.error = httpFailure(409);
     // The tab row scrolls sideways; the third tab starts off screen.
-    await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'In Progress 1'));
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'In progress 1'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, 'In Progress 1'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'In progress 1'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(OutlinedButton, 'Withdraw'));
     await tester.pumpAndSettle();
     expect(find.text('Withdraw from this review?'), findsOneWidget);
-    await tester.tap(find.widgetWithText(TextButton, 'Withdraw'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Withdraw'));
     await tester.pumpAndSettle();
     expect(find.textContaining('you can no longer withdraw'), findsOneWidget);
   });
@@ -170,7 +170,7 @@ void main() {
     await tester.tap(find.text('Cancel request'));
     await tester.pumpAndSettle();
     expect(find.text('Cancel this review request?'), findsOneWidget);
-    await tester.tap(find.widgetWithText(TextButton, 'Cancel request').last);
+    await tester.tap(find.widgetWithText(FilledButton, 'Cancel request'));
     await tester.pumpAndSettle();
     expect(api.cancelled, [r.id]);
   });

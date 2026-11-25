@@ -7,8 +7,7 @@ export type TrendSortKey = "trend" | "total";
 
 export const DEFAULT_TREND_SORT: TrendSortKey = "trend";
 
-/** Reads a sort value from the URL. The legacy "momentum" and "growth" values
- *  (raw-count rankings that no longer exist) map to "trend". */
+/** Reads a sort value from the URL; anything but "total" is the verdict order. */
 export function parseTrendSortKey(value: string | null | undefined): TrendSortKey {
   return value === "total" ? "total" : DEFAULT_TREND_SORT;
 }
@@ -28,16 +27,15 @@ export interface TrendTopicLike extends TrendSortable {
 export interface RisingKeywordLike {
   keyword: string;
   totalPapers: number;
-  growthRatePct: number;
   yearlyBreakdown: Array<{ year: number; count: number }>;
-  /** Log odds ratio test between two periods; present for OpenAlex data. */
-  shift?: RisingKeyword["shift"];
+  /** Log odds ratio test between the two halves of the window. */
+  shift: RisingKeyword["shift"];
 }
 
-const VERDICT_ORDER: Record<TrendVerdict, number> = { rising: 0, stable: 1, declining: 2, insufficient: 3 };
+const VERDICT_ORDER: Record<TrendVerdict, number> = { rising: 0, saturated: 1, stable: 2, past_peak: 3, declining: 4, insufficient: 5 };
 
-/** Spec section 5 order: rising (largest relative change first), stable,
- *  declining (most negative first), insufficient; ties by paper count. */
+/** Same order as the backend (trend.verdict.ts compareByTrend): rising (largest relative change first),
+ *  saturated, stable, past_peak, declining (most negative first), insufficient; ties by paper count. */
 export function compareTopicsByTrend(a: TrendSortable, b: TrendSortable): number {
   const verdictA = a.classification?.verdict ?? "insufficient";
   const verdictB = b.classification?.verdict ?? "insufficient";
@@ -78,23 +76,15 @@ export function getTopRisingTopic<T extends TrendSortable>(topics: readonly T[])
   return sortTopics(topics, "trend").find((topic) => topic.classification?.verdict === "rising") ?? null;
 }
 
-/** The keyword with the strongest significant shift (largest z, q < 0.05) when
- *  the data carries the test; otherwise the fastest growing keyword. */
+/** The keyword with the strongest significant shift (largest z, q < 0.05); when none is
+ *  significant, the one with the largest z. */
 export function getFastestKeyword(keywords: RisingKeywordLike[]): RisingKeywordLike | null {
-  const significant = keywords.filter((keyword) => keyword.shift && isShiftSignificant(keyword.shift));
-  if (significant.length > 0) {
-    return [...significant].sort((a, b) => (b.shift?.z ?? 0) - (a.shift?.z ?? 0))[0] ?? null;
-  }
-  return [...keywords].sort((a, b) => b.growthRatePct - a.growthRatePct)[0] ?? null;
+  const significant = keywords.filter((keyword) => isShiftSignificant(keyword.shift));
+  const pool = significant.length > 0 ? significant : keywords;
+  return [...pool].sort((a, b) => b.shift.z - a.shift.z)[0] ?? null;
 }
 
-/** Small-base heuristic for data without the shift test (local fallback). */
-export function isSmallBaseKeyword(keyword: RisingKeywordLike): boolean {
-  if (keyword.shift) return false;
-  return keyword.totalPapers < 10 && keyword.growthRatePct >= 100;
-}
-
-/** Default analysis window: the last ten years, the same window the topic page
- *  uses, so share tests are not stretched over decades before a topic existed. */
+/** Default analysis window: 15 complete years plus the running one, the same as the backend
+ *  (FULL_WINDOW_YEARS in trend.verdict.ts). Saturated and past-peak verdicts need at least 10 complete years. */
 export const DEFAULT_TREND_YEAR_TO = new Date().getFullYear();
-export const DEFAULT_TREND_YEAR_FROM = DEFAULT_TREND_YEAR_TO - 10;
+export const DEFAULT_TREND_YEAR_FROM = DEFAULT_TREND_YEAR_TO - 15;

@@ -59,6 +59,7 @@ it("preserves archive read access while preventing settings and discovery writes
   expect(container.textContent).not.toContain("Save project settings");
   expect(container.textContent).not.toContain("Save discovery settings");
   expect(container.textContent).toContain("Archiving preserves research and history");
+  expect(container.textContent).toContain("Danger Zone");
 });
 
 it("supports keyboard section switching and recovers a failed team load", async () => {

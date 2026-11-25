@@ -1,3 +1,4 @@
+import { useAuthStore } from "@/stores/auth-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import type { StructuredSubmissionInput } from "@trend/shared-types";
@@ -8,7 +9,8 @@ export function useSubmissions(projectId?: string) {
 }
 
 export function useSubmission(id: string, projectId?: string) {
-  return useQuery({ queryKey: ["submissions", id, "detail", projectId ?? "standalone"], queryFn: ({ signal }) => submissionsApi.detail(id, projectId, signal), enabled: Boolean(id) });
+  const actorId = useAuthStore(state => state.user?.id);
+  return useQuery({ queryKey: ["submissions", id, "detail", projectId ?? "standalone", actorId], queryFn: ({ signal }) => submissionsApi.detail(id, projectId, signal), enabled: Boolean(id) });
 }
 
 export function useSubmissionRevisions(id: string) {
@@ -31,6 +33,7 @@ export function useCreateSubmission() {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["submissions"] });
       client.invalidateQueries({ queryKey: ["workspace-tasks"] });
+      client.invalidateQueries({ queryKey: ["mentor-workspace"] });
     },
   });
 }
@@ -44,6 +47,7 @@ export function useSubmitFeedback(id: string) {
       client.invalidateQueries({ queryKey: ["submissions", "list"] });
       client.invalidateQueries({ queryKey: ["workspace-tasks"] });
       client.invalidateQueries({ queryKey: ["mentor-access"] });
+      client.invalidateQueries({ queryKey: ["mentor-workspace"] });
     },
   });
 }
@@ -76,9 +80,10 @@ export function useCreateSubmissionVersion(id: string) {
 }
 
 export function useAiPreReviews(id: string, enabled = true) {
+  const actorId = useAuthStore(state => state.user?.id);
   const client = useQueryClient();
   // Pre-reviews run in a worker; poll while the latest one is still queued or processing.
-  const query = useQuery({ queryKey: ["submissions", id, "ai-pre-reviews"], queryFn: ({ signal }) => submissionsApi.aiPreReviews(id, signal), enabled: Boolean(id) && enabled, refetchInterval: (query) => ["QUEUED", "PROCESSING"].includes(query.state.data?.[0]?.status ?? "") ? 3000 : false });
+  const query = useQuery({ queryKey: ["submissions", id, "ai-pre-reviews", actorId], queryFn: ({ signal }) => submissionsApi.aiPreReviews(id, signal), enabled: Boolean(id) && enabled, refetchInterval: (query) => ["QUEUED", "PROCESSING"].includes(query.state.data?.[0]?.status ?? "") ? 3000 : false });
   const latestId = query.data?.[0]?.id;
   const latestStatus = query.data?.[0]?.status;
   useEffect(() => {
@@ -96,4 +101,9 @@ export function useRunAiPreReview(id: string) {
   } });
 }
 
-export function useSubmissionHistory(id: string, enabled = true) { return useQuery({ queryKey: ["submissions", id, "history"], queryFn: ({ signal }) => submissionsApi.history(id, signal), enabled: Boolean(id) && enabled }); }
+export function useSubmissionHistory(id: string, enabled = true) {
+  const actorId = useAuthStore(state => state.user?.id);
+  return useQuery({ queryKey: ["submissions", id, "history", actorId], queryFn: ({ signal }) => submissionsApi.history(id, signal), enabled: Boolean(id) && enabled,
+    refetchInterval: query => query.state.data?.reviewRequests?.some(request => ["REQUESTED", "ACCEPTED", "IN_REVIEW", "RESUBMITTED"].includes(request.status)) ? 15000 : false,
+  });
+}

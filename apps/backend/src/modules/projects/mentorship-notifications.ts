@@ -4,34 +4,47 @@ import { logger } from "../../infrastructure/logger.js";
 import { notificationService } from "../notifications/notification.service.js";
 
 export type MentorshipEvent = "MENTORSHIP_REQUEST_RECEIVED" | "MENTORSHIP_OFFER_RECEIVED" | "MENTORSHIP_REQUEST_ACCEPTED"
-  | "MENTORSHIP_OFFER_ACCEPTED" | "MENTORSHIP_REQUEST_DECLINED" | "MENTORSHIP_OFFER_DECLINED"
-  | "MENTORSHIP_CANCELLED" | "MENTORSHIP_EXPIRED" | "MENTORSHIP_ENDED" | "MENTORSHIP_SUGGESTED" | "MENTORSHIP_POSITION_FILLED";
+  | "MENTORSHIP_OFFER_ACCEPTED" | "MENTORSHIP_REQUEST_DECLINED" | "MENTORSHIP_OFFER_DECLINED" | "MENTORSHIP_INFO_REQUESTED"
+  | "MENTORSHIP_CANCELLED" | "MENTORSHIP_EXPIRED" | "MENTORSHIP_ENDED" | "MENTORSHIP_SUGGESTED"
+  | "MENTORSHIP_SUGGESTION_PLANNED" | "MENTORSHIP_SUGGESTION_INVITED" | "MENTORSHIP_SUGGESTION_DISMISSED"
+  | "MENTORSHIP_POSITION_FILLED";
 export interface MentorshipEmailPayload { event: MentorshipEvent; projectId: string; projectTitle: string; actorName: string; requestId?: string }
 
 // Persist through the existing Notification store inside the domain transaction.
 export async function mentorshipNotification(tx: Prisma.TransactionClient, input: {
-  event: MentorshipEvent; recordId: string; projectId: string; projectTitle: string; actorId: string; recipients: string[];
+  event: MentorshipEvent; recordId: string; projectId: string; projectTitle: string; actorId: string; recipients: string[]; eventSuffix?: string;
+  customMessage?: { vi: string; en: string };
 }) {
   const actor = await tx.user.findUniqueOrThrow({ where: { id: input.actorId }, select: { fullName: true } });
   const payload: MentorshipEmailPayload = { event: input.event, projectId: input.projectId, projectTitle: input.projectTitle, actorName: actor.fullName,
-    ...(["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED"].includes(input.event) ? { requestId: input.recordId } : {}) };
+    ...(["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED", "MENTORSHIP_INFO_REQUESTED"].includes(input.event) ? { requestId: input.recordId } : {}) };
   for (const userId of [...new Set(input.recipients)].filter(id => id !== input.actorId || input.event === "MENTORSHIP_EXPIRED")) {
     const preference = await tx.academicProfile.findUnique({ where: { userId }, select: { notificationLocale: true } });
     const vi = preference?.notificationLocale === "vi";
     const labels: Record<MentorshipEvent, [string, string]> = {
       MENTORSHIP_POSITION_FILLED: ["Mentor position assigned", "Vị trí mentor đã có người nhận"],
       MENTORSHIP_SUGGESTED: ["Mentor suggested by your team", "Thành viên đề xuất cố vấn"],
+      MENTORSHIP_SUGGESTION_PLANNED: ["Suggested mentor added to recruitment plan", "Đề xuất cố vấn được đưa vào kế hoạch mời"],
+      MENTORSHIP_SUGGESTION_INVITED: ["Official invitation sent to suggested mentor", "Chủ dự án đã gửi lời mời chính thức"],
+      MENTORSHIP_SUGGESTION_DISMISSED: ["Mentor suggestion dismissed", "Đề xuất cố vấn đã được bỏ qua"],
       MENTORSHIP_REQUEST_RECEIVED: ["Mentorship invitation", "Lời mời hướng dẫn"], MENTORSHIP_OFFER_RECEIVED: ["Mentorship offer", "Đề nghị hướng dẫn"],
       MENTORSHIP_REQUEST_ACCEPTED: ["Mentorship invitation accepted", "Đã chấp nhận lời mời hướng dẫn"], MENTORSHIP_OFFER_ACCEPTED: ["Mentorship offer accepted", "Đã chấp nhận đề nghị hướng dẫn"],
       MENTORSHIP_REQUEST_DECLINED: ["Mentorship invitation declined", "Đã từ chối lời mời hướng dẫn"], MENTORSHIP_OFFER_DECLINED: ["Mentorship offer declined", "Đã từ chối đề nghị hướng dẫn"],
+      MENTORSHIP_INFO_REQUESTED: ["More information requested for mentorship", "Giảng viên yêu cầu bổ sung thông tin"],
       MENTORSHIP_CANCELLED: ["Mentorship request closed", "Đã đóng lời mời hướng dẫn"], MENTORSHIP_EXPIRED: ["Mentorship request expired", "Lời mời hướng dẫn đã hết hạn"], MENTORSHIP_ENDED: ["Mentorship ended", "Đã kết thúc hướng dẫn"],
     };
+    const eventKey = input.eventSuffix
+      ? `${input.event}:${input.recordId}:${input.eventSuffix}:${userId}`
+      : `${input.event}:${input.recordId}:${userId}`;
+    const defaultMessage = input.event === "MENTORSHIP_REQUEST_RECEIVED"
+      ? (vi ? `Bạn có lời mời hướng dẫn dự án ${input.projectTitle} từ ${actor.fullName}.` : `You have a supervision invitation for ${input.projectTitle} from ${actor.fullName}.`)
+      : `${actor.fullName} · ${input.projectTitle}. ${vi ? "Mở Hỗ trợ học thuật để xem cập nhật." : "Open Academic Support to view the update."}`;
     await notificationService.create({ userId, type: input.event, title: labels[input.event][vi ? 1 : 0],
-      message: `${actor.fullName} · ${input.projectTitle}. ${vi ? "Mở Hỗ trợ học thuật để xem cập nhật." : "Open Academic Support to view the update."}`,
-      targetKind: "project", targetId: input.projectId, eventKey: `${input.event}:${input.recordId}:${userId}`,
+      message: input.customMessage ? (vi ? input.customMessage.vi : input.customMessage.en) : defaultMessage,
+      targetKind: "project", targetId: input.projectId, eventKey,
       emailPayload: payload as unknown as Prisma.InputJsonValue,
-      // Cancellation/expiry are in-app only; principal consent changes also send email.
-      emailStatus: ["MENTORSHIP_CANCELLED", "MENTORSHIP_EXPIRED", "MENTORSHIP_SUGGESTED", "MENTORSHIP_POSITION_FILLED"].includes(input.event) ? "SKIPPED" : "PENDING",
+      // Cancellation/expiry/internal suggestions are in-app only; principal consent changes also send email.
+      emailStatus: ["MENTORSHIP_CANCELLED", "MENTORSHIP_EXPIRED", "MENTORSHIP_SUGGESTED", "MENTORSHIP_SUGGESTION_PLANNED", "MENTORSHIP_SUGGESTION_INVITED", "MENTORSHIP_SUGGESTION_DISMISSED", "MENTORSHIP_POSITION_FILLED"].includes(input.event) ? "SKIPPED" : "PENDING",
     }, tx);
   }
 }

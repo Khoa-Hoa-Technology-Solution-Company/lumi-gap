@@ -24,6 +24,7 @@ export interface ResearchVersion {
   contentSnapshot: string | null;
   checksumSha256: string | null;
   sizeBytes: number;
+  originalFileName?: string | null;
   sourceRevisionId: string | null;
   manuscriptSnapshotId?: string | null;
   responseToReview: string | null;
@@ -40,20 +41,29 @@ export interface AssignedMentor {
   role: string;
 }
 
+export interface SubmissionHistoryReviewRequest {
+  id: string;
+  reviewerId?: string;
+  reviewerName: string;
+  status: string;
+  revisionNumber: number;
+  revisionId?: string;
+  origin?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  dueAt: string | null;
+  canView: boolean;
+}
+
 export interface SubmissionHistory {
   canManage: boolean;
+  /** Current team membership and a live, writable source; never an access grant. */
+  sourceManuscriptWritable?: boolean;
   canProvideFeedback?: boolean;
   assignedMentor?: AssignedMentor | null;
   canRunAiPreReview?: boolean;
   canRequestReview?: boolean;
-  reviewRequests?: Array<{
-    id: string;
-    reviewerName: string;
-    status: string;
-    revisionNumber: number;
-    dueAt: string | null;
-    canView: boolean;
-  }>;
+  reviewRequests?: SubmissionHistoryReviewRequest[];
   openForReview: boolean;
   currentRevisionId: string | null;
   currentRevisionNumber: number;

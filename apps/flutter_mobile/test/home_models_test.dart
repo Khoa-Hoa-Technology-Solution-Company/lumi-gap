@@ -343,8 +343,6 @@ void main() {
           'topics': [
             {
               'topic': 'RAG',
-              'momentum': 0.8,
-              'growthRatePct': 42.5,
               'totalPapers': 120,
               'classification': {'verdict': 'rising'},
               'yearlyBreakdown': [
@@ -399,8 +397,10 @@ void main() {
   });
 
   group('TrendVerdict.parse', () {
-    test('maps the four API verdicts', () {
+    test('maps the six API verdicts', () {
       expect(TrendVerdict.parse('rising'), TrendVerdict.rising);
+      expect(TrendVerdict.parse('saturated'), TrendVerdict.saturated);
+      expect(TrendVerdict.parse('past_peak'), TrendVerdict.pastPeak);
       expect(TrendVerdict.parse('declining'), TrendVerdict.declining);
       expect(TrendVerdict.parse('stable'), TrendVerdict.stable);
       expect(TrendVerdict.parse('insufficient'), TrendVerdict.insufficient);
@@ -412,6 +412,7 @@ void main() {
         for (final raw in <Object?>[
           'RISING',
           'up',
+          'pastPeak',
           '',
           3,
           null,
@@ -431,7 +432,7 @@ void main() {
   group('HomeTrendTopic.fromJson', () {
     Map<String, dynamic> topic(Object? classification) => {
       'topic': 'RAG',
-      'growthRatePct': 400, // must NOT decide the label
+      'relativeChangePct': 400, // must NOT decide the label
       'yearlyBreakdown': [
         {'year': 2024, 'count': 1},
         {'year': 2025, 'count': 9},
@@ -440,11 +441,18 @@ void main() {
     };
 
     test('takes the label from classification.verdict, not from growth', () {
-      for (final v in ['rising', 'declining', 'stable', 'insufficient']) {
+      for (final v in [
+        'rising',
+        'saturated',
+        'past_peak',
+        'declining',
+        'stable',
+        'insufficient',
+      ]) {
         final t = HomeTrendTopic.fromJson(
           topic({'verdict': v, 'confidence': null}),
         )!;
-        expect(t.verdict.name, v);
+        expect(t.verdict.apiName, v);
       }
       // 400% growth but the test concluded "stable": the API wins.
       expect(

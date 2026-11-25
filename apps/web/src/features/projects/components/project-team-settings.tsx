@@ -1,25 +1,21 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import type { IProject, ProjectStatus } from "@trend/shared-types";
-import { MoreHorizontal, SlidersHorizontal, Users, Shield, RotateCcw } from "lucide-react";
-import { toast } from "sonner";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import type { IProject } from "@trend/shared-types";
+import { SlidersHorizontal, Users, Shield, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/i18n";
 import { cn } from "@/utils/cn";
 import { useAuthStore } from "@/stores/auth-store";
-import { useArchiveProject, useDeleteProject, useLeaveProject, useProjectTeam, useRestoreProject, useUpdateProject } from "../hooks/use-projects";
+import { useProjectTeam } from "../hooks/use-projects";
 import { ProjectMembersTab } from "./project-members-tab";
 import { ProjectMemberInvite } from "./project-member-invite";
 import { ProjectMentorSummary } from "./project-mentor-summary";
 import { ProjectGeneralSettings, ProjectPrivacySettings } from "./project-settings-form";
 import { ProjectSecurityPanel } from "./project-security-panel";
-import { canLeaveWorkspace, projectSectionHref } from "./workspace-common";
+import { canLeaveWorkspace } from "./workspace-common";
+import { ProjectLifecycleSection } from "./project-lifecycle-section";
 
 function Pagination({ page, totalPages, onChange, label }: { page: number; totalPages: number; onChange: (page: number) => void; label: string }) {
   const { t } = useI18n();
@@ -133,14 +129,17 @@ export function ProjectTeamSettings({ project }: { project: IProject }) {
 
       {settings ? (
         <section id="project-settings-panel" role="tabpanel" aria-labelledby="project-settings-tab">
-          <div className="max-w-2xl min-w-0 space-y-7">
-        {project.accessRole !== "OWNER" && <p className="text-sm text-muted-foreground">{t("Only the owner can change project settings.")}</p>}
-        <ProjectGeneralSettings key={`general:${project._id}`} project={project} />
-        <ProjectPrivacySettings key={`privacy:${project._id}`} project={project} />
-        <ProjectSecurityPanel project={project} />
-        <p className="text-sm text-muted-foreground"><Link to={projectSectionHref(project._id, "support")} className="text-primary underline-offset-4 hover:underline">{t("Looking for a mentor? Manage discovery in Academic Support → Mentor.")}</Link></p>
-        <ProjectLifecycle project={project} />
-      </div>
+          <div className="max-w-3xl min-w-0 space-y-6">
+            {project.accessRole !== "OWNER" ? (
+              <div role="status" className="rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                {t("Only the owner can change project settings.")}
+              </div>
+            ) : null}
+            <ProjectGeneralSettings key={`general:${project._id}`} project={project} />
+            <ProjectPrivacySettings key={`privacy:${project._id}`} project={project} />
+            <ProjectSecurityPanel key={`security:${project._id}`} project={project} />
+            <ProjectLifecycleSection project={project} />
+          </div>
         </section>
       ) : (
         <section id="project-people-panel" role="tabpanel" aria-labelledby="project-people-tab">
@@ -181,56 +180,4 @@ export function ProjectTeamSettings({ project }: { project: IProject }) {
       )}
     </div>
   );
-}
-
-function ProjectLifecycle({ project }: { project: IProject }) {
-  const { t } = useI18n(), navigate = useNavigate();
-  const owner = project.accessRole === "OWNER", archived = project.status === "ARCHIVED";
-  const [action, setAction] = useState<"archive" | "restore" | "delete" | "leave" | null>(null);
-  const [confirmation, setConfirmation] = useState("");
-  const archive = useArchiveProject(project._id), restore = useRestoreProject(project._id), remove = useDeleteProject(project._id), leave = useLeaveProject(project._id);
-  const pending = archive.isPending || restore.isPending || remove.isPending || leave.isPending;
-  const lock = useRef(false);
-  const needsTitle = action === "archive" || action === "delete";
-  const labels = { archive: "Archive project", restore: "Restore project", delete: "Delete project", leave: "Leave project" };
-  const confirm = async () => {
-    if (!action || pending || lock.current || needsTitle && confirmation !== project.title) return;
-    lock.current = true;
-    try {
-      if (action === "archive") await archive.mutateAsync();
-      else if (action === "restore") await restore.mutateAsync();
-      else if (action === "delete") await remove.mutateAsync();
-      else await leave.mutateAsync();
-      toast.success(t("Project updated")); setAction(null); setConfirmation("");
-      if (action === "leave" || action === "delete") navigate("/projects");
-    } catch (failure) { toast.error(t((failure as { response?: { status?: number } }).response?.status === 409 ? "This action is blocked to preserve project ownership or research history. Archive the project when appropriate." : "Could not update the project. Please try again.")); }
-    finally { lock.current = false; }
-  };
-  return <details className="min-w-0 border-t pt-6"><summary className="cursor-pointer text-sm font-semibold">{t("Advanced actions")}</summary><div className="mt-4 space-y-5">
-    {owner && !archived && <ProjectStatusControl key={`${project._id}:${project.version}`} project={project} />}
-    <div className="flex flex-wrap items-start justify-between gap-4">
-    <div className="max-w-prose"><h3 className="text-base font-semibold">{t("Archive and deletion")}</h3><p className="mt-1 text-sm leading-6 text-muted-foreground">{t(owner ? "Archiving preserves research and history and makes the workspace read-only. Empty projects can be deleted." : "Leaving removes your private workspace access. The owner can invite you again.")}</p></div>
-    <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline">{t("Project actions")}<MoreHorizontal className="ml-2 h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-      {owner ? <><DropdownMenuItem onSelect={async () => { if ((await canLeaveWorkspace())) setAction(archived ? "restore" : "archive"); }}>{t(archived ? labels.restore : labels.archive)}</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive" onSelect={async () => { if ((await canLeaveWorkspace())) setAction("delete"); }}>{t(labels.delete)}</DropdownMenuItem></>
-        : <DropdownMenuItem className="text-destructive" onSelect={() => setAction("leave")}>{t(labels.leave)}</DropdownMenuItem>}
-    </DropdownMenuContent></DropdownMenu>
-    </div>
-    <Dialog open={Boolean(action)} onOpenChange={open => { if (!open && !pending) { setAction(null); setConfirmation(""); } }}><DialogContent closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{action ? t(labels[action]) : ""}</DialogTitle><DialogDescription>{t(action === "archive" ? "Members can still read existing research. Pending invitations will be cancelled and discovery will close."
-      : action === "restore" ? "Members can collaborate again. Cancelled invitations and closed discovery remain unchanged."
-      : action === "delete" ? "Only an empty project without research or collaboration history can be permanently deleted."
-      : "You will lose access to private project content. This cannot leave the project without an owner.")}</DialogDescription></DialogHeader>
-      {needsTitle ? <div className="space-y-2"><Label htmlFor="project-action-confirm">{t("Type {{title}} to confirm", { title: project.title })}</Label><Input id="project-action-confirm" value={confirmation} disabled={pending} onChange={event => setConfirmation(event.target.value)} autoComplete="off" /></div> : null}
-      <DialogFooter><Button type="button" variant="outline" disabled={pending} onClick={() => { setAction(null); setConfirmation(""); }}>{t("Cancel")}</Button><Button type="button" variant={action === "restore" ? "default" : "destructive"} disabled={pending || needsTitle && confirmation !== project.title} onClick={() => void confirm()}>{t(pending ? "Updating…" : "Confirm")}</Button></DialogFooter>
-    </DialogContent></Dialog>
-  </div></details>;
-}
-
-function ProjectStatusControl({ project }: { project: IProject }) {
-  const { t } = useI18n();
-  const [status, setStatus] = useState(project.status), update = useUpdateProject(project._id);
-  return <form className="space-y-2" onSubmit={async event => {
-    event.preventDefault(); if (update.isPending || status === project.status || !(await canLeaveWorkspace())) return;
-    try { await update.mutateAsync({ status, expectedVersion: project.version }); toast.success(t("Project updated")); }
-    catch { toast.error(t("Project settings changed. Refresh before saving again.")); }
-  }}><label className="block space-y-2 text-sm"><span className="font-medium">{t("Project lifecycle")}</span><select className="project-form-select" value={status} disabled={update.isPending} onChange={event => setStatus(event.target.value as ProjectStatus)}>{Object.entries({ PLANNING: "Planning", ACTIVE: "Active", ON_HOLD: "On hold", COMPLETED: "Completed" }).map(([key, label]) => <option key={key} value={key}>{t(label)}</option>)}</select></label><p className="text-xs text-muted-foreground">{t("Research stage is managed in Overview. Lifecycle controls whether the project is ongoing, paused or completed.")}</p><Button variant="outline" type="submit" size="sm" disabled={status === project.status || update.isPending}>{t("Update lifecycle")}</Button></form>;
 }

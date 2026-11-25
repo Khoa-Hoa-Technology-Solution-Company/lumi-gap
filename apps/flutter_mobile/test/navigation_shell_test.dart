@@ -80,7 +80,12 @@ GoRouter _buildRouter() {
   );
 }
 
+/// The last "Flutter handles Back" value the app reported to the platform
+/// (what WidgetsApp passes to SystemNavigator.setFrameworkHandlesBack).
+bool? _handlesBack;
+
 Future<GoRouter> _pumpApp(WidgetTester tester) async {
+  _handlesBack = null;
   final router = _buildRouter();
   await tester.pumpWidget(
     ProviderScope(
@@ -97,6 +102,14 @@ Future<GoRouter> _pumpApp(WidgetTester tester) async {
         ),
       ],
       child: MaterialApp.router(
+        builder: (context, child) =>
+            NotificationListener<NavigationNotification>(
+              onNotification: (n) {
+                _handlesBack = n.canHandlePop;
+                return false;
+              },
+              child: child!,
+            ),
         locale: AppLocale.vi.locale,
         supportedLocales: AppLocale.supportedLocales,
         localizationsDelegates: appLocalizationsDelegates,
@@ -109,8 +122,13 @@ Future<GoRouter> _pumpApp(WidgetTester tester) async {
   return router;
 }
 
-Finder _tab(String label) =>
-    find.descendant(of: find.byType(NavigationBar), matching: find.text(label));
+/// A tab by the name screen readers hear (only the open tab shows it).
+Finder _tab(String label) => find.descendant(
+      of: find.byType(LumiFloatingNavBar),
+      matching: find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.label == label,
+      ),
+    );
 
 void main() {
   testWidgets('shows exactly 5 labelled destinations (Material 3 maximum)', (
@@ -118,7 +136,21 @@ void main() {
   ) async {
     await _pumpApp(tester);
 
-    expect(find.byType(NavigationDestination), findsNWidgets(5));
+    // Five tabs; the open one (Home) shows its name in the pill.
+    expect(
+      find.descendant(
+        of: find.byType(LumiFloatingNavBar),
+        matching: find.byType(InkWell),
+      ),
+      findsNWidgets(5),
+    );
+    expect(
+      find.descendant(
+        of: find.byType(LumiFloatingNavBar),
+        matching: find.text('Trang chủ'),
+      ),
+      findsOneWidget,
+    );
     for (final label in ['Trang chủ', 'Khám phá', 'Dự án', 'Cộng đồng', 'Hồ sơ']) {
       expect(_tab(label), findsOneWidget);
     }
@@ -150,6 +182,23 @@ void main() {
     await tester.tap(_tab('Trang chủ'));
     await tester.pumpAndSettle();
     expect(find.text('tab-home'), findsOneWidget);
+  });
+
+  testWidgets(
+      'off Home the app tells Android it handles Back (predictive back '
+      'would otherwise close the app); on Home it does not', (tester) async {
+    final router = await _pumpApp(tester);
+    await tester.pumpAndSettle();
+    expect(_handlesBack, isFalse);
+
+    router.go('/projects');
+    await tester.pumpAndSettle();
+    expect(_handlesBack, isTrue);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('tab-home'), findsOneWidget);
+    expect(_handlesBack, isFalse);
   });
 
   testWidgets('Android Back on tab 2 returns to tab 0', (tester) async {

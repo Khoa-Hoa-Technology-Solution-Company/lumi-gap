@@ -29,8 +29,8 @@ class TrendsSignalsTab extends StatelessWidget {
   final void Function(String) onExplainTopic;
 
   void _open(BuildContext context, TrendingTopic topic) => unawaited(
-        showTrendTopicSheet(context, topic: topic, onExplain: onExplainTopic),
-      );
+    showTrendTopicSheet(context, topic: topic, onExplain: onExplainTopic),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -38,12 +38,14 @@ class TrendsSignalsTab extends StatelessWidget {
     // API's verdict only, never from raw-count growth.
     final topics = sortTopicsByTrend(overview.topics);
     final strongest = topRisingTopic(topics);
-    final allInsufficient = topics.isNotEmpty &&
+    final allInsufficient =
+        topics.isNotEmpty &&
         topics.every(
           (t) => t.classification.verdict == TrendVerdict.insufficient,
         );
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(0, 20, 0, 32),
       children: [
         if (strongest != null)
@@ -57,7 +59,7 @@ class TrendsSignalsTab extends StatelessWidget {
         if (overview.risingKeywords.isNotEmpty) ...[
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: LumiSectionHeader(title: context.t('Emerging Keywords')),
+            child: LumiSectionHeader(title: context.t('Emerging keywords')),
           ),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -67,7 +69,15 @@ class TrendsSignalsTab extends StatelessWidget {
                 for (final kw in overview.risingKeywords) ...[
                   _KeywordChip(
                     keyword: kw.keyword,
-                    change: '${formatSigned(kw.growthRatePct, 0)}%',
+                    // How many papers carry it; the test statistic itself is
+                    // not shown to readers, only whether the rise passed it.
+                    change: context.plural(
+                      kw.totalPapers,
+                      one: '{{count}} paper',
+                      other: '{{count}} papers',
+                      args: {'count': formatNumber(kw.totalPapers)},
+                    ),
+                    significant: kw.significant,
                     onTap: () => unawaited(
                       context.push(
                         '/search?q=${Uri.encodeComponent(kw.keyword)}',
@@ -87,13 +97,17 @@ class TrendsSignalsTab extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               LumiSectionHeader(
-                title: context.t('Rising Topics Signals'),
+                title: context.t('Rising topics'),
                 caption: allInsufficient
                     ? context.t(
                         'Not enough yearly data yet to tell whether these topics are rising or falling.',
                       )
                     : null,
               ),
+              if (overview.verdictCounts.isNotEmpty) ...[
+                _VerdictCounts(overview: overview),
+                const SizedBox(height: 12),
+              ],
               if (topics.isEmpty)
                 LumiEmptyState(
                   icon: Icons.show_chart,
@@ -160,8 +174,9 @@ class _StrongestTopic extends StatelessWidget {
         children: [
           Text(
             context.t('Fastest rising topic'),
-            style: theme.textTheme.titleSmall
-                ?.copyWith(color: lumi.foregroundSecondary),
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: lumi.foregroundSecondary,
+            ),
           ),
           const SizedBox(height: 4),
           Text(topic.topic, style: theme.textTheme.titleLarge),
@@ -191,13 +206,16 @@ class _StrongestTopic extends StatelessWidget {
               Expanded(
                 child: Text(
                   facts,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: lumi.foregroundSecondary),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: lumi.foregroundSecondary,
+                  ),
                 ),
               ),
               Text(
                 context.t('Details'),
-                style: theme.textTheme.labelLarge?.copyWith(color: lumi.primary),
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: lumi.primary,
+                ),
               ),
             ],
           ),
@@ -211,11 +229,15 @@ class _KeywordChip extends StatelessWidget {
   const _KeywordChip({
     required this.keyword,
     required this.change,
+    required this.significant,
     required this.onTap,
   });
 
   final String keyword;
   final String change;
+
+  /// The rise passed the test (z > 0, BH q < 0.05).
+  final bool significant;
   final VoidCallback onTap;
 
   @override
@@ -235,12 +257,21 @@ class _KeywordChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (significant) ...[
+                  Icon(
+                    Icons.check_circle_outline,
+                    size: 16,
+                    color: lumi.success,
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 Text(keyword, style: theme.textTheme.bodyMedium),
                 const SizedBox(width: 6),
                 Text(
                   change,
-                  style: theme.textTheme.labelLarge
-                      ?.copyWith(color: lumi.foreground),
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: lumi.foreground,
+                  ),
                 ),
               ],
             ),
@@ -299,8 +330,9 @@ class _TopicRow extends StatelessWidget {
               ),
               child: Text(
                 '$rank',
-                style: theme.textTheme.labelLarge
-                    ?.copyWith(color: lumi.foregroundSecondary),
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: lumi.foregroundSecondary,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -319,12 +351,27 @@ class _TopicRow extends StatelessWidget {
                     sub,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: lumi.foregroundSecondary),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: lumi.foregroundSecondary,
+                    ),
                   ),
                   if (showVerdict && pct == null) ...[
                     const SizedBox(height: 6),
                     TrendVerdictPill(verdict: c.verdict),
+                  ],
+                  if ((topic.crossTopic?.clear ?? false) ||
+                      (topic.taxonomy?.isApplication ?? false)) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        if (topic.crossTopic?.clear ?? false)
+                          const TrendClearPill(),
+                        if (topic.taxonomy?.isApplication ?? false)
+                          const TrendApplicationPill(),
+                      ],
+                    ),
                   ],
                 ],
               ),
@@ -351,8 +398,9 @@ class _TopicRow extends StatelessWidget {
                   ),
                   Text(
                     context.t(style.text),
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: lumi.foregroundSecondary),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: lumi.foregroundSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -362,6 +410,58 @@ class _TopicRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// How many tested topics of the scope got each verdict.
+class _VerdictCounts extends StatelessWidget {
+  const _VerdictCounts({required this.overview});
+
+  final TrendsOverview overview;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final lumi = context.lumi;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          overview.testedTopicCount > 0
+              ? context.t('Trend verdicts among the {{count}} topics tested', {
+                  'count': formatNumber(overview.testedTopicCount),
+                })
+              : context.t('Trend verdicts in this scope'),
+          style: theme.textTheme.labelLarge,
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 12,
+          runSpacing: 6,
+          children: [
+            for (final v in TrendVerdict.values)
+              if ((overview.verdictCounts[v] ?? 0) > 0)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      trendVerdictStyle(v, lumi).icon,
+                      size: 14,
+                      color: trendVerdictStyle(v, lumi).color,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${context.t(trendVerdictStyle(v, lumi).text)} ${formatNumber(overview.verdictCounts[v]!)}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: lumi.foregroundSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+          ],
+        ),
+      ],
     );
   }
 }

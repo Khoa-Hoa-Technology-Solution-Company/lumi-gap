@@ -7,10 +7,19 @@ import * as s from "./dto/project-contributions.schema.js";
 import { projectContributionsController as c } from "./project-contributions.controller.js";
 import { contributionEvaluationController as e } from "./contribution-evaluation.controller.js";
 import * as es from "./dto/contribution-evaluation.schema.js";
+import { AppError } from "../../common/exceptions/app-error.js";
 export const projectContributionsRouter = Router({ mergeParams: true });
 projectContributionsRouter.use((_req, res, next) => { res.setHeader("Cache-Control", "private, no-store"); next(); });
 const params = validate(workspaceParams, "params"), item = validate(workspaceParams.extend({ itemId: z.string().uuid() }), "params");
 const writes = createRateLimiter("projects:contribution-writes", { windowMs: 3600000, limit: 150, keyGenerator: req => req.user!.sub });
+// Preserve historical percentages and consent receipts, but stop creating new allocations.
+projectContributionsRouter.use(["/evaluation", "/periods", "/revisions"], (req, _res, next) => {
+  if (!["GET", "HEAD"].includes(req.method)) return next(AppError.conflict("Percentage allocation is retired. Record research evidence and manuscript CRediT roles instead."));
+  next();
+});
+projectContributionsRouter.get("/research", params, validate(s.researchContributionsQuerySchema, "query"), c.research);
+projectContributionsRouter.get("/manuscript-statement", params, validate(z.object({ scopeKey: s.manuscriptContributionKey }).strict(), "query"), c.statement);
+projectContributionsRouter.get("/research-artifact", params, validate(z.object({ kind: z.enum(["SUBMISSION", "SUBMISSION_REVISION", "HUMAN_REVIEW", "SYNTHESIS", "RESEARCH_DECISION"]), id: z.string().uuid() }).strict(), "query"), c.artifact);
 projectContributionsRouter.get("/evaluation/rules", params, e.rules);
 projectContributionsRouter.get("/evaluation/writing-suggestions", params, validate(es.writingSuggestionsSchema, "query"), e.writingSuggestions);
 projectContributionsRouter.post("/evaluation/rules", writes, params, validate(es.evaluationRuleSchema), e.createRule);

@@ -13,13 +13,33 @@ final trendsApiProvider = Provider<TrendsApi>((ref) {
   return TrendsApi(ref.watch(apiClientProvider).dio);
 });
 
-final FutureProviderFamily<TrendsOverview, TrendsOverviewParams> trendsOverviewProvider = FutureProvider.autoDispose.family<TrendsOverview, TrendsOverviewParams>((ref, params) {
-  return ref.watch(trendsApiProvider).overview(params);
-});
+final FutureProviderFamily<TrendsOverview, TrendsOverviewParams>
+trendsOverviewProvider = FutureProvider.autoDispose
+    .family<TrendsOverview, TrendsOverviewParams>((ref, params) {
+      return ref.watch(trendsApiProvider).overview(params);
+    });
 
-final FutureProviderFamily<PublicationTrend, String> trendTopicProvider = FutureProvider.autoDispose.family<PublicationTrend, String>((ref, topic) {
-  return ref.watch(trendsApiProvider).topic(topic);
-});
+/// Emerging keyword signals for a scope (subfield / topic filters only; the window is fixed by the API).
+final FutureProviderFamily<TrendEmergingResponse, TrendScopeFilters>
+trendEmergingProvider = FutureProvider.autoDispose
+    .family<TrendEmergingResponse, TrendScopeFilters>((ref, filters) {
+      return ref.watch(trendsApiProvider).emerging(scopeFilters: filters);
+    });
+
+final FutureProviderFamily<PublicationTrend, String> trendTopicProvider =
+    FutureProvider.autoDispose.family<PublicationTrend, String>((ref, topic) {
+      return ref.watch(trendsApiProvider).topic(topic);
+    });
+
+/// Length of the default trend window, in years (FULL_WINDOW_YEARS in the
+/// backend's trend.verdict.ts): the overview reads yearTo - 15 .. yearTo.
+const trendWindowYears = 15;
+
+/// Default year range of the trends screen: the last 15 years up to now.
+({int from, int to}) defaultTrendYears([DateTime? now]) {
+  final to = (now ?? DateTime.now()).year;
+  return (from: to - trendWindowYears, to: to);
+}
 
 @immutable
 class TrendsOverviewParams {
@@ -29,6 +49,7 @@ class TrendsOverviewParams {
     this.limit,
     this.minPapers,
     this.sortBy,
+    this.sizeBands = const [],
     this.scopeFilters = const TrendScopeFilters(),
   });
 
@@ -37,16 +58,20 @@ class TrendsOverviewParams {
   final int? limit;
   final int? minPapers;
   final String? sortBy;
+
+  /// Size bands to list (`small`, `medium`, `large`); empty = all.
+  final List<String> sizeBands;
   final TrendScopeFilters scopeFilters;
 
   Map<String, dynamic> toQuery() => {
-        if (yearFrom != null) 'yearFrom': yearFrom,
-        if (yearTo != null) 'yearTo': yearTo,
-        if (limit != null) 'limit': limit,
-        if (minPapers != null) 'minPapers': minPapers,
-        if (sortBy != null) 'sortBy': sortBy,
-        ...scopeFilters.toQuery(),
-      };
+    if (yearFrom != null) 'yearFrom': yearFrom,
+    if (yearTo != null) 'yearTo': yearTo,
+    if (limit != null) 'limit': limit,
+    if (minPapers != null) 'minPapers': minPapers,
+    if (sortBy != null) 'sortBy': sortBy,
+    if (_csv(sizeBands) != null) 'sizeBands': _csv(sizeBands),
+    ...scopeFilters.toQuery(),
+  };
 
   @override
   bool operator ==(Object other) {
@@ -56,11 +81,20 @@ class TrendsOverviewParams {
         other.limit == limit &&
         other.minPapers == minPapers &&
         other.sortBy == sortBy &&
+        _listEquals(other.sizeBands, sizeBands) &&
         other.scopeFilters == scopeFilters;
   }
 
   @override
-  int get hashCode => Object.hash(yearFrom, yearTo, limit, minPapers, sortBy, scopeFilters);
+  int get hashCode => Object.hash(
+    yearFrom,
+    yearTo,
+    limit,
+    minPapers,
+    sortBy,
+    Object.hashAll(sizeBands),
+    scopeFilters,
+  );
 }
 
 @immutable
@@ -114,36 +148,37 @@ class TrendScopeFilters {
   final List<String> topicIds;
 
   Map<String, dynamic> toQuery() => {
-        if (_csv(paperKinds) != null) 'paperKinds': _csv(paperKinds),
-        if (_csv(openAccessStatuses) != null) 'openAccessStatuses': _csv(openAccessStatuses),
-        if (_csv(providers) != null) 'providers': _csv(providers),
-        if (_csv(sources) != null) 'sources': _csv(sources),
-        if (_csv(citationBands) != null) 'citationBands': _csv(citationBands),
-        if (_csv(domains) != null) 'domains': _csv(domains),
-        if (_csv(fields) != null) 'fields': _csv(fields),
-        if (_csv(subfields) != null) 'subfields': _csv(subfields),
-        if (_csv(topics) != null) 'topics': _csv(topics),
-        if (_csv(domainIds) != null) 'domainIds': _csv(domainIds),
-        if (_csv(fieldIds) != null) 'fieldIds': _csv(fieldIds),
-        if (_csv(subfieldIds) != null) 'subfieldIds': _csv(subfieldIds),
-        if (_csv(topicIds) != null) 'topicIds': _csv(topicIds),
-      };
+    if (_csv(paperKinds) != null) 'paperKinds': _csv(paperKinds),
+    if (_csv(openAccessStatuses) != null)
+      'openAccessStatuses': _csv(openAccessStatuses),
+    if (_csv(providers) != null) 'providers': _csv(providers),
+    if (_csv(sources) != null) 'sources': _csv(sources),
+    if (_csv(citationBands) != null) 'citationBands': _csv(citationBands),
+    if (_csv(domains) != null) 'domains': _csv(domains),
+    if (_csv(fields) != null) 'fields': _csv(fields),
+    if (_csv(subfields) != null) 'subfields': _csv(subfields),
+    if (_csv(topics) != null) 'topics': _csv(topics),
+    if (_csv(domainIds) != null) 'domainIds': _csv(domainIds),
+    if (_csv(fieldIds) != null) 'fieldIds': _csv(fieldIds),
+    if (_csv(subfieldIds) != null) 'subfieldIds': _csv(subfieldIds),
+    if (_csv(topicIds) != null) 'topicIds': _csv(topicIds),
+  };
 
   Map<String, dynamic> toJson() => {
-        if (paperKinds.isNotEmpty) 'paperKinds': paperKinds,
-        if (openAccessStatuses.isNotEmpty) 'openAccessStatuses': openAccessStatuses,
-        if (providers.isNotEmpty) 'providers': providers,
-        if (sources.isNotEmpty) 'sources': sources,
-        if (citationBands.isNotEmpty) 'citationBands': citationBands,
-        if (domains.isNotEmpty) 'domains': domains,
-        if (fields.isNotEmpty) 'fields': fields,
-        if (subfields.isNotEmpty) 'subfields': subfields,
-        if (topics.isNotEmpty) 'topics': topics,
-        if (domainIds.isNotEmpty) 'domainIds': domainIds,
-        if (fieldIds.isNotEmpty) 'fieldIds': fieldIds,
-        if (subfieldIds.isNotEmpty) 'subfieldIds': subfieldIds,
-        if (topicIds.isNotEmpty) 'topicIds': topicIds,
-      };
+    if (paperKinds.isNotEmpty) 'paperKinds': paperKinds,
+    if (openAccessStatuses.isNotEmpty) 'openAccessStatuses': openAccessStatuses,
+    if (providers.isNotEmpty) 'providers': providers,
+    if (sources.isNotEmpty) 'sources': sources,
+    if (citationBands.isNotEmpty) 'citationBands': citationBands,
+    if (domains.isNotEmpty) 'domains': domains,
+    if (fields.isNotEmpty) 'fields': fields,
+    if (subfields.isNotEmpty) 'subfields': subfields,
+    if (topics.isNotEmpty) 'topics': topics,
+    if (domainIds.isNotEmpty) 'domainIds': domainIds,
+    if (fieldIds.isNotEmpty) 'fieldIds': fieldIds,
+    if (subfieldIds.isNotEmpty) 'subfieldIds': subfieldIds,
+    if (topicIds.isNotEmpty) 'topicIds': topicIds,
+  };
 
   bool get isEmpty => toJson().isEmpty;
 
@@ -167,20 +202,20 @@ class TrendScopeFilters {
 
   @override
   int get hashCode => Object.hashAll([
-        Object.hashAll(paperKinds),
-        Object.hashAll(openAccessStatuses),
-        Object.hashAll(providers),
-        Object.hashAll(sources),
-        Object.hashAll(citationBands),
-        Object.hashAll(domains),
-        Object.hashAll(fields),
-        Object.hashAll(subfields),
-        Object.hashAll(topics),
-        Object.hashAll(domainIds),
-        Object.hashAll(fieldIds),
-        Object.hashAll(subfieldIds),
-        Object.hashAll(topicIds),
-      ]);
+    Object.hashAll(paperKinds),
+    Object.hashAll(openAccessStatuses),
+    Object.hashAll(providers),
+    Object.hashAll(sources),
+    Object.hashAll(citationBands),
+    Object.hashAll(domains),
+    Object.hashAll(fields),
+    Object.hashAll(subfields),
+    Object.hashAll(topics),
+    Object.hashAll(domainIds),
+    Object.hashAll(fieldIds),
+    Object.hashAll(subfieldIds),
+    Object.hashAll(topicIds),
+  ]);
 }
 
 class TrendsOverview {
@@ -197,6 +232,10 @@ class TrendsOverview {
     this.lastCompleteYear,
     this.totalPapersInWindow = 0,
     this.uniqueTopicsInScope = 0,
+    this.testedTopicCount = 0,
+    this.verdictCounts = const {},
+    this.scopeVersion,
+    this.bandCutoffs,
     this.computedAt,
   });
 
@@ -218,19 +257,28 @@ class TrendsOverview {
           .whereType<Map<String, dynamic>>()
           .map(YearlyCitationMetric.fromJson)
           .toList(),
-      facets: json['facets'] is Map<String, dynamic> ? TrendFacets.fromJson(json['facets'] as Map<String, dynamic>) : null,
-      taxonomyCoverage: json['taxonomyCoverage'] is Map<String, dynamic>
-          ? TrendTaxonomyCoverage.fromJson(json['taxonomyCoverage'] as Map<String, dynamic>)
+      facets: json['facets'] is Map<String, dynamic>
+          ? TrendFacets.fromJson(json['facets'] as Map<String, dynamic>)
           : null,
-      recommendedComparisons: (json['recommendedComparisons'] as List<dynamic>? ?? [])
-          .whereType<Map<String, dynamic>>()
-          .map(RecommendedTrendComparison.fromJson)
-          .toList(),
+      taxonomyCoverage: json['taxonomyCoverage'] is Map<String, dynamic>
+          ? TrendTaxonomyCoverage.fromJson(
+              json['taxonomyCoverage'] as Map<String, dynamic>,
+            )
+          : null,
+      recommendedComparisons:
+          (json['recommendedComparisons'] as List<dynamic>? ?? [])
+              .whereType<Map<String, dynamic>>()
+              .map(RecommendedTrendComparison.fromJson)
+              .toList(),
       yearFrom: (json['yearFrom'] as num?)?.toInt(),
       yearTo: (json['yearTo'] as num?)?.toInt(),
       lastCompleteYear: (json['lastCompleteYear'] as num?)?.toInt(),
       totalPapersInWindow: (json['totalPapersInWindow'] as num?)?.toInt() ?? 0,
       uniqueTopicsInScope: (json['uniqueTopicsInScope'] as num?)?.toInt() ?? 0,
+      testedTopicCount: (json['testedTopicCount'] as num?)?.toInt() ?? 0,
+      verdictCounts: _verdictCounts(json['verdictCounts']),
+      scopeVersion: json['scopeVersion']?.toString(),
+      bandCutoffs: _bandCutoffs(json['crossTopic']),
       computedAt: json['computedAt']?.toString(),
     );
   }
@@ -247,52 +295,68 @@ class TrendsOverview {
   final int? lastCompleteYear;
   final int totalPapersInWindow;
   final int uniqueTopicsInScope;
+
+  /// Topics whose trend was tested (every topic of the scope, not only the listed ones).
+  final int testedTopicCount;
+
+  /// How many tested topics got each verdict.
+  final Map<TrendVerdict, int> verdictCounts;
+
+  /// Version of the IT scope the verdicts were computed against (e.g. `it-v1`).
+  final String? scopeVersion;
+
+  /// Total papers in the window that bound the size bands (small <= smallMax < medium <= mediumMax < large);
+  /// null when the API sent no cross-topic analysis.
+  final ({double smallMax, double mediumMax})? bandCutoffs;
   final String? computedAt;
 }
 
 class TrendingTopic {
   const TrendingTopic({
     required this.topic,
-    required this.momentum,
-    required this.growthRatePct,
     required this.totalPapers,
     required this.yearlyBreakdown,
     this.taxonomy,
-    this.cagr3yPct,
     this.classification = TrendClassification.none,
+    this.crossTopic,
   });
 
   factory TrendingTopic.fromJson(Map<String, dynamic> json) {
     return TrendingTopic(
-      topic: (json['topic'] ?? json['topicName'] ?? trNow('Unknown topic')).toString(),
-      momentum: (json['momentum'] as num?)?.toDouble() ?? 0,
-      growthRatePct: (json['growthRatePct'] as num?)?.toDouble() ?? 0,
+      topic: (json['topic'] ?? json['topicName'] ?? trNow('Unknown topic'))
+          .toString(),
       totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
       yearlyBreakdown: (json['yearlyBreakdown'] as List<dynamic>? ?? [])
           .whereType<Map<String, dynamic>>()
           .map(YearlyCount.fromJson)
           .toList(),
-      taxonomy: json['taxonomy'] is Map<String, dynamic> ? TrendTopicTaxonomy.fromJson(json['taxonomy'] as Map<String, dynamic>) : null,
-      cagr3yPct: (json['cagr3yPct'] as num?)?.toDouble(),
+      taxonomy: json['taxonomy'] is Map<String, dynamic>
+          ? TrendTopicTaxonomy.fromJson(
+              json['taxonomy'] as Map<String, dynamic>,
+            )
+          : null,
       classification: TrendClassification.fromJson(json['classification']),
+      crossTopic: TrendTopicCrossLabels.fromJson(json['crossTopic']),
     );
   }
 
   final String topic;
-  final double momentum;
-  final double growthRatePct;
   final int totalPapers;
   final List<YearlyCount> yearlyBreakdown;
   final TrendTopicTaxonomy? taxonomy;
 
-  /// Descriptive only (raw counts): never used to rank or label a trend.
-  final double? cagr3yPct;
-
   /// The API's verdict; ranking and labels come from here only.
+  /// [TrendClassification.none] when the API sent none (compare items and
+  /// topic candidates are not tested).
   final TrendClassification classification;
+
+  /// Where the topic stands among topics of its size; null when the API sent none.
+  final TrendTopicCrossLabels? crossTopic;
+
+  TrendVerdict get verdict => classification.verdict;
 }
 
-/// Topics in the web's trend order (see [compareByTrend]).
+/// Topics in the backend's trend order (see [compareByTrend]).
 List<T> sortTopicsByTrend<T extends TrendingTopic>(Iterable<T> topics) =>
     [...topics]..sort(_byTrend);
 
@@ -310,9 +374,48 @@ T? topRisingTopic<T extends TrendingTopic>(Iterable<T> topics) {
 }
 
 int _byTrend(TrendingTopic a, TrendingTopic b) => compareByTrend(
-      (classification: a.classification, totalPapers: a.totalPapers, topic: a.topic),
-      (classification: b.classification, totalPapers: b.totalPapers, topic: b.topic),
+  (
+    classification: a.classification,
+    totalPapers: a.totalPapers,
+    topic: a.topic,
+  ),
+  (
+    classification: b.classification,
+    totalPapers: b.totalPapers,
+    topic: b.topic,
+  ),
+);
+
+/// Size band of a topic and whether its change is anomalous for that band
+/// (Tukey fences of r over the IT scope). Descriptive only: never changes the verdict.
+class TrendTopicCrossLabels {
+  const TrendTopicCrossLabels({
+    required this.sizeBand,
+    this.outlier = false,
+    this.clear = false,
+  });
+
+  static TrendTopicCrossLabels? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    final band = json['sizeBand'];
+    if (band is! String || !trendSizeBands.contains(band)) return null;
+    return TrendTopicCrossLabels(
+      sizeBand: band,
+      outlier: json['outlier'] == true,
+      clear: json['clear'] == true,
     );
+  }
+
+  /// `small`, `medium` or `large`.
+  final String sizeBand;
+  final bool outlier;
+
+  /// A rising topic above the upper fence, or a declining one below the lower fence, of its size band.
+  final bool clear;
+}
+
+/// The size bands the API knows, smallest first.
+const trendSizeBands = ['small', 'medium', 'large'];
 
 class YearlyCount {
   const YearlyCount({required this.year, required this.count});
@@ -358,8 +461,7 @@ class PublicationTrend {
     this.facets,
     this.taxonomy,
     this.totalPapers = 0,
-    this.growthRatePct = 0,
-    this.momentum = 0,
+    this.classification,
     this.lastCompleteYear,
     this.topJournals = const [],
     this.topAuthors = const [],
@@ -379,11 +481,20 @@ class PublicationTrend {
           .whereType<Map<String, dynamic>>()
           .map(YearlyCitationMetric.fromJson)
           .toList(),
-      facets: json['facets'] is Map<String, dynamic> ? TrendFacets.fromJson(json['facets'] as Map<String, dynamic>) : null,
-      taxonomy: json['taxonomy'] is Map<String, dynamic> ? TrendTopicTaxonomy.fromJson(json['taxonomy'] as Map<String, dynamic>) : null,
+      facets: json['facets'] is Map<String, dynamic>
+          ? TrendFacets.fromJson(json['facets'] as Map<String, dynamic>)
+          : null,
+      taxonomy: json['taxonomy'] is Map<String, dynamic>
+          ? TrendTopicTaxonomy.fromJson(
+              json['taxonomy'] as Map<String, dynamic>,
+            )
+          : null,
       totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
-      growthRatePct: (json['growthRatePct'] as num?)?.toDouble() ?? 0,
-      momentum: (json['momentum'] as num?)?.toDouble() ?? 0,
+      classification: json['statistics'] is Map<String, dynamic>
+          ? TrendClassification.tryParse(
+              (json['statistics'] as Map<String, dynamic>)['classification'],
+            )
+          : null,
       lastCompleteYear: (json['lastCompleteYear'] as num?)?.toInt(),
       topJournals: _topItems(json['topJournals']),
       topAuthors: _topItems(json['topAuthors']),
@@ -397,8 +508,9 @@ class PublicationTrend {
   final TrendFacets? facets;
   final TrendTopicTaxonomy? taxonomy;
   final int totalPapers;
-  final double growthRatePct;
-  final double momentum;
+
+  /// The topic's trend conclusion (statistics.classification); null when the API sent no statistics.
+  final TrendClassification? classification;
   final int? lastCompleteYear;
   final List<TrendFacetBucket> topJournals;
   final List<TrendFacetBucket> topAuthors;
@@ -409,7 +521,10 @@ class TrendKeyword {
 
   factory TrendKeyword.fromJson(Object value) {
     if (value is Map<String, dynamic>) {
-      return TrendKeyword(keyword: (value['keyword'] ?? value['keywordName'] ?? '').toString(), count: (value['count'] as num?)?.toInt() ?? 0);
+      return TrendKeyword(
+        keyword: (value['keyword'] ?? value['keywordName'] ?? '').toString(),
+        count: (value['count'] as num?)?.toInt() ?? 0,
+      );
     }
     return TrendKeyword(keyword: value.toString(), count: 0);
   }
@@ -418,29 +533,178 @@ class TrendKeyword {
   final int count;
 }
 
+/// A keyword whose share of the scope's papers rose between the earlier and
+/// the later half of the window: 2x2 log odds ratio test, BH-adjusted. The API
+/// orders the list by [z], strongest rise first.
 class RisingKeyword {
-  const RisingKeyword({required this.keyword, required this.totalPapers, required this.growthRatePct, required this.yearlyBreakdown});
+  const RisingKeyword({
+    required this.keyword,
+    required this.totalPapers,
+    required this.yearlyBreakdown,
+    this.z = 0,
+    this.qValue,
+    this.papersA = 0,
+    this.papersB = 0,
+  });
 
-  factory RisingKeyword.fromJson(Map<String, dynamic> json) => RisingKeyword(
-        keyword: (json['keyword'] ?? '').toString(),
-        totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
-        growthRatePct: (json['growthRatePct'] as num?)?.toDouble() ?? 0,
-        yearlyBreakdown: (json['yearlyBreakdown'] as List<dynamic>? ?? [])
-            .whereType<Map<String, dynamic>>()
-            .map(YearlyCount.fromJson)
-            .toList(),
-      );
+  factory RisingKeyword.fromJson(Map<String, dynamic> json) {
+    final shift = json['shift'] is Map<String, dynamic>
+        ? json['shift'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    return RisingKeyword(
+      keyword: (json['keyword'] ?? '').toString(),
+      totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
+      yearlyBreakdown: (json['yearlyBreakdown'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(YearlyCount.fromJson)
+          .toList(),
+      z: (shift['z'] as num?)?.toDouble() ?? 0,
+      qValue: (shift['qValue'] as num?)?.toDouble(),
+      papersA: (shift['papersA'] as num?)?.toInt() ?? 0,
+      papersB: (shift['papersB'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  /// Significance level of the keyword test (SIGNIFICANCE_LEVEL in the backend).
+  static const significanceLevel = 0.05;
 
   final String keyword;
   final int totalPapers;
-  final double growthRatePct;
   final List<YearlyCount> yearlyBreakdown;
+
+  /// Test statistic of the shift: larger means stronger evidence of a rise.
+  final double z;
+  final double? qValue;
+
+  /// Papers carrying the keyword in the earlier (A) and later (B) half.
+  final int papersA;
+  final int papersB;
+
+  bool get significant =>
+      qValue != null && qValue! < significanceLevel && z > 0;
+}
+
+/// A keyword that is new and growing fast inside the IT scope (GET /trends/emerging).
+/// An early signal on keywords, separate from the topic verdicts; not a forecast.
+class EmergingKeyword {
+  const EmergingKeyword({
+    required this.keyword,
+    required this.earlierPapers,
+    required this.recentPapers,
+    required this.noveltyShare,
+    required this.yearlyBreakdown,
+    this.logOddsRatio = 0,
+    this.z = 0,
+    this.qValue,
+  });
+
+  factory EmergingKeyword.fromJson(Map<String, dynamic> json) {
+    final shift = json['shift'] is Map<String, dynamic>
+        ? json['shift'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    return EmergingKeyword(
+      keyword: (json['keyword'] ?? '').toString(),
+      earlierPapers: (json['earlierPapers'] as num?)?.toInt() ?? 0,
+      recentPapers: (json['recentPapers'] as num?)?.toInt() ?? 0,
+      noveltyShare: (json['noveltyShare'] as num?)?.toDouble() ?? 0,
+      yearlyBreakdown: (json['yearlyBreakdown'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(YearlyCount.fromJson)
+          .toList(),
+      logOddsRatio: (shift['logOddsRatio'] as num?)?.toDouble() ?? 0,
+      z: (shift['z'] as num?)?.toDouble() ?? 0,
+      qValue: (shift['qValue'] as num?)?.toDouble(),
+    );
+  }
+
+  final String keyword;
+  final int earlierPapers;
+  final int recentPapers;
+
+  /// Share of the keyword's papers of the window that fall in the recent period, 0..1.
+  final double noveltyShare;
+  final List<YearlyCount> yearlyBreakdown;
+  final double logOddsRatio;
+  final double z;
+  final double? qValue;
+}
+
+class EmergingPeriod {
+  const EmergingPeriod({
+    required this.yearFrom,
+    required this.yearTo,
+    this.papers = 0,
+  });
+
+  factory EmergingPeriod.fromJson(Object? json) {
+    final map = json is Map<String, dynamic> ? json : const <String, dynamic>{};
+    return EmergingPeriod(
+      yearFrom: (map['yearFrom'] as num?)?.toInt() ?? 0,
+      yearTo: (map['yearTo'] as num?)?.toInt() ?? 0,
+      papers: (map['papers'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  final int yearFrom;
+  final int yearTo;
+  final int papers;
+}
+
+class TrendEmergingResponse {
+  const TrendEmergingResponse({
+    required this.earlierPeriod,
+    required this.recentPeriod,
+    required this.keywords,
+    this.dataSource,
+    this.lastCompleteYear,
+    this.minRecentPapers = 0,
+    this.noveltyShare = 0,
+    this.termsTested = 0,
+    this.matchedCount = 0,
+  });
+
+  factory TrendEmergingResponse.fromJson(Map<String, dynamic> json) {
+    final criteria = json['criteria'] is Map<String, dynamic>
+        ? json['criteria'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    return TrendEmergingResponse(
+      dataSource: json['dataSource']?.toString(),
+      earlierPeriod: EmergingPeriod.fromJson(json['earlierPeriod']),
+      recentPeriod: EmergingPeriod.fromJson(json['recentPeriod']),
+      lastCompleteYear: (json['lastCompleteYear'] as num?)?.toInt(),
+      minRecentPapers: (criteria['minRecentPapers'] as num?)?.toInt() ?? 0,
+      noveltyShare: (criteria['noveltyShare'] as num?)?.toDouble() ?? 0,
+      termsTested: (json['termsTested'] as num?)?.toInt() ?? 0,
+      matchedCount: (json['matchedCount'] as num?)?.toInt() ?? 0,
+      keywords: (json['keywords'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(EmergingKeyword.fromJson)
+          .toList(),
+    );
+  }
+
+  /// `openalex` or `local`; the local corpus cannot compute signals, so its list is always empty.
+  final String? dataSource;
+  final EmergingPeriod earlierPeriod;
+  final EmergingPeriod recentPeriod;
+  final int? lastCompleteYear;
+  final int minRecentPapers;
+  final double noveltyShare;
+  final int termsTested;
+  final int matchedCount;
+  final List<EmergingKeyword> keywords;
 }
 
 class TrendFacetBucket {
-  const TrendFacetBucket({required this.id, required this.name, required this.count, this.openalexId});
+  const TrendFacetBucket({
+    required this.id,
+    required this.name,
+    required this.count,
+    this.openalexId,
+  });
 
-  factory TrendFacetBucket.fromJson(Map<String, dynamic> json) => TrendFacetBucket(
+  factory TrendFacetBucket.fromJson(Map<String, dynamic> json) =>
+      TrendFacetBucket(
         id: (json['id'] ?? '').toString(),
         name: (json['name'] ?? json['id'] ?? '').toString(),
         count: (json['count'] as num?)?.toInt() ?? 0,
@@ -467,16 +731,16 @@ class TrendFacets {
   });
 
   factory TrendFacets.fromJson(Map<String, dynamic> json) => TrendFacets(
-        paperKinds: _facetList(json['paperKinds']),
-        openAccessStatuses: _facetList(json['openAccessStatuses']),
-        providers: _facetList(json['providers']),
-        topSources: _facetList(json['topSources']),
-        citationBands: _facetList(json['citationBands']),
-        domains: _facetList(json['domains']),
-        fields: _facetList(json['fields']),
-        subfields: _facetList(json['subfields']),
-        topics: _facetList(json['topics']),
-      );
+    paperKinds: _facetList(json['paperKinds']),
+    openAccessStatuses: _facetList(json['openAccessStatuses']),
+    providers: _facetList(json['providers']),
+    topSources: _facetList(json['topSources']),
+    citationBands: _facetList(json['citationBands']),
+    domains: _facetList(json['domains']),
+    fields: _facetList(json['fields']),
+    subfields: _facetList(json['subfields']),
+    topics: _facetList(json['topics']),
+  );
 
   final List<TrendFacetBucket> paperKinds;
   final List<TrendFacetBucket> openAccessStatuses;
@@ -498,9 +762,11 @@ class TrendTopicTaxonomy {
     this.fieldName,
     this.subfieldId,
     this.subfieldName,
+    this.scopeLayer,
   });
 
-  factory TrendTopicTaxonomy.fromJson(Map<String, dynamic> json) => TrendTopicTaxonomy(
+  factory TrendTopicTaxonomy.fromJson(Map<String, dynamic> json) =>
+      TrendTopicTaxonomy(
         openalexTopicId: json['openalexTopicId']?.toString(),
         domainId: json['domainId']?.toString(),
         domainName: json['domainName']?.toString(),
@@ -508,6 +774,7 @@ class TrendTopicTaxonomy {
         fieldName: json['fieldName']?.toString(),
         subfieldId: json['subfieldId']?.toString(),
         subfieldName: json['subfieldName']?.toString(),
+        scopeLayer: json['scopeLayer']?.toString(),
       );
 
   final String? openalexTopicId;
@@ -517,6 +784,11 @@ class TrendTopicTaxonomy {
   final String? fieldName;
   final String? subfieldId;
   final String? subfieldName;
+
+  /// Layer of the IT scope: `core`, `related` or `application` (layer 3).
+  final String? scopeLayer;
+
+  bool get isApplication => scopeLayer == 'application';
 }
 
 class TrendTaxonomyCoverage {
@@ -530,14 +802,20 @@ class TrendTaxonomyCoverage {
     required this.fullHierarchyCoveragePct,
   });
 
-  factory TrendTaxonomyCoverage.fromJson(Map<String, dynamic> json) => TrendTaxonomyCoverage(
+  factory TrendTaxonomyCoverage.fromJson(Map<String, dynamic> json) =>
+      TrendTaxonomyCoverage(
         totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
         papersWithAnyTopic: (json['papersWithAnyTopic'] as num?)?.toInt() ?? 0,
-        papersWithPrimaryTopic: (json['papersWithPrimaryTopic'] as num?)?.toInt() ?? 0,
-        papersWithFullHierarchy: (json['papersWithFullHierarchy'] as num?)?.toInt() ?? 0,
-        anyTopicCoveragePct: (json['anyTopicCoveragePct'] as num?)?.toDouble() ?? 0,
-        primaryTopicCoveragePct: (json['primaryTopicCoveragePct'] as num?)?.toDouble() ?? 0,
-        fullHierarchyCoveragePct: (json['fullHierarchyCoveragePct'] as num?)?.toDouble() ?? 0,
+        papersWithPrimaryTopic:
+            (json['papersWithPrimaryTopic'] as num?)?.toInt() ?? 0,
+        papersWithFullHierarchy:
+            (json['papersWithFullHierarchy'] as num?)?.toInt() ?? 0,
+        anyTopicCoveragePct:
+            (json['anyTopicCoveragePct'] as num?)?.toDouble() ?? 0,
+        primaryTopicCoveragePct:
+            (json['primaryTopicCoveragePct'] as num?)?.toDouble() ?? 0,
+        fullHierarchyCoveragePct:
+            (json['fullHierarchyCoveragePct'] as num?)?.toDouble() ?? 0,
       );
 
   final int totalPapers;
@@ -550,10 +828,16 @@ class TrendTaxonomyCoverage {
 }
 
 class RecommendedTrendComparison {
-  const RecommendedTrendComparison({required this.topics, required this.reason});
+  const RecommendedTrendComparison({
+    required this.topics,
+    required this.reason,
+  });
 
-  factory RecommendedTrendComparison.fromJson(Map<String, dynamic> json) => RecommendedTrendComparison(
-        topics: (json['topics'] as List<dynamic>? ?? []).map((item) => item.toString()).toList(),
+  factory RecommendedTrendComparison.fromJson(Map<String, dynamic> json) =>
+      RecommendedTrendComparison(
+        topics: (json['topics'] as List<dynamic>? ?? [])
+            .map((item) => item.toString())
+            .toList(),
         reason: (json['reason'] ?? '').toString(),
       );
 
@@ -562,9 +846,16 @@ class RecommendedTrendComparison {
 }
 
 class TrendCompareResponse {
-  const TrendCompareResponse({required this.topics, this.yearFrom, this.yearTo, this.lastCompleteYear, this.computedAt});
+  const TrendCompareResponse({
+    required this.topics,
+    this.yearFrom,
+    this.yearTo,
+    this.lastCompleteYear,
+    this.computedAt,
+  });
 
-  factory TrendCompareResponse.fromJson(Map<String, dynamic> json) => TrendCompareResponse(
+  factory TrendCompareResponse.fromJson(Map<String, dynamic> json) =>
+      TrendCompareResponse(
         topics: (json['topics'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(TopicComparisonItem.fromJson)
@@ -585,28 +876,25 @@ class TrendCompareResponse {
 class TopicComparisonItem extends TrendingTopic {
   const TopicComparisonItem({
     required super.topic,
-    required super.momentum,
-    required super.growthRatePct,
     required super.totalPapers,
     required super.yearlyBreakdown,
     super.taxonomy,
-    super.cagr3yPct,
-    super.classification,
     this.citationTrend = const [],
   });
 
-  factory TopicComparisonItem.fromJson(Map<String, dynamic> json) => TopicComparisonItem(
+  factory TopicComparisonItem.fromJson(Map<String, dynamic> json) =>
+      TopicComparisonItem(
         topic: (json['topic'] ?? trNow('Unknown topic')).toString(),
-        momentum: (json['momentum'] as num?)?.toDouble() ?? 0,
-        growthRatePct: (json['growthRatePct'] as num?)?.toDouble() ?? 0,
         totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
         yearlyBreakdown: (json['yearlyBreakdown'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(YearlyCount.fromJson)
             .toList(),
-        taxonomy: json['taxonomy'] is Map<String, dynamic> ? TrendTopicTaxonomy.fromJson(json['taxonomy'] as Map<String, dynamic>) : null,
-        cagr3yPct: (json['cagr3yPct'] as num?)?.toDouble(),
-        classification: TrendClassification.fromJson(json['classification']),
+        taxonomy: json['taxonomy'] is Map<String, dynamic>
+            ? TrendTopicTaxonomy.fromJson(
+                json['taxonomy'] as Map<String, dynamic>,
+              )
+            : null,
         citationTrend: (json['citationTrend'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(YearlyCitationMetric.fromJson)
@@ -617,9 +905,14 @@ class TopicComparisonItem extends TrendingTopic {
 }
 
 class TrendTopicCandidatesResponse {
-  const TrendTopicCandidatesResponse({required this.query, required this.topics, this.totalCandidates = 0});
+  const TrendTopicCandidatesResponse({
+    required this.query,
+    required this.topics,
+    this.totalCandidates = 0,
+  });
 
-  factory TrendTopicCandidatesResponse.fromJson(Map<String, dynamic> json) => TrendTopicCandidatesResponse(
+  factory TrendTopicCandidatesResponse.fromJson(Map<String, dynamic> json) =>
+      TrendTopicCandidatesResponse(
         query: (json['query'] ?? '').toString(),
         totalCandidates: (json['totalCandidates'] as num?)?.toInt() ?? 0,
         topics: (json['topics'] as List<dynamic>? ?? [])
@@ -636,38 +929,40 @@ class TrendTopicCandidatesResponse {
 class TrendTopicCandidate extends TrendingTopic {
   const TrendTopicCandidate({
     required super.topic,
-    required super.momentum,
-    required super.growthRatePct,
     required super.totalPapers,
     required super.yearlyBreakdown,
     required this.matchedBy,
     super.taxonomy,
-    super.cagr3yPct,
-    super.classification,
   });
 
-  factory TrendTopicCandidate.fromJson(Map<String, dynamic> json) => TrendTopicCandidate(
+  factory TrendTopicCandidate.fromJson(Map<String, dynamic> json) =>
+      TrendTopicCandidate(
         topic: (json['topic'] ?? trNow('Unknown topic')).toString(),
-        momentum: (json['momentum'] as num?)?.toDouble() ?? 0,
-        growthRatePct: (json['growthRatePct'] as num?)?.toDouble() ?? 0,
         totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
         yearlyBreakdown: (json['yearlyBreakdown'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(YearlyCount.fromJson)
             .toList(),
         matchedBy: (json['matchedBy'] ?? 'topic').toString(),
-        taxonomy: json['taxonomy'] is Map<String, dynamic> ? TrendTopicTaxonomy.fromJson(json['taxonomy'] as Map<String, dynamic>) : null,
-        cagr3yPct: (json['cagr3yPct'] as num?)?.toDouble(),
-        classification: TrendClassification.fromJson(json['classification']),
+        taxonomy: json['taxonomy'] is Map<String, dynamic>
+            ? TrendTopicTaxonomy.fromJson(
+                json['taxonomy'] as Map<String, dynamic>,
+              )
+            : null,
       );
 
   final String matchedBy;
 }
 
 class TopicRelationshipResponse {
-  const TopicRelationshipResponse({required this.topic, required this.nodes, required this.edges});
+  const TopicRelationshipResponse({
+    required this.topic,
+    required this.nodes,
+    required this.edges,
+  });
 
-  factory TopicRelationshipResponse.fromJson(Map<String, dynamic> json) => TopicRelationshipResponse(
+  factory TopicRelationshipResponse.fromJson(Map<String, dynamic> json) =>
+      TopicRelationshipResponse(
         topic: (json['topic'] ?? '').toString(),
         nodes: (json['nodes'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
@@ -685,9 +980,14 @@ class TopicRelationshipResponse {
 }
 
 class TopicRelationshipNode {
-  const TopicRelationshipNode({required this.id, required this.label, required this.count});
+  const TopicRelationshipNode({
+    required this.id,
+    required this.label,
+    required this.count,
+  });
 
-  factory TopicRelationshipNode.fromJson(Map<String, dynamic> json) => TopicRelationshipNode(
+  factory TopicRelationshipNode.fromJson(Map<String, dynamic> json) =>
+      TopicRelationshipNode(
         id: (json['id'] ?? '').toString(),
         label: (json['label'] ?? '').toString(),
         count: (json['count'] as num?)?.toInt() ?? 0,
@@ -699,9 +999,14 @@ class TopicRelationshipNode {
 }
 
 class TopicRelationshipEdge {
-  const TopicRelationshipEdge({required this.source, required this.target, required this.count});
+  const TopicRelationshipEdge({
+    required this.source,
+    required this.target,
+    required this.count,
+  });
 
-  factory TopicRelationshipEdge.fromJson(Map<String, dynamic> json) => TopicRelationshipEdge(
+  factory TopicRelationshipEdge.fromJson(Map<String, dynamic> json) =>
+      TopicRelationshipEdge(
         source: (json['source'] ?? '').toString(),
         target: (json['target'] ?? '').toString(),
         count: (json['count'] as num?)?.toInt() ?? 0,
@@ -725,7 +1030,8 @@ class TrendExplanationResponse {
     this.generatedAt,
   });
 
-  factory TrendExplanationResponse.fromJson(Map<String, dynamic> json) => TrendExplanationResponse(
+  factory TrendExplanationResponse.fromJson(Map<String, dynamic> json) =>
+      TrendExplanationResponse(
         topic: json['topic']?.toString(),
         language: (json['language'] ?? 'en').toString(),
         summary: (json['summary'] ?? '').toString(),
@@ -770,7 +1076,8 @@ class TrendExplanationHistoryItem extends TrendExplanationResponse {
     this.createdAt = '',
   });
 
-  factory TrendExplanationHistoryItem.fromJson(Map<String, dynamic> json) => TrendExplanationHistoryItem(
+  factory TrendExplanationHistoryItem.fromJson(Map<String, dynamic> json) =>
+      TrendExplanationHistoryItem(
         id: (json['id'] ?? '').toString(),
         topic: json['topic']?.toString(),
         language: (json['language'] ?? 'en').toString(),
@@ -799,7 +1106,8 @@ class TrendExplanationHistoryItem extends TrendExplanationResponse {
 class TrendEvidenceSignal {
   const TrendEvidenceSignal({required this.text, required this.sources});
 
-  factory TrendEvidenceSignal.fromJson(Map<String, dynamic> json) => TrendEvidenceSignal(
+  factory TrendEvidenceSignal.fromJson(Map<String, dynamic> json) =>
+      TrendEvidenceSignal(
         text: (json['text'] ?? '').toString(),
         sources: _stringList(json['sources']),
       );
@@ -809,9 +1117,15 @@ class TrendEvidenceSignal {
 }
 
 class TrendMetricTrace {
-  const TrendMetricTrace({required this.source, required this.label, required this.value, required this.explanation});
+  const TrendMetricTrace({
+    required this.source,
+    required this.label,
+    required this.value,
+    required this.explanation,
+  });
 
-  factory TrendMetricTrace.fromJson(Map<String, dynamic> json) => TrendMetricTrace(
+  factory TrendMetricTrace.fromJson(Map<String, dynamic> json) =>
+      TrendMetricTrace(
         source: (json['source'] ?? '').toString(),
         label: (json['label'] ?? '').toString(),
         value: (json['value'] ?? '').toString(),
@@ -830,19 +1144,31 @@ class TrendsApi {
   final Dio _dio;
 
   Future<TrendsOverview> overview(TrendsOverviewParams params) async {
-    final res = await _dio.get<Map<String, dynamic>>(ApiRoutes.trendsOverview, queryParameters: params.toQuery());
-    return TrendsOverview.fromJson((res.data?['data'] as Map<String, dynamic>?) ?? {});
+    final res = await _dio.get<Map<String, dynamic>>(
+      ApiRoutes.trendsOverview,
+      queryParameters: params.toQuery(),
+    );
+    return TrendsOverview.fromJson(
+      (res.data?['data'] as Map<String, dynamic>?) ?? {},
+    );
   }
 
-  Future<PublicationTrend> topic(String topic, {TrendsOverviewParams? params, String? topicId}) async {
+  Future<PublicationTrend> topic(
+    String topic, {
+    TrendsOverviewParams? params,
+    String? topicId,
+  }) async {
     final res = await _dio.get<Map<String, dynamic>>(
       ApiRoutes.trendsTopic(topic),
       queryParameters: {
         if (params != null) ...params.toQuery(),
-        if (topicId != null && topicId.trim().isNotEmpty) 'topicId': topicId.trim(),
+        if (topicId != null && topicId.trim().isNotEmpty)
+          'topicId': topicId.trim(),
       },
     );
-    return PublicationTrend.fromJson((res.data?['data'] as Map<String, dynamic>?) ?? {});
+    return PublicationTrend.fromJson(
+      (res.data?['data'] as Map<String, dynamic>?) ?? {},
+    );
   }
 
   Future<TrendCompareResponse> compare({
@@ -852,7 +1178,10 @@ class TrendsApi {
     TrendScopeFilters scopeFilters = const TrendScopeFilters(),
   }) async {
     final queryParameters = <String, dynamic>{
-      'topics': topics.map((topic) => topic.trim()).where((topic) => topic.isNotEmpty).join(','),
+      'topics': topics
+          .map((topic) => topic.trim())
+          .where((topic) => topic.isNotEmpty)
+          .join(','),
       ...scopeFilters.toQuery(),
     };
     if (yearFrom != null) queryParameters['yearFrom'] = yearFrom;
@@ -862,7 +1191,9 @@ class TrendsApi {
       ApiRoutes.trendsCompare,
       queryParameters: queryParameters,
     );
-    return TrendCompareResponse.fromJson((res.data?['data'] as Map<String, dynamic>?) ?? {});
+    return TrendCompareResponse.fromJson(
+      (res.data?['data'] as Map<String, dynamic>?) ?? {},
+    );
   }
 
   Future<TrendTopicCandidatesResponse> topicCandidates({
@@ -886,7 +1217,9 @@ class TrendsApi {
       ApiRoutes.trendsTopicCandidates,
       queryParameters: queryParameters,
     );
-    return TrendTopicCandidatesResponse.fromJson((res.data?['data'] as Map<String, dynamic>?) ?? {});
+    return TrendTopicCandidatesResponse.fromJson(
+      (res.data?['data'] as Map<String, dynamic>?) ?? {},
+    );
   }
 
   Future<TopicRelationshipResponse> relationships({
@@ -908,7 +1241,29 @@ class TrendsApi {
       ApiRoutes.trendsRelationships,
       queryParameters: queryParameters,
     );
-    return TopicRelationshipResponse.fromJson((res.data?['data'] as Map<String, dynamic>?) ?? {});
+    return TopicRelationshipResponse.fromJson(
+      (res.data?['data'] as Map<String, dynamic>?) ?? {},
+    );
+  }
+
+  Future<TrendEmergingResponse> emerging({
+    int limit = 20,
+    TrendScopeFilters scopeFilters = const TrendScopeFilters(),
+  }) async {
+    final filters = scopeFilters.toQuery();
+    final res = await _dio.get<Map<String, dynamic>>(
+      ApiRoutes.trendsEmerging,
+      queryParameters: {
+        'limit': limit,
+        // Only the taxonomy filters inside the IT scope apply to keyword signals.
+        if (filters['subfieldIds'] != null)
+          'subfieldIds': filters['subfieldIds'],
+        if (filters['topicIds'] != null) 'topicIds': filters['topicIds'],
+      },
+    );
+    return TrendEmergingResponse.fromJson(
+      (res.data?['data'] as Map<String, dynamic>?) ?? {},
+    );
   }
 
   Future<TrendExplanationResponse> explain({
@@ -930,10 +1285,15 @@ class TrendsApi {
       ApiRoutes.trendsExplain,
       data: data,
     );
-    return TrendExplanationResponse.fromJson((res.data?['data'] as Map<String, dynamic>?) ?? {});
+    return TrendExplanationResponse.fromJson(
+      (res.data?['data'] as Map<String, dynamic>?) ?? {},
+    );
   }
 
-  Future<List<TrendExplanationHistoryItem>> explainHistory({String? topic, int limit = 10}) async {
+  Future<List<TrendExplanationHistoryItem>> explainHistory({
+    String? topic,
+    int limit = 10,
+  }) async {
     final res = await _dio.get<Map<String, dynamic>>(
       ApiRoutes.trendsExplainHistory,
       queryParameters: {
@@ -950,13 +1310,20 @@ class TrendsApi {
 }
 
 String? _csv(List<String> values) {
-  final cleaned = values.map((item) => item.trim()).where((item) => item.isNotEmpty).toList();
+  final cleaned = values
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .toList();
   return cleaned.isEmpty ? null : cleaned.join(',');
 }
 
 List<String> _csvParam(String? value) {
   if (value == null || value.trim().isEmpty) return const [];
-  return value.split(',').map((item) => item.trim()).where((item) => item.isNotEmpty).toList();
+  return value
+      .split(',')
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .toList();
 }
 
 bool _listEquals(List<String> a, List<String> b) {
@@ -967,14 +1334,39 @@ bool _listEquals(List<String> a, List<String> b) {
   return true;
 }
 
-List<TrendFacetBucket> _facetList(Object? value) => (value as List<dynamic>? ?? [])
-    .whereType<Map<String, dynamic>>()
-    .map(TrendFacetBucket.fromJson)
-    .toList();
+({double smallMax, double mediumMax})? _bandCutoffs(Object? crossTopic) {
+  if (crossTopic is! Map<String, dynamic>) return null;
+  final cutoffs = crossTopic['bandCutoffs'];
+  if (cutoffs is! Map<String, dynamic> ||
+      cutoffs['smallMax'] is! num ||
+      cutoffs['mediumMax'] is! num) {
+    return null;
+  }
+  return (
+    smallMax: (cutoffs['smallMax'] as num).toDouble(),
+    mediumMax: (cutoffs['mediumMax'] as num).toDouble(),
+  );
+}
 
-List<TrendFacetBucket> _topItems(Object? value) => (value as List<dynamic>? ?? [])
-    .whereType<Map<String, dynamic>>()
-    .map(TrendFacetBucket.fromJson)
-    .toList();
+Map<TrendVerdict, int> _verdictCounts(Object? value) {
+  if (value is! Map<String, dynamic>) return const {};
+  return {
+    for (final v in TrendVerdict.values)
+      if (value[v.apiName] is num) v: (value[v.apiName] as num).toInt(),
+  };
+}
 
-List<String> _stringList(Object? value) => (value as List<dynamic>? ?? []).map((item) => item.toString()).toList();
+List<TrendFacetBucket> _facetList(Object? value) =>
+    (value as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map(TrendFacetBucket.fromJson)
+        .toList();
+
+List<TrendFacetBucket> _topItems(Object? value) =>
+    (value as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map(TrendFacetBucket.fromJson)
+        .toList();
+
+List<String> _stringList(Object? value) =>
+    (value as List<dynamic>? ?? []).map((item) => item.toString()).toList();

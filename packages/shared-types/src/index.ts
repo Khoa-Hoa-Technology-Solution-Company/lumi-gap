@@ -43,12 +43,17 @@ export * from "./contribution-evaluation.js";
 export * from "./manuscript-writing.js";
 export * from "./project-screening.js";
 export * from "./mentor-access.js";
+export * from "./mentor-workspace.js";
 export * from "./manuscript.js";
 export * from "./github.js";
 export * from "./project-analysis-set.js";
 export * from "./research-trust.js";
 export * from "./taxonomy.js";
 export * from "./personalization.js";
+
+export * from "./scientific-review.js";
+export * from "./research-introduction.js";
+export * from "./mentor-manuscript.js";
 export * from "./mentorship-application.js";
 export * from "./manuscript-integrity.js";
 export * from "./research-classification.js";

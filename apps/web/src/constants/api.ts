@@ -150,6 +150,7 @@ export const API_ROUTES = {
     run: (id: string) => `/topic-backfill/runs/${encodeURIComponent(id)}`,
   },
   trends: {
+    emerging: "/trends/emerging",
     topic: (topic: string) => `/trends/${encodeURIComponent(topic)}`,
   },
   reports: {
@@ -295,10 +296,13 @@ export const API_ROUTES = {
   },
   projects: {
     list: "/projects",
+    trash: "/projects/trash",
     create: "/projects",
     detail: (id: string) => `/projects/${id}`,
     update: (id: string) => `/projects/${id}`,
     delete: (id: string) => `/projects/${id}`,
+    permanentDelete: (id: string) => `/projects/${id}/permanent`,
+    restore: (id: string) => `/projects/${id}/restore`,
     addPaper: (id: string) => `/projects/${id}/papers`,
     updatePaper: (id: string, paperId: string) => `/projects/${id}/papers/${paperId}`,
     removePaper: (id: string, paperId: string) => `/projects/${id}/papers/${paperId}`,

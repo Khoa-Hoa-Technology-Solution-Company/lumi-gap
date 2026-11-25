@@ -6,7 +6,7 @@ import type { ScreeningChoice, ScreeningState, ScreeningPaperRow, ScreeningRound
 import { isAxiosError } from "axios";
 import { Button } from "@/components/ui/button";
 import { useResearchCommand } from "../hooks/use-project-research";
-export const stateLabels: Record<ScreeningState, string> = { CLOSED_UNRESOLVED: "Chưa đạt thống nhất", CONSENSUS_REQUIRED: "Cần thảo luận", CONSENSUS_IN_PROGRESS: "Đang thảo luận", WAITING_FULLTEXT: "Chờ toàn văn", NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", EXCLUDED: "Đã loại", BACKGROUND: "Tài liệu nền" };
+export const stateLabels: Record<ScreeningState, string> = { CLOSED_UNRESOLVED: "Không đạt đồng thuận", CONSENSUS_REQUIRED: "Cần thảo luận", CONSENSUS_IN_PROGRESS: "Đang thảo luận", WAITING_FULLTEXT: "Chờ toàn văn", NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", EXCLUDED: "Đã loại", BACKGROUND: "Tài liệu nền" };
 export const choiceLabels: Record<ScreeningChoice, string> = { INCLUDE: "Phù hợp", EXCLUDE: "Không phù hợp", UNSURE: "Chưa chắc chắn" };
 /** Auth can expose a migrated public ID; round membership uses the database UUID. */
 export function screeningActorId(round: ScreeningRoundView, publicActorId?: string) {
@@ -20,9 +20,15 @@ export function screeningMetadataWarning(paper: Pick<ScreeningPaperRow, "title" 
 }
 export const classificationLabels = screeningClassificationLabels;
 export function screeningStatusLabel(status: ScreeningState, round?: ScreeningRoundView | null) {
+  if (round?.rescreening) return "Đang đánh giá lại";
   if (status === "EXCLUDED" && round?.resolutionType === "CONSENSUS_NOT_REACHED") return "Không đạt đồng thuận";
   if (round?.extractionReady && status === "INCLUDED") return "Đã chấp nhận";
   if (round?.adjudicationCase && ["ADJUDICATING", "NEEDS_MORE_INFO"].includes(status)) return caseStatusLabels[round.adjudicationCase.status] ?? "Hồ sơ phân xử";
+  const isTeam = round?.settings?.workflowKind === "TEAM_SCREENING" || round?.settings?.resolutionPolicy === "CONSENSUS";
+  if (isTeam && round?.agreement && !round?.finalDecision) return "Chờ xác nhận";
+  if (isTeam && status === "CLOSED_UNRESOLVED") return "Đã đóng — Không đạt đồng thuận";
+  if (isTeam && status === "NEEDS_RESOLUTION" && !round?.resolution) return "Cần thảo luận";
+  if (isTeam && status === "NEEDS_MORE_INFO" && !round?.resolution) return "Cần làm rõ";
   if (["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(status) && round?.classification) return round.resolution ? "Đã thống nhất cần đọc thêm" : classificationLabels[round.classification];
   if ((round?.settings.workflowVersion ?? 0) >= 3 && round?.settings.reviewMode !== "COLLABORATIVE") {
     if (status === "INCLUDED" && round?.phase === "TITLE_ABSTRACT") return "Qua sàng lọc";

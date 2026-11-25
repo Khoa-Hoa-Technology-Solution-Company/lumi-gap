@@ -4,7 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { screeningApi } from "../api/screening.api";
 import { useResearchResource } from "../hooks/use-project-research";
-import { groupPersonalEvaluations, matchesEvaluationHistory, myWorkTasks, personalEvaluations, screeningTaskGroup, screeningWorkLink, sectionForTask, workPaperFor, type EvaluationHistoryFilter, type MyWorkTask } from "../my-work-model";
+import { completedEvaluationGroups, completedReviewsLabel, myWorkTasks, screeningTaskGroup, screeningWorkLink, sectionForTask, workPaperFor, type MyWorkTask } from "../my-work-model";
 import { EvaluationMetadata, EvaluationSummary, EvaluationPaperCard, ScreeningTaskCard } from "./screening-paper-card";
 import { useScreeningClock } from "../hooks/use-screening-clock";
 import { ScreeningError } from "./screening-common";
@@ -27,7 +27,7 @@ export function ScreeningTasksPanel({ projectId, readOnly }: { projectId: string
   const now = useScreeningClock(query.data, query.refetch);
   const reviewed = params.get("screeningTab") === "reviewed";
   const rawFilter = params.get("screeningHistory");
-  const filter: EvaluationHistoryFilter = rawFilter === "PENDING" || rawFilter === "DECIDED" ? rawFilter : "ALL";
+  const filter = rawFilter === "INCLUDED" || rawFilter === "EXCLUDED" || rawFilter === "BACKGROUND" ? rawFilter : "ALL";
   const change = async (values: Record<string, string | null>) => {
     if (!await canLeaveWorkspace()) return;
     const next = new URLSearchParams(params);
@@ -35,10 +35,11 @@ export function ScreeningTasksPanel({ projectId, readOnly }: { projectId: string
     setParams(next);
   };
   const tasks = query.data ? myWorkTasks(query.data, readOnly, now) : [];
-  const evaluations = query.data ? groupPersonalEvaluations(personalEvaluations(query.data)) : [];
+  const evaluations = query.data ? completedEvaluationGroups(query.data) : [];
+  const visibleEvaluations = evaluations.filter(([latest]) => latest && (filter === "ALL" || latest.groupStatus === filter));
   const selectedRound = params.get("screeningRound");
   const focusSection = params.get("screeningSection") ?? undefined;
-  const tabs = [{ key: "pending", label: "Cần xử lý", count: tasks.length }, { key: "reviewed", label: "Đã đánh giá", count: evaluations.length }];
+  const tabs = [{ key: "pending", label: "Cần xử lý", count: tasks.length }, { key: "reviewed", label: completedReviewsLabel, count: evaluations.length }];
   const taskLink = (task: MyWorkTask) => screeningWorkLink(projectId, task, sectionForTask(task));
   return <section className="min-w-0 space-y-5" aria-label="Đánh giá tài liệu" data-no-i18n>
     <div role="tablist" aria-label="Công việc đánh giá tài liệu" className="flex gap-5 border-b">
@@ -60,23 +61,24 @@ export function ScreeningTasksPanel({ projectId, readOnly }: { projectId: string
             </li>)}</ul> : <p className="py-2 text-sm text-muted-foreground">{group.empty}</p>}
           </section>;
         })}
-        {!tasks.length && <p role="status" className="text-sm text-muted-foreground">Bạn đã hoàn thành phần việc hiện tại. Theo dõi bài đã gửi phiếu trong Đã đánh giá.</p>}
+        {!tasks.length && <p role="status" className="text-sm text-muted-foreground">Bạn đã hoàn thành phần việc hiện tại. Bài có kết quả cuối cùng nằm trong mục {completedReviewsLabel}.</p>}
         <Link className="inline-block text-sm text-primary underline underline-offset-4" to={`/projects/${encodeURIComponent(projectId)}?tab=papers&view=queue`}>Mở Hàng đợi đánh giá</Link>
       </div> : <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">Chỉ gồm bài bạn đã gửi phiếu và nhóm đã có kết quả cuối cùng.</p>
         <label className="flex flex-wrap items-center gap-2 text-sm">Kết quả của nhóm
           <select aria-label="Lọc lịch sử đánh giá" className="rounded-md border bg-background px-3 py-2" value={filter} onChange={e => void change({ screeningHistory: e.target.value })}>
-            <option value="ALL">Toàn bộ lịch sử</option><option value="PENDING">Chưa có kết quả</option><option value="DECIDED">Đã có kết quả</option>
+            <option value="ALL">Tất cả kết quả</option><option value="INCLUDED">Qua vòng</option><option value="EXCLUDED">Đã loại</option><option value="BACKGROUND">Tài liệu nền</option>
           </select>
         </label>
-        {evaluations.filter(([latest]) => latest && matchesEvaluationHistory(latest, filter)).map(([latest, ...history]) => {
+        {visibleEvaluations.map(([latest, ...history]) => {
           const item = latest!;
           const href = screeningWorkLink(projectId, item, "history");
           return <EvaluationPaperCard key={item.paperId} summary={query.data!} item={item} href={href} onOpen={() => void canLeaveWorkspace().then(ok => { if (ok) navigate(href); })}
-            actions={<><Button size="sm" variant="outline" asChild><Link to={href}>Xem bài và kết quả<ArrowRight size={13} className="ml-2" aria-hidden="true" /></Link></Button>{item.isAdjudicated || item.groupStatus === "ADJUDICATING" ? <Button size="sm" variant="ghost" asChild><Link to={screeningWorkLink(projectId, item, "decision")}>Hồ sơ phân xử</Link></Button> : null}</>}>
+            actions={<><Button size="sm" variant="outline" asChild><Link to={href}>Xem bài và kết quả<ArrowRight size={13} className="ml-2" aria-hidden="true" /></Link></Button>{item.isAdjudicated ? <Button size="sm" variant="ghost" asChild><Link to={screeningWorkLink(projectId, item, "decision")}>Hồ sơ phân xử</Link></Button> : null}</>}>
             {history.length > 0 && <details className="text-sm"><summary className="cursor-pointer text-muted-foreground">Các vòng trước ({history.length})</summary><div className="space-y-4 pt-3">{history.map(previous => <div key={previous.roundId} className="space-y-2"><EvaluationMetadata item={previous} /><EvaluationSummary item={previous} paper={workPaperFor(query.data!, previous)} /><Link className="text-primary underline" to={screeningWorkLink(projectId, previous, "history")}>Xem vòng này</Link></div>)}</div></details>}
           </EvaluationPaperCard>;
         })}
-        {!evaluations.some(([latest]) => latest && matchesEvaluationHistory(latest, filter)) && <p role="status" className="py-6 text-sm text-muted-foreground">{evaluations.length ? "Không có bài phù hợp với bộ lọc này." : "Chưa có phiếu đã gửi. Bài bạn đánh giá sẽ xuất hiện ở đây cùng kết quả của nhóm."}</p>}
+        {!visibleEvaluations.length && <p role="status" className="py-6 text-sm text-muted-foreground">{evaluations.length ? "Không có bài phù hợp với bộ lọc này." : "Chưa có bài đã đánh giá xong. Bài chỉ xuất hiện khi nhóm có kết quả cuối cùng; phiếu đã gửi vẫn được giữ trong lịch sử bài báo."}</p>}
       </div>}
     </div>}
     {selectedRound && <ScreeningAdjudicationDialog key={selectedRound} projectId={projectId} roundId={selectedRound} focusSection={focusSection} open onClose={() => void change({ screeningRound: null, screeningPaper: null, screeningSection: null })} />}

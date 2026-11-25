@@ -1,5 +1,6 @@
+import { screeningAgreement } from "./screening-agreement-context.js";
 import { maintainProjectConsensus, consensusPending } from "./screening-consensus.js";
-import type { ScreeningObligation, ScreeningRound } from "../../generated/prisma/client.js";
+import type { Prisma, ScreeningObligation, ScreeningRound } from "../../generated/prisma/client.js";
 import type { ScreeningAutomaticTask, ScreeningTaskAction, ScreeningTaskStatus, ScreeningTaskFeedback } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, type WorkspaceContext } from "./workspace-access.js";
@@ -9,7 +10,7 @@ import { caseView, ensureAssignment } from "./screening-case-context.js";
 import { adjudicationTeamRequirement } from "./screening-adjudication-context.js";
 
 const open = (status: string) => ["TODO", "IN_PROGRESS", "BLOCKED"].includes(status);
-const final = (round: ScreeningRound) => ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT"].includes(round.status);
+const final = (round: ScreeningRound) => ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT", "CLOSED_UNRESOLVED"].includes(round.status);
 type Desired = { round: ScreeningRound; actor: string; kind: ScreeningTaskAction; instance: string; dueAt?: Date | null; completedAt?: Date | null; status?: ScreeningTaskStatus; reason?: string };
 
 /** Run only inside withWorkspace's project lock. State, ledger and events commit together.
@@ -52,14 +53,17 @@ export async function reconcileScreeningObligations(c: WorkspaceContext) {
     for (const a of assigned) {
       const claim = claims.find(e => e.roundId === r.id && (e.actorId === a.reviewerId || (e.details as { assignmentId?: string }).assignmentId === a.id) && ((e.result as { assignmentId?: string }).assignmentId === a.id || (e.details as { assignmentId?: string }).assignmentId === a.id));
       const instance = `review:${a.id}:${claim?.id ?? "initial"}`;
-      if (a.submittedAt || enabled && a.active && live.has(a.reviewerId) && !final(r) && (!a.dueAt || a.dueAt > now)) {
+      if (a.submittedAt || enabled && a.active && live.has(a.reviewerId) && !final(r)) {
         desired.push({ round: r, actor: a.reviewerId, kind: "REVIEW", instance, dueAt: a.dueAt, completedAt: a.submittedAt, status: a.submittedAt ? "DONE" : "TODO", reason: a.submittedAt ? "Đã gửi phiếu đánh giá" : "Chờ bạn gửi phiếu" });
       }
     }
     if (!enabled) continue;
     if (consensusPending(r.status)) {
+      const proposal = await screeningAgreement(c, r);
       for (const a of assigned.filter(a => a.active && a.submittedAt && live.has(a.reviewerId))) {
-        desired.push({ round: r, actor: a.reviewerId, kind: "DISCUSSION", instance: `evaluation-discussion:${r.id}:${r.consensusStartedAt?.toISOString()}`, dueAt: r.consensusDeadline, status: r.status === "CONSENSUS_IN_PROGRESS" ? "IN_PROGRESS" : "TODO", reason: "Trao đổi và cập nhật đánh giá để thống nhất" });
+        if (proposal?.decision === "CLOSED_UNRESOLVED" && proposal.proposedById !== a.reviewerId) {
+          desired.push({ round: r, actor: a.reviewerId, kind: "CONSENSUS", instance: `consensus:${proposal.id}`, dueAt: r.consensusDeadline, reason: "Phản hồi đề nghị kết thúc chưa đạt đồng thuận" });
+        } else desired.push({ round: r, actor: a.reviewerId, kind: "DISCUSSION", instance: `evaluation-discussion:${r.id}:${r.consensusStartedAt?.toISOString()}`, dueAt: r.consensusDeadline, status: r.status === "CONSENSUS_IN_PROGRESS" ? "IN_PROGRESS" : "TODO", reason: proposal ? "Chờ người còn lại xác nhận; vẫn có thể trao đổi" : "Trao đổi và cập nhật đánh giá để thống nhất" });
       }
     } else if (dispute) {
       for (const id of dispute.reviewerIds.filter(id => live.has(id))) {
@@ -144,23 +148,134 @@ export async function reconcileScreeningObligations(c: WorkspaceContext) {
   }
 }
 
-export async function screeningObligationDtos(c: WorkspaceContext): Promise<ScreeningAutomaticTask[]> {
-  const rows = await c.tx.screeningObligation.findMany({ where: { projectId: c.project.id, assigneeId: c.actorId }, orderBy: [{ updatedAt: "desc" }, { id: "desc" }] });
+async function mapObligationRows(c: WorkspaceContext, rows: ScreeningObligation[]): Promise<ScreeningAutomaticTask[]> {
   const [papers, rounds] = await Promise.all([
     c.tx.paper.findMany({ where: { id: { in: rows.map(r => r.paperId) } }, select: { id: true, title: true } }),
     c.tx.screeningRound.findMany({ where: { projectId: c.project.id, id: { in: rows.map(r => r.roundId) } }, select: { id: true, phase: true, number: true, status: true, active: true } }),
   ]);
   return rows.map(row => {
     const round = rounds.find(r => r.id === row.roundId)!;
-    return { actionLabel: row.actionType === "DISCUSSION" && row.reason === "Đối chiếu nguồn và làm rõ đánh giá" ? "Làm rõ đánh giá" : undefined, id: row.id, paperId: row.paperId, roundId: row.roundId, assigneeId: row.assigneeId, actionType: row.actionType as ScreeningTaskAction, status: row.status as ScreeningTaskStatus, reason: row.reason, title: papers.find(p => p.id === row.paperId)?.title ?? "Bài báo", phase: round.phase as ScreeningAutomaticTask["phase"], roundNumber: round.number, roundStatus: round.status, roundActive: round.active, dueAt: row.dueAt?.toISOString() ?? null, endedAt: row.endedAt?.toISOString() ?? null, updatedAt: row.updatedAt.toISOString() };
+    return {
+      actionLabel: row.actionType === "DISCUSSION" && row.reason === "Đối chiếu nguồn và làm rõ đánh giá" ? "Làm rõ đánh giá" : undefined,
+      id: row.id,
+      paperId: row.paperId,
+      roundId: row.roundId,
+      assigneeId: row.assigneeId,
+      actionType: row.actionType as ScreeningTaskAction,
+      status: row.status as ScreeningTaskStatus,
+      reason: row.reason,
+      title: papers.find(p => p.id === row.paperId)?.title ?? "Bài báo",
+      phase: round.phase as ScreeningAutomaticTask["phase"],
+      roundNumber: round.number,
+      roundStatus: round.status,
+      roundActive: round.active,
+      dueAt: row.dueAt?.toISOString() ?? null,
+      endedAt: row.endedAt?.toISOString() ?? null,
+      updatedAt: row.updatedAt.toISOString(),
+    };
   });
 }
+
+export interface ScreeningObligationOptions {
+  maxDone?: number;
+  maxHistory?: number;
+  allDone?: boolean;
+}
+
+export async function screeningObligationDtos(c: WorkspaceContext, options?: ScreeningObligationOptions): Promise<ScreeningAutomaticTask[]> {
+  if (options?.allDone) {
+    const rows = await c.tx.screeningObligation.findMany({ where: { projectId: c.project.id, assigneeId: c.actorId }, orderBy: [{ updatedAt: "desc" }, { id: "desc" }] });
+    return mapObligationRows(c, rows);
+  }
+
+  // Bounded server-side queries for Kanban board preview:
+  // Avoids fetching all historical completed obligations into memory.
+  const maxDone = options?.maxDone ?? 5;
+  const maxHistory = options?.maxHistory ?? 10;
+  const [activeRows, doneRows, historyRows] = await Promise.all([
+    c.tx.screeningObligation.findMany({
+      where: { projectId: c.project.id, assigneeId: c.actorId, status: { in: ["TODO", "IN_PROGRESS", "BLOCKED"] } },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+    }),
+    c.tx.screeningObligation.findMany({
+      where: { projectId: c.project.id, assigneeId: c.actorId, status: "DONE" },
+      orderBy: [{ endedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
+      take: maxDone,
+    }),
+    c.tx.screeningObligation.findMany({
+      where: { projectId: c.project.id, assigneeId: c.actorId, status: { in: ["EXPIRED", "CANCELLED", "REPLACED"] } },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: maxHistory,
+    }),
+  ]);
+
+  const rows = [...activeRows, ...doneRows, ...historyRows];
+  return mapObligationRows(c, rows);
+}
+
+export interface ScreeningObligationQuery {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  sort?: string;
+  q?: string;
+  completedSince?: string;
+}
+
 export const screeningObligationsService = {
-  async list(project: string, actor: string) {
+  async list(project: string, actor: string, query?: ScreeningObligationQuery) {
     return withWorkspace(project, actor, { mentor: true, mentorScope: "SHARED_RESOURCES" }, async c => {
       await reconcileScreeningObligations(c);
-      // Scoped mentors only receive their own case obligations, never other project work.
-      const rows = await screeningObligationDtos(c);
+
+      // Server-side paginated queries for List View
+      if (query?.page) {
+        const page = Math.max(1, Number(query.page) || 1);
+        const pageSize = Math.min(50, Math.max(1, Number(query.pageSize) || 20));
+        const where: Prisma.ScreeningObligationWhereInput = {
+          projectId: c.project.id,
+          assigneeId: c.actorId,
+          ...(query.status ? { status: query.status } : {}),
+          ...(query.completedSince ? { endedAt: { gte: new Date(query.completedSince) } } : {}),
+          ...(!c.role ? { actionType: "ADJUDICATION" } : {}),
+        };
+
+        if (query.q) {
+          const matchingPapers = await c.tx.paper.findMany({
+            where: { title: { contains: query.q, mode: "insensitive" } },
+            select: { id: true },
+          });
+          where.paperId = { in: matchingPapers.map(p => p.id) };
+        }
+
+        const order: Prisma.ScreeningObligationOrderByWithRelationInput[] =
+          query.sort === "completed" || query.status === "DONE"
+            ? [{ endedAt: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }, { id: "desc" }]
+            : query.sort === "completed_asc"
+            ? [{ endedAt: { sort: "asc", nulls: "first" } }, { updatedAt: "asc" }, { id: "asc" }]
+            : [{ updatedAt: "desc" }, { id: "desc" }];
+
+        const [rows, total] = await Promise.all([
+          c.tx.screeningObligation.findMany({
+            where,
+            orderBy: order,
+            skip: (page - 1) * pageSize,
+            take: pageSize,
+          }),
+          c.tx.screeningObligation.count({ where }),
+        ]);
+
+        const items = await mapObligationRows(c, rows);
+        return {
+          items,
+          total,
+          page,
+          pageSize,
+          hasNext: page * pageSize < total,
+        };
+      }
+
+      // Default bounded query for non-paginated callers
+      const rows = await screeningObligationDtos(c, { maxDone: 5 });
       return c.role ? rows : rows.filter(row => row.actionType === "ADJUDICATION");
     });
   },

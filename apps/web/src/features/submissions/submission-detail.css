@@ -1,0 +1,63 @@
+/* Submission Detail Workspace — Calm, Spacious Two-Column Layout */
+.submission-detail-shell {
+  min-width: 0;
+  width: 100%;
+}
+
+.submission-pdf-stage {
+  display: flex;
+  flex-direction: column;
+  height: clamp(560px, calc(100vh - 270px), 880px);
+  background: hsl(var(--muted) / 0.3);
+  overflow: hidden;
+}
+
+.submission-pdf-stage .writing-pdf-viewer {
+  height: 100%;
+  min-height: 0;
+}
+
+.submission-pdf-stage .writing-pdf-controls {
+  border-bottom: 1px solid hsl(var(--border) / 0.7);
+  background: hsl(var(--card));
+  padding: 5px 12px;
+  border-radius: 0;
+}
+
+.submission-pdf-stage .writing-pdf-canvas {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 14px 12px;
+  background: hsl(var(--muted) / 0.35);
+}
+
+.submission-pdf-stage .writing-pdf-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.submission-pdf-stage .writing-pdf-page {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+}
+
+@media (max-width: 1023px) {
+  .submission-pdf-stage {
+    height: clamp(460px, 68dvh, 720px);
+  }
+}
+
+@media (max-width: 640px) {
+  .submission-pdf-stage {
+    height: clamp(420px, 64dvh, 640px);
+  }
+
+  .submission-pdf-stage .writing-pdf-canvas {
+    padding: 10px 6px;
+  }
+}

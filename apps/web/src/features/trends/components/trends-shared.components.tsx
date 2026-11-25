@@ -24,13 +24,11 @@ export type TrendBarChartDatum = TrendBarDatum & {
 
 export type RisingKeywordRow = {
   keyword: string;
-  growthRatePct: number;
-  growth: string;
   totalPapers: number;
   yearlyBreakdown: TrendingTopic["yearlyBreakdown"];
   status: "Hot" | "Rising";
-  /** Log odds ratio test between two periods; present for OpenAlex data. */
-  shift?: RisingKeyword["shift"];
+  /** Log odds ratio test between the two halves of the window. */
+  shift: RisingKeyword["shift"];
 };
 
 // 1. CustomBarTooltip Component

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { CircleHelp, Minus, TrendingDown, TrendingUp, type LucideIcon } from "lucide-react";
+import { CircleHelp, CornerRightDown, Equal, Minus, TrendingDown, TrendingUp, type LucideIcon } from "lucide-react";
 import type { TrendClassification, TrendConfidence, TrendDataSource, TrendReasonCode, TrendVerdict } from "@trend/shared-types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DOCS_SECTIONS, docsPath } from "@/features/docs";
@@ -14,6 +14,14 @@ const VERDICT_STYLE: Record<TrendVerdict, { icon: LucideIcon; classes: string }>
   rising: {
     icon: TrendingUp,
     classes: "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800/70 dark:bg-emerald-950/30 dark:text-emerald-300",
+  },
+  saturated: {
+    icon: Equal,
+    classes: "border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-800/70 dark:bg-sky-950/30 dark:text-sky-300",
+  },
+  past_peak: {
+    icon: CornerRightDown,
+    classes: "border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-800/70 dark:bg-orange-950/30 dark:text-orange-300",
   },
   declining: {
     icon: TrendingDown,
@@ -32,6 +40,8 @@ const VERDICT_STYLE: Record<TrendVerdict, { icon: LucideIcon; classes: string }>
 export function verdictLabel(verdict: TrendVerdict, t: Translate): string {
   switch (verdict) {
     case "rising": return t("Rising");
+    case "saturated": return t("Saturated");
+    case "past_peak": return t("Past its peak");
     case "declining": return t("Declining");
     case "stable": return t("Stable");
     default: return t("Insufficient data");
@@ -52,11 +62,15 @@ export function reasonText(code: TrendReasonCode, t: Translate, unit: "year" | "
     case "TOO_FEW_PAPERS":
       return t("Fewer than 30 papers.");
     case "SIGNIFICANT_INCREASE":
-      return unit === "period" ? t("Its share of the field grew clearly over these periods.") : t("Its share of the field grew clearly over the years.");
+      return unit === "period" ? t("Its share of publications grew clearly over these periods.") : t("Its share of publications grew clearly over the years.");
+    case "PLATEAU_AFTER_INCREASE":
+      return t("Its share grew over the window but has levelled off near its peak in recent years.");
+    case "DECLINE_AFTER_PEAK":
+      return t("Its share grew over the window but has since fallen to less than half of its peak.");
     case "SIGNIFICANT_DECREASE":
-      return unit === "period" ? t("Its share of the field shrank clearly over these periods.") : t("Its share of the field shrank clearly over the years.");
+      return unit === "period" ? t("Its share of publications shrank clearly over these periods.") : t("Its share of publications shrank clearly over the years.");
     default:
-      return t("No clear change in its share of the field.");
+      return t("No clear change in its share of publications.");
   }
 }
 
@@ -158,10 +172,20 @@ export function TrendFigures({
 }) {
   const { t } = useI18n();
   const relative = formatRelativeChange(classification, t);
+  // A saturated or past-peak topic is defined by its recent years: the change over the whole window would read as a rise.
+  const recent = classification.recentRelativeChangePct;
+  const showRecent = (classification.verdict === "saturated" || classification.verdict === "past_peak") && recent !== null && Number.isFinite(recent);
   return (
     <div className={`space-y-1 ${className}`}>
       {classification.verdict === "insufficient" ? (
         <p className="text-sm font-bold text-amber-800 dark:text-amber-300">{t("Descriptive only: no trend conclusion")}</p>
+      ) : showRecent ? (
+        <>
+          <p className="text-lg font-black leading-tight text-slate-900 dark:text-white">
+            {t("{{value}}% per year in recent years", { value: formatSigned(recent, 1) })}
+          </p>
+          {relative && <p className="text-[11px] text-slate-500 dark:text-slate-400">{t("{{value}} over the whole window", { value: relative })}</p>}
+        </>
       ) : (
         <p className="text-lg font-black leading-tight text-slate-900 dark:text-white" title={t("Relative change of the topic's share, per year")}>
           {relative ?? "—"}
@@ -177,7 +201,7 @@ export function TrendIntro({ className = "" }: { className?: string }) {
   const { t } = useI18n();
   return (
     <p className={`text-xs leading-relaxed text-slate-500 dark:text-slate-400 ${className}`}>
-      {t("A trend means a topic's share of its field rose or fell clearly over recent years. The percentage is the change per year.")}{" "}
+      {t("A trend means a topic's share of publications rose or fell clearly over recent years. The percentage is the change per year.")}{" "}
       <TrendHowLink className="whitespace-nowrap" />
     </p>
   );

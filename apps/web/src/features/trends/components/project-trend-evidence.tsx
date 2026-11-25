@@ -48,6 +48,11 @@ export function ProjectTrendEvidence({ projectId, currentUserId, ownerId }: { pr
               <div className="flex flex-wrap items-center gap-2">
                 <Link to={getTopicTrendTarget(snapshot.topic, snapshot.openalexTopicId, { yearFrom: snapshot.yearFrom, yearTo: snapshot.yearTo })} className="font-semibold text-foreground hover:text-blue-600">{snapshot.topic}</Link>
                 {snapshot.classification && <TrendVerdictBadge classification={snapshot.classification} size="sm" />}
+                {snapshot.baseline?.level !== "scope" && (
+                  <span className="rounded-full border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300" title={t("This verdict was computed against the topic's own field, not the Information Technology scope used today, so it cannot be compared directly with current verdicts.")}>
+                    {t("Field-based verdict")}
+                  </span>
+                )}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 {t("{{yearFrom}}–{{yearTo}} · {{count}} papers · saved {{date}}", { yearFrom: snapshot.yearFrom, yearTo: snapshot.yearTo, count: formatNumber(snapshot.totalPapers), date: new Date(snapshot.createdAt).toLocaleDateString(language) })}

@@ -97,7 +97,7 @@
 .project-directory-search > button svg { width: 16px; height: 16px; }
 .project-directory-filter { position: relative; min-width: 0; }
 .project-directory-filter > svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--workspace-muted); pointer-events: none; }
-.project-directory-filter select, .project-directory-create select {
+.project-directory-filter select, .project-directory-create:not(:has(.project-create-wizard)) select {
   min-height: 44px;
   max-width: 100%;
   border: 1px solid var(--workspace-line);
@@ -170,11 +170,11 @@
 .project-directory-invitations { margin-bottom: 28px; border-block: 1px solid var(--workspace-line); }
 
 .project-directory-create { font-family: var(--forum-font); --workspace-line: hsl(var(--border)); --workspace-surface: hsl(var(--background)); }
-.project-directory-create label { font-size: 16px; }
-.project-directory-create :is(input:not([type="radio"]):not([type="checkbox"]), textarea, select) { width: 100%; font-size: 16px; }
-.project-directory-create input:not([type="radio"]):not([type="checkbox"]) { height: 44px; }
-.project-directory-create textarea { display: block; border: 1px solid var(--workspace-line); border-radius: 6px; padding: 10px 12px; background: var(--workspace-surface); color: hsl(var(--foreground)); resize: vertical; }
-.project-directory-create button { min-height: 44px; font-size: 16px; }
+.project-directory-create:not(:has(.project-create-wizard)) label { font-size: 16px; }
+.project-directory-create:not(:has(.project-create-wizard)) :is(input:not([type="radio"]):not([type="checkbox"]), textarea, select) { width: 100%; font-size: 16px; }
+.project-directory-create:not(:has(.project-create-wizard)) input:not([type="radio"]):not([type="checkbox"]) { height: 44px; }
+.project-directory-create:not(:has(.project-create-wizard)) textarea { display: block; border: 1px solid var(--workspace-line); border-radius: 6px; padding: 10px 12px; background: var(--workspace-surface); color: hsl(var(--foreground)); resize: vertical; }
+.project-directory-create:not(:has(.project-create-wizard)) button { min-height: 44px; font-size: 16px; }
 .project-directory-create .project-primary-action { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
 
 .project-directory-page :is(button, a, select):focus-visible, .project-directory-create :is(select, textarea):focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }

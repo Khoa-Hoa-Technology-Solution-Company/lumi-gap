@@ -1,3 +1,4 @@
+import { publishedScreeningRounds } from "./screening-effective.js";
 import { beginConsensus, settleConsensus, consensusView, usesTwoReviewerConsensus } from "./screening-consensus.js";
 import { screeningFullTextAvailable, screeningExclusionEvidence } from "./screening-fulltext.js";
 import { createHash } from "node:crypto";
@@ -123,7 +124,7 @@ export async function getClosureDetails(c: WorkspaceContext, row: ScreeningRound
   }
   const details = audit.details as Record<string, unknown>;
   return {
-    actorType: (details.actorType as "SYSTEM" | "OWNER") || "SYSTEM",
+    actorType: (details.actorType as "SYSTEM" | "OWNER" | "REVIEWERS") || "SYSTEM",
     actorId: audit.actorId,
     closedAt: audit.createdAt.toISOString(),
     reason: (details.reason as any) || "NO_CONSENSUS",
@@ -131,44 +132,10 @@ export async function getClosureDetails(c: WorkspaceContext, row: ScreeningRound
   };
 }
 
-export async function reconcileExpiredDiscussions(c: WorkspaceContext) {
-  const activeUnresolvedRounds = await c.tx.screeningRound.findMany({
-    where: {
-      projectId: c.project.id,
-      active: true,
-      status: { in: ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"] }
-    }
-  });
-  const now = new Date();
-  for (const r of activeUnresolvedRounds) {
-    if (usesTwoReviewerConsensus(r.settings)) continue;
-    const timing = await getDiscussionTiming(c, r);
-    if (timing && new Date(timing.hardDeadlineAt) <= now) {
-      const next = await c.tx.screeningRound.update({
-        where: { id: r.id },
-        data: { status: "CLOSED_UNRESOLVED", version: { increment: 1 } }
-      });
-      await c.tx.screeningAudit.create({
-        data: {
-          projectId: c.project.id,
-          roundId: r.id,
-          actorId: c.actorId,
-          type: "ROUND_CLOSED_UNRESOLVED",
-          details: {
-            actorType: "SYSTEM",
-            reason: "DEADLINE_EXPIRED",
-            hardDeadlineAt: timing.hardDeadlineAt,
-            closedAt: now.toISOString(),
-          }
-        }
-      });
-      await projectScreeningStatus(c, next, "CLOSED_UNRESOLVED", "Hết thời hạn thảo luận tối đa (72 giờ) mà nhóm chưa đạt đồng thuận");
-      await notifyScreeningParticipants(c, r, "ROUND_CLOSED", "Quy trình đánh giá đã tự động đóng do hết thời hạn tối đa (72 giờ) mà không đạt đồng thuận", next.version);
-    }
-  }
-}
+/** Legacy deadlines also remain informational; historical closure events are preserved. */
+export async function reconcileExpiredDiscussions(_c: WorkspaceContext) {}
 
-export async function roundView(c: WorkspaceContext, row: ScreeningRound): Promise<ScreeningRoundView> {
+export async function roundView(c: WorkspaceContext, row: ScreeningRound, publishedOverride?: ScreeningRound | null): Promise<ScreeningRoundView> {
   row = await settleConsensus(c, row);
   const activeCase = await latestCase(c, row.id);
   if (activeCase?.active && !usesTwoReviewerConsensus(row.settings)) { await ensureAssignment(c, row, activeCase); row = await screeningRound(c, row.id); }
@@ -184,7 +151,7 @@ export async function roundView(c: WorkspaceContext, row: ScreeningRound): Promi
   const history = await c.tx.screeningReview.findMany({ where: { projectId: c.project.id, assignmentId: { in: assignments.filter(a => visible || a.reviewerId === c.actorId).map(a => a.id) } }, orderBy: [{ submittedAt: "asc" }, { id: "asc" }] });
   const reviewHistory: ScreeningRoundView["reviewHistory"] = history.map(r => { const reviewerId = assignments.find(a => a.id === r.assignmentId)!.reviewerId; return { id: r.id, assignmentId: r.assignmentId, reviewerId, reviewerName: names.find(p => p.id === reviewerId)?.fullName || "Reviewer", revision: r.revision, phaseMarker: r.revision === 1 ? "INDEPENDENT_INITIAL" : "POST_DISCUSSION_REVISION", decision: r.decision as ScreeningReview["decision"], exclusionReason: r.exclusionReason, comment: r.comment, submittedAt: r.submittedAt.toISOString() }; });
   const own = assignments.find(a => a.reviewerId === c.actorId);
-  const final = row.unblindedAt && ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT"].includes(row.status) ? await c.tx.screeningFinalDecision.findFirst({ where: { roundId: row.id }, orderBy: { roundVersion: "desc" } }) : null;
+  const final = row.unblindedAt && ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT", "CLOSED_UNRESOLVED"].includes(row.status) ? await c.tx.screeningFinalDecision.findFirst({ where: { roundId: row.id }, orderBy: { roundVersion: "desc" } }) : null;
   const pendingResolution = visible && row.status === "NEEDS_MORE_INFO" ? await c.tx.screeningFinalDecision.findFirst({ where: { roundId: row.id, decision: "NEEDS_MORE_INFO", roundVersion: row.version }, orderBy: { roundVersion: "desc" } }) : null;
   const activeWritable = !["ARCHIVED", "COMPLETED"].includes(c.project.status) && row.active;
   const writable = activeWritable && !row.legacyNeedsAudit;
@@ -202,21 +169,57 @@ export async function roundView(c: WorkspaceContext, row: ScreeningRound): Promi
   const openDisagreement = writable && !row.legacyNeedsAudit && !final && Boolean(classification && !classification.startsWith("AGREEMENT")) && ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO", "ADJUDICATING"].includes(row.status);
   const proposerEligibility = await checkProposerEligibility(c, row.paperId, c.actorId, row.id);
   const paperMetadata = await c.tx.paper.findUniqueOrThrow({ where: { id: row.paperId }, select: { title: true, journalName: true, paperKind: true } });
-  const canClaim = writable && protocol && !row.unblindedAt && !row.legacyNeedsAudit && !own && assignments.length < settings.requiredReviewers && !invalidScreeningMetadata(paperMetadata) && proposerEligibility.eligible && (await screeningPeople(c)).some(p => p.id === c.actorId);
+  const livePeople = await screeningPeople(c);
+  const liveIds = new Set(livePeople.map(p => p.id));
+  const canClaim = writable && protocol && !row.unblindedAt && !row.legacyNeedsAudit && !own && assignments.length < settings.requiredReviewers && !invalidScreeningMetadata(paperMetadata) && proposerEligibility.eligible && liveIds.has(c.actorId);
   const resolutionType = final?.resolutionType as ScreeningRoundView["resolutionType"] ?? null;
   const adjudicationCase: ScreeningRoundView["adjudicationCase"] = dispute ? { id: dispute.id, status: (dispute.status === "ACCEPTED" && caseReady ? "IN_PROGRESS" : dispute.status) as NonNullable<ScreeningRoundView["adjudicationCase"]>["status"], requestedByIds: dispute.requestedByIds, disputePoints: [], assignedAdjudicator: invitation ? { id: invitation.userId, name: adjudicator?.fullName || "Người phân xử", mentor: invitation.role.includes("MENTOR"), role: invitation.role } : null, ready: caseReady, deadline: dispute.deadline.toISOString(), createdAt: dispute.createdAt.toISOString() } : null;
   const invalidated = !row.active && Boolean(await c.tx.screeningAudit.findFirst({ where: { projectId: c.project.id, roundId: row.id, type: "DEPENDENCY_INVALIDATED" }, select: { id: true } }));
   const outcome = row.status === "CLOSED_UNRESOLVED" ? "CLOSED_UNRESOLVED" as const : row.status === "WAITING_FULLTEXT" ? "WAITING_FULLTEXT" as const : settings.screeningMode && visible ? final ? final.decision === "INCLUDED" ? automaticFullTextStage(settings) && row.phase === "TITLE_ABSTRACT" ? "ADVANCE_TO_FULLTEXT" as const : "FINAL_INCLUDED" as const : final.decision === "EXCLUDED" ? "EXCLUDED" as const : undefined : evaluateScreeningPair(settings, row.phase, shown.map(r => ({ ...r, roundId: row.id })), !shown.every(r => r.decision === "EXCLUDE") || await screeningExclusionEvidence(c, row.paperId, row.phase)) : settings.screeningMode && !visible ? submitted.length ? "WAITING_SECOND_REVIEW" as const : "WAITING_REVIEWS" as const : undefined;
   const link = row.status === "WAITING_FULLTEXT" ? await c.tx.projectPaper.findUnique({ where: { projectId_paperId: { projectId: c.project.id, paperId: row.paperId } }, select: { addedById: true } }) : null;
   const canResumeFullText = writable && row.status === "WAITING_FULLTEXT" && Boolean(c.role === "OWNER" || link?.addedById === c.actorId);
-  return { closureDetails: await getClosureDetails(c, row), canReopenUnresolved: writable && row.active && c.role === "OWNER" && row.status === "CLOSED_UNRESOLVED", consensus: visible ? await consensusView(c, row) : null, adjudicationBlockedReason, invalidated, outcome, canResumeFullText, reviewHistory, canClaim, isProposer: proposerEligibility.isProposer, proposerExcluded: proposerEligibility.proposerExcluded, proposerExceptionGranted: proposerEligibility.hasException, classification, resolutionType, legacyNeedsAudit: row.legacyNeedsAudit, adjudicationCase, canReassess: row.status !== "CLOSED_UNRESOLVED" && (usesTwoReviewerConsensus(row.settings) ? Boolean(writable && own?.submittedAt && ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS"].includes(row.status) && row.consensusDeadline && row.consensusDeadline > new Date()) : (settings.screeningMode ? writable && !final : openDisagreement) && !(dispute?.active && caseReady) && !pendingResolution && Boolean(own?.submittedAt)), provisionalAdvance, canAdvanceConservatively: !dispute?.active && !pendingResolution && (settings.workflowVersion ?? 0) < 8 && writable && visible && !row.finalizerId && needsAdjudication && discussionReady && row.phase === "TITLE_ABSTRACT" && settings.allowConservativeFullText === true && Boolean(settings.stages?.includes("FULL_TEXT")) && Boolean(own?.submittedAt) && adjudicators.length === 0, resolution: pendingResolution ? { decision: "NEEDS_MORE_INFO" as const, reason: pendingResolution.reason, createdAt: pendingResolution.createdAt.toISOString() } : null, canRequestAdjudication: !usesTwoReviewerConsensus(row.settings) && !adjudicationBlockedReason && openDisagreement && !pendingResolution && !dispute?.active && settings.resolutionPolicy === "ADJUDICATION" && Boolean(own?.submittedAt), reviewerIntakeClosed: protocol && Boolean(row.unblindedAt), canProposeAgreement: !usesTwoReviewerConsensus(row.settings) && !dispute?.active && (settings.workflowVersion ?? 0) < 8 && writable && protocol && (row.status === "NEEDS_RESOLUTION" || (settings.workflowVersion ?? 0) >= 5 && row.status === "NEEDS_MORE_INFO") && !row.finalizerId && Boolean(own?.submittedAt), agreement: protocol && visible ? await screeningAgreement(c, row) : null, finalizerAssigned: Boolean(row.finalizerId), ...(protocol ? { discussionReady, canReopenOwn: !usesTwoReviewerConsensus(row.settings) && writable && !(dispute?.active && caseReady) && !pendingResolution && !final && Boolean(own?.submittedAt), ...(c.role === "OWNER" ? { adjudicators } : {}) } : {}), id: row.id, paperId: row.paperId, number: row.number, phase: row.phase as ScreeningRoundView["phase"], version: row.version, active: row.active, status: row.status as ScreeningRoundView["status"], settings: { ...settings, questionOptions: await projectQuestionOptions(c) }, extractionReady: row.active && row.status === "INCLUDED" && !(row.phase !== "FULL_TEXT" && automaticFullTextStage(settings)),
+  const published = publishedOverride === undefined ? (await publishedScreeningRounds(c.tx, c.project.id, [row.paperId])).get(row.paperId) : publishedOverride;
+  const reopenableStatus = ["INCLUDED", "EXCLUDED", "CLOSED_UNRESOLVED", "WAITING_FULLTEXT"].includes(row.status);
+  const canRescreenActor = c.role === "OWNER" || (liveIds.has(c.actorId) && Boolean(own));
+  const canReopenUnresolved = writable && row.active && reopenableStatus && canRescreenActor;
+  const hasEarlierTitleAbstract = canReopenUnresolved && row.phase === "FULL_TEXT"
+    ? Boolean(await c.tx.screeningRound.findFirst({ where: { projectId: c.project.id, paperId: row.paperId, phase: "TITLE_ABSTRACT", number: { lt: row.number } }, select: { id: true } }))
+    : false;
+  const canRescreenStages: ScreeningRoundView["canRescreenStages"] = canReopenUnresolved
+    ? (hasEarlierTitleAbstract ? ["FULL_TEXT", "TITLE_ABSTRACT"] : [row.phase as ScreeningRoundView["phase"]])
+    : undefined;
+  const rescreenAudit = row.number > 1
+    ? await c.tx.screeningAudit.findFirst({ where: { projectId: c.project.id, roundId: row.id, type: "RESCREENING_STARTED" }, orderBy: { createdAt: "desc" } })
+    : null;
+  const rescreenActor = rescreenAudit
+    ? await c.tx.user.findUnique({ where: { id: rescreenAudit.actorId }, select: { fullName: true } })
+    : null;
+  const rescreenDetails = (rescreenAudit?.details ?? null) as Record<string, unknown> | null;
+  const rescreenContext: ScreeningRoundView["rescreenContext"] = rescreenAudit && rescreenDetails
+    ? {
+        previousRoundId: String(rescreenDetails.previousRoundId ?? ""),
+        previousRoundNumber: Number(rescreenDetails.previousRoundNumber ?? Math.max(1, row.number - 1)),
+        previousStatus: String(rescreenDetails.previousStatus ?? "INCLUDED") as ScreeningRoundView["status"],
+        previousPhase: typeof rescreenDetails.previousPhase === "string" ? rescreenDetails.previousPhase as ScreeningRoundView["phase"] : undefined,
+        reasonCategory: typeof rescreenDetails.reasonCategory === "string" ? rescreenDetails.reasonCategory as NonNullable<ScreeningRoundView["rescreenContext"]>["reasonCategory"] : undefined,
+        reason: String(rescreenDetails.reason ?? ""),
+        openedById: rescreenAudit.actorId,
+        openedByName: rescreenActor?.fullName || "Thành viên",
+        openedAt: rescreenAudit.createdAt.toISOString(),
+        criteriaVersion: typeof rescreenDetails.criteriaVersion === "number" ? rescreenDetails.criteriaVersion : undefined,
+        invalidatedRoundIds: Array.isArray(rescreenDetails.invalidatedRoundIds) ? rescreenDetails.invalidatedRoundIds.map(String) : undefined,
+        removedReviewerIds: Array.isArray(rescreenDetails.removedReviewerIds) ? rescreenDetails.removedReviewerIds.map(String) : undefined,
+      }
+    : null;
+  const canAssignReviewers = writable && c.role === "OWNER" && !row.unblindedAt && ["NOT_REVIEWED", "IN_REVIEW"].includes(row.status) && assignments.length < settings.requiredReviewers;
+  return { rescreening: row.active && Boolean(published && published.id !== row.id), publishedResult: published && published.id !== row.id ? { roundId: published.id, number: published.number, status: published.status as ScreeningRoundView["status"], phase: published.phase as ScreeningRoundView["phase"] } : null, rescreenContext, canRescreenStages, canAssignReviewers, createdAt: row.createdAt.toISOString(), closureDetails: await getClosureDetails(c, row), canReopenUnresolved, consensus: visible ? await consensusView(c, row) : null, adjudicationBlockedReason, invalidated, outcome, canResumeFullText, reviewHistory, canClaim, isProposer: proposerEligibility.isProposer, proposerExcluded: proposerEligibility.proposerExcluded, proposerExceptionGranted: proposerEligibility.hasException, classification, resolutionType, legacyNeedsAudit: row.legacyNeedsAudit, adjudicationCase, canReassess: row.status !== "CLOSED_UNRESOLVED" && (usesTwoReviewerConsensus(row.settings) ? Boolean(writable && row.active && liveIds.has(c.actorId) && own?.submittedAt && ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS"].includes(row.status) && row.consensusDeadline) : (settings.screeningMode ? writable && !final : openDisagreement) && !(dispute?.active && caseReady) && !pendingResolution && Boolean(own?.submittedAt)), provisionalAdvance, canAdvanceConservatively: !dispute?.active && !pendingResolution && (settings.workflowVersion ?? 0) < 8 && writable && visible && !row.finalizerId && needsAdjudication && discussionReady && row.phase === "TITLE_ABSTRACT" && settings.allowConservativeFullText === true && Boolean(settings.stages?.includes("FULL_TEXT")) && Boolean(own?.submittedAt) && adjudicators.length === 0, resolution: pendingResolution ? { decision: "NEEDS_MORE_INFO" as const, reason: pendingResolution.reason, createdAt: pendingResolution.createdAt.toISOString() } : null, canRequestAdjudication: !usesTwoReviewerConsensus(row.settings) && !adjudicationBlockedReason && openDisagreement && !pendingResolution && !dispute?.active && settings.resolutionPolicy === "ADJUDICATION" && Boolean(own?.submittedAt), reviewerIntakeClosed: protocol && Boolean(row.unblindedAt), canProposeAgreement: !usesTwoReviewerConsensus(row.settings) && !dispute?.active && (settings.workflowVersion ?? 0) < 8 && writable && protocol && (row.status === "NEEDS_RESOLUTION" || (settings.workflowVersion ?? 0) >= 5 && row.status === "NEEDS_MORE_INFO") && !row.finalizerId && Boolean(own?.submittedAt), agreement: protocol && visible ? await screeningAgreement(c, row) : null, finalizerAssigned: Boolean(row.finalizerId), ...(protocol ? { discussionReady, canReopenOwn: !usesTwoReviewerConsensus(row.settings) && writable && !(dispute?.active && caseReady) && !pendingResolution && !final && Boolean(own?.submittedAt), ...(c.role === "OWNER" ? { adjudicators } : {}) } : {}), id: row.id, paperId: row.paperId, number: row.number, phase: row.phase as ScreeningRoundView["phase"], version: row.version, active: row.active, status: row.status as ScreeningRoundView["status"], settings: { ...settings, questionOptions: await projectQuestionOptions(c) }, extractionReady: row.active && row.status === "INCLUDED" && !(row.phase !== "FULL_TEXT" && automaticFullTextStage(settings)),
     unblindedAt: row.unblindedAt?.toISOString() ?? null, independenceCompromised: row.independenceCompromised, assigned: assignments.length, completed: submitted.length,
     assignments: assignments.map(a => ({ id: a.id, reviewerId: a.reviewerId, name: names.find(n => n.id === a.reviewerId)?.fullName || "Thành viên", revision: a.revision, completed: Boolean(a.submittedAt), active: a.active, dueAt: a.submittedAt ? null : a.dueAt?.toISOString() ?? null, overdue: !a.submittedAt && Boolean(a.dueAt && a.dueAt < new Date()) })),
     canDefer: writable && settings.reviewMode === "COLLABORATIVE" && (c.actorId === finalizerId || c.role === "OWNER"),
     finalizer: { id: finalizerId, name: finalizer?.fullName || (protocol ? "Chưa chỉ định" : "Người chốt") }, canFinalize: writable && c.actorId === finalizerId && ["AWAITING_FINALIZATION", "NEEDS_RESOLUTION", "NEEDS_MORE_INFO", "ADJUDICATING"].includes(row.status),
     myAssignmentId: own?.id ?? null, reviews: shown, myReview: shown.find(r => r.reviewerId === c.actorId) ?? null, hiddenReviews: !visible,
-    finalDecision: final ? { id: final.id, version: final.roundVersion, decision: final.decision as "INCLUDED" | "EXCLUDED" | "BACKGROUND", source: final.source as "CONSENSUS" | "MANUAL", reason: final.reason, resolverId: final.resolverId, createdAt: final.createdAt.toISOString() } : null,
-    canReview: Boolean(writable && ((settings.reviewMode === "COLLABORATIVE") || (own && !own.submittedAt)) && !["INCLUDED", "EXCLUDED", "BACKGROUND", "CLOSED_UNRESOLVED"].includes(row.status)), canManage: (!usesTwoReviewerConsensus(row.settings) || row.legacyNeedsAudit) && !invalidated && !["ARCHIVED", "COMPLETED"].includes(c.project.status) && c.role === "OWNER", aiVisible: Boolean(row.unblindedAt || settings.aiAssisted) };
+    finalDecision: final ? { id: final.id, version: final.roundVersion, decision: final.decision as NonNullable<ScreeningRoundView["finalDecision"]>["decision"], source: final.source as "CONSENSUS" | "MANUAL", reason: final.reason, resolverId: final.resolverId, createdAt: final.createdAt.toISOString() } : null,
+    canReview: Boolean(writable && row.active && liveIds.has(c.actorId) && ((settings.reviewMode === "COLLABORATIVE") || (own && !own.submittedAt)) && !["INCLUDED", "EXCLUDED", "BACKGROUND", "CLOSED_UNRESOLVED"].includes(row.status)), canManage: (!usesTwoReviewerConsensus(row.settings) || row.legacyNeedsAudit) && !invalidated && !["ARCHIVED", "COMPLETED"].includes(c.project.status) && c.role === "OWNER", aiVisible: Boolean(row.unblindedAt || settings.aiAssisted) };
 }
 export function screeningReviewsVisible(row: Pick<ScreeningRound, "unblindedAt">, settings: Settings, assignments: Array<{ submittedAt: Date | null }>) {
   if (independentWorkflow(settings)) return Boolean(row.unblindedAt) && assignments.length >= settings.requiredReviewers && assignments.every(a => a.submittedAt);
@@ -225,6 +228,8 @@ export function screeningReviewsVisible(row: Pick<ScreeningRound, "unblindedAt">
 export async function projectScreeningStatus(c: WorkspaceContext, row: ScreeningRound, status: string, reason = "", resolverId: string | null = null) {
   const link = await c.tx.projectPaper.findUniqueOrThrow({ where: { projectId_paperId: { projectId: c.project.id, paperId: row.paperId } } });
   const settings = roundSettings(row.settings);
+  if ((!["INCLUDED", "EXCLUDED", "CLOSED_UNRESOLVED", "BACKGROUND"].includes(status) || status === "INCLUDED" && row.phase === "TITLE_ABSTRACT" && automaticFullTextStage(settings)) &&
+      await c.tx.screeningAudit.findFirst({ where: { projectId: c.project.id, roundId: row.id, type: "RESCREENING_STARTED" } })) return;
   const awaitingFullText = status === "INCLUDED" && row.phase !== "FULL_TEXT" && automaticFullTextStage(settings);
   const legacyStatus = status === "NOT_REVIEWED" ? "UNDECIDED" : !awaitingFullText && ["INCLUDED", "EXCLUDED"].includes(status) ? status : "MAYBE";
   if (link.screeningStatus !== legacyStatus) await invalidateSourceAssessments(c.tx, c.project.id, c.actorId, { paperId: row.paperId });
@@ -291,13 +296,14 @@ export async function recomputeScreening(c: WorkspaceContext, row: ScreeningRoun
     }
   }
   if (automatic) {
-    const reason = outcome === "ADVANCE_TO_FULLTEXT" ? "Đủ điều kiện chuyển đọc toàn văn theo quy tắc vòng đầu. Bài chưa được chấp nhận cuối." : result === "INCLUDED" ? "Tất cả reviewer xác nhận phù hợp theo tiêu chí của vòng" : reviews.map(r => r.exclusionReason).filter(Boolean).join("; ");
+    const advancesToFullText = outcome === "ADVANCE_TO_FULLTEXT" || (result === "INCLUDED" && row.phase === "TITLE_ABSTRACT" && automaticFullTextStage(settings));
+    const reason = advancesToFullText ? "Đủ điều kiện chuyển đọc toàn văn theo quy tắc vòng đầu. Bài chưa được chấp nhận cuối." : result === "INCLUDED" ? "Tất cả reviewer xác nhận phù hợp theo tiêu chí của vòng" : reviews.map(r => r.exclusionReason).filter(Boolean).join("; ");
     await c.tx.screeningFinalDecision.create({ data: { projectId: c.project.id, roundId: row.id, roundVersion: updated.version, decision: result, source: "CONSENSUS", sourceMaterial: reviews.map(r => r.fullTextReference || r.comment || r.exclusionReason).filter(Boolean).join("; "), resolutionType: reviews.some(r => r.revision > 1) ? "CONSENSUS_AFTER_DISCUSSION" : "AGREEMENT_FROM_REVIEWS", reason, resolverId: null, reviewIds: reviews.map(r => r.id) } });
     await c.tx.screeningAudit.create({ data: { projectId: c.project.id, roundId: row.id, actorId: c.actorId, type: "CONSENSUS", details: { decision: result, ruleVersion: settings.version, workflowVersion: settings.workflowVersion ?? 3, reviewIds: reviews.map(r => r.id), automated: true } } });
     await projectScreeningStatus(c, row, status, reason);
     await closeCase(c, row.id, "CANCELLED_AS_RESOLVED");
     await notifyScreeningParticipants(c, updated, "FINAL", result === "INCLUDED" ? "Bài báo đã được chấp nhận" : "Bài báo đã được loại theo hai phiếu đánh giá", updated.version, [c.project.ownerId]);
-    if (result === "INCLUDED" && !pairWorkflow) await advanceScreeningStage(c, updated, assignments);
+    if (result === "INCLUDED" && automaticFullTextStage(settings)) await advanceScreeningStage(c, updated, assignments);
     return screeningRound(c, row.id);
   }
   await projectScreeningStatus(c, row, status, "");
@@ -319,6 +325,9 @@ export async function advanceScreeningStage(c: WorkspaceContext, row: ScreeningR
   const activePeople = new Set((await screeningPeople(c)).map(p => p.id));
   if ((settings.workflowVersion ?? 0) < 5) await c.tx.screeningAssignment.createMany({ data: assignments.filter(a => activePeople.has(a.reviewerId)).map(a => ({ projectId: c.project.id, roundId: next.id, reviewerId: a.reviewerId })) });
   await c.tx.screeningAudit.create({ data: { projectId: c.project.id, roundId: next.id, actorId: c.actorId, type: "STAGE_ADVANCED", details: { previousRoundId: row.id, phase: "FULL_TEXT", workflowVersion: settings.workflowVersion ?? 3, automated: !provisional, provisional } } });
+  const parentAttempt = await c.tx.screeningAudit.findFirst({ where: { projectId: c.project.id, roundId: row.id, type: "RESCREENING_STARTED" } });
+  if (parentAttempt) await c.tx.screeningAudit.create({ data: { projectId: c.project.id, roundId: next.id, actorId: c.actorId,
+    type: "RESCREENING_STARTED", details: jsonSnapshot({ ...(parentAttempt.details as Record<string, unknown>), previousStageRoundId: row.id, newRoundId: next.id }) } });
   await projectScreeningStatus(c, next, "NOT_REVIEWED");
 }
 export async function screeningCommand<T extends { clientKey: string }>(projectId: string, actorId: string, type: string, input: T, options: { owner?: boolean; accounts?: string[]; mentor?: boolean; mentorScope?: "SHARED_RESOURCES" }, run: (c: WorkspaceContext) => Promise<{ result: { expired?: boolean; roundId?: string | null; version?: number; roundIds?: string[]; id?: string; updatedAt?: string }; details?: unknown; roundId?: string; roundAudits?: { roundId: string; details: unknown }[] }>) {

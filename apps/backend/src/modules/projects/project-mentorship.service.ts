@@ -5,28 +5,32 @@ import { mentorshipApplicationsService } from "./mentorship-applications.service
 import { assertApplicationInvitation, applicationEvent, syncApplicationRequest, closeAcceptedApplication } from "./mentorship-application-context.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { isDeepStrictEqual } from "node:util";
+import { hasMeaningfulResearchText } from "@trend/shared-types";
 import { createHash } from "node:crypto";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { env } from "../../config/env.js";
 import type { Prisma, MentorshipRequest, MentorRelationship, Project, User, AcademicProfile } from "../../generated/prisma/client.js";
-import { assertAcademicRelationshipManager, assertVerifiedLecturer, assertAcceptingNewMentorships,
-  canManageAcademicRelationships, isVerifiedLecturer } from "./academic-relationship-access.js";
+import {
+  assertAcademicRelationshipManager, assertVerifiedLecturer, assertAcceptingNewMentorships,
+  canManageAcademicRelationships, isVerifiedLecturer
+} from "./academic-relationship-access.js";
 import { dispatchMentorshipNotifications, mentorshipNotification, type MentorshipEvent } from "./mentorship-notifications.js";
 import { mentorshipDiscoveryService } from "./mentorship-discovery.service.js";
 import { mentorshipResearchContext, type ContextQuery } from "./mentorship-context.service.js";
 import { mentorPositions, assertMentorPosition, mentorshipPolicy } from "./mentorship-positions.js";
 import { invitationFiles, attachmentFields, invitationAttachmentDto } from "./mentorship-content.service.js";
-import type { AcademicSupportSearch as AcademicSearch, MentorRole } from "@trend/shared-types";
+import type { AcademicSupportSearch as AcademicSearch, InvitationDossierInput, MentorRole, MentorSuggestionScope, MentorSuggestionStatus, MentorshipRequestStatus } from "@trend/shared-types";
 import { initializeMentorAccess, mentorAccessEvent, mentorPolicyDto } from "./mentor-access.service.js";
 import type { MentorPolicyInput } from "@trend/shared-types";
 import { ensureMentorPlan, prepareMentorCandidate } from "./mentor-plan.service.js";
+import { buildDossierDefaults, buildInvitationDossier, buildMentorInvitationContext, projectRequestDossiers, officialInvitationDossierSchema } from "./mentorship-dossier.js";
 export type { AcademicSupportSearch as AcademicSearch } from "@trend/shared-types";
 
 type Db = Prisma.TransactionClient;
 const emptyActions = { accept: false, decline: false, cancel: false, end: false, openProject: false };
 const policy = () => mentorshipPolicy;
-type RequestInput = { applicationId?: string; expectedApplicationVersion?: number; mentorUserId?: string; message: string; idempotencyKey?: string; mentorRole?: MentorRole; attachmentIds?: string[]; access?: MentorPolicyInput; expectedPreviewToken?: string; candidateId?: string; expectedPlanVersion?: number };
+type RequestInput = { applicationId?: string; expectedApplicationVersion?: number; mentorUserId?: string; message: string; idempotencyKey?: string; mentorRole?: MentorRole; attachmentIds?: string[]; access?: MentorPolicyInput; expectedPreviewToken?: string; candidateId?: string; expectedPlanVersion?: number; dossier?: InvitationDossierInput };
 export function pageMeta(total: number, input: AcademicSearch = {}) {
   const page = Math.max(1, input.page ?? 1), pageSize = Math.min(30, Math.max(1, input.pageSize ?? 10));
   return { page, pageSize, total, totalPages: Math.ceil(total / pageSize) };
@@ -43,7 +47,7 @@ async function actor(input: string, db: Db = getPrisma()) {
 }
 async function project(input: string, db: Db = getPrisma()) {
   const row = await db.project.findUnique({ where: whereId(input) });
-  if (!row) throw AppError.notFound("Project not found");
+  if (!row || Boolean(row.deletedAt)) throw AppError.notFound("Project not found");
   return row;
 }
 export function mentorshipPreview(row: Project, teamMemberCount?: number) {
@@ -60,9 +64,11 @@ function previewToken(row: Project) {
 /** Share only aggregate team size; never expose the membership list before consent. */
 export async function mentorshipTeamCounts(projects: Pick<Project, "id" | "ownerId">[], db: Db = getPrisma()) {
   if (!projects.length) return new Map<string, number>();
-  const rows = await db.projectMember.groupBy({ by: ["projectId"],
+  const rows = await db.projectMember.groupBy({
+    by: ["projectId"],
     where: { status: "ACTIVE", OR: projects.map(p => ({ projectId: p.id, userId: { not: p.ownerId } })) },
-    _count: { _all: true } });
+    _count: { _all: true }
+  });
   const counts = new Map(projects.map(p => [p.id, 1]));
   for (const row of rows) counts.set(row.projectId, row._count._all + 1);
   return counts;
@@ -70,9 +76,11 @@ export async function mentorshipTeamCounts(projects: Pick<Project, "id" | "owner
 function mentorshipPerson(u: Pick<User, "id" | "legacyMongoId" | "fullName" | "avatarUrl" | "institution" | "isActive" | "emailVerifiedAt" | "accountStatus"> | undefined,
   ap: Pick<AcademicProfile, "academicRole" | "roleVerificationStatus" | "positionStatus" | "profileVisibility" | "positionTitle"> | null | undefined, id: string, viewerId?: string) {
   const visible = id === viewerId || ap?.profileVisibility !== "PRIVATE";
-  return { _id: u ? publicDatabaseId(u) : id, fullName: u?.fullName, avatarUrl: u?.avatarUrl ?? undefined,
+  return {
+    _id: u ? publicDatabaseId(u) : id, fullName: u?.fullName, avatarUrl: u?.avatarUrl ?? undefined,
     academicRole: visible ? ap?.academicRole ?? undefined : undefined, institutionName: visible ? u?.institution ?? undefined : undefined,
-    positionTitle: visible ? ap?.positionTitle ?? undefined : undefined, verifiedLecturer: isVerifiedLecturer(u ?? null, ap ?? null) };
+    positionTitle: visible ? ap?.positionTitle ?? undefined : undefined, verifiedLecturer: isVerifiedLecturer(u ?? null, ap ?? null)
+  };
 }
 async function locks(tx: Db, projectId: string, userIds: string[]) {
   for (const id of [...new Set(userIds)].sort()) await tx.$queryRaw`SELECT id FROM users WHERE id = ${id}::uuid FOR NO KEY UPDATE`;
@@ -98,8 +106,10 @@ async function expireInProject(tx: Db, p: Project) {
     const expired = await tx.mentorshipRequest.update({ where: { id: row.id }, data: { status: "EXPIRED", respondedAt: new Date(), closeReason: "REQUEST_EXPIRED" } });
     await syncApplicationRequest(tx, expired, p.ownerId);
     await record(tx, p, null, "MENTORSHIP_EXPIRED", row.id);
-    await mentorshipNotification(tx, { event: "MENTORSHIP_EXPIRED", recordId: row.id, projectId: p.id, projectTitle: p.title,
-      actorId: row.requestedBy, recipients: [p.ownerId, row.mentorUserId] });
+    await mentorshipNotification(tx, {
+      event: "MENTORSHIP_EXPIRED", recordId: row.id, projectId: p.id, projectTitle: p.title,
+      actorId: row.requestedBy, recipients: [p.ownerId, row.mentorUserId]
+    });
   }
 }
 async function present(requests: MentorshipRequest[], relationships: MentorRelationship[], actorId: string, db: Db = getPrisma()) {
@@ -108,13 +118,25 @@ async function present(requests: MentorshipRequest[], relationships: MentorRelat
     db.user.findMany({ where: { id: { in: ids } }, select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true, institution: true, isActive: true, emailVerifiedAt: true, accountStatus: true } }),
     db.academicProfile.findMany({ where: { userId: { in: ids } }, select: { userId: true, academicRole: true, roleVerificationStatus: true, positionStatus: true, profileVisibility: true, positionTitle: true } }),
     db.project.findMany({ where: { id: { in: [...new Set([...requests, ...relationships].map(r => r.projectId))] } } }),
-    db.mentorRelationship.findMany({ where: { sourceRequestId: { in: requests.map(r => r.id) } }, select: { id: true, sourceRequestId: true } }),
+    db.mentorRelationship.findMany({ where: { sourceRequestId: { in: requests.map(r => r.id) } }, select: { id: true, sourceRequestId: true, status: true } }),
   ]);
   const userMap = new Map(users.map(u => [u.id, u])), profileMap = new Map(profiles.map(p => [p.userId, p])), projectMap = new Map(projects.map(p => [p.id, p]));
   const teamCounts = await mentorshipTeamCounts(projects, db);
   const positions = new Map(await Promise.all(projects.map(async p => [p.id, await mentorPositions(p.id, db)] as const)));
   const accessRows = await db.mentorAccess.findMany({ where: { requestId: { in: [...requests.map(r => r.id), ...relationships.map(r => r.sourceRequestId)] } } });
   const accessPolicies = new Map(await Promise.all(accessRows.map(async row => [row.requestId, await mentorPolicyDto(db, row)] as const)));
+  const accessIds = accessRows.map(row => row.id);
+  const shareRows = accessIds.length
+    ? await db.mentorResourceShare.findMany({ where: { accessId: { in: accessIds }, revokedAt: null }, select: { accessId: true, title: true } })
+    : [];
+  const shareTitlesByAccessId = new Map<string, string[]>();
+  for (const s of shareRows) {
+    const bucket = shareTitlesByAccessId.get(s.accessId) ?? [];
+    if (s.title?.trim()) bucket.push(s.title.trim());
+    shareTitlesByAccessId.set(s.accessId, bucket);
+  }
+  const projectPreviewMap = new Map(projects.map(p => [p.id, mentorshipPreview(p, teamCounts.get(p.id))] as const));
+  const dossiers = await projectRequestDossiers(db, requests, actorId, accessPolicies, shareTitlesByAccessId, projectPreviewMap);
   const fileLinks = await db.mentorshipRequestAttachment.findMany({ where: { requestId: { in: requests.filter(r => r.requestedBy === actorId || r.mentorUserId === actorId || projectMap.get(r.projectId)?.ownerId === actorId).map(r => r.id) } } });
   const files = await db.mentorshipAttachment.findMany({ where: { id: { in: fileLinks.map(link => link.attachmentId) } }, select: attachmentFields });
   const person = (id: string) => mentorshipPerson(userMap.get(id), profileMap.get(id), id, actorId);
@@ -125,31 +147,41 @@ async function present(requests: MentorshipRequest[], relationships: MentorRelat
       const sender = r.direction === "PROJECT_TO_LECTURER" ? manager : mentor, receiver = r.direction === "PROJECT_TO_LECTURER" ? mentor : manager;
       const eligible = isVerifiedLecturer(userMap.get(r.mentorUserId) ?? null, profileMap.get(r.mentorUserId) ?? null);
       const role = r.mentorRole as MentorRole, position = positions.get(p.id)![role];
-      const snapshot = r.invitationSnapshot as { project?: ReturnType<typeof mentorshipPreview>; sender?: ReturnType<typeof mentorshipPerson>; previewToken?: string } | null;
-      return { kind: "REQUEST" as const, id: r.id, projectId: publicDatabaseId(p), project: snapshot?.project ?? mentorshipPreview(p, teamCounts.get(p.id)), mentorUser: person(r.mentorUserId), requestedBy: snapshot?.sender ?? person(r.requestedBy),
-        mentorRole: role, legacyPreview: !snapshot, reviewRequired: pending && position.pendingRequests > 1, previewToken: snapshot?.previewToken ?? previewToken(p), accessPolicy: accessPolicies.get(r.id), attachments: fileLinks.filter(l => l.requestId === r.id).flatMap(l => files.filter(f => f.id === l.attachmentId).map(invitationAttachmentDto)),
+      const snapshot = r.invitationSnapshot as { project?: ReturnType<typeof mentorshipPreview>; sender?: ReturnType<typeof mentorshipPerson>; previewToken?: string; infoRequest?: { message: string; requestedAt: string; requestedByName?: string } } | null;
+      return {
+        kind: "REQUEST" as const, id: r.id, projectId: publicDatabaseId(p), project: snapshot?.project ?? mentorshipPreview(p, teamCounts.get(p.id)), mentorUser: person(r.mentorUserId), requestedBy: snapshot?.sender ?? person(r.requestedBy),
+        viewer: sender ? "SENDER" as const : receiver ? "RECIPIENT" as const : "TEAM" as const,
+        mentorRole: role, legacyPreview: !snapshot, reviewRequired: pending && role !== "UNASSIGNED" && position.pendingRequests > 1, previewToken: snapshot?.previewToken ?? previewToken(p), accessPolicy: accessPolicies.get(r.id), attachments: fileLinks.filter(l => l.requestId === r.id).flatMap(l => files.filter(f => f.id === l.attachmentId).map(invitationAttachmentDto)),
+        dossier: dossiers.get(r.id),
+        infoRequest: manager || mentor || r.requestedBy === actorId ? snapshot?.infoRequest : undefined,
         direction: r.direction, status: r.status, message: r.message ?? undefined,
         responseNote: manager || mentor || r.requestedBy === actorId ? r.responseNote ?? undefined : undefined,
         closeReason: r.closeReason ?? undefined,
         relationshipId: linked.find(rel => rel.sourceRequestId === r.id)?.id,
         expiresAt: r.expiresAt?.toISOString(), respondedAt: r.respondedAt?.toISOString(), createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
-        actions: { ...emptyActions, cancel: pending && sender, decline: pending && receiver,
-          accept: pending && position.pendingRequests <= 1 && receiver && eligible && !accessPolicies.get(r.id)?.revokedAt && (!accessPolicies.get(r.id)?.expiresAt || new Date(accessPolicies.get(r.id)!.expiresAt!) > new Date()) && !["ASSIGNED", "LOCKED"].includes(position.status) && !["ARCHIVED", "COMPLETED"].includes(p.status) && (r.direction !== "PROJECT_TO_LECTURER" || r.requestedBy === p.ownerId) },
+        actions: {
+          ...emptyActions, cancel: pending && sender, decline: pending && receiver,
+          openProject: linked.some(rel => rel.sourceRequestId === r.id && rel.status === "ACTIVE") && (manager || mentor && eligible && Boolean(accessPolicies.get(r.id)?.effective)),
+          ...(pending && receiver ? { requestInfo: true } : {}),
+          accept: pending && positions.get(p.id)!.UNASSIGNED.status !== "ASSIGNED" && (role === "UNASSIGNED" || position.pendingRequests <= 1) && receiver && eligible && !accessPolicies.get(r.id)?.revokedAt && (!accessPolicies.get(r.id)?.expiresAt || new Date(accessPolicies.get(r.id)!.expiresAt!) > new Date()) && !["ASSIGNED", "LOCKED"].includes(position.status) && !["ARCHIVED", "COMPLETED"].includes(p.status) && (r.direction !== "PROJECT_TO_LECTURER" || r.requestedBy === p.ownerId)
+        },
       };
     }),
     relationships: relationships.map(r => {
       const p = projectMap.get(r.projectId)!, principal = p.ownerId === actorId || r.mentorUserId === actorId;
       const active = r.status === "ACTIVE", mentorEligible = isVerifiedLecturer(userMap.get(r.mentorUserId) ?? null, profileMap.get(r.mentorUserId) ?? null);
-      return { kind: "RELATIONSHIP" as const, id: r.id, mentorRole: r.mentorRole as MentorRole, accessPolicy: accessPolicies.get(r.sourceRequestId), sourceRequestId: r.sourceRequestId, projectId: publicDatabaseId(p), project: mentorshipPreview(p, teamCounts.get(p.id)), mentorUser: person(r.mentorUserId), status: r.status,
+      return {
+        kind: "RELATIONSHIP" as const, id: r.id, mentorRole: r.mentorRole as MentorRole, accessPolicy: accessPolicies.get(r.sourceRequestId), sourceRequestId: r.sourceRequestId, projectId: publicDatabaseId(p), project: mentorshipPreview(p, teamCounts.get(p.id)), mentorUser: person(r.mentorUserId), status: r.status,
         startedAt: r.startedAt.toISOString(), endedAt: r.endedAt?.toISOString(), endedById: r.endedById ?? undefined,
         endReason: principal ? r.endReason ?? undefined : undefined,
-        createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(), actions: { ...emptyActions, end: active && principal, openProject: active && (p.ownerId === actorId || mentorEligible && Boolean(accessPolicies.get(r.sourceRequestId)?.effective)) } };
+        createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(), actions: { ...emptyActions, end: active && principal, openProject: active && (p.ownerId === actorId || mentorEligible && Boolean(accessPolicies.get(r.sourceRequestId)?.effective)) }
+      };
     }),
   };
 }
 async function collection(a: Awaited<ReturnType<typeof actor>>, query: AcademicSearch, p?: Project) {
   const db = getPrisma();
-  const owned = p ? [] : await db.project.findMany({ where: { ownerId: a.id }, select: { id: true } });
+  const owned = p ? [] : await db.project.findMany({ where: { ownerId: a.id, deletedAt: null }, select: { id: true } });
   const member = p ? await db.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: a.id } } }) : null;
   const team = p && (p.ownerId === a.id || member?.status === "ACTIVE");
   const where = p ? { projectId: p.id, ...(team ? {} : { mentorUserId: a.id }) } : { OR: [{ mentorUserId: a.id }, { projectId: { in: owned.map(p => p.id) } }] };
@@ -170,7 +202,11 @@ async function collection(a: Awaited<ReturnType<typeof actor>>, query: AcademicS
     db.mentorshipRequest.findMany({ where: requestWhere, orderBy: [{ status: "desc" }, { createdAt: "desc" }, { id: "asc" }], take: meta.pageSize, skip: (meta.page - 1) * meta.pageSize }),
     db.mentorRelationship.findMany({ where: relationshipWhere, orderBy: [{ status: "asc" }, { startedAt: "desc" }, { id: "asc" }], take: meta.pageSize, skip: (meta.page - 1) * meta.pageSize }),
   ]);
-  return { ...await present(requests, relationships, a.id), counts: { pending, incoming, active }, policy: policy(), positions: p ? await mentorPositions(p.id) : undefined, requestMeta: meta, relationshipMeta };
+  // Support paginates invitation history, but current supervisors must stay visible.
+  const pinnedActive = p && meta.page > 1 && (!query.view || query.view === "all")
+    ? await db.mentorRelationship.findMany({ where: { ...where, status: "ACTIVE" }, orderBy: { startedAt: "asc" } }) : [];
+  const visibleRelationships = [...new Map([...pinnedActive, ...relationships].map(row => [row.id, row])).values()];
+  return { ...await present(requests, visibleRelationships, a.id), counts: { pending, incoming, active }, policy: policy(), positions: p ? await mentorPositions(p.id) : undefined, requestMeta: meta, relationshipMeta };
 }
 
 export const projectMentorshipService = {
@@ -204,14 +240,29 @@ export const projectMentorshipService = {
       const live = await tx.academicProfile.findUnique({ where: { userId: a.id } });
       if (!live) throw AppError.notFound("Academic profile not found");
       const availability = live.supportAvailability as Prisma.InputJsonObject;
-      return tx.academicProfile.update({ where: { userId: a.id }, data: {
-        ...(input.acceptingMentorships !== undefined ? { supportAvailability: { ...availability, enabled: input.acceptingMentorships, updatedAt: new Date().toISOString() } } : {}),
-        ...(input.emailEnabled !== undefined ? { mentorshipEmailEnabled: input.emailEnabled } : {}), ...(input.locale ? { notificationLocale: input.locale } : {}),
-      } });
+      return tx.academicProfile.update({
+        where: { userId: a.id }, data: {
+          ...(input.acceptingMentorships !== undefined ? { supportAvailability: { ...availability, enabled: input.acceptingMentorships, updatedAt: new Date().toISOString() } } : {}),
+          ...(input.emailEnabled !== undefined ? { mentorshipEmailEnabled: input.emailEnabled } : {}), ...(input.locale ? { notificationLocale: input.locale } : {}),
+        }
+      });
     }) : await db.academicProfile.findUnique({ where: { userId: a.id } });
     const canEnable = isVerifiedLecturer(a, profile);
-    return { acceptingMentorships: canEnable && (profile?.supportAvailability as { enabled?: boolean })?.enabled === true,
-      canEnable, emailEnabled: profile?.mentorshipEmailEnabled ?? true, locale: profile?.notificationLocale ?? "en" };
+    return {
+      acceptingMentorships: canEnable && (profile?.supportAvailability as { enabled?: boolean })?.enabled === true,
+      canEnable, emailEnabled: profile?.mentorshipEmailEnabled ?? true, locale: profile?.notificationLocale ?? "en",
+      // Only the authenticated account's verified primary address is a recipient.
+      // A saved opt-in does not imply that a demo address has a real inbox.
+      emailDelivery: {
+        status: env.EMAIL_DELIVERY_MODE !== "smtp" ? "NOT_CONFIGURED" as const
+          : /\.(?:test|invalid|localhost)$/i.test(a.email.split("@")[1] ?? "") ? "TEST_ADDRESS" as const : "READY" as const,
+        recipient: a.email,
+      },
+    };
+  },
+  async availableMentors(actorInput: string, query: AcademicSearch = {}) {
+    const owner = await actor(actorInput);
+    return mentorshipDiscoveryService.mentors(null, owner, query);
   },
   async mentors(projectInput: string, actorInput: string, query: AcademicSearch = {}) {
     const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
@@ -226,14 +277,99 @@ export const projectMentorshipService = {
     if (!["PUBLIC", "MEMBERS_ONLY"].includes(profile.profileVisibility) || !profile.showInResearcherSearch) throw AppError.notFound("Mentor profile is not available for discovery");
     return lecturerMatchEvidence(mentor.id, a.id, { topics: [...new Set([...(readResearchClassification(p.researchClassification)?.nodes.map(node => node.name) ?? []), p.researchField ?? "", ...p.researchAreas, ...p.mentorshipResearchAreas, ...p.mentorshipExpertise].filter(Boolean))], methodologies: p.mentorshipMethodologies, needs: p.mentorshipNeeds }, { areas: [], methodologies: [], capabilities: [] }, true);
   },
-  async suggestions(projectInput: string, actorInput: string, query: AcademicSearch = {}) {
+  async suggestions(projectInput: string, actorInput: string, query: AcademicSearch & { scope?: MentorSuggestionScope } = {}) {
     const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
     await assertTeam(p, a.id);
-    const db = getPrisma(), where = { projectId: p.id, status: "PENDING" }, total = await db.mentorSuggestion.count({ where }), meta = pageMeta(total, query);
-    const rows = await db.mentorSuggestion.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: meta.pageSize, skip: (meta.page - 1) * meta.pageSize });
-    const users = await db.user.findMany({ where: { id: { in: rows.flatMap(r => [r.mentorUserId, r.suggestedBy]) } }, select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true } });
-    const person = (id: string) => { const u = users.find(u => u.id === id)!; return { _id: publicDatabaseId(u), fullName: u.fullName, avatarUrl: u.avatarUrl ?? undefined }; };
-    return { items: rows.map(r => ({ id: r.id, projectId: publicDatabaseId(p), mentorUser: person(r.mentorUserId), suggestedBy: person(r.suggestedBy), message: r.message, status: r.status, createdAt: r.createdAt.toISOString() })), meta };
+    const db = getPrisma();
+    const scope: MentorSuggestionScope = query.scope ?? "pending";
+    const where: Prisma.MentorSuggestionWhereInput = {
+      projectId: p.id,
+      ...(scope === "pending"
+        ? { status: "PENDING" }
+        : scope === "mine"
+          ? { suggestedBy: a.id }
+          : scope === "history"
+            ? { status: { not: "PENDING" } }
+            : {}),
+    };
+    const [total, pendingCount, totalCount, mineCount, minePendingCount] = await Promise.all([
+      db.mentorSuggestion.count({ where }),
+      db.mentorSuggestion.count({ where: { projectId: p.id, status: "PENDING" } }),
+      db.mentorSuggestion.count({ where: { projectId: p.id } }),
+      db.mentorSuggestion.count({ where: { projectId: p.id, suggestedBy: a.id } }),
+      db.mentorSuggestion.count({ where: { projectId: p.id, suggestedBy: a.id, status: "PENDING" } }),
+    ]);
+    const meta = pageMeta(total, query);
+    const rows = await db.mentorSuggestion.findMany({
+      where,
+      orderBy: scope === "all"
+        ? [{ status: "desc" }, { createdAt: "desc" }, { id: "asc" }]
+        : [{ createdAt: "desc" }, { id: "asc" }],
+      take: meta.pageSize,
+      skip: (meta.page - 1) * meta.pageSize,
+    });
+    if (!rows.length) {
+      return { items: [], meta, counts: { pending: pendingCount, total: totalCount, mine: mineCount, minePending: minePendingCount } };
+    }
+    const userIds = [...new Set(rows.flatMap(r => [r.mentorUserId, r.suggestedBy, ...(r.resolvedBy ? [r.resolvedBy] : [])]))];
+    const mentorIds = [...new Set(rows.map(r => r.mentorUserId))];
+    const requestIds = [...new Set(rows.map(r => r.requestId).filter((id): id is string => Boolean(id)))];
+    const [users, profiles, activePlan, pendingRequests, activeRelationships, linkedRequests, dismissActivities] = await Promise.all([
+      db.user.findMany({ where: { id: { in: userIds } }, select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true, institution: true, isActive: true, emailVerifiedAt: true, accountStatus: true } }),
+      db.academicProfile.findMany({ where: { userId: { in: userIds } }, select: { userId: true, academicRole: true, roleVerificationStatus: true, positionStatus: true, profileVisibility: true, positionTitle: true, expertiseAreas: true, privacySettings: true, supportAvailability: true } }),
+      db.mentorInvitationPlan.findFirst({ where: { projectId: p.id, status: "ACTIVE" } }),
+      db.mentorshipRequest.findMany({ where: { projectId: p.id, mentorUserId: { in: mentorIds }, status: "PENDING" }, select: { id: true, mentorUserId: true } }),
+      db.mentorRelationship.findMany({ where: { projectId: p.id, mentorUserId: { in: mentorIds }, status: "ACTIVE" }, select: { sourceRequestId: true, mentorUserId: true } }),
+      requestIds.length ? db.mentorshipRequest.findMany({ where: { id: { in: requestIds } }, select: { id: true, status: true } }) : Promise.resolve([]),
+      db.projectActivity.findMany({ where: { projectId: p.id, type: "MENTORSHIP_SUGGESTION_DISMISSED", entityId: { in: rows.filter(r => r.status === "DISMISSED").map(r => r.id) } }, orderBy: { createdAt: "desc" } }),
+    ]);
+    const activePlanCandidates = activePlan
+      ? await db.mentorCandidate.findMany({ where: { planId: activePlan.id, status: { not: "REMOVED" } } })
+      : [];
+    const userMap = new Map(users.map(u => [u.id, u]));
+    const profileMap = new Map(profiles.map(ap => [ap.userId, ap]));
+    const planCandidates = new Map(activePlanCandidates.map(c => [c.mentorUserId, c]));
+    const pendingReqSet = new Set(pendingRequests.map(r => r.mentorUserId));
+    const activeRelSet = new Set(activeRelationships.map(r => r.mentorUserId));
+    const linkedReqMap = new Map(linkedRequests.map(r => [r.id, r.status as MentorshipRequestStatus]));
+    const dismissReasonMap = new Map<string, string>();
+    for (const act of dismissActivities) {
+      if (act.entityId && !dismissReasonMap.has(act.entityId)) {
+        const metaObj = act.metadata as { reason?: unknown } | null;
+        if (typeof metaObj?.reason === "string" && metaObj.reason.trim()) dismissReasonMap.set(act.entityId, metaObj.reason.trim());
+      }
+    }
+    const person = (id: string) => mentorshipPerson(userMap.get(id), profileMap.get(id), id, a.id);
+    return {
+      items: rows.map(r => {
+        const mentorProfile = profileMap.get(r.mentorUserId);
+        const mentorUserRow = userMap.get(r.mentorUserId);
+        const privacy = (mentorProfile?.privacySettings as Record<string, unknown> | null) ?? null;
+        const expertiseVisible = !privacy || ["PUBLIC", "REGISTERED_USERS", undefined].includes(privacy.expertise as string | undefined);
+        const planCandidate = planCandidates.get(r.mentorUserId);
+        const verifiedAvailable = isVerifiedLecturer(mentorUserRow ?? null, mentorProfile ?? null) && (mentorProfile?.supportAvailability as { enabled?: boolean } | null)?.enabled === true;
+        return {
+          id: r.id,
+          projectId: publicDatabaseId(p),
+          mentorUser: person(r.mentorUserId),
+          suggestedBy: person(r.suggestedBy),
+          message: r.message,
+          status: r.status as MentorSuggestionStatus,
+          createdAt: r.createdAt.toISOString(),
+          ...(expertiseVisible && mentorProfile?.expertiseAreas?.length ? { expertiseAreas: mentorProfile.expertiseAreas } : {}),
+          acceptingMentorships: verifiedAvailable,
+          ...(r.resolvedAt ? { resolvedAt: r.resolvedAt.toISOString() } : {}),
+          ...(r.resolvedBy ? { resolvedBy: person(r.resolvedBy) } : {}),
+          ...(r.requestId || pendingReqSet.has(r.mentorUserId) || activeRelSet.has(r.mentorUserId) ? { requestId: pendingRequests.find(item => item.mentorUserId === r.mentorUserId)?.id ?? activeRelationships.find(item => item.mentorUserId === r.mentorUserId)?.sourceRequestId ?? r.requestId ?? undefined, requestStatus: pendingReqSet.has(r.mentorUserId) ? "PENDING" as const : activeRelSet.has(r.mentorUserId) ? "ACCEPTED" as const : linkedReqMap.get(r.requestId!) } : {}),
+          ...(planCandidate ? { inRecruitmentPlan: true, plannedRole: planCandidate.mentorRole as MentorRole } : { inRecruitmentPlan: false }),
+          hasPendingRequest: pendingReqSet.has(r.mentorUserId),
+          hasActiveRelationship: activeRelSet.has(r.mentorUserId),
+          ...(dismissReasonMap.has(r.id) ? { dismissReason: dismissReasonMap.get(r.id) } : {}),
+        };
+      }),
+      meta,
+      counts: { pending: pendingCount, total: totalCount, mine: mineCount, minePending: minePendingCount },
+    };
   },
   async suggest(projectInput: string, actorInput: string, input: { mentorUserId: string; message: string }) {
     const [p, a, mentor] = await Promise.all([project(projectInput), actor(actorInput), actor(input.mentorUserId)]);
@@ -248,22 +384,53 @@ export const projectMentorshipService = {
       if (await tx.mentorSuggestion.count({ where: { projectId: p.id, status: "PENDING" } }) >= 30) throw AppError.conflict("Review existing mentor suggestions first");
       const row = await tx.mentorSuggestion.create({ data: { projectId: p.id, mentorUserId: mentor.id, suggestedBy: a.id, message: input.message.trim() } });
       await record(tx, live, a.id, "MENTORSHIP_SUGGESTED", row.id);
-      await mentorshipNotification(tx, { event: "MENTORSHIP_SUGGESTED", recordId: row.id, projectId: p.id, projectTitle: live.title, actorId: a.id, recipients: [live.ownerId] });
+      await mentorshipNotification(tx, {
+        event: "MENTORSHIP_SUGGESTED",
+        recordId: row.id,
+        projectId: p.id,
+        projectTitle: live.title,
+        actorId: a.id,
+        recipients: [live.ownerId],
+        customMessage: {
+          vi: `${a.fullName} đã đề xuất ${mentor.fullName} làm cố vấn cho dự án ${live.title}.`,
+          en: `${a.fullName} suggested ${mentor.fullName} as a mentor for ${live.title}.`,
+        },
+      });
       return { id: row.id };
     });
     await dispatchMentorshipNotifications(); return result;
   },
-  async dismissSuggestion(projectInput: string, suggestionId: string, actorInput: string) {
+  async dismissSuggestion(projectInput: string, suggestionId: string, actorInput: string, reason?: string) {
     const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
-    return getPrisma().$transaction(async tx => {
+    const trimmedReason = reason?.trim();
+    const result = await getPrisma().$transaction(async tx => {
       await locks(tx, p.id, [a.id]); const live = await assertAcademicRelationshipManager(p.id, a.id, tx); assertOpenProject(live);
       const row = await tx.mentorSuggestion.findFirst({ where: { id: suggestionId, projectId: p.id } });
       if (!row) throw AppError.notFound("Mentor suggestion not found");
-      if (row.status === "DISMISSED") return { id: row.id };
+      if (row.status === "DISMISSED") return { id: row.id, notify: false };
       if (row.status !== "PENDING") throw AppError.conflict("This suggestion has already been handled");
+      const mentorUser = await tx.user.findUnique({ where: { id: row.mentorUserId }, select: { fullName: true } });
       await tx.mentorSuggestion.update({ where: { id: row.id }, data: { status: "DISMISSED", resolvedBy: a.id, resolvedAt: new Date() } });
-      await record(tx, live, a.id, "MENTORSHIP_SUGGESTION_DISMISSED", row.id); return { id: row.id };
+      await record(tx, live, a.id, "MENTORSHIP_SUGGESTION_DISMISSED", row.id, trimmedReason ? { reason: trimmedReason } : {});
+      if (row.suggestedBy !== a.id) {
+        const mentorName = mentorUser?.fullName ?? "giảng viên";
+        await mentorshipNotification(tx, {
+          event: "MENTORSHIP_SUGGESTION_DISMISSED",
+          recordId: row.id,
+          projectId: p.id,
+          projectTitle: live.title,
+          actorId: a.id,
+          recipients: [row.suggestedBy],
+          customMessage: {
+            vi: `Chủ dự án đã bỏ qua đề xuất mời ${mentorName} cho dự án ${live.title}.${trimmedReason ? ` Ghi chú: ${trimmedReason}` : ""}`,
+            en: `The project owner dismissed your mentor suggestion for ${mentorName} in ${live.title}.${trimmedReason ? ` Note: ${trimmedReason}` : ""}`,
+          },
+        });
+      }
+      return { id: row.id, notify: row.suggestedBy !== a.id };
     });
+    if (result.notify) await dispatchMentorshipNotifications();
+    return { id: result.id };
   },
   async discovery(actorInput: string, query: AcademicSearch = {}) {
     const a = await actor(actorInput), profile = await assertAcceptingNewMentorships(getPrisma(), a.id);
@@ -282,26 +449,62 @@ export const projectMentorshipService = {
   async settings(projectInput: string, actorInput: string, input?: { supportTypes?: import("@trend/shared-types").ResearchSupportType[]; researchClassification?: import("@trend/shared-types").ResearchClassificationInput; discovery: "CLOSED" | "SEEKING_MENTOR"; summary: string; expertise: string[]; researchAreas?: string[]; mentoringNeeds?: string; methodologies?: string[]; expectedVersion?: number }) {
     const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
     await assertAcademicRelationshipManager(p.id, a.id);
-    const ap = await getPrisma().academicProfile.findUnique({ where: { userId: a.id } });
+    const db = getPrisma();
+    const ap = await db.academicProfile.findUnique({ where: { userId: a.id } });
     const invitationSender = mentorshipPerson(a, ap, a.id);
-    if (!input) return { ...mentorshipPreview(p, (await mentorshipTeamCounts([p])).get(p.id)), researchClassification: readResearchClassification(p.researchClassification), previewToken: previewToken(p), version: p.version, invitationSender };
-    return getPrisma().$transaction(async tx => {
+    if (!input) {
+      const plan = await db.researchPlan.findUnique({ where: { projectId: p.id }, select: { objectives: true, searchStrategy: true } });
+      return {
+        ...mentorshipPreview(p, (await mentorshipTeamCounts([p], db)).get(p.id)),
+        researchClassification: readResearchClassification(p.researchClassification),
+        previewToken: previewToken(p),
+        version: p.version,
+        invitationSender,
+        invitationContext: await buildMentorInvitationContext(db, p, a.id),
+        dossierDefaults: await buildDossierDefaults(db, p, a.id),
+        invitationDefaults: { researchField: p.researchField || p.researchAreas[0] || undefined, summary: (p.mentorshipSummary || p.publicSummary || p.description || "").slice(0, 2000), goal: (plan?.objectives?.[0] || p.description || "").slice(0, 500), keywords: [...new Set([...(plan?.searchStrategy?.split(/[,;\n]/) ?? []), ...p.researchAreas, ...p.mentorshipResearchAreas, ...p.mentorshipExpertise].map(term => term.trim()).filter(term => term.length > 0 && term.length <= 50))].slice(0, 12) },
+      };
+    }
+    return db.$transaction(async tx => {
       await locks(tx, p.id, [a.id]); const live = await assertAcademicRelationshipManager(p.id, a.id, tx); assertOpenProject(live);
       if (input.expectedVersion !== undefined && input.expectedVersion !== live.version) throw AppError.conflict("Project settings changed. Refresh before saving again");
       if (input.discovery === "SEEKING_MENTOR" && input.summary.trim().length < 10) throw AppError.badRequest("Add a safe summary before opening discovery");
       const classification = input.researchClassification ? await resolveResearchClassification(input.researchClassification, tx) : undefined;
-      const updated = await tx.project.update({ where: { id: p.id }, data: { ...(classification ? { researchClassification: classification as never, mentorshipClassification: classification as never } : {}), mentorshipDiscovery: input.discovery, mentorshipSummary: input.summary, mentorshipExpertise: input.expertise, mentorshipResearchAreas: input.researchAreas, mentorshipSupportTypes: input.supportTypes, mentorshipNeeds: input.mentoringNeeds, mentorshipMethodologies: input.methodologies, version: { increment: 1 } } });
-      await record(tx, live, a.id, "MENTOR_DISCOVERY_UPDATED", p.id, { discovery: input.discovery }); return { ...mentorshipPreview(updated, (await mentorshipTeamCounts([updated], tx)).get(updated.id)), previewToken: previewToken(updated), version: updated.version, invitationSender };
+      const updated = await tx.project.update({ where: { id: p.id }, data: { ...(classification ? { researchClassification: classification as never, mentorshipClassification: classification as never } : {}), mentorshipSupportTypes: input.supportTypes, mentorshipMethodologies: input.methodologies, mentorshipDiscovery: input.discovery, mentorshipSummary: input.summary, mentorshipExpertise: input.expertise, mentorshipResearchAreas: input.researchAreas, mentorshipNeeds: input.mentoringNeeds, version: { increment: 1 } } });
+      await record(tx, live, a.id, "MENTOR_DISCOVERY_UPDATED", p.id, { discovery: input.discovery });
+      return {
+        ...mentorshipPreview(updated, (await mentorshipTeamCounts([updated], tx)).get(updated.id)),
+        previewToken: previewToken(updated),
+        version: updated.version,
+        invitationSender,
+        invitationContext: await buildMentorInvitationContext(tx, updated, a.id),
+        dossierDefaults: await buildDossierDefaults(tx, updated, a.id),
+      };
+    });
+  },
+  async previewDossier(projectInput: string, actorInput: string, input: { mentorUserId: string; message?: string; mentorRole?: MentorRole; access?: MentorPolicyInput; dossier?: InvitationDossierInput }) {
+    const [p, a, mentor] = await Promise.all([project(projectInput), actor(actorInput), actor(input.mentorUserId)]);
+    await assertAcademicRelationshipManager(p.id, a.id);
+    assertOpenProject(p);
+    return buildInvitationDossier(getPrisma(), {
+      project: p,
+      representativeUserId: a.id,
+      mentorUserId: mentor.id,
+      viewerId: mentor.id,
+      message: input.message ?? "",
+      mentorRole: input.mentorRole ?? "UNASSIGNED",
+      access: input.access,
+      dossier: input.dossier,
     });
   },
   async request(p: string, a: string, input: RequestInput & { mentorUserId: string }) { return this.create(p, a, input, "PROJECT_TO_LECTURER"); },
-  async offer(p: string, a: string, input: RequestInput) { return mentorshipApplicationsService.legacyOffer(p, a, input); },
+  async offer(p: string, a: string, input: RequestInput) { return mentorshipApplicationsService.legacyOffer(p, a, { ...input, mentorRole: input.mentorRole === "UNASSIGNED" ? undefined : input.mentorRole }); },
   async create(projectInput: string, actorInput: string, input: RequestInput, direction: string) {
     if (direction !== "PROJECT_TO_LECTURER") throw AppError.conflict("Lecturers express interest through the applicant pool");
     const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
     const mentor = direction === "PROJECT_TO_LECTURER" ? await actor(input.mentorUserId!) : a;
-    const mentorRole = input.mentorRole ?? "PRIMARY", attachmentIds = input.attachmentIds ?? [];
-    if (!["PRIMARY", "SECONDARY"].includes(mentorRole)) throw AppError.badRequest("Invalid mentor role");
+    const mentorRole = input.mentorRole ?? "UNASSIGNED", attachmentIds = input.attachmentIds ?? [];
+    if (!["UNASSIGNED", "PRIMARY", "SECONDARY"].includes(mentorRole)) throw AppError.badRequest("Invalid mentor role");
     const row = await getPrisma().$transaction(async tx => {
       await locks(tx, p.id, [a.id, mentor.id, p.ownerId]); const live = await project(p.id, tx); await actor(a.id, tx);
       if (input.idempotencyKey) {
@@ -312,33 +515,64 @@ export const projectMentorshipService = {
           const oldAccess = await tx.mentorAccess.findUnique({ where: { requestId: previous.id } });
           const proposal = oldAccess ? await tx.mentorAccessEvent.findFirst({ where: { accessId: oldAccess.id, type: "ACCESS_PROPOSED" }, orderBy: { createdAt: "asc" } }) : null;
           if (!isDeepStrictEqual((proposal?.details as { initialInput?: unknown } | undefined)?.initialInput ?? null, input.access ?? null)) throw AppError.conflict("Quyền trong lời mời đã khác yêu cầu gốc");
+          if (direction === "PROJECT_TO_LECTURER") await assertAcademicRelationshipManager(p.id, a.id, tx);
+          const prevDossierConfig = (previous.invitationSnapshot as { dossierConfig?: unknown } | null)?.dossierConfig ?? {};
+          if (!isDeepStrictEqual(prevDossierConfig, input.dossier ?? {})) throw AppError.conflict("Hồ sơ lời mời đã khác yêu cầu gốc");
           return previous;
         }
       }
       if (direction === "PROJECT_TO_LECTURER") await assertAcademicRelationshipManager(p.id, a.id, tx);
       else {
-        if (input.access) throw AppError.forbidden("Chỉ chủ dự án được cấu hình quyền mời cố vấn");
+        if (input.access || input.dossier) throw AppError.forbidden("Chỉ chủ dự án được cấu hình quyền mời cố vấn");
         // Recheck the discovery eligibility when an offer is sent from a stale preview or directly by ID.
         await actor(live.ownerId, tx);
         if (live.mentorshipDiscovery !== "SEEKING_MENTOR") throw AppError.forbidden("This project is not seeking mentorship offers");
       }
       assertOpenProject(live); await assertAcceptingNewMentorships(tx, mentor.id);
-      if (input.expectedPreviewToken && input.expectedPreviewToken !== previewToken(live)) throw AppError.conflict("The shared project introduction changed. Review it before sending again.");
+      const briefContext = input.dossier?.presentation === "BRIEF" ? await buildMentorInvitationContext(tx, live, a.id) : undefined;
+      if (briefContext && !input.expectedPreviewToken || input.expectedPreviewToken && input.expectedPreviewToken !== (briefContext?.token ?? previewToken(live))) throw AppError.conflict("The shared project introduction changed. Review it before sending again.");
       const member = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: mentor.id } } });
       if (live.ownerId === mentor.id || member?.status === "ACTIVE") throw AppError.conflict("Project members cannot also become the project's academic mentor");
       if ((!input.message?.trim() && !attachmentIds.length) || input.message.trim().length > 1000) throw AppError.badRequest("Add a message or an attachment to your invitation");
       await expireInProject(tx, live); const now = new Date();
       await assertMentorPosition(tx, p.id, mentorRole, true);
-      if (direction === "PROJECT_TO_LECTURER" && ((live.mentorshipSummary?.trim().length ?? 0) < 30 || (live.mentorshipSummary?.trim().split(/\s+/).length ?? 0) < 5)) throw AppError.badRequest("Bổ sung tóm tắt nghiên cứu được phép chia sẻ (ít nhất 30 ký tự, 5 từ) trước khi gửi");
+      if (direction === "PROJECT_TO_LECTURER" && input.dossier?.researchSummary !== undefined) {
+        const parsed = officialInvitationDossierSchema.safeParse(input.dossier);
+        if (!parsed.success || !hasMeaningfulResearchText(input.message)) throw AppError.badRequest("Review the research summary, invitation reason, support needs and sharing consent");
+      }
+      if (direction === "PROJECT_TO_LECTURER" && input.dossier?.researchSummary === undefined && ((live.mentorshipSummary?.trim().length ?? 0) < 30 || (live.mentorshipSummary?.trim().split(/\s+/).length ?? 0) < 5)) throw AppError.badRequest("Bổ sung tóm tắt nghiên cứu được phép chia sẻ (ít nhất 30 ký tự, 5 từ) trước khi gửi");
       const application = input.applicationId ? await assertApplicationInvitation(tx, input.applicationId, p.id, mentor.id, input.expectedApplicationVersion) : null;
-      const candidate = direction === "PROJECT_TO_LECTURER" ? await prepareMentorCandidate(tx, p.id, live.ownerId, mentor.id, mentorRole, input.candidateId, input.expectedPlanVersion) : null;
+      const candidate = direction === "PROJECT_TO_LECTURER" && input.candidateId ? await prepareMentorCandidate(tx, p.id, live.ownerId, mentor.id, mentorRole, input.candidateId, input.expectedPlanVersion) : null;
+      if (direction === "PROJECT_TO_LECTURER" && !input.candidateId && mentorRole !== "UNASSIGNED") {
+        const plan = await tx.mentorInvitationPlan.findFirst({ where: { projectId: p.id, status: "ACTIVE" } });
+        if (plan?.closedRoles.includes(mentorRole)) throw AppError.conflict("Vai trò đã dừng tuyển. Chủ dự án cần mở đợt mới");
+      }
       await invitationFiles(tx, p.id, a.id, attachmentIds);
       if (await tx.mentorshipRequest.findFirst({ where: { projectId: p.id, mentorUserId: mentor.id, status: "PENDING" } }) || await tx.mentorRelationship.findFirst({ where: { projectId: p.id, mentorUserId: mentor.id, status: "ACTIVE" } })) throw AppError.conflict("A pending request or active mentorship already exists");
       if (await tx.mentorshipRequest.findFirst({ where: { projectId: p.id, mentorUserId: mentor.id, status: { in: ["DECLINED", "CANCELLED", "CANCELED_BY_PROJECT"] }, respondedAt: { gt: new Date(now.getTime() - env.ACADEMIC_RELATIONSHIP_COOLDOWN_HOURS * 3600000) } } })) throw AppError.conflict("Wait before sending another mentorship request to this pair");
       if (await tx.mentorshipRequest.count({ where: { requestedBy: a.id, createdAt: { gt: new Date(now.getTime() - 3600000) } } }) >= env.ACADEMIC_RELATIONSHIP_REQUEST_LIMIT) throw AppError.conflict("Mentorship request limit reached; try later");
       const senderProfile = await tx.academicProfile.findUnique({ where: { userId: a.id } });
-      const snapshot = JSON.parse(JSON.stringify({ project: mentorshipPreview(live, (await mentorshipTeamCounts([live], tx)).get(live.id)), sender: mentorshipPerson(a, senderProfile, a.id), previewToken: previewToken(live) })) as Prisma.InputJsonValue;
-      const request = await tx.mentorshipRequest.create({ data: { projectId: p.id, mentorUserId: mentor.id, requestedBy: a.id, direction, mentorRole, message: input.message.trim(), idempotencyKey: input.idempotencyKey, candidateId: candidate?.id, applicationId: application?.id, invitationSnapshot: snapshot, expiresAt: new Date(now.getTime() + mentorshipPolicy.expiryDays * 86400000) } });
+      const expiresAtDate = null;
+      const builtDossier = direction === "PROJECT_TO_LECTURER"
+        ? await buildInvitationDossier(tx, {
+          project: live,
+          representativeUserId: a.id,
+          mentorUserId: mentor.id,
+          viewerId: mentor.id,
+          message: input.message.trim(),
+          mentorRole,
+          access: input.access,
+          dossier: input.dossier,
+          expiresAt: undefined,
+        })
+        : undefined;
+      const snapshot = JSON.parse(JSON.stringify({
+        project: briefContext && builtDossier ? { id: publicDatabaseId(live), title: briefContext.title, summary: builtDossier.project.abstract, researchField: briefContext.researchField, researchAreas: briefContext.researchAreas, teamMemberCount: briefContext.memberCount, expertise: [], mentoringNeeds: "", stage: live.status } : { ...mentorshipPreview(live, (await mentorshipTeamCounts([live], tx)).get(live.id)), ...(input.dossier?.researchSummary !== undefined ? { summary: input.dossier.researchSummary.trim(), researchField: builtDossier?.project.researchField, researchAreas: builtDossier?.project.researchAreas ?? [] } : {}) },
+        sender: briefContext ? { _id: publicDatabaseId(a), fullName: briefContext.senderDisplayName } : mentorshipPerson(a, senderProfile, a.id),
+        previewToken: briefContext?.token ?? previewToken(live),
+        ...(builtDossier ? { dossierConfig: input.dossier ?? {}, dossier: builtDossier } : {}),
+      })) as Prisma.InputJsonValue;
+      const request = await tx.mentorshipRequest.create({ data: { projectId: p.id, mentorUserId: mentor.id, requestedBy: a.id, direction, mentorRole, message: input.message.trim(), idempotencyKey: input.idempotencyKey, candidateId: candidate?.id, applicationId: application?.id, invitationSnapshot: snapshot, expiresAt: expiresAtDate } });
       if (application) {
         const invited = await tx.mentorshipApplication.update({ where: { id: application.id }, data: { status: "INVITED", version: { increment: 1 } } });
         await applicationEvent(tx, invited, a.id, "INVITED", { requestId: request.id });
@@ -349,7 +583,28 @@ export const projectMentorshipService = {
       }
       await initializeMentorAccess(tx, request, live.ownerId, input.access);
       if (attachmentIds.length) await tx.mentorshipRequestAttachment.createMany({ data: attachmentIds.map(attachmentId => ({ requestId: request.id, attachmentId })) });
-      if (direction === "PROJECT_TO_LECTURER") await tx.mentorSuggestion.updateMany({ where: { projectId: p.id, mentorUserId: mentor.id, status: "PENDING" }, data: { status: "INVITED", requestId: request.id, resolvedBy: a.id, resolvedAt: now } });
+      if (direction === "PROJECT_TO_LECTURER") {
+        const pendingSuggestions = await tx.mentorSuggestion.findMany({ where: { projectId: p.id, mentorUserId: mentor.id, status: "PENDING" }, select: { id: true, suggestedBy: true } });
+        if (pendingSuggestions.length) {
+          await tx.mentorSuggestion.updateMany({ where: { projectId: p.id, mentorUserId: mentor.id, status: "PENDING" }, data: { status: "INVITED", requestId: request.id, resolvedBy: a.id, resolvedAt: now } });
+          for (const s of pendingSuggestions) {
+            if (s.suggestedBy !== a.id) {
+              await mentorshipNotification(tx, {
+                event: "MENTORSHIP_SUGGESTION_INVITED",
+                recordId: s.id,
+                projectId: p.id,
+                projectTitle: live.title,
+                actorId: a.id,
+                recipients: [s.suggestedBy],
+                customMessage: {
+                  vi: `Chủ dự án đã gửi lời mời chính thức đến ${mentor.fullName} cho dự án ${live.title}.`,
+                  en: `The project owner sent an official mentorship invitation to ${mentor.fullName} for ${live.title}.`,
+                },
+              });
+            }
+          }
+        }
+      }
       const event = direction === "PROJECT_TO_LECTURER" ? "MENTORSHIP_REQUEST_RECEIVED" : "MENTORSHIP_OFFER_RECEIVED";
       await record(tx, live, a.id, event, request.id);
       await mentorshipNotification(tx, { event, recordId: request.id, projectId: p.id, projectTitle: live.title, actorId: a.id, recipients: [direction === "PROJECT_TO_LECTURER" ? mentor.id : live.ownerId] }); return request;
@@ -396,7 +651,8 @@ export const projectMentorshipService = {
       }
       const event: MentorshipEvent = action === "CANCELLED" ? "MENTORSHIP_CANCELLED" : live.direction === "PROJECT_TO_LECTURER" ? (action === "ACCEPTED" ? "MENTORSHIP_REQUEST_ACCEPTED" : "MENTORSHIP_REQUEST_DECLINED") : (action === "ACCEPTED" ? "MENTORSHIP_OFFER_ACCEPTED" : "MENTORSHIP_OFFER_DECLINED");
       await record(tx, liveProject, a.id, event, live.id);
-      await mentorshipNotification(tx, { event, recordId: live.id, projectId: p.id, projectTitle: liveProject.title, actorId: a.id, recipients: mentor ? [liveProject.ownerId, live.requestedBy] : [live.mentorUserId] });
+      const acceptedTeam = action === "ACCEPTED" ? (await tx.projectMember.findMany({ where: { projectId: p.id, status: "ACTIVE" }, select: { userId: true } })).map(member => member.userId) : [];
+      await mentorshipNotification(tx, { event, recordId: live.id, projectId: p.id, projectTitle: liveProject.title, actorId: a.id, recipients: [...(mentor ? [liveProject.ownerId, live.requestedBy] : [live.mentorUserId]), ...acceptedTeam] });
       return tx.mentorshipRequest.findUniqueOrThrow({ where: { id: live.id } });
     }, { maxWait: 10_000, timeout: 15_000 });
     await dispatchMentorshipNotifications(); return (await present([updated], [], a.id)).requests[0];
@@ -404,6 +660,50 @@ export const projectMentorshipService = {
   async accept(p: string, r: string, a: string, note?: string, expectedAccessVersion?: number, expectedPreviewToken?: string) { return this.respond(p, r, a, "ACCEPTED", note, expectedAccessVersion, expectedPreviewToken); },
   async decline(p: string, r: string, a: string, note?: string) { return this.respond(p, r, a, "DECLINED", note); },
   async cancel(p: string, r: string, a: string, note?: string) { return this.respond(p, r, a, "CANCELLED", note); },
+  async requestInfo(projectInput: string, requestId: string, actorInput: string, note: string) {
+    const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
+    const trimmed = note.trim();
+    if (trimmed.length < 5 || trimmed.length > 1000) throw AppError.badRequest("Please describe what information should be clarified (5–1000 characters)");
+    const row = await getPrisma().mentorshipRequest.findFirst({ where: { id: requestId, projectId: p.id } });
+    if (!row) throw AppError.notFound("Mentorship request not found");
+    const updated = await getPrisma().$transaction(async tx => {
+      await locks(tx, p.id, [a.id, row.mentorUserId, row.requestedBy, p.ownerId]);
+      const actorUser = await actor(a.id, tx);
+      const liveProject = await project(p.id, tx);
+      const live = await tx.mentorshipRequest.findUniqueOrThrow({ where: { id: row.id } });
+      const manager = liveProject.ownerId === a.id, mentor = live.mentorUserId === a.id;
+      const receiver = live.direction === "PROJECT_TO_LECTURER" ? mentor : manager;
+      if (!receiver) throw AppError.forbidden("Only the recipient can request clarification");
+      const now = new Date();
+      if (live.status !== "PENDING" || (live.expiresAt && live.expiresAt <= now)) {
+        throw AppError.conflict("This request has changed or expired");
+      }
+      const prevSnapshot = live.invitationSnapshot && typeof live.invitationSnapshot === "object" && !Array.isArray(live.invitationSnapshot)
+        ? (live.invitationSnapshot as Record<string, unknown>)
+        : {};
+      const nextSnapshot = JSON.parse(JSON.stringify({
+        ...prevSnapshot,
+        infoRequest: { message: trimmed, requestedAt: now.toISOString(), requestedByName: actorUser.fullName },
+      })) as Prisma.InputJsonValue;
+      const nextRow = await tx.mentorshipRequest.update({
+        where: { id: live.id },
+        data: { invitationSnapshot: nextSnapshot },
+      });
+      await record(tx, liveProject, a.id, "MENTORSHIP_INFO_REQUESTED", live.id, { note: trimmed });
+      await mentorshipNotification(tx, {
+        event: "MENTORSHIP_INFO_REQUESTED",
+        recordId: live.id,
+        projectId: p.id,
+        projectTitle: liveProject.title,
+        actorId: a.id,
+        recipients: mentor ? [liveProject.ownerId, live.requestedBy] : [live.mentorUserId],
+        eventSuffix: String(now.getTime()),
+      });
+      return nextRow;
+    }, { maxWait: 10_000, timeout: 15_000 });
+    await dispatchMentorshipNotifications();
+    return (await present([updated], [], a.id)).requests[0]!;
+  },
   async end(projectInput: string, relationshipId: string, actorInput: string, reason?: string) {
     const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
     const row = await getPrisma().mentorRelationship.findFirst({ where: { id: relationshipId, projectId: p.id } });
@@ -419,8 +719,10 @@ export const projectMentorshipService = {
       const access = await tx.mentorAccess.findUnique({ where: { relationshipId: live.id } });
       if (access) { await tx.mentorAccess.update({ where: { id: access.id }, data: { revokedAt: new Date(), version: { increment: 1 } } }); await mentorAccessEvent(tx, access, a.id, "ACCESS_REVOKED", { reason: reason ?? "Kết thúc cố vấn" }); }
       // A departure requires fresh owner authorization; it never contacts an old backup.
-      const plan = await ensureMentorPlan(tx, p.id, liveProject.ownerId);
-      await tx.mentorInvitationPlan.update({ where: { id: plan.id }, data: { closedRoles: [...new Set([...plan.closedRoles, live.mentorRole])], version: { increment: 1 } } });
+      if (live.mentorRole !== "UNASSIGNED") {
+        const plan = await ensureMentorPlan(tx, p.id, liveProject.ownerId);
+        await tx.mentorInvitationPlan.update({ where: { id: plan.id }, data: { closedRoles: [...new Set([...plan.closedRoles, live.mentorRole])], version: { increment: 1 } } });
+      }
       await record(tx, liveProject, a.id, "MENTORSHIP_ENDED", live.id);
       await mentorshipNotification(tx, { event: "MENTORSHIP_ENDED", recordId: live.id, projectId: p.id, projectTitle: liveProject.title, actorId: a.id, recipients: [liveProject.ownerId, live.mentorUserId] }); return result;
     });
@@ -440,11 +742,16 @@ export const projectMentorshipService = {
       }
       const guidance = await tx.projectActivity.findMany({ where: { projectId: p.id, type: "MENTOR_GUIDANCE" }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: 50 });
       const authors = await tx.user.findMany({ where: { id: { in: guidance.flatMap(i => i.actorId ? [i.actorId] : []) } }, select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true } });
-      return { project: mentorshipPreview(live), canManage: canManageAcademicRelationships(a.id, live), accessRole: team ? "TEAM" : "MENTOR",
+      return {
+        project: mentorshipPreview(live), canManage: canManageAcademicRelationships(a.id, live), accessRole: team ? "TEAM" : "MENTOR",
         canProvideFeedback: !["ARCHIVED", "COMPLETED"].includes(live.status),
-        guidance: guidance.map(i => { const author = authors.find(u => u.id === i.actorId), meta = i.metadata as { note?: string; attribution?: string };
-          return { id: i.id, author: author ? { _id: publicDatabaseId(author), fullName: author.fullName, avatarUrl: author.avatarUrl ?? undefined } : undefined,
-            attribution: meta.attribution ?? "TEAM", note: meta.note ?? "", createdAt: i.createdAt.toISOString() }; }),
+        guidance: guidance.map(i => {
+          const author = authors.find(u => u.id === i.actorId), meta = i.metadata as { note?: string; attribution?: string };
+          return {
+            id: i.id, author: author ? { _id: publicDatabaseId(author), fullName: author.fullName, avatarUrl: author.avatarUrl ?? undefined } : undefined,
+            attribution: meta.attribution ?? "TEAM", note: meta.note ?? "", createdAt: i.createdAt.toISOString()
+          };
+        }),
         context: await mentorshipResearchContext(tx, live, query),
       };
     });

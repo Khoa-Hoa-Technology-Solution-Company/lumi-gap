@@ -13,11 +13,11 @@ vi.mock("../manuscript-pdf-import.js", async importOriginal => ({ ...await impor
 const proposalMocks = vi.hoisted(() => ({ update: vi.fn(), resolve: vi.fn() }));
 vi.mock("../manuscript-suggestions.js", () => ({ manuscriptSuggestions: proposalMocks }));
 
-const mocks = vi.hoisted(() => ({ actor: "20000000-0000-4000-8000-000000000001", user: vi.fn(), project: vi.fn(), list: vi.fn(), create: vi.fn(), detail: vi.fn(), remove: vi.fn(), fileContent: vi.fn(), ticket: vi.fn(), commentPage: vi.fn() }));
+const mocks = vi.hoisted(() => ({ actor: "20000000-0000-4000-8000-000000000001", user: vi.fn(), project: vi.fn(), list: vi.fn(), listDeleted: vi.fn(), create: vi.fn(), detail: vi.fn(), remove: vi.fn(), setArchived: vi.fn(), restoreDeleted: vi.fn(), fileContent: vi.fn(), ticket: vi.fn(), commentPage: vi.fn() }));
 vi.mock("../../../common/middleware/auth.js", () => ({ requireAuth: (req: any, _res: any, next: () => void) => { req.user = { sub: mocks.actor, sessionId: "30000000-0000-4000-8000-000000000001" }; next(); } }));
 vi.mock("../../authorization/authorization.middleware.js", () => ({ requireResearchWorkflow: (_req: any, _res: any, next: () => void) => next() }));
 vi.mock("../../../common/middleware/rate-limit.js", () => ({ createRateLimiter: () => (_req: any, _res: any, next: () => void) => next() }));
-vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => ({ project: { findUnique: mocks.project }, user: { findUnique: mocks.user } }) }));
+vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => ({ project: { findFirst: mocks.project, findUnique: mocks.project }, user: { findUnique: mocks.user } }) }));
 vi.mock("../manuscript.service.js", () => ({ manuscriptService: mocks, manuscriptEvents: { emit: vi.fn() } }));
 vi.mock("../../auth/token.service.js", () => ({ tokenService: { signPurposeToken: mocks.ticket } }));
 import { manuscriptRouter } from "../manuscript.routes.js";
@@ -47,6 +47,14 @@ describe("manuscript HTTP project identifiers", () => {
     mocks.ticket.mockReturnValue("signed-ticket");
   });
   const call = (project: string, path = "", body?: unknown) => fetch(`${origin}/projects/${project}/manuscripts${path}`, { method: body ? "POST" : "GET", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  it("accepts Other documents and rejects unknown document types", async () => {
+    const input = { title: "Other document", description: "", documentType: "OTHER", template: "BLANK", clientKey: crypto.randomUUID() };
+    expect((await call(legacy, "", input)).status).toBe(201);
+    expect(mocks.create).toHaveBeenCalledWith(canonical, actor, input);
+    mocks.create.mockClear();
+    expect((await call(legacy, "", { ...input, documentType: "UNKNOWN" })).status).toBe(400);
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
   it("validates comment cursors and preserves snapshot and account scope", async () => {
     const cursor = crypto.randomUUID(), snapshot = crypto.randomUUID();
     for (const query of ["cursor=invalid", "snapshotId=invalid", `cursor=${cursor}&actorId=${actor}`]) expect((await call(legacy, `/${manuscript}/comment-pages?${query}`)).status).toBe(400);
@@ -70,6 +78,27 @@ describe("manuscript HTTP project identifiers", () => {
     expect((await remove({ expectedVersion: 4 })).status).toBe(403);
     mocks.remove.mockRejectedValueOnce(AppError.conflict("Changed"));
     expect((await remove({ expectedVersion: 4 })).status).toBe(409);
+
+    mocks.remove.mockResolvedValueOnce({ id: manuscript });
+    expect((await remove({ expectedVersion: 4, reason: "Duplicate scratch draft" })).status).toBe(200);
+    expect(mocks.remove).toHaveBeenLastCalledWith(canonical, actor, manuscript, 4, "Duplicate scratch draft");
+
+    mocks.listDeleted.mockResolvedValueOnce([{ id: manuscript }]);
+    expect((await call(legacy, "/trash")).status).toBe(200);
+    expect(mocks.listDeleted).toHaveBeenCalledWith(canonical, actor);
+
+    mocks.setArchived.mockResolvedValueOnce({ id: manuscript, archived: true });
+    expect((await call(legacy, `/${manuscript}/archive`, { expectedVersion: 4, reason: "Preserve shared draft" })).status).toBe(200);
+    expect(mocks.setArchived).toHaveBeenCalledWith(canonical, actor, manuscript, 4, true, "Preserve shared draft");
+
+    expect((await call(legacy, `/${manuscript}/unarchive`, { expectedVersion: 0 })).status).toBe(400);
+    mocks.setArchived.mockResolvedValueOnce({ id: manuscript, archived: false });
+    expect((await call(legacy, `/${manuscript}/unarchive`, { expectedVersion: 5 })).status).toBe(200);
+    expect(mocks.setArchived).toHaveBeenCalledWith(canonical, actor, manuscript, 5, false, undefined);
+
+    mocks.restoreDeleted.mockResolvedValueOnce({ id: manuscript, deletedAt: null });
+    expect((await call(legacy, `/${manuscript}/restore-trash`, { expectedVersion: 5, reason: "Need draft again" })).status).toBe(200);
+    expect(mocks.restoreDeleted).toHaveBeenCalledWith(canonical, actor, manuscript, 5, "Need draft again");
   });
   it("accepts all four PDF multipart options and rejects AI without structured mode", async () => {
     const submit = (mode: string, ai: string) => {
@@ -163,8 +192,8 @@ describe("manuscript HTTP project identifiers", () => {
     const body = { title: "Evidence synthesis", documentType: "RESEARCH_PAPER", template: "ARTICLE", clientKey: crypto.randomUUID() };
     expect((await call(project, "", body)).status).toBe(201);
     expect(mocks.create).toHaveBeenCalledWith(canonical, actor, { ...body, description: "" });
-    if (project === canonical) expect(mocks.project).not.toHaveBeenCalled();
-    else expect(mocks.project).toHaveBeenCalledWith({ where: { legacyMongoId: legacy }, select: { id: true } });
+    if (project === canonical) expect(mocks.project).toHaveBeenCalledWith({ where: { id: canonical, deletedAt: null }, select: { id: true } });
+    else expect(mocks.project).toHaveBeenCalledWith({ where: { legacyMongoId: legacy, deletedAt: null }, select: { id: true } });
   });
   it("resolves nested editor routes and signs collaboration tickets with the canonical project UUID", async () => {
     expect((await call(legacy, `/${manuscript}`)).status).toBe(200);

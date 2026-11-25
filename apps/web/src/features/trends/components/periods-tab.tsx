@@ -70,7 +70,7 @@ export function PeriodsTab({ scope, onOpenTopic }: { scope: TrendPeriodsScope; o
               {t("Trends by month and quarter")}
             </p>
             <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-              {t("The same test as the yearly verdict (the topic's share of its field), run on months or quarters so this year and recent months can be judged. The running period is shown but not tested.")}{" "}
+              {t("The same test as the yearly verdict (the topic's share of publications), run on months or quarters so this year and recent months can be judged. The running period is shown but not tested.")}{" "}
               <TrendHowLink className="whitespace-nowrap" />
             </p>
           </div>
@@ -302,7 +302,7 @@ function PeriodsContent({
 
       <p className="flex items-start gap-2 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        {t("Works dated only by year are filed under January, and the latest months are still being indexed. The test uses the share of the field, which cancels most of both, but read January and the last complete month with care. Short periods are noisier than years: a monthly verdict describes recent movement, not a lasting trend.")}
+        {t("Works dated only by year are filed under January, and the latest months are still being indexed. The test uses the share of publications, which cancels most of both, but read January and the last complete month with care. Short periods are noisier than years: a monthly verdict describes recent movement, not a lasting trend.")}
       </p>
     </div>
   );

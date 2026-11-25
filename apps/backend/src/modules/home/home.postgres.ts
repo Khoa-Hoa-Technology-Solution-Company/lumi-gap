@@ -59,8 +59,8 @@ async function getWorkspaceSnapshot(userId: string): Promise<NonNullable<HomeOve
   });
   const memberProjectIds = memberships.map((row) => row.projectId);
   const projectWhere = memberProjectIds.length > 0
-    ? { OR: [{ ownerId: userId }, { id: { in: memberProjectIds } }] }
-    : { ownerId: userId };
+    ? { deletedAt: null, OR: [{ ownerId: userId }, { id: { in: memberProjectIds } }] }
+    : { deletedAt: null, ownerId: userId };
 
   const [recentSearches, bookmarkCount, reportCount, projectCount, latestReports, latestProjects] = await Promise.all([
     prisma.searchLog.findMany({

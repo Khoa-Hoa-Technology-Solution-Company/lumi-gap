@@ -1,0 +1,28 @@
+# Docker does not publish ports on an internal-only network. A fixed HTTP relay
+# connects the native API to the sandbox without giving TeX network egress.
+services:
+  manuscript-compiler:
+    ports: !reset []
+  manuscript-compiler-2025:
+    ports: !reset []
+  manuscript-compiler-local-relay:
+    image: lumigap-tex:2022
+    pull_policy: never
+    entrypoint: ["python3", "-B", "/app/local-relay.py"]
+    volumes: ["./apps/backend/compiler/local-relay.py:/app/local-relay.py:ro"]
+    networks: [default, manuscript-isolated]
+    ports: ["127.0.0.1:8020:8020", "127.0.0.1:8025:8025"]
+    read_only: true
+    user: "65534:65534"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 32
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; [urllib.request.urlopen('http://127.0.0.1:%s/health'%p,timeout=5) for p in (8020,8025)]"]
+      interval: 20s
+      timeout: 12s
+      retries: 3
+      start_period: 15s

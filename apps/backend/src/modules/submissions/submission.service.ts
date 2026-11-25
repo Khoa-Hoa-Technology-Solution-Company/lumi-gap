@@ -7,9 +7,13 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { pdfStorageService } from "../../infrastructure/pdf-storage.service.js";
 import { auditService } from "../audit/audit.service.js";
+import { assertMentorReviewAccess, acceptedMentorReviewPolicy, readableReviewAssignments, visibleMentorReviewAssignments } from "../reviews/mentor-review-access.js";
 import { researchLedgerService } from "../audit/research-ledger.service.js";
 import { assertPeerReviewer, lockReviewerAndSubmission, refreshSubmissionReviewStatus } from "../reviews/peer-review-access.js";
+import { reviewService } from "../reviews/review.service.js";
 import { reviewRequestService } from "../reviews/review-request.service.js";
+import { createAssignedMentorReview } from "../reviews/mentor-review-request.js";
+import { dispatchReviewNotifications } from "../reviews/review-notifications.js";
 import { aiReviewerClient } from "../papers/ai-reviewer.client.js";
 import { extractPdfPages, readStoredPdf } from "../knowledge/knowledge.source.js";
 import { retrieve } from "../retrieval/retriever.js";
@@ -18,6 +22,8 @@ import { buildManuscriptText, MAX_MANUSCRIPT_CHARS } from "./pre-review-input.js
 import { aiJobsQueue } from "../../infrastructure/queue.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { lockProjectAccounts } from "../projects/project-transaction.js";
+import { mentorManuscriptService } from "./mentor-manuscript.service.js";
+import type { MentorManuscriptSendInput } from "@trend/shared-types";
 
 type UploadedPdf = { buffer: Buffer; originalname: string; size: number };
 /** Job name on the ai-jobs queue that runs one AI pre-review. */
@@ -77,7 +83,7 @@ async function resolveUsers(inputs: string[]) {
 
 async function getProjectForAccess(projectInput: string, userId: string, role: UserRole, prisma: Prisma.TransactionClient = getPrisma()) {
   const project = await prisma.project.findFirst({ where: idWhere(projectInput) });
-  if (!project) throw AppError.notFound("Project not found");
+  if (!project || Boolean(project.deletedAt)) throw AppError.notFound("Project not found");
   if (project.ownerId !== userId && !hasPermission(role, "review:assign")) {
     const member = await prisma.projectMember.findFirst({ where: { projectId: project.id, userId, status: "ACTIVE" } });
     if (!member) throw AppError.forbidden("Project membership is required");
@@ -96,25 +102,28 @@ async function canAccessFullSubmission(submission: SubmissionRow, userId: string
   const prisma = getPrisma();
   // Authorship is retained as attribution; current membership controls full workspace access.
   const project = await prisma.project.findUnique({ where: { id: submission.projectId } });
-  if (project?.ownerId === userId) return true;
+  if (!project || Boolean(project.deletedAt)) return false;
+  if (project.ownerId === userId) return true;
   if (await prisma.projectMember.findFirst({ where: { projectId: submission.projectId, userId, status: "ACTIVE" } })) return true;
   if (typeof prisma.mentorRelationship?.findFirst === "function") {
     const activeMentor = await prisma.mentorRelationship.findFirst({ where: { projectId: submission.projectId, mentorUserId: userId, status: "ACTIVE" } });
-    if (activeMentor) return true;
+    if (activeMentor) return false;
   }
   return false;
 }
 
 async function assertSubmissionAccess(submission: SubmissionRow, userId: string, role: UserRole) {
   if (await canAccessFullSubmission(submission, userId, role)) return "full" as const;
-  const assignment = await getPrisma().reviewerAssignment.findFirst({ where: { submissionId: submission.id, reviewerId: userId, status: { in: ["accepted", "completed"] } } });
-  if (assignment) { if (assignment.status !== "completed") await assertPeerReviewer(userId); return "blind" as const; }
+  const assignment = (await readableReviewAssignments(getPrisma(), submission.id, userId))[0];
+  if (assignment) {
+    await assertPeerReviewer(userId); return "blind" as const;
+  }
   throw AppError.forbidden("You do not have access to this submission");
 }
 
 async function canManageSubmission(submission: SubmissionRow, userId: string, role: UserRole, prisma: Prisma.TransactionClient = getPrisma()) {
-  const state = await prisma.project.findUnique({ where: { id: submission.projectId }, select: { status: true } });
-  if (!state || state.status === "ARCHIVED") return false;
+  const state = await prisma.project.findUnique({ where: { id: submission.projectId }, select: { status: true, deletedAt: true } });
+  if (!state || state.status === "ARCHIVED" || Boolean(state.deletedAt)) return false;
   if (hasPermission(role, "review:assign")) return true;
   if (!await currentProjectMembership(submission.projectId, userId, prisma)) return false;
   if (submission.createdById === userId) return true;
@@ -127,8 +136,8 @@ async function canManageSubmission(submission: SubmissionRow, userId: string, ro
 
 async function accessibleRevisionIds(submissionId: string, userId: string) {
   const prisma = getPrisma();
-  const assignments = await prisma.reviewerAssignment.findMany({ where: { submissionId, reviewerId: userId, status: { in: ["accepted", "completed"] } } });
-  const reviews = await prisma.humanReview.findMany({ where: { assignmentId: { in: assignments.map((item) => item.id) } }, select: { revisionId: true } });
+  const assignments = await readableReviewAssignments(prisma, submissionId, userId);
+  const reviews = await prisma.humanReview.findMany({ where: { assignmentId: { in: assignments.map((item) => item.id) }, status: "SUBMITTED" }, select: { revisionId: true } });
   return [...new Set([...assignments.flatMap((item) => item.artifactRevisionId ? [item.artifactRevisionId] : []), ...reviews.map((item) => item.revisionId)])];
 }
 
@@ -207,7 +216,9 @@ async function syncRevisionWithMentorWorkflow(
   newRevision: { id: string; revisionNumber: number },
   actorId: string
 ) {
-  // Complete student's revision task
+  // Canonical requests advance only when the author explicitly submits responses.
+  if (await tx.reviewRequest.findFirst({where:{submissionId:submission.id,origin:"MENTOR_GUIDANCE"}})) return;
+  // Complete student's legacy revision task
   await tx.projectTask.updateMany({
     where: {
       projectId: submission.projectId,
@@ -285,6 +296,12 @@ async function syncRevisionWithMentorWorkflow(
 }
 
 export const submissionService = {
+  async mentorFeedbackContext(input: { projectId: string; manuscriptId?: string; submissionId?: string }, actor: string, role: UserRole) {
+    return mentorManuscriptService.context(input, actor, role, { user: resolveUser, project: getProjectForAccess, manage: canManageSubmission });
+  },
+  async sendMentorFeedback(input: MentorManuscriptSendInput, file: UploadedPdf | undefined, actor: string, role: UserRole) {
+    return mentorManuscriptService.send(input, file, actor, role, { user: resolveUser, project: getProjectForAccess, manage: canManageSubmission });
+  },
   async create(input: CreateSubmissionInput, file: UploadedPdf | undefined, actorInput: string, actorRole: UserRole) {
     const actor = await resolveUser(actorInput); const project = await getProjectForAccess(input.projectId, actor.id, actorRole);
     if (project.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
@@ -293,12 +310,13 @@ export const submissionService = {
     const byPublicId = new Map<string, string>(); for (const user of users) { byPublicId.set(user.id, user.id); if (user.legacyMongoId) byPublicId.set(user.legacyMongoId, user.id); }
     const authorIds = requestedAuthorInputs.map((value) => byPublicId.get(value)!).filter(Boolean); const conflictIds = conflictInputs.map((value) => byPublicId.get(value)!).filter(Boolean);
     if (!file && !input.contentSnapshot && !input.manuscriptSnapshotId) throw AppError.badRequest("PDF file or manuscript snapshot is required");
+    const mentor = input.mentorId ? await resolveUser(input.mentorId) : null;
     const persisted = file ? await persistFile(file) : null;
     let checksumSha256: string | null = persisted?.checksumSha256 ?? null;
     const stored = persisted?.stored ?? null;
     try {
       const result = await getPrisma().$transaction(async (tx) => {
-        await lockProjectAccounts(tx, [actor.id], project.id);
+        await lockProjectAccounts(tx, [actor.id, ...(mentor ? [mentor.id] : [])], project.id);
         const liveProject = await getProjectForAccess(project.id, actor.id, actorRole, tx);
         if (liveProject.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
         const projectProposals = await tx.projectContributionProposal.findMany({ where: { projectId: project.id }, select: { id: true, proposedById: true } });
@@ -321,36 +339,25 @@ export const submissionService = {
           if (!msSnapshot) throw AppError.notFound("Manuscript snapshot not found in this project");
           resolvedSnapshotId = msSnapshot.id;
           snapshotContentType = "LATEX";
-          if (!snapshotContent) {
-            const manifest = msSnapshot.manifest as { files?: Array<{ path?: string; content?: string }> } | null;
-            const filesText = Array.isArray(manifest?.files) ? manifest.files.filter((f) => typeof f.content === "string" && f.content.trim().length > 0).map((f) => `% File: ${f.path ?? "main.tex"}\n${f.content}`).join("\n\n") : "";
-            snapshotContent = filesText || `% Manuscript Snapshot ${msSnapshot.label ?? msSnapshot.id}`;
-          }
+          const manifest = msSnapshot.manifest as { files?: Array<{ path?: string; text?: string; content?: string }> } | null;
+          const sourceFiles = (manifest?.files ?? []).map(file => ({ path: file.path, text: file.text ?? file.content }));
+          snapshotContent = sourceFiles.filter(file => typeof file.text === "string" && file.text.trim()).map(file => `% File: ${file.path ?? "main.tex"}\n${file.text}`).join("\n\n");
+          if (!snapshotContent) throw AppError.conflict("This manuscript snapshot has no readable source content");
           checksumSha256 = checksumSha256 ?? msSnapshot.checksum;
         } else if (!persisted && snapshotContent) {
           checksumSha256 = crypto.createHash("sha256").update(snapshotContent).digest("hex");
         }
         const revision = await tx.submissionRevision.create({ data: { submissionId: submission.id, revisionNumber: 1, uploadedById: actor.id, storageUri: stored?.uri ?? null, checksumSha256, sizeBytes: file ? file.size : snapshotContent ? Buffer.byteLength(snapshotContent) : 0, originalFileName: file ? file.originalname : resolvedSnapshotId ? `snapshot-${resolvedSnapshotId.slice(0, 8)}.tex` : null, ...(snapshotContent ? { contentSnapshot: snapshotContent } : {}), ...( !file ? { contentType: snapshotContentType } : {}), ...(resolvedSnapshotId ? { manuscriptSnapshotId: resolvedSnapshotId } : {}), ...(input.message ? { responseToReview: input.message } : {}) } });
         let updated = await tx.submission.update({ where: { id: submission.id }, data: { currentRevisionId: revision.id } });
-        if (input.mentorId && typeof tx.mentorRelationship?.findFirst === "function") {
-          const mentorUser = await tx.user.findFirst({ where: idWhere(input.mentorId) });
-          if (mentorUser) {
-            const activeRel = await tx.mentorRelationship.findFirst({ where: { projectId: project.id, mentorUserId: mentorUser.id, status: "ACTIVE" } });
-            if (activeRel) {
-              await tx.reviewerAssignment.create({ data: { submissionId: submission.id, reviewerId: mentorUser.id, assignedById: actor.id, anonymousCode: `mentor-${submission.id}-${mentorUser.id}-v1`, status: "assigned", artifactRevisionId: revision.id } });
-              updated = await tx.submission.update({ where: { id: submission.id }, data: { status: "WAITING_FEEDBACK" } });
-              if (typeof tx.projectTask?.create === "function") {
-                await tx.projectTask.create({ data: { projectId: project.id, title: `Cần góp ý bản thảo (v1): ${submission.title}`, description: input.message?.trim() || `Sinh viên đã gửi bản thảo "${submission.title}" cần bạn xem xét và góp ý theo rubric.`, status: "TODO", priority: "HIGH", assigneeId: mentorUser.id, createdById: actor.id, targetKind: "submission", targetId: submission.id, clientKey: crypto.randomUUID() } });
-              }
-              if (typeof tx.notification?.create === "function") {
-                try { await tx.notification.create({ data: { userId: mentorUser.id, type: "SUBMISSION_CREATED", title: `Yêu cầu góp ý bản thảo mới: ${submission.title}`, message: input.message?.trim() || `Sinh viên đã gửi bản thảo "${submission.title}" (v1) để xin ý kiến đánh giá của giảng viên.` } }); } catch {}
-              }
-            }
-          }
-        }
-        return { submission: updated, revision };
+        const review = mentor ? await createAssignedMentorReview(tx, { submissionId: submission.id, reviewerId: mentor.id, senderId: actor.id, revisionId: revision.id, message: input.message }) : null;
+        if (review) updated = await tx.submission.findUniqueOrThrow({ where: { id: submission.id } });
+        return { submission: updated, revision, review };
       });
       await auditService.log("submission.created", { userId: actor.id, targetTableName: "submissions", targetRecordId: result.submission.id, details: { projectId: project.id, revisionNumber: 1, checksumSha256 } });
+      if (result.review) {
+        await auditService.log("MENTOR_REVIEW_ACCESS_GRANTED", { userId: actor.id, targetTableName: "reviewer_assignments", targetRecordId: result.review.assignment.id, details: { requestId: result.review.request.id, revisionId: result.revision.id, mentorAccessId: result.review.assignment.mentorAccessId } });
+        await dispatchReviewNotifications([result.review.notification]);
+      }
       return { submission: submissionDto(result.submission), revision: revisionDto(result.revision) };
     } catch (error) { if (stored) await pdfStorageService.deletePdf(stored.uri).catch(() => undefined); throw error; }
   },
@@ -483,23 +490,36 @@ export const submissionService = {
     const users = await prisma.user.findMany({ where: { id: { in: [...new Set([...reviews.map((item) => item.reviewerId), ...visibleAssignments.map((item) => item.reviewerId)])] } }, select: { id: true, legacyMongoId: true, fullName: true, email: true, avatarUrl: true, role: true } });
     const userMap = new Map(users.map((item) => [item.id, item.fullName]));
     const versions = await prisma.submissionRevision.findMany({ where: { submissionId: submission.id, ...(allowed ? { id: { in: allowed } } : {}) }, orderBy: { revisionNumber: "desc" } });
-    const reviewDetails = await Promise.all(reviews.map(async (review) => ({ id: review.id, reviewerId: review.reviewerId, reviewerName: access === "blind" ? "Your review" : userMap.get(review.reviewerId) ?? "Reviewer", reviewerAcademicRole: review.reviewerAcademicRole, revisionId: review.revisionId, roundNumber: review.roundNumber, templateVersionId: review.templateVersionId, weightedScore: review.weightedScore, overallAssessment: review.overallAssessment, keyStrengths: review.keyStrengths, keyConcerns: review.keyConcerns, overallComment: review.overallComment, submittedAt: review.submittedAt, requestId: assignments.find((item) => item.id === review.assignmentId)?.reviewRequestId,
-      responses: await prisma.reviewResponse.findMany({ where: { reviewId: review.id } }),
-      requiredRevisions: await Promise.all((await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } })).map(async (item) => ({ ...item, responses: await prisma.reviewRevisionResponse.findMany({ where: { revisionItemId: item.id }, orderBy: { createdAt: "asc" } }) }))),
-    })));
+    const reviewIds = reviews.map(review => review.id);
+    const [responses, revisionItems] = await Promise.all([
+      prisma.reviewResponse.findMany({ where: { reviewId: { in: reviewIds } } }),
+      prisma.reviewRevisionItem.findMany({ where: { reviewId: { in: reviewIds } }, orderBy: { position: "asc" } }),
+    ]);
+    const revisionResponses = await prisma.reviewRevisionResponse.findMany({ where: { revisionItemId: { in: revisionItems.map(item => item.id) }, ...(access === "blind" ? { status: { not: "DRAFT" } } : {}) }, orderBy: { createdAt: "asc" } });
+    const reviewDetails = reviews.map(review => ({ id: review.id, reviewerId: review.reviewerId, reviewerName: access === "blind" ? "Your review" : userMap.get(review.reviewerId) ?? "Reviewer", reviewerAcademicRole: review.reviewerAcademicRole, revisionId: review.revisionId, roundNumber: review.roundNumber, templateVersionId: review.templateVersionId, weightedScore: review.weightedScore, overallAssessment: review.overallAssessment, keyStrengths: review.keyStrengths, keyConcerns: review.keyConcerns, overallComment: review.overallComment, submittedAt: review.submittedAt, requestId: assignments.find(item => item.id === review.assignmentId)?.reviewRequestId,
+      responses: responses.filter(response => response.reviewId === review.id),
+      requiredRevisions: revisionItems.filter(item => item.reviewId === review.id).map(item => ({ ...item, responses: revisionResponses.filter(response => response.revisionItemId === item.id) })),
+    }));
     const [project, author] = await Promise.all([
       prisma.project.findUniqueOrThrow({ where: { id: submission.projectId } }),
       prisma.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId: actor.id } } }),
     ]);
     const writable = access === "full" && project.status !== "ARCHIVED";
+    const source = writable && submission.sourceManuscriptId ? await prisma.draftWorkspace.findFirst({ where: { id: submission.sourceManuscriptId, projectId: project.id, writingMode: "LATEX", archivedAt: null, deletedAt: null }, select: { id: true } }) : null;
+    const sourceManuscriptWritable = Boolean(source && (project.ownerId === actor.id || await prisma.projectMember.count({ where: { projectId: project.id, userId: actor.id, status: "ACTIVE" } })));
     const assignmentByRequest = new Map(visibleAssignments.flatMap((item) => item.reviewRequestId ? [[item.reviewRequestId, item] as const] : []));
     const revisionNumbers = new Map(versions.map((item) => [item.id, item.revisionNumber]));
-    const activeMentorRel = typeof prisma.mentorRelationship?.findFirst === "function" ? await prisma.mentorRelationship.findFirst({ where: { projectId: submission.projectId, mentorUserId: actor.id, status: "ACTIVE" } }) : null;
-    const mentorAssignmentRow = assignments.find((a) => !a.reviewRequestId);
+    const mentorRequestIds = new Set(requests.filter(r=>r.origin === "MENTOR_GUIDANCE").map(r=>r.id));
+    const mentorAssignmentRow = [...assignments].reverse().find(a => a.anonymousCode.startsWith("mentor-") || (a.reviewRequestId && mentorRequestIds.has(a.reviewRequestId)));
     const mentorUserObj = mentorAssignmentRow ? users.find((u) => u.id === mentorAssignmentRow.reviewerId) : undefined;
     const assignedMentor = mentorUserObj ? { id: publicDatabaseId(mentorUserObj), fullName: mentorUserObj.fullName, email: mentorUserObj.email ?? "", avatarUrl: mentorUserObj.avatarUrl ?? null, role: mentorUserObj.role ?? "MENTOR" } : null;
-    const canProvideFeedback = project.status !== "ARCHIVED" && Boolean(assignments.some((a) => a.reviewerId === actor.id) || activeMentorRel || hasPermission(actorRole, "review:assign"));
-    return { canManage: await canManageSubmission(submission, actor.id, actorRole),
+    let canProvideFeedback = project.status !== "ARCHIVED" && assignments.some(a=>a.reviewerId === actor.id && ["assigned","accepted"].includes(a.status));
+    if (canProvideFeedback) {
+      try { await assertPeerReviewer(actor.id); await assertMentorReviewAccess(prisma, submission.projectId, actor.id, submission.id); }
+      catch { canProvideFeedback = false; }
+    }
+    return {
+      sourceManuscriptWritable, canManage: await canManageSubmission(submission, actor.id, actorRole),
       canProvideFeedback,
       assignedMentor,
       canRunAiPreReview: writable && !AI_PRE_REVIEW_CLOSED_STATUSES.includes(submission.status) && Boolean(author || hasPermission(actorRole, "review:assign")),
@@ -508,11 +528,37 @@ export const submissionService = {
         const assignment = assignmentByRequest.get(request.id);
         const revisionNumber = revisionNumbers.get(request.artifactRevisionId);
         if (!assignment || revisionNumber === undefined) return [];
-        return [{ id: request.id, reviewerName: access === "blind" ? "Your review" : userMap.get(assignment.reviewerId) ?? "Reviewer", status: request.status === "REQUESTED" && request.expiresAt && request.expiresAt <= new Date() ? "EXPIRED" : request.status, revisionNumber, dueAt: request.dueAt, canView: request.requesterId === actor.id || assignment.reviewerId === actor.id }];
+        return [{
+          id: request.id,
+          reviewerId: access === "blind" ? undefined : assignment.reviewerId,
+          reviewerName: access === "blind" ? "Your review" : userMap.get(assignment.reviewerId) ?? "Reviewer",
+          status: request.status === "REQUESTED" && request.expiresAt && request.expiresAt <= new Date() ? "EXPIRED" : request.status,
+          revisionNumber,
+          revisionId: request.artifactRevisionId,
+          origin: request.origin,
+          createdAt: request.createdAt.toISOString(),
+          updatedAt: request.updatedAt.toISOString(),
+          dueAt: request.dueAt,
+          canView: request.requesterId === actor.id || assignment.reviewerId === actor.id,
+        }];
       }),
-      openForReview: submission.openForReview, currentRevisionId: submission.currentRevisionId, currentRevisionNumber: submission.currentRevisionNumber,
+      openForReview: submission.openForReview, currentRevisionId: access === "blind" ? versions[0]?.id : submission.currentRevisionId, currentRevisionNumber: access === "blind" ? versions[0]?.revisionNumber : submission.currentRevisionNumber,
       latestReviewedRevisionId: versions.find((item) => reviews.some((review) => review.revisionId === item.id))?.id ?? null,
-      versions: versions.map((item) => ({ id: item.id, revisionNumber: item.revisionNumber, contentType: item.contentType, contentSnapshot: item.contentSnapshot, checksumSha256: item.checksumSha256, sizeBytes: item.sizeBytes, sourceRevisionId: item.sourceRevisionId, manuscriptSnapshotId: item.manuscriptSnapshotId, responseToReview: item.responseToReview, createdAt: item.createdAt, hasPdf: Boolean(item.storageUri), reviews: reviewDetails.filter((review) => review.revisionId === item.id) })),
+      versions: versions.map((item) => ({
+        id: item.id,
+        revisionNumber: item.revisionNumber,
+        contentType: item.contentType,
+        contentSnapshot: item.contentSnapshot,
+        checksumSha256: item.checksumSha256,
+        sizeBytes: item.sizeBytes,
+        originalFileName: access === "blind" ? null : item.originalFileName ?? null,
+        sourceRevisionId: item.sourceRevisionId,
+        manuscriptSnapshotId: item.manuscriptSnapshotId,
+        responseToReview: item.responseToReview,
+        createdAt: item.createdAt,
+        hasPdf: Boolean(item.storageUri),
+        reviews: reviewDetails.filter((review) => review.revisionId === item.id),
+      })),
       contributions: [...new Set(reviews.map((item) => item.reviewerId))].map((reviewerId) => ({ reviewerId, name: userMap.get(reviewerId) ?? "Reviewer", type: "REVIEW", status: assignments.some((item) => item.reviewerId === reviewerId && item.status === "accepted" && item.decision?.includes("revision")) ? "FOLLOWING_REVISION" : assignments.some((item) => item.reviewerId === reviewerId && ["assigned", "accepted"].includes(item.status)) ? "IN_REVIEW" : "COMPLETED", rounds: reviewDetails.filter((item) => item.reviewerId === reviewerId).map((item) => ({ reviewId: item.id, revisionId: item.revisionId, roundNumber: item.roundNumber, submittedAt: item.submittedAt, academicRole: item.reviewerAcademicRole })) })),
     };
   },
@@ -592,7 +638,33 @@ export const submissionService = {
 
   async listRevisions(submissionInput: string, actorInput: string, actorRole: UserRole) { const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const access = await assertSubmissionAccess(submission, actor.id, actorRole); const allowed = access === "blind" ? await accessibleRevisionIds(submission.id, actor.id) : undefined; const rows = await getPrisma().submissionRevision.findMany({ where: { submissionId: submission.id, ...(allowed ? { id: { in: allowed } } : {}) }, orderBy: { revisionNumber: "desc" } }); return rows.map((row) => { const dto = revisionDto(row); if (access === "blind") { const { uploadedById: _uploadedById, uploadedBy: _uploadedBy, originalFileName: _originalFileName, ...safe } = dto; return safe; } return dto; }); },
 
-  async resolveDownload(submissionInput: string, revisionInput: string, actorInput: string, actorRole: UserRole) { const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const access = await assertSubmissionAccess(submission, actor.id, actorRole); const allowed = access === "blind" ? await accessibleRevisionIds(submission.id, actor.id) : undefined; const revision = await getPrisma().submissionRevision.findFirst({ where: { ...idWhere(revisionInput), submissionId: submission.id, ...(allowed ? { AND: { id: { in: allowed } } } : {}) } }); if (!revision) throw AppError.notFound("Submission revision not found"); if (!revision.storageUri) throw AppError.badRequest("This artifact revision is displayed in LumiGap and has no PDF download"); await researchLedgerService.record({ projectId: submission.projectId, actorId: actor.id, eventType: "SUBMISSION_REVISION_DOWNLOADED", resourceKind: "SUBMISSION_REVISION", resourceId: revision.id, checksumSha256: revision.checksumSha256 ?? null, visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { submissionId: submission.id, revisionNumber: revision.revisionNumber, accessMode: access } }); const signedUrl = await pdfStorageService.getSignedDownloadUrl(revision.storageUri); if (signedUrl) return { kind: "redirect" as const, url: signedUrl }; const localPath = pdfStorageService.resolveLocalPath(revision.storageUri); if (!localPath) throw AppError.notFound("Submission file is not available"); return { kind: "local" as const, path: localPath, filename: `submission-revision-${revision.revisionNumber}.pdf` }; },
+  async resolveDownload(submissionInput: string, revisionInput: string, actorInput: string, actorRole: UserRole) {
+    const actor = await resolveUser(actorInput), submission = await getSubmissionOrThrow(submissionInput);
+    const access = await assertSubmissionAccess(submission, actor.id, actorRole);
+    const allowed = access === "blind" ? await accessibleRevisionIds(submission.id, actor.id) : undefined;
+    const revision = await getPrisma().submissionRevision.findFirst({ where: { ...idWhere(revisionInput), submissionId: submission.id, ...(allowed ? { AND: { id: { in: allowed } } } : {}) } });
+    if (!revision) throw AppError.notFound("Submission revision not found");
+    if (!revision.storageUri) throw AppError.badRequest("This artifact revision is displayed in LumiGap and has no PDF download");
+    await researchLedgerService.record({ projectId: submission.projectId, actorId: actor.id, eventType: "SUBMISSION_REVISION_DOWNLOADED", resourceKind: "SUBMISSION_REVISION", resourceId: revision.id, checksumSha256: revision.checksumSha256 ?? null, visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { submissionId: submission.id, revisionNumber: revision.revisionNumber, accessMode: access } });
+    const filename = "submission-revision-" + revision.revisionNumber + ".pdf";
+    if (access === "blind") {
+      // A reviewer receives bytes, never a reusable storage capability. The
+      // existing bounded reader validates remote PDF responses and public DNS.
+      let content: Buffer;
+      try { content = await readStoredPdf(revision.storageUri); }
+      catch { throw AppError.notFound("Submission file is not available"); }
+      // Storage can be slow: a revoked assignment must not authorize a response
+      // using the permission check made before the storage request.
+      const currentAccess = await assertSubmissionAccess(await getSubmissionOrThrow(submission.id), actor.id, actorRole);
+      if (currentAccess === "blind" && !(await accessibleRevisionIds(submission.id, actor.id)).includes(revision.id)) throw AppError.notFound("Submission revision not found");
+      return { kind: "buffer" as const, content, filename };
+    }
+    const signedUrl = await pdfStorageService.getSignedDownloadUrl(revision.storageUri);
+    if (signedUrl) return { kind: "redirect" as const, url: signedUrl };
+    const localPath = pdfStorageService.resolveLocalPath(revision.storageUri);
+    if (!localPath) throw AppError.notFound("Submission file is not available");
+    return { kind: "local" as const, path: localPath, filename };
+  },
 
   async assignReviewer(_submissionInput: string, _input: { reviewerId: string; dueAt?: Date; enforceInstitutionConflict?: boolean }, _actorInput: string) {
     throw AppError.conflict("Use an Academic Review Request; new direct Admin assignments are disabled");
@@ -603,10 +675,13 @@ export const submissionService = {
   async listMyAssignments(reviewerInput: string) {
     const reviewer = await resolveUser(reviewerInput);
     const prisma = getPrisma();
-    const rows = await prisma.reviewerAssignment.findMany({ where: { reviewerId: reviewer.id, status: { not: "cancelled" } }, orderBy: { createdAt: "desc" } });
+    const rows = await visibleMentorReviewAssignments(
+      prisma,
+      await prisma.reviewerAssignment.findMany({ where: { reviewerId: reviewer.id, status: { not: "cancelled" } }, orderBy: { createdAt: "desc" } }),
+    );
     const submissions = await prisma.submission.findMany({ where: { id: { in: rows.map(row => row.submissionId) } }, select: { id: true, legacyMongoId: true, title: true, submissionType: true, projectId: true, status: true } });
     const map = new Map(submissions.map(row => [row.id, { ...row, id: publicDatabaseId(row), _id: publicDatabaseId(row) }]));
-    return rows.map(row => ({ ...row, id: publicDatabaseId(row), submissionId: map.get(row.submissionId) }));
+    return rows.filter(row => map.has(row.submissionId)).map(row => ({ ...row, id: publicDatabaseId(row), submissionId: map.get(row.submissionId) }));
   },
 
   async updateAssignment(submissionInput: string, assignmentInput: string, input: { status: "accepted" | "declined" | "completed" | "cancelled"; reviewText?: string }, actorInput: string, actorRole: UserRole) {
@@ -632,182 +707,72 @@ export const submissionService = {
   },
 
 
-  async submitFeedback(submissionInput: string, input: { result: "FEEDBACK_GIVEN" | "REVISION_REQUESTED" | "READY_TO_ADVANCE"; overallComment: string; paragraphComments?: Array<{ criterionKey?: string; comment: string; evidence?: string }>; rubricScores?: Array<{ criterionKey: string; score?: number; assessment?: string; comment?: string }>; requestedInformation?: string }, actorInput: string, actorRole: UserRole) {
-    const actor = await resolveUser(actorInput);
-    const submission = await getSubmissionOrThrow(submissionInput);
 
-    const assignment = await getPrisma().reviewerAssignment.findFirst({ where: { submissionId: submission.id, reviewerId: actor.id } });
-    const activeRel = await getPrisma().mentorRelationship.findFirst({ where: { projectId: submission.projectId, mentorUserId: actor.id, status: "ACTIVE" } });
-    if (!assignment && !activeRel && !hasPermission(actorRole, "review:assign")) {
-      throw AppError.forbidden("Only the assigned mentor can submit feedback for this manuscript");
-    }
+  async prepareMentorReview(submissionInput: string, actorInput: string) {
+    return reviewRequestService.prepareMentorReview(submissionInput, actorInput);
+  },
 
-    const result = await getPrisma().$transaction(async (tx) => {
-      await lockProjectAccounts(tx, [actor.id]);
-      await tx.$queryRaw`SELECT id FROM submissions WHERE id = ${submission.id}::uuid FOR UPDATE`;
-      const live = await tx.submission.findUniqueOrThrow({ where: { id: submission.id } });
-      const project = await tx.project.findUniqueOrThrow({ where: { id: live.projectId } });
-      if (project.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
-
-      const currentRevision = live.currentRevisionId
-        ? await tx.submissionRevision.findUniqueOrThrow({ where: { id: live.currentRevisionId } })
-        : await tx.submissionRevision.findFirstOrThrow({ where: { submissionId: live.id }, orderBy: { revisionNumber: "desc" } });
-
-      let liveAssignment = await tx.reviewerAssignment.findFirst({ where: { submissionId: live.id, reviewerId: actor.id, status: "assigned" } });
-      if (!liveAssignment) liveAssignment = await tx.reviewerAssignment.findFirst({ where: { submissionId: live.id, reviewerId: actor.id } });
-      if (!liveAssignment) {
-        liveAssignment = await tx.reviewerAssignment.create({
-          data: {
-            submissionId: live.id,
-            reviewerId: actor.id,
-            assignedById: live.createdById,
-            anonymousCode: `mentor-${live.id}-${actor.id}-v${live.currentRevisionNumber}`,
-            status: "assigned",
-            artifactRevisionId: currentRevision.id,
-          }
-        });
-      }
-
-      const humanReview = await tx.humanReview.create({
-        data: {
-          assignmentId: liveAssignment.id,
-          roundNumber: live.currentRevisionNumber,
-          reviewerId: actor.id,
-          submissionId: live.id,
-          revisionId: currentRevision.id,
-          status: "SUBMITTED",
-          overallComment: input.overallComment,
-          overallAssessment: input.result,
-          recommendation: input.result,
-          reviewerAcademicRole: "MENTOR",
-          keyStrengths: input.requestedInformation ?? null,
-          weightedScore: input.rubricScores?.length ? Number((input.rubricScores.reduce((acc, s) => acc + (s.score ?? 0), 0) / Math.max(1, input.rubricScores.filter((s) => typeof s.score === "number").length)).toFixed(2)) : null,
-          submittedAt: new Date(),
-        }
-      });
-
-      if (input.rubricScores?.length) {
-        for (const r of input.rubricScores) {
-          if (r.criterionKey && (typeof r.score === "number" || r.assessment || r.comment?.trim())) {
-            await tx.reviewResponse.create({
-              data: {
-                reviewId: humanReview.id,
-                criterionKey: `rubric:${r.criterionKey}`,
-                score: r.score ?? null,
-                assessment: r.assessment ?? null,
-                comment: r.comment?.trim() || `Rubric score: ${r.score ?? "-"}/5`,
-              }
-            });
-          }
-        }
-      }
-      if (input.paragraphComments?.length) {
-        for (const p of input.paragraphComments) {
-          if (p.comment.trim()) {
-            await tx.reviewResponse.create({
-              data: {
-                reviewId: humanReview.id,
-                criterionKey: p.criterionKey || `para-${Date.now()}`,
-                comment: p.comment.trim(),
-                evidence: p.evidence?.trim() ?? null,
-              }
-            });
-          }
-        }
-      }
-
-      await tx.reviewerAssignment.update({
-        where: { id: liveAssignment.id },
-        data: {
-          status: "completed",
-          decision: input.result,
-          reviewText: input.overallComment,
-          completedAt: new Date(),
-        }
-      });
-
-      let newStatus = "FEEDBACK_RECEIVED";
-      if (input.result === "REVISION_REQUESTED") newStatus = "REVISION_REQUESTED";
-      else if (input.result === "READY_TO_ADVANCE") newStatus = "READY_TO_ADVANCE";
-
-      const updatedSubmission = await tx.submission.update({
-        where: { id: live.id },
-        data: { status: newStatus }
-      });
-
-      await tx.projectTask.updateMany({
-        where: {
-          projectId: live.projectId,
-          targetKind: "submission",
-          targetId: live.id,
-          assigneeId: actor.id,
-          status: { not: "DONE" },
-        },
-        data: {
-          status: "DONE",
-          completedAt: new Date(),
-          completedById: actor.id,
-        }
-      });
-
-      if (input.result === "REVISION_REQUESTED") {
-        await tx.projectTask.create({
-          data: {
-            projectId: live.projectId,
-            title: `Cần chỉnh sửa bản thảo: ${live.title}`,
-            description: `Mentor yêu cầu chỉnh sửa bản thảo (v${live.currentRevisionNumber}). Xem nhận xét và tạo phiên bản mới.`,
-            status: "TODO",
-            priority: "HIGH",
-            assigneeId: live.createdById,
-            createdById: actor.id,
-            targetKind: "submission",
-            targetId: live.id,
-            clientKey: crypto.randomUUID(),
-          }
-        });
-      }
-
-      try {
-        await tx.notification.create({
-          data: {
-            userId: live.createdById,
-            type: "SUBMISSION_FEEDBACK_RECEIVED",
-            title: "Mentor đã góp ý bản thảo",
-            message: `Mentor đã gửi góp ý cho "${live.title}": ${input.result === "READY_TO_ADVANCE" ? "Có thể tiếp tục" : input.result === "REVISION_REQUESTED" ? "Cần chỉnh sửa" : "Đã nhận góp ý"}.`,
-          }
-        });
-      } catch {}
-
-      return { submission: updatedSubmission, review: humanReview };
-    });
-
-    await auditService.log("submission.mentor_feedback.submitted", {
-      userId: actor.id,
-      targetTableName: "human_reviews",
-      targetRecordId: result.review.id,
-      details: { submissionId: submission.id, result: input.result }
-    });
-
-    return { success: true, submission: submissionDto(result.submission) };
+  /** Preserve legacy feedback as a canonical draft; only the complete template can be submitted. */
+  async submitFeedback(submissionInput: string, input: {
+    result: "FEEDBACK_GIVEN" | "REVISION_REQUESTED" | "READY_TO_ADVANCE"; overallComment: string;
+    paragraphComments?: Array<{criterionKey?:string;comment:string;evidence?:string}>;
+    rubricScores?: Array<{criterionKey:string;score?:number;assessment?:string;comment?:string}>;
+    requestedInformation?:string;
+  }, actorInput: string, _actorRole: UserRole) {
+    await assertPeerReviewer(actorInput);
+    const prepared = await reviewRequestService.prepareMentorReview(submissionInput, actorInput);
+    const workspace = await reviewService.getReview(prepared.assignmentId, actorInput);
+    // Legacy criteria do not correspond one-to-one to the published rubric. Keep
+    // their exact values as attributed notes, never invent new rubric selections.
+    const legacyNotes = [
+      ...(input.paragraphComments ?? []).map(item=>`[Legacy paragraph feedback${item.criterionKey ? ": "+item.criterionKey : ""}] ${item.comment}${item.evidence ? "\nReference supplied by reviewer: "+item.evidence : ""}`),
+      ...(input.rubricScores ?? []).map(item=>`[Legacy criterion: ${item.criterionKey}] ${item.score ?? item.assessment ?? "Unassessed"}${item.comment ? "\n"+item.comment : ""}`),
+      ...(input.requestedInformation ? ["Requested clarification: "+input.requestedInformation] : []),
+    ];
+    if (workspace.review?.status === "DRAFT" && (workspace.responses.length || Object.keys(workspace.review.integrityChecks ?? {}).length)) throw AppError.conflict("Continue the existing structured draft in the review workspace",prepared);
+    const saved = await reviewService.saveReview(prepared.assignmentId, actorInput, {
+      expectedRevisionId:workspace.artifactRevision!.id,expectedRoundNumber:workspace.roundNumber,
+      overallComment:[input.overallComment,...legacyNotes].join("\n\n"),
+      overallAssessment:input.result === "READY_TO_ADVANCE" ? "STRONG" : input.result === "REVISION_REQUESTED" ? "MAJOR_REVISION" : undefined,
+      integrityChecks:{},
+      responses:[],
+      requiredRevisions:workspace.requiredRevisions.map(item=>({priority:item.priority as "MINOR"|"MAJOR",description:item.description,criterionKey:item.criterionKey ?? undefined,locator:item.locator ?? undefined,quotation:item.quotation ?? undefined})),
+    },false);
+    return {success:true,...prepared,reviewId:saved.review.id,submitted:false,requiresCompletion:true,message:"Feedback saved as a draft. Complete the published rubric and integrity checklist in the review workspace before submitting."};
   },
 
   async listActiveMentors(projectInput: string, actorInput: string) {
     const actor = await resolveUser(actorInput);
     const project = await getProjectForAccess(projectInput, actor.id, "USER");
-    const relationships = await getPrisma().mentorRelationship.findMany({
+    const prisma = getPrisma();
+    const relationships = await prisma.mentorRelationship.findMany({
       where: { projectId: project.id, status: "ACTIVE" },
       orderBy: { createdAt: "asc" },
     });
-    const users = await getPrisma().user.findMany({
-      where: { id: { in: relationships.map((r) => r.mentorUserId) } },
+    let activeRelationships = relationships;
+    if (relationships.length && typeof prisma.mentorAccess?.findMany === "function") {
+      const validIds = new Set<string>();
+      for (const rel of relationships) {
+        try {
+          await acceptedMentorReviewPolicy(prisma, project.id, rel.mentorUserId);
+          validIds.add(rel.mentorUserId);
+        } catch {
+          // Exclude mentors whose access policy was revoked, expired, or unverified.
+        }
+      }
+      activeRelationships = relationships.filter((r) => validIds.has(r.mentorUserId));
+    }
+    const users = await prisma.user.findMany({
+      where: { id: { in: activeRelationships.map((r) => r.mentorUserId) } },
       select: { id: true, legacyMongoId: true, fullName: true, email: true, institution: true, avatarUrl: true },
     });
     const userMap = new Map(users.map((u) => [u.id, u]));
-    return relationships.flatMap((rel) => {
+    return activeRelationships.flatMap((rel) => {
       const u = userMap.get(rel.mentorUserId);
       if (!u) return [];
       return [{
         id: publicDatabaseId(u),
+        canonicalId: u.id,
         fullName: u.fullName,
         email: u.email,
         institution: u.institution,
@@ -822,6 +787,6 @@ export const submissionService = {
     const access = await assertSubmissionAccess(submission, actor.id, actorRole);
     const allowed = access === "blind" ? await accessibleRevisionIds(submission.id, actor.id) : undefined;
     const revisions = await getPrisma().submissionRevision.findMany({ where: { submissionId: submission.id, ...(allowed ? { id: { in: allowed } } : {}) }, orderBy: { revisionNumber: "desc" }, select: { id: true, legacyMongoId: true, revisionNumber: true, contentType: true, responseToReview: true, checksumSha256: true, sizeBytes: true, createdAt: true } });
-    return { id: publicDatabaseId(submission), _id: publicDatabaseId(submission), title: submission.title, abstract: submission.abstractText, status: submission.status, currentRevisionNumber: submission.currentRevisionNumber, revisions: revisions.map((row) => ({ ...row, id: publicDatabaseId(row), _id: publicDatabaseId(row) })), doubleBlind: false };
+    return { id: publicDatabaseId(submission), _id: publicDatabaseId(submission), title: submission.title, abstract: submission.abstractText, status: submission.status, currentRevisionNumber: access === "blind" ? revisions[0]?.revisionNumber : submission.currentRevisionNumber, revisions: revisions.map((row) => ({ ...row, id: publicDatabaseId(row), _id: publicDatabaseId(row) })), doubleBlind: false };
   },
 };

@@ -5,15 +5,19 @@ import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/number_format.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
+import 'package:flutter_mobile/features/trends/components/trend_verdict.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:go_router/go_router.dart';
 
-/// Years offered for the scope.
-final List<int> scopeYears = List.generate(10, (i) => 2018 + i);
+/// Years offered for the scope: the last 30 years up to now.
+final List<int> scopeYears = [
+  for (var y = DateTime.now().year - 30; y <= DateTime.now().year; y++) y,
+];
 
-/// The default scope the "Reset" button goes back to.
-const int scopeDefaultYearFrom = 2020;
-const int scopeDefaultYearTo = 2026;
+/// The default scope the "Reset" button goes back to: the 15-year window the
+/// verdicts are calibrated on.
+final int scopeDefaultYearFrom = defaultTrendYears().from;
+final int scopeDefaultYearTo = defaultTrendYears().to;
 const int scopeDefaultMinPapers = 1;
 
 /// The trend scope editor: years, then the taxonomy and publication facets
@@ -44,6 +48,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
     int? yearTo,
     int? minPapers,
     TrendScopeFilters? filters,
+    List<String>? sizeBands,
   }) {
     var from = yearFrom ?? _p.yearFrom ?? scopeDefaultYearFrom;
     var to = yearTo ?? _p.yearTo ?? scopeDefaultYearTo;
@@ -61,6 +66,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
         yearTo: to,
         minPapers: minPapers ?? _p.minPapers,
         scopeFilters: filters ?? _f,
+        sizeBands: sizeBands ?? _p.sizeBands,
         sortBy: _p.sortBy,
         limit: _p.limit,
       ),
@@ -71,26 +77,24 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
       list.contains(id) ? [...list.where((x) => x != id)] : [...list, id];
 
   void _reset() => widget.onChanged(
-        TrendsOverviewParams(
-          yearFrom: scopeDefaultYearFrom,
-          yearTo: scopeDefaultYearTo,
-          minPapers: scopeDefaultMinPapers,
-          sortBy: _p.sortBy,
-          limit: _p.limit,
-        ),
-      );
+    TrendsOverviewParams(
+      yearFrom: scopeDefaultYearFrom,
+      yearTo: scopeDefaultYearTo,
+      minPapers: scopeDefaultMinPapers,
+      sortBy: _p.sortBy,
+      limit: _p.limit,
+    ),
+  );
 
   Map<String, String> _query({String? q}) => {
-        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
-        if (_f.domainIds.isNotEmpty) 'domainIds': _f.domainIds.join(','),
-        if (_f.fieldIds.isNotEmpty) 'fieldIds': _f.fieldIds.join(','),
-        if (_f.subfieldIds.isNotEmpty) 'subfieldIds': _f.subfieldIds.join(','),
-        if (_f.paperKinds.isNotEmpty) 'paperKinds': _f.paperKinds.join(','),
-        if (_f.openAccessStatuses.isNotEmpty)
-          'openAccessStatuses': _f.openAccessStatuses.join(','),
-        if (_p.yearFrom != null) 'yearFrom': '${_p.yearFrom}',
-        if (_p.yearTo != null) 'yearTo': '${_p.yearTo}',
-      };
+    if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+    if (_f.subfieldIds.isNotEmpty) 'subfieldIds': _f.subfieldIds.join(','),
+    if (_f.paperKinds.isNotEmpty) 'paperKinds': _f.paperKinds.join(','),
+    if (_f.openAccessStatuses.isNotEmpty)
+      'openAccessStatuses': _f.openAccessStatuses.join(','),
+    if (_p.yearFrom != null) 'yearFrom': '${_p.yearFrom}',
+    if (_p.yearTo != null) 'yearTo': '${_p.yearTo}',
+  };
 
   /// What to search or report on: the narrowest chosen facet, else
   /// "research".
@@ -104,10 +108,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
       return ids.first;
     }
 
-    return nameOf(facets?.subfields, _f.subfieldIds) ??
-        nameOf(facets?.fields, _f.fieldIds) ??
-        nameOf(facets?.domains, _f.domainIds) ??
-        'research';
+    return nameOf(facets?.subfields, _f.subfieldIds) ?? 'research';
   }
 
   @override
@@ -138,17 +139,22 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
         Text(
           context.t(
             'Publications in scope: {{totalPublications}} papers',
-            {'totalPublications': formatNumber(widget.overview.totalPapersInWindow)},
+            {
+              'totalPublications': formatNumber(
+                widget.overview.totalPapersInWindow,
+              ),
+            },
           ),
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: lumi.foregroundSecondary),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: lumi.foregroundSecondary,
+          ),
         ),
         const SizedBox(height: 16),
         Row(
           children: [
             Expanded(
               child: Text(
-                context.t('Publication Year Range'),
+                context.t('Publication year range'),
                 style: theme.textTheme.titleMedium,
               ),
             ),
@@ -160,7 +166,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
           children: [
             Expanded(
               child: yearField(
-                context.t('From Year'),
+                context.t('From year'),
                 from,
                 (y) => _emit(yearFrom: y),
               ),
@@ -168,7 +174,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
             const SizedBox(width: 12),
             Expanded(
               child: yearField(
-                context.t('To Year'),
+                context.t('To year'),
                 to,
                 (y) => _emit(yearTo: y),
               ),
@@ -176,32 +182,26 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
           ],
         ),
         if (facets != null) ...[
+          // Trends cover the Information Technology scope only, so the taxonomy
+          // filter narrows by subfield; domain and field filters are not
+          // offered (as on the web).
           _FacetChips(
-            title: context.t('Taxonomy Domains'),
-            buckets: facets.domains,
-            selected: _f.domainIds,
-            onToggle: (id) => _emit(
-              filters: _copy(_f, domainIds: _toggled(_f.domainIds, id)),
-            ),
-          ),
-          _FacetChips(
-            title: context.t('Taxonomy Fields'),
-            buckets: facets.fields,
-            selected: _f.fieldIds,
-            onToggle: (id) => _emit(
-              filters: _copy(_f, fieldIds: _toggled(_f.fieldIds, id)),
-            ),
-          ),
-          _FacetChips(
-            title: context.t('Taxonomy Subfields'),
+            title: context.t('Taxonomy subfields'),
             buckets: facets.subfields,
             selected: _f.subfieldIds,
             onToggle: (id) => _emit(
               filters: _copy(_f, subfieldIds: _toggled(_f.subfieldIds, id)),
             ),
           ),
+          if (widget.overview.bandCutoffs case final cutoffs?)
+            _SizeBandChips(
+              cutoffs: cutoffs,
+              selected: _p.sizeBands,
+              onToggle: (band) =>
+                  _emit(sizeBands: _toggled(_p.sizeBands, band)),
+            ),
           _FacetChips(
-            title: context.t('Paper Type'),
+            title: context.t('Paper type'),
             buckets: facets.paperKinds,
             selected: _f.paperKinds,
             onToggle: (id) => _emit(
@@ -209,7 +209,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
             ),
           ),
           _FacetChips(
-            title: context.t('Open Access Status'),
+            title: context.t('Open access status'),
             buckets: facets.openAccessStatuses,
             selected: _f.openAccessStatuses,
             onToggle: (id) => _emit(
@@ -228,8 +228,10 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
               title: context.t('Search scoped papers'),
               onTap: () => unawaited(
                 context.push(
-                  Uri(path: '/search', queryParameters: _query(q: _scopeTopic()))
-                      .toString(),
+                  Uri(
+                    path: '/search',
+                    queryParameters: _query(q: _scopeTopic()),
+                  ).toString(),
                 ),
               ),
             ),
@@ -260,25 +262,22 @@ TrendScopeFilters _copy(
   TrendScopeFilters f, {
   List<String>? paperKinds,
   List<String>? openAccessStatuses,
-  List<String>? domainIds,
-  List<String>? fieldIds,
   List<String>? subfieldIds,
-}) =>
-    TrendScopeFilters(
-      paperKinds: paperKinds ?? f.paperKinds,
-      openAccessStatuses: openAccessStatuses ?? f.openAccessStatuses,
-      providers: f.providers,
-      sources: f.sources,
-      citationBands: f.citationBands,
-      domains: f.domains,
-      fields: f.fields,
-      subfields: f.subfields,
-      topics: f.topics,
-      domainIds: domainIds ?? f.domainIds,
-      fieldIds: fieldIds ?? f.fieldIds,
-      subfieldIds: subfieldIds ?? f.subfieldIds,
-      topicIds: f.topicIds,
-    );
+}) => TrendScopeFilters(
+  paperKinds: paperKinds ?? f.paperKinds,
+  openAccessStatuses: openAccessStatuses ?? f.openAccessStatuses,
+  providers: f.providers,
+  sources: f.sources,
+  citationBands: f.citationBands,
+  domains: f.domains,
+  fields: f.fields,
+  subfields: f.subfields,
+  topics: f.topics,
+  domainIds: f.domainIds,
+  fieldIds: f.fieldIds,
+  subfieldIds: subfieldIds ?? f.subfieldIds,
+  topicIds: f.topicIds,
+);
 
 class _FacetChips extends StatelessWidget {
   const _FacetChips({
@@ -312,6 +311,61 @@ class _FacetChips extends StatelessWidget {
                   label: Text('${b.name} (${formatNumber(b.count)})'),
                   selected: selected.contains(b.id),
                   onSelected: (_) => onToggle(b.id),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Size bands: tertiles of total papers among the topics of the IT scope,
+/// each with its paper range.
+class _SizeBandChips extends StatelessWidget {
+  const _SizeBandChips({
+    required this.cutoffs,
+    required this.selected,
+    required this.onToggle,
+  });
+
+  final ({double smallMax, double mediumMax}) cutoffs;
+  final List<String> selected;
+  final ValueChanged<String> onToggle;
+
+  String _range(String band) {
+    final small = formatNumber(cutoffs.smallMax.round());
+    final medium = formatNumber(cutoffs.mediumMax.round());
+    return switch (band) {
+      'small' => '≤ $small',
+      'medium' => '$small–$medium',
+      _ => '> $medium',
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            context.t('Topic size (papers in the window)'),
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final band in trendSizeBands)
+                FilterChip(
+                  label: Text(
+                    '${context.t(trendSizeBandLabel(band))} (${_range(band)})',
+                  ),
+                  selected: selected.contains(band),
+                  onSelected: (_) => onToggle(band),
                 ),
             ],
           ),

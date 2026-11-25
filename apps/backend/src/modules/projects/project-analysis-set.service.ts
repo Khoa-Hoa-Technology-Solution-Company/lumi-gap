@@ -1,3 +1,4 @@
+import { publishedScreeningRounds } from "./screening-effective.js";
 import { randomUUID } from "node:crypto";
 import type { ProjectAnalysisSet } from "@trend/shared-types";
 import type { z } from "zod";
@@ -19,13 +20,14 @@ export async function validateAnalysisSet(c: WorkspaceContext, id: string, paper
   if (JSON.stringify([...paperIds].sort()) !== JSON.stringify(set.sources.map(s => s.id).sort())) throw AppError.conflict("Danh sách bài phải khớp chính xác với bộ phân tích đã lưu");
   const links = await c.tx.projectPaper.findMany({ where: { projectId: c.project.id, paperId: { in: paperIds } } });
   const papers = await c.tx.paper.findMany({ where: { id: { in: paperIds }, dataStatus: "active" } });
+  const published = await publishedScreeningRounds(c.tx, c.project.id, paperIds);
   for (const source of set.sources) {
     const link = links.find(l => l.paperId === source.id), paper = papers.find(p => p.id === source.id);
     if (!link || !paper || link.id !== source.projectPaperId || link.updatedAt.toISOString() !== source.updatedAt || sourceFingerprint(paper) !== source.fingerprint) throw AppError.conflict("Nguồn của bộ bài đã thay đổi. Tạo bộ phân tích mới từ thư viện hiện tại");
     if (set.mode === "OFFICIAL") {
-      const round = await c.tx.screeningRound.findFirst({ where: { projectId: c.project.id, paperId: source.id, active: true, status: "INCLUDED" } });
+      const round = published.get(source.id);
       const final = round ? await c.tx.screeningFinalDecision.findFirst({ where: { roundId: round.id }, orderBy: { roundVersion: "desc" } }) : null;
-      if (link.screeningStatus !== "INCLUDED" || !round || !final || final.id !== source.finalDecisionId || round.version !== source.roundVersion) throw AppError.conflict("Quyết định chọn bài đã thay đổi. Xác nhận bộ chính thức mới");
+      if (link.screeningStatus !== "INCLUDED" || !round || !final || final.id !== source.finalDecisionId || final.roundVersion !== source.roundVersion) throw AppError.conflict("Quyết định chọn bài đã thay đổi. Xác nhận bộ chính thức mới");
     }
   }
   return set;
@@ -39,14 +41,15 @@ export const projectAnalysisSetService = {
       const links = await c.tx.projectPaper.findMany({ where: { projectId: c.project.id, paperId: { in: input.paperIds } } });
       const papers = await c.tx.paper.findMany({ where: { id: { in: input.paperIds }, dataStatus: "active" } });
       if (links.length !== input.paperIds.length || papers.length !== input.paperIds.length) throw AppError.conflict("Chỉ dùng bài đang hoạt động trong dự án này");
+      const published = await publishedScreeningRounds(c.tx, c.project.id, input.paperIds);
       for (const paperId of [...input.paperIds].sort()) {
         const link = links.find(l => l.paperId === paperId)!, paper = papers.find(p => p.id === paperId)!;
-        const round = await c.tx.screeningRound.findFirst({ where: { projectId: c.project.id, paperId, active: true } });
+        const round = published.get(paperId);
         const final = round && round.status === "INCLUDED" ? await c.tx.screeningFinalDecision.findFirst({ where: { roundId: round.id }, orderBy: { roundVersion: "desc" } }) : null;
         if (input.mode === "OFFICIAL" && (link.screeningStatus !== "INCLUDED" || !final || final.decision !== "INCLUDED")) throw AppError.conflict("Bộ chính thức chỉ dùng bài đã hoàn thành các giai đoạn và có quyết định chọn hiện hành");
         const evidence = await c.tx.projectEvidenceItem.findMany({ where: { projectId: c.project.id, paperId }, select: { id: true, version: true } });
         const revisions = evidence.length ? await c.tx.projectWorkspaceRevision.findMany({ where: { projectId: c.project.id, entityKind: "EXTRACTION", OR: evidence.map(e => ({ entityId: e.id, version: e.version })) }, select: { id: true, entityId: true, version: true, snapshot: true } }) : [];
-        sources.push({ id: paperId, projectPaperId: link.id, updatedAt: link.updatedAt.toISOString(), fingerprint: sourceFingerprint(paper), title: paper.title, abstractText: paper.abstractText, doi: paper.doi, publicationYear: paper.publicationYear, roundId: round?.id ?? null, roundVersion: round?.version ?? null, finalDecisionId: final?.id ?? null, selectionRule: round ? roundSettings(round.settings) : null, reviewIds: final?.reviewIds ?? [], finalDecision: final ? { id: final.id, decision: final.decision, reason: final.reason, resolverId: final.resolverId, createdAt: final.createdAt.toISOString() } : null, evidenceRevisions: revisions });
+        sources.push({ id: paperId, projectPaperId: link.id, updatedAt: link.updatedAt.toISOString(), fingerprint: sourceFingerprint(paper), title: paper.title, abstractText: paper.abstractText, doi: paper.doi, publicationYear: paper.publicationYear, roundId: round?.id ?? null, roundVersion: final?.roundVersion ?? round?.version ?? null, finalDecisionId: final?.id ?? null, selectionRule: round ? roundSettings(round.settings) : null, reviewIds: final?.reviewIds ?? [], finalDecision: final ? { id: final.id, decision: final.decision, reason: final.reason, resolverId: final.resolverId, createdAt: final.createdAt.toISOString() } : null, evidenceRevisions: revisions });
       }
       const id = randomUUID(), data = { id, projectId: c.project.id, mode: input.mode, topic: input.topic, createdAt: new Date().toISOString(), createdById: c.actorId, confirmedById: input.mode === "OFFICIAL" ? c.actorId : null, settings: await screeningSettings(c), sources };
       const snapshot: ProjectAnalysisSet = { ...data, hash: screeningHash(data) };

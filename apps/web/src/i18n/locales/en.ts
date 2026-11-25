@@ -1,3 +1,8 @@
+import { mentorSharingEn } from "./mentor-sharing";
+import { submissionDetailEn } from "./submission-detail";
+import { registrationEn } from "./registration";
+import { mentorWorkspaceEn } from "./mentor-workspace";
+import { scientificReviewEn } from "./scientific-review";
 import { mentorJourneyEn } from "./mentor-journey";
 import { academicConnectionsEn } from "./academic-connections";
 import { screeningQueueEn } from "./screening-queue";
@@ -26,6 +31,10 @@ import { studentOnboardingStrings } from "./student-onboarding";
 import { researchHomeEn } from "./research-home-en";
 import { trustSafetyRagStrings } from "./trust-safety-rag";
 import { trendEvidenceStrings } from "./trend-evidence";
+import { trendEdaStrings } from "./trend-eda";
+import { trendCrossTopicStrings } from "./trend-cross-topic";
+import { trendEmergingStrings } from "./trend-emerging";
+import { trendScopeStrings } from "./trend-scope";
 import { trendVerdictStrings } from "./trend-verdict";
 import { trendResearchLinkStrings } from "./trend-research-links";
 import { trendPeriodsStrings } from "./trend-periods";
@@ -34,6 +43,8 @@ import { adminCatalogEn } from "./admin-catalog";
 import { personalizationStrings } from "./personalization";
 
 export const en = {
+  ...mentorWorkspaceEn,
+  ...registrationEn,
   ...personalizationStrings,
   ...adminCatalogEn,
   ...qualityEvaluationEn,
@@ -46,6 +57,7 @@ export const en = {
   ...mentorApplicantsEn,
   ...manuscriptIntegrityEn,
   ...academicSupportEn,
+  ...scientificReviewEn,
   ...trustSafetyRagStrings,
   ...researchHomeEn,
   ...newUiStrings,
@@ -61,6 +73,10 @@ export const en = {
   ...paperDetailIaStrings,
   ...trendEvidenceStrings,
   ...trendVerdictStrings,
+  ...trendEdaStrings,
+  ...trendCrossTopicStrings,
+  ...trendEmergingStrings,
+  ...trendScopeStrings,
   ...trendResearchLinkStrings,
   ...trendPeriodsStrings,
   "-day period.": "-day period.",
@@ -100,8 +116,6 @@ export const en = {
   "+60–180 pts": "+60–180 pts",
   "= early exploratory signal with small paper base (&lt;15 papers).": "= early exploratory signal with small paper base (&lt;15 papers).",
   "= high growth with established base (&ge;15 papers).": "= high growth with established base (&ge;15 papers).",
-  "= trend slope in papers/year.": "= trend slope in papers/year.",
-  "= year-over-year change using the last complete year. Topic lists show the top ranked slice, not every unique topic in scope.": "= year-over-year change using the last complete year. Topic lists show the top ranked slice, not every unique topic in scope.",
   "| Reason:": "| Reason:",
   "👑 Max Level reached! (Level 10)": "👑 Max Level reached! (Level 10)",
   "💡": "💡",
@@ -109,12 +123,9 @@ export const en = {
   "🔥 Hot Topic": "🔥 Hot Topic",
   "0 avg citations": "0 avg citations",
   "1. Choose research area": "1. Choose research area",
-  "1. Growth YoY (Year-over-Year)": "1. Growth YoY (Year-over-Year)",
   "14 Days": "14 Days",
-  "2. CAGR (3-Year Compound Growth)": "2. CAGR (3-Year Compound Growth)",
   "2. Read trend signals": "2. Read trend signals",
   "3. Act on findings (papers, compare, report, AI)": "3. Act on findings (papers, compare, report, AI)",
-  "3. Momentum Score": "3. Momentum Score",
   "30 Days": "30 Days",
   "7 Days": "7 Days",
   "Abstract": "Abstract",
@@ -389,8 +400,6 @@ export const en = {
   "Brief description of the goals": "Brief description of the goals",
   "Browse papers": "Browse papers",
   "Browse state is empty. Enter a search query to explore.": "Browse state is empty. Enter a search query to explore.",
-  "CAGR (3Y)": "CAGR (3Y)",
-  "CAGR 3Y": "CAGR 3Y",
   "Calculated as the linear regression slope of papers published per year. Higher values mean steeper upward trends.": "Calculated as the linear regression slope of papers published per year. Higher values mean steeper upward trends.",
   "Calculated using the least-squares linear regression slope of annual publication volume over the entire time window. Represents the change velocity in units of": "Calculated using the least-squares linear regression slope of annual publication volume over the entire time window. Represents the change velocity in units of",
   "Campaign": "Campaign",
@@ -404,7 +413,6 @@ export const en = {
   "Change": "Change",
   "Change Password": "Change Password",
   "Charges": "Charges",
-  "Charts display current year data. However, growth rates and CAGR calculations exclude YTD periods to avoid incomplete-year bias. The last complete year is": "Charts display current year data. However, growth rates and CAGR calculations exclude YTD periods to avoid incomplete-year bias. The last complete year is",
   "Chat": "Chat",
   "Check": "Check",
   "Checking": "Checking",
@@ -808,8 +816,6 @@ export const en = {
   "high, and": "high, and",
   "Highest Citation Impact": "Highest Citation Impact",
   "Highest Confidence": "Highest Confidence",
-  "Highest momentum: the steepest paper/year slope in the selected dataset.": "Highest momentum: the steepest paper/year slope in the selected dataset.",
-  "Highest YoY growth": "Highest YoY growth",
   "historical papers in current corpus.": "historical papers in current corpus.",
   "Home": "Home",
   "Home overview failed to load. You can still search papers or explore trends.": "Home overview failed to load. You can still search papers or explore trends.",
@@ -869,7 +875,6 @@ export const en = {
   "Languages": "Languages",
   "Largest paper volume in the selected dataset. Useful as a stable baseline.": "Largest paper volume in the selected dataset. Useful as a stable baseline.",
   "Largest Volume": "Largest Volume",
-  "Largest year-over-year change using the last complete year.": "Largest year-over-year change using the last complete year.",
   "Last 3 Years": "Last 3 Years",
   "Last 5 Years": "Last 5 Years",
   "Last Seen": "Last Seen",
@@ -911,7 +916,6 @@ export const en = {
   "Logging in...": "Logging in...",
   "logic. All matching paper counts and signals re-compute instantly without manual submit.": "logic. All matching paper counts and signals re-compute instantly without manual submit.",
   "Login": "Login",
-  "Long-window momentum positive, last complete YoY declined.": "Long-window momentum positive, last complete YoY declined.",
   "Low": "Low",
   "low,": "low,",
   "Lv": "Lv",
@@ -943,8 +947,6 @@ export const en = {
   "Min Papers:": "Min Papers:",
   "Missing": "Missing",
   "Momentum": "Momentum",
-  "MOMENTUM": "MOMENTUM",
-  "Momentum:": "Momentum:",
   "More Filters": "More Filters",
   "more points to reach level": "more points to reach level",
   "more supporting papers": "more supporting papers",
@@ -1153,7 +1155,6 @@ export const en = {
   "papers. All Trends tabs and scoped actions now use this filtered dataset.": "papers. All Trends tabs and scoped actions now use this filtered dataset.",
   "papers)": "papers)",
   "papers).": "papers).",
-  "papers/year": "papers/year",
   "Parent topic": "Parent topic",
   "Partial": "Partial",
   "Partition states": "Partition states",
@@ -1510,7 +1511,6 @@ export const en = {
   "Small-base warning:": "Small-base warning:",
   "Some selected topics have no papers in this scope. Remove them or clear filters.": "Some selected topics have no papers in this scope. Remove them or clear filters.",
   "Sort by Growth": "Sort by Growth",
-  "Sort by Momentum": "Sort by Momentum",
   "Sort by Total Papers": "Sort by Total Papers",
   "Sort by:": "Sort by:",
   "Sort:": "Sort:",
@@ -1664,7 +1664,6 @@ export const en = {
   "Topic Facets Context": "Topic Facets Context",
   "Topic Filter": "Topic Filter",
   "topic match": "topic match",
-  "Topic Modeling dominates both momentum and volume in this dataset.": "Topic Modeling dominates both momentum and volume in this dataset.",
   "Topic Name": "Topic Name",
   "Topic search failed. Try a shorter query or clear narrow filters.": "Topic search failed. Try a shorter query or clear narrow filters.",
   "Topic search failed. You can still compare the top scoped topics, or search papers directly.": "Topic search failed. You can still compare the top scoped topics, or search papers directly.",
@@ -1834,11 +1833,6 @@ export const en = {
   "Your Position": "Your Position",
   "Your Reports": "Your Reports",
   "Your shortlist is empty": "Your shortlist is empty",
-  "YoY % change": "YoY % change",
-  "YoY Change %": "YoY Change %",
-  "YoY growth": "YoY growth",
-  "YoY Growth": "YoY Growth",
-  "YoY Trend Slope": "YoY Trend Slope",
   "YTD": "YTD",
   "Load More": "Load More",
   "Loading...": "Loading...",
@@ -1867,5 +1861,7 @@ export const en = {
   ...mentorJourneyEn,
   ...creditAttributionEn,
   ...submissionWorkflowStrings,
+  ...submissionDetailEn,
+  ...mentorSharingEn,
 } as const;
 import { creditAttributionEn } from "./credit-attribution";

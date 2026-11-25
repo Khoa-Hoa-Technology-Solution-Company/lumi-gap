@@ -93,7 +93,8 @@ describe.skipIf(!isolated).sequential("manuscript deletion in disposable Postgre
     const template = await reviewTemplateService.create({ name: "Retained manuscript review", source: "PERSONAL", reviewMode: "RUBRIC_ASSESSMENT", publish: true, guidelines: [], criteria: [{ key: "method", title: "Method", weight: 1, required: true, levels: [{ label: "Clear", score: 4 }] }] }, owner, "USER");
     const request = await reviewRequestService.create({ submissionId: sealed.submissionId, reviewerId: outsider, templateVersionId: template.activeVersion!.id }, owner);
     await reviewRequestService.accept(request.id, outsider);
-    await writing.remove(d.project, owner, d.row.id, d.row.version);
+    await expect(writing.remove(d.project, owner, d.row.id, d.row.version)).rejects.toMatchObject({ statusCode: 409 });
+    await writing.setArchived(d.project, owner, d.row.id, d.row.version, true);
     expect((await writing.viewSnapshot(d.project, outsider, d.row.id, snapshot.id)).formalRevisionId).toBe(sealed.revisionId);
     await expect(writing.detail(d.project, outsider, d.row.id)).rejects.toMatchObject({ statusCode: 404 });
     await db.reviewerAssignment.update({ where: { id: request.assignment.id }, data: { status: "cancelled" } });

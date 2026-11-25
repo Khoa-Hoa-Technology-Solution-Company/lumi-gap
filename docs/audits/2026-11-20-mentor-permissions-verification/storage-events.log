@@ -1,0 +1,12 @@
+
+ RUN  v2.1.9 D:/lumi-gap/apps/backend
+
+ ✓ src/infrastructure/pdf-storage.service.test.ts (5 tests) 13ms
+ ✓ src/modules/knowledge/__tests__/knowledge.source.test.ts (5 tests) 17ms
+ ✓ src/modules/projects/__tests__/project-team-chat.events.test.ts (2 tests) 6ms
+ ✓ src/modules/projects/__tests__/project-chat.events.test.ts (2 tests) 3ms
+
+ Test Files  4 passed (4)
+      Tests  14 passed (14)
+   Start at  17:04:01
+   Duration  1.92s (transform 143ms, setup 0ms, collect 561ms, tests 38ms, environment 1ms, prepare 566ms)

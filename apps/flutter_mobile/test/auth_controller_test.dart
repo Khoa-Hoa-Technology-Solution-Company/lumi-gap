@@ -1,4 +1,5 @@
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_mobile/core/storage/secure_token_store.dart';
@@ -66,6 +67,68 @@ Future<ProviderContainer> _container(_SessionApi api) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('start-up session check', () {
+    Future<ProviderContainer> start(Future<User> Function() me) async {
+      FlutterSecureStorage.setMockInitialValues({});
+      await const SecureTokenStore().save(_tokens);
+      final container = ProviderContainer(
+        overrides: [
+          authApiProvider.overrideWithValue(FakeAuthApi(onMe: me)),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(authControllerProvider);
+      for (var i = 0; i < 50; i++) {
+        if (!container.read(authControllerProvider).isLoading) break;
+        await Future<void>.delayed(Duration.zero);
+      }
+      return container;
+    }
+
+    DioException failure({int? status}) => DioException(
+          requestOptions: RequestOptions(path: '/auth/me'),
+          type: status == null
+              ? DioExceptionType.connectionError
+              : DioExceptionType.badResponse,
+          response: status == null
+              ? null
+              : Response<void>(
+                  requestOptions: RequestOptions(path: '/auth/me'),
+                  statusCode: status,
+                ),
+        );
+
+    test('offline: the session is kept and a retry is offered', () async {
+      var online = false;
+      final container = await start(() async {
+        if (!online) throw failure();
+        return testUser();
+      });
+      final auth = container.read(authControllerProvider);
+      expect(auth.hasError, isTrue);
+      expect(auth.value, isNull);
+      expect(await const SecureTokenStore().read(), isNotNull);
+
+      online = true;
+      await container.read(authControllerProvider.notifier).retryStartup();
+      expect(container.read(authControllerProvider).value?.id, testUser().id);
+    });
+
+    test('a server error is not a sign-out either', () async {
+      final container = await start(() async => throw failure(status: 503));
+      expect(container.read(authControllerProvider).hasError, isTrue);
+      expect(await const SecureTokenStore().read(), isNotNull);
+    });
+
+    test('a rejected session (401) signs out and drops the tokens', () async {
+      final container = await start(() async => throw failure(status: 401));
+      final auth = container.read(authControllerProvider);
+      expect(auth.hasError, isFalse);
+      expect(auth.value, isNull);
+      expect(await const SecureTokenStore().read(), isNull);
+    });
+  });
 
   group('AuthController.register', () {
     test('signs the new account in and keeps its tokens', () async {

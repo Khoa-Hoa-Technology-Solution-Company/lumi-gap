@@ -1,13 +1,11 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
-  AlertTriangle,
   ArrowUpRight,
   BookOpen,
   Check,
   CheckCircle2,
   Compass,
-  Database,
   FileCode2,
   FileText,
   Filter,
@@ -20,10 +18,10 @@ import {
   ShieldAlert,
   Sparkles,
   Tag,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { researchApi } from "../api/project-research.api";
 import { useResearchCommand, useResearchResource } from "../hooks/use-project-research";
 import { WorkspaceError, WorkspaceLoading } from "./workspace-common";
@@ -101,17 +99,17 @@ export function LiteratureTopicClustersView({
   const workspaceQuery = useResearchResource(
     projectId,
     ["evidence-workspace-clusters"],
-    () => researchApi.evidenceWorkspace(projectId, { page: 1, pageSize: 100 })
+    () => researchApi.evidenceWorkspace(projectId, { page: 1, pageSize: 50 })
   );
   const libraryQuery = useResearchResource(
     projectId,
     ["library-clusters"],
-    () => researchApi.library(projectId, { page: 1, pageSize: 100 })
+    () => researchApi.library(projectId, { page: 1, pageSize: 50 })
   );
   const evidenceQuery = useResearchResource(
     projectId,
     ["evidence-clusters"],
-    () => researchApi.evidence(projectId, { page: 1, pageSize: 100 })
+    () => researchApi.evidence(projectId, { page: 1, pageSize: 50 })
   );
   const questionsQuery = useResearchResource(
     projectId,
@@ -413,90 +411,99 @@ export function LiteratureTopicClustersView({
     return <WorkspaceError error={workspaceQuery.error} retry={() => void workspaceQuery.refetch()} />;
   }
 
+  const hasActiveFilters =
+    searchQuery.trim().length > 0 ||
+    selectedTopic !== "ALL" ||
+    selectedMethod !== "ALL" ||
+    selectedQuestionId !== "ALL" ||
+    selectedTag !== "ALL";
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setSelectedTopic("ALL");
+    setSelectedMethod("ALL");
+    setSelectedQuestionId("ALL");
+    setSelectedTag("ALL");
+  };
+
   return (
-    <div className="space-y-6" data-no-i18n>
-      {/* Header & Navigation */}
-      <header className="rounded-2xl border border-border/80 bg-card p-5 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/25 text-xs font-bold">
-                <FolderKanban className="mr-1.5 h-3.5 w-3.5" />
-                Topic-Based Literature Review
-              </Badge>
-              <span className="text-xs text-muted-foreground">
-                {papers.length} project paper{papers.length === 1 ? "" : "s"} · {clusters.length} cluster{clusters.length === 1 ? "" : "s"}
-              </span>
-            </div>
-            <h2 className="text-lg font-bold text-foreground">
-              Literature Map, Topic Clusters & Side-by-Side Comparison
-            </h2>
-            <p className="text-xs text-muted-foreground max-w-3xl">
-              Organize papers by topic, keywords, methodology, and research questions. Select 2–5 studies to compare methodologies, findings, and limitations side-by-side before drafting your synthesis.
-            </p>
+    <div className="space-y-4" data-no-i18n>
+      {/* Compact Toolbar & Filters */}
+      <header className="literature-clusters-toolbar rounded-xl border border-border/80 bg-card p-3.5 shadow-xs space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
+              <FolderKanban className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+              {hasActiveFilters
+                ? `${filteredPapers.length}/${papers.length} bài báo`
+                : `${papers.length} bài báo`}
+              {" · "}
+              {clusters.length} cụm
+            </span>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors"
+              >
+                <X className="h-3 w-3" />
+                Xóa bộ lọc
+              </button>
+            )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" asChild>
-              <Link to={`/projects/${encodeURIComponent(projectId)}?tab=papers&view=matrix`}>
-                <Layers className="mr-1.5 h-3.5 w-3.5" />
-                Evidence Matrix
-              </Link>
-            </Button>
-            <Button size="sm" variant="outline" asChild>
-              <Link to={`/projects/${encodeURIComponent(projectId)}?tab=papers&view=limitations`}>
-                <AlertTriangle className="mr-1.5 h-3.5 w-3.5" />
-                Limitations & Gaps
-              </Link>
-            </Button>
-            <Button size="sm" asChild>
-              <Link to={`/projects/${encodeURIComponent(projectId)}?tab=gaps&research=synthesis`}>
-                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                Evidence-Backed Synthesis
-              </Link>
-            </Button>
-          </div>
+          <Button size="sm" className="h-8 text-xs" asChild>
+            <Link to={`/projects/${encodeURIComponent(projectId)}?tab=gaps&research=synthesis`}>
+              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+              Tổng hợp bằng chứng
+            </Link>
+          </Button>
         </div>
 
-        {/* Filter & Grouping Bar */}
-        <div className="mt-4 pt-4 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5">
-          <div className="relative lg:col-span-2">
-            <Search className="h-3.5 w-3.5 text-muted-foreground absolute left-3 top-2.5" />
+        <div className="literature-clusters-filters flex flex-wrap items-center gap-2 pt-2.5 border-t border-border/60">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="h-3.5 w-3.5 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search title, author, keyword, method, claim…"
-              className="h-8 w-full rounded-lg border border-border/80 bg-background pl-8 pr-3 text-xs"
+              placeholder="Tìm tiêu đề, tác giả, từ khóa, phương pháp…"
+              className="h-9 w-full rounded-lg border border-border/80 bg-background pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground"
               aria-label="Search literature clusters"
             />
           </div>
 
-          <label className="flex items-center gap-1.5 text-xs">
-            <span className="text-muted-foreground shrink-0 font-medium">Group by:</span>
+          <div className="literature-clusters-groupby inline-flex items-center gap-1.5 shrink-0">
+            <label
+              htmlFor={`clusters-groupby-${projectId}`}
+              className="text-xs text-muted-foreground whitespace-nowrap font-medium"
+            >
+              Nhóm theo:
+            </label>
             <select
+              id={`clusters-groupby-${projectId}`}
               value={groupBy}
               onChange={(e) => setGroupBy(e.target.value as GroupByMode)}
-              className="h-8 flex-1 rounded-lg border border-border/80 bg-background px-2 text-xs font-semibold"
+              className="h-9 rounded-lg border border-border/80 bg-background px-2.5 text-xs font-medium text-foreground"
               aria-label="Group literature by"
             >
-              <option value="topic">Topic / Theme</option>
-              <option value="methodology">Methodology</option>
-              <option value="question">Research Question</option>
-              <option value="tag">Keywords / Tags</option>
+              <option value="topic">Chủ đề</option>
+              <option value="methodology">Phương pháp</option>
+              <option value="question">Câu hỏi NC</option>
+              <option value="tag">Từ khóa / Tag</option>
             </select>
-          </label>
+          </div>
 
           <select
             value={selectedTopic}
             onChange={(e) => setSelectedTopic(e.target.value)}
-            className="h-8 rounded-lg border border-border/80 bg-background px-2 text-xs"
+            className="h-9 max-w-[190px] rounded-lg border border-border/80 bg-background px-2.5 text-xs text-foreground"
             aria-label="Filter by topic"
           >
-            <option value="ALL">All Topics ({allTopics.length})</option>
+            <option value="ALL">Tất cả chủ đề ({allTopics.length})</option>
             {allTopics.map((topic) => (
               <option key={topic} value={topic}>
-                Topic: {topic}
+                Chủ đề: {topic}
               </option>
             ))}
           </select>
@@ -504,13 +511,13 @@ export function LiteratureTopicClustersView({
           <select
             value={selectedMethod}
             onChange={(e) => setSelectedMethod(e.target.value)}
-            className="h-8 rounded-lg border border-border/80 bg-background px-2 text-xs"
+            className="h-9 max-w-[200px] rounded-lg border border-border/80 bg-background px-2.5 text-xs text-foreground"
             aria-label="Filter by methodology"
           >
-            <option value="ALL">All Methodologies ({allMethods.length})</option>
+            <option value="ALL">Tất cả phương pháp ({allMethods.length})</option>
             {allMethods.map((method) => (
               <option key={method} value={method}>
-                Method: {method}
+                Phương pháp: {method}
               </option>
             ))}
           </select>
@@ -518,10 +525,10 @@ export function LiteratureTopicClustersView({
           <select
             value={selectedQuestionId}
             onChange={(e) => setSelectedQuestionId(e.target.value)}
-            className="h-8 rounded-lg border border-border/80 bg-background px-2 text-xs"
+            className="h-9 max-w-[195px] rounded-lg border border-border/80 bg-background px-2.5 text-xs text-foreground"
             aria-label="Filter by research question"
           >
-            <option value="ALL">All Research Questions ({allQuestions.length})</option>
+            <option value="ALL">Tất cả câu hỏi ({allQuestions.length})</option>
             {allQuestions.map((rq) => (
               <option key={rq.id} value={rq.id}>
                 RQ: {rq.text.slice(0, 60)}
@@ -531,9 +538,9 @@ export function LiteratureTopicClustersView({
         </div>
 
         {allTags.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1 mr-1">
-              <Filter className="h-3 w-3" /> Keywords / Tags:
+          <div className="pt-2 border-t border-border/50 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1 mr-1">
+              <Filter className="h-3 w-3" /> Từ khóa:
             </span>
             <button
               type="button"
@@ -544,7 +551,7 @@ export function LiteratureTopicClustersView({
                   : "bg-muted text-muted-foreground hover:text-foreground"
               }`}
             >
-              All
+              Tất cả
             </button>
             {allTags.map((tag) => (
               <button
@@ -807,8 +814,42 @@ export function LiteratureTopicClustersView({
         </section>
       )}
 
+      {/* Contextual Empty Evidence Guidance */}
+      {papers.length > 0 &&
+        !workspaceQuery.isError &&
+        !evidenceQuery.isError &&
+        papers.every((item) => item.verifiedCount === 0) && (
+          <div
+            role="status"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs"
+          >
+            <p className="text-foreground">
+              Chưa có bằng chứng đã kiểm chứng. Hãy hoàn thành trích xuất và kiểm chứng tài liệu trước khi so sánh.
+            </p>
+            <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs" asChild>
+              <Link to={`/projects/${encodeURIComponent(projectId)}?tab=gaps&research=evidence`}>
+                <FileText className="mr-1.5 h-3.5 w-3.5" />
+                Đi tới trích xuất &amp; kiểm chứng
+              </Link>
+            </Button>
+          </div>
+        )}
+
       {/* Topic Clusters Grid */}
-      {clusters.length === 0 ? (
+      {papers.length === 0 && !workspaceQuery.isError && !libraryQuery.isError ? (
+        <div className="rounded-2xl border border-dashed border-border/80 bg-card p-10 text-center space-y-3">
+          <BookOpen className="h-8 w-8 text-muted-foreground mx-auto" />
+          <h3 className="text-base font-bold text-foreground">
+            Chưa có tài liệu để phân tích. Hãy thêm bài báo vào thư viện.
+          </h3>
+          <Button size="sm" variant="outline" asChild>
+            <Link to={`/projects/${encodeURIComponent(projectId)}?tab=papers&view=library`}>
+              <BookOpen className="mr-1.5 h-3.5 w-3.5" />
+              Mở Thư viện
+            </Link>
+          </Button>
+        </div>
+      ) : clusters.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border/80 bg-card p-10 text-center space-y-2">
           <BookOpen className="h-8 w-8 text-muted-foreground mx-auto" />
           <h3 className="text-base font-bold text-foreground">No matching papers in this view</h3>

@@ -180,7 +180,10 @@ describe.skipIf(!enabled).sequential("mentoring applicant pool on PostgreSQL", (
     const p=await project(); await consent.request(p.id,owner,{mentorUserId:lecturers[0]!,message:"Please guide our computer vision research"});
     const opportunities=await consent.discovery(lecturers[1]!,{q:p.title});
     expect(opportunities.items.some(project=>project.id===p.id)).toBe(true);
-    await apply(p.id,lecturers[1]!);expect((await mentorPositions(p.id)).PRIMARY.status).toBe("INVITING");
+    await apply(p.id,lecturers[1]!);
+    const positions = await mentorPositions(p.id);
+    expect(positions.PRIMARY.status).toBe("VACANT");
+    expect(positions.UNASSIGNED.pendingRequests).toBe(1);
     expect(await db.mentorshipRequest.count({where:{projectId:p.id,status:"PENDING"}})).toBe(1);
   });
   it("enforces database uniqueness and cross-project request foreign keys independently of services", async () => {

@@ -8,19 +8,24 @@ import type { IProject, IncomingProjectInvitation } from "@trend/shared-types";
 import { ProjectsListPage } from "@/pages/projects/projects-list";
 import { readProjectDirectoryFilters, selectDirectoryProjects } from "../utils/project-directory";
 
-vi.mock("../hooks/use-mentored-projects", () => ({ useMentoredProjects: () => ({ data: [], isLoading: false, isError: false }) }));
+vi.mock("../hooks/use-mentored-projects", () => ({ useMentoredProjects: (enabled: boolean) => { mocks.mentoringEnabled(enabled); return { data: mocks.mentored, isLoading: false, isError: false }; } }));
 
 const mocks = vi.hoisted(() => ({
   projects: vi.fn(), create: vi.fn(), respond: vi.fn(), refetch: vi.fn(), refetchInvitations: vi.fn(),
   invitations: [] as IncomingProjectInvitation[],
+  mentored: [] as { projectId: string; project: { title: string; stage: string; researchField: string } }[],
+  academicRole: "STUDENT", mentoringEnabled: vi.fn(),
 }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, string | number>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values?.[name] ?? "")) }) }));
-vi.mock("@/stores/auth-store", () => ({ useAuthStore: (selector: (state: { user: { id: string } }) => unknown) => selector({ user: { id: "me" } }) }));
+vi.mock("@/stores/auth-store", () => ({ useAuthStore: (selector: (state: { user: { id: string; academicRole: string } }) => unknown) => selector({ user: { id: "me", academicRole: mocks.academicRole } }) }));
 vi.mock("../hooks/use-projects", () => ({
   useProjects: mocks.projects,
+  useTrashedProjects: () => ({ data: [], isLoading: false, isError: false, isFetching: false, refetch: vi.fn() }),
   useCreateProject: () => ({ mutateAsync: mocks.create, isPending: false }),
   useMyProjectInvitations: () => ({ data: mocks.invitations, refetch: mocks.refetchInvitations }),
   useRespondToProjectInvitation: () => ({ mutateAsync: mocks.respond }),
+  useRestoreProject: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  usePermanentDeleteProject: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/features/auth/api/auth.api", () => ({ authApi: { academicOnboardingOptions: async () => ({ researchAreas: [] }) } }));
@@ -36,8 +41,13 @@ const archived: IProject = { ...project, _id: "archived", title: "Evidence 10", 
 let root: Root, container: HTMLDivElement, client: QueryClient;
 function Location() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}</output>; }
 function Detail() { const navigate = useNavigate(); return <button onClick={() => navigate(-1)}>Back to projects</button>; }
+function ProjectDirectoryRoute() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  return <ProjectsListPage invitationsOnly={params.get("view") === "invitations"} trashOnly={params.get("view") === "trash"} />;
+}
 async function render(path = "/projects") {
-  await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Routes><Route path="/projects" element={<ProjectsListPage />} /><Route path="/projects/:id" element={<Detail />} /></Routes><Location /></MemoryRouter></QueryClientProvider>));
+  await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Routes><Route path="/projects" element={<ProjectDirectoryRoute />} /><Route path="/projects/:id" element={<Detail />} /></Routes><Location /></MemoryRouter></QueryClientProvider>));
 }
 async function click(text: string) {
   const button = [...document.querySelectorAll<HTMLButtonElement>("button")].find(item => item.textContent?.trim().replace(/\d+$/, "").trim() === text);
@@ -60,6 +70,8 @@ beforeEach(() => {
   sessionStorage.clear();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   mocks.invitations = [];
+  mocks.mentored = [];
+  mocks.academicRole = "STUDENT";
   mocks.projects.mockReturnValue({ data: [project, shared, archived], isLoading: false, isError: false, refetch: mocks.refetch });
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
@@ -75,6 +87,32 @@ it("combines URL search, status and ownership, including Vietnamese without acce
   await click("View all projects");
   expect(visibleProjects()).toEqual([shared.title, project.title, archived.title]);
   expect(container.querySelector("output")?.textContent).toBe("/projects");
+});
+
+it("separates a lecturer's owned/member projects from cached guidance projects", async () => {
+  mocks.academicRole = "LECTURER";
+  mocks.mentored = [{ projectId: "mentored", project: { title: "Mentored study", stage: "ACTIVE", researchField: "Education" } }];
+  await render("/projects?scope=OWNED&status=ACTIVE&sort=NAME");
+  expect(visibleProjects()).toEqual([project.title]);
+  expect(container.textContent).not.toContain("Mentored study");
+  expect(container.querySelector('[aria-label="Teams you mentor"]')).toBeNull();
+  expect(mocks.mentoringEnabled).toHaveBeenLastCalledWith(false);
+  expect(container.querySelector('a[href="/projects/owned"]')).not.toBeNull();
+  await click("Shared with me");
+  expect(visibleProjects()).toEqual([shared.title]);
+  expect(container.querySelector("output")?.textContent).toContain("/projects?");
+  expect(container.querySelector("output")?.textContent).toContain("scope=SHARED");
+  expect(container.querySelector('a[href="/projects?view=trash"]')).not.toBeNull();
+});
+
+it("keeps a lecturer's project trash in the research workspace", async () => {
+  mocks.academicRole = "LECTURER";
+  await render("/projects");
+  await act(async () => container.querySelector<HTMLAnchorElement>('a[href="/projects?view=trash"]')!.click());
+  expect(container.textContent).toContain("No deleted projects");
+  expect(container.querySelector('a[href^="/mentor-workspace"]')).toBeNull();
+  await act(async () => container.querySelector<HTMLAnchorElement>('a[href="/projects"]')!.click());
+  expect(visibleProjects()).toEqual([shared.title, project.title, archived.title]);
 });
 
 it("sorts by update or natural name without mutating cached records and puts missing dates last", () => {
@@ -160,11 +198,22 @@ it("retains creation details on failure and opens the newly created project afte
   await render("/projects?create=1&sort=NAME");
   await fill("#project-create-title", "  Education study  ");
   await fill("#project-create-description", "  Compare the evidence  ");
+  await fill("#project-create-keywords", "Education, Evidence");
+  await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(document.body.textContent).toContain("Step 2/2");
   await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   expect(document.querySelector('[role="alert"]')?.textContent).toContain("safely recover the same project");
-  expect(document.querySelector<HTMLInputElement>("#project-create-title")?.value).toBe("  Education study  ");
   await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-  expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Education study", description: "Compare the evidence", researchAreas: [], researchApproach: "UNDECIDED", visibility: "PRIVATE", idempotencyKey: expect.any(String) }));
+  expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({
+    title: "Education study",
+    description: "Compare the evidence",
+    researchField: "Artificial Intelligence",
+    researchAreas: ["Artificial Intelligence", "Education", "Evidence"],
+    keywords: ["Education", "Evidence"],
+    researchApproach: "EXPLORATORY",
+    visibility: "PRIVATE",
+    idempotencyKey: expect.any(String),
+  }));
   expect(mocks.create.mock.calls[0]![0].idempotencyKey).toBe(mocks.create.mock.calls[1]![0].idempotencyKey);
   expect(container.querySelector("output")?.textContent).toBe("/projects/new-project?tab=papers&welcome=1");
 });

@@ -99,13 +99,13 @@ export async function featuredWorkOptions(userId: string, kind: AcademicFeatured
   const user = await db.user.findUnique({ where: whereId(userId), select: { id: true } });
   if (!user) throw AppError.unauthorized();
   const memberships = await db.projectMember.findMany({ where: { userId: user.id, status: "ACTIVE" }, select: { projectId: true } });
-  const owned = await db.project.findMany({ where: { ownerId: user.id }, select: { id: true } });
+  const owned = await db.project.findMany({ where: { ownerId: user.id, deletedAt: null }, select: { id: true } });
   const projectIds = [...new Set([...owned.map(item => item.id), ...memberships.map(item => item.projectId)])];
   const title = q ? { contains: q, mode: "insensitive" as const } : undefined;
   const base = { take: 10, orderBy: { updatedAt: "desc" as const } };
   let works: AcademicFeaturedWorkInput[] = [];
   if (kind === "PAPER") works = (await db.paper.findMany({ where: { ...(title ? { title } : {}), OR: [{ dataStatus: "active" }, { requestedById: user.id }, { uploadedById: user.id }] }, take: 10, orderBy: { updatedAt: "desc" }, select: { id: true } })).map(item => ({ kind, paperId: item.id, source: "LUMIGAP" }));
-  if (kind === "PROJECT") works = (await db.project.findMany({ ...base, where: { ...(title ? { title } : {}), OR: [{ id: { in: projectIds } }, { visibility: { in: ["PUBLIC", "PUBLIC_SUMMARY"] } }] }, select: { id: true } })).map(item => ({ kind, projectId: item.id, source: "LUMIGAP" }));
+  if (kind === "PROJECT") works = (await db.project.findMany({ ...base, where: { deletedAt: null, ...(title ? { title } : {}), OR: [{ id: { in: projectIds } }, { visibility: { in: ["PUBLIC", "PUBLIC_SUMMARY"] } }] }, select: { id: true } })).map(item => ({ kind, projectId: item.id, source: "LUMIGAP" }));
   if (kind === "RESEARCH_PROPOSAL" || kind === "RESEARCH_ARTIFACT") {
     const authors = await db.submissionAuthor.findMany({ where: { userId: user.id }, select: { submissionId: true } });
     works = (await db.submission.findMany({ ...base, where: { ...(title ? { title } : {}), ...(kind === "RESEARCH_PROPOSAL" ? { submissionType: "RESEARCH_PROPOSAL" } : {}), OR: [{ projectId: { in: projectIds } }, { id: { in: authors.map(item => item.submissionId) } }] }, select: { id: true } })).map(item => ({ kind, submissionId: item.id, source: "LUMIGAP" }));

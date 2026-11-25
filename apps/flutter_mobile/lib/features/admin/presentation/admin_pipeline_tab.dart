@@ -30,7 +30,7 @@ class AdminPipelineTab extends ConsumerWidget {
                   child: Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(16),
                       side: BorderSide(color: theme.dividerColor),
                     ),
                     child: Padding(
@@ -47,7 +47,7 @@ class AdminPipelineTab extends ConsumerWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(context.t('Redis Database'), style: context.type.bodySmall!.copyWith( color: context.lumi.muted)),
+                                Text(context.t('Redis database'), style: context.type.bodySmall!.copyWith( color: context.lumi.muted)),
                                 Text(status.redisOk ? context.t('Connected') : context.t('Offline'), style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600,)),
                               ],
                             ),
@@ -62,7 +62,7 @@ class AdminPipelineTab extends ConsumerWidget {
                   child: Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(16),
                       side: BorderSide(color: theme.dividerColor),
                     ),
                     child: Padding(
@@ -75,7 +75,7 @@ class AdminPipelineTab extends ConsumerWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(context.t('Active Workers'), style: context.type.bodySmall!.copyWith( color: context.lumi.muted)),
+                                Text(context.t('Active workers'), style: context.type.bodySmall!.copyWith( color: context.lumi.muted)),
                                 Text('${status.workers.alive} / ${status.workers.expected}', style: context.type.bodySmall!.copyWith(fontWeight: FontWeight.w600,)),
                               ],
                             ),
@@ -89,14 +89,14 @@ class AdminPipelineTab extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
 
-            Text(context.t('Queue Worker Backlogs'), style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,)),
+            Text(context.t('Queue worker backlogs'), style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,)),
             const SizedBox(height: 10),
             ...status.queues.map((q) {
               return Card(
                 elevation: 0,
                 margin: const EdgeInsets.only(bottom: 8),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(16),
                   side: BorderSide(color: theme.dividerColor),
                 ),
                 child: ListTile(
@@ -128,7 +128,7 @@ class AdminPipelineTab extends ConsumerWidget {
             const SizedBox(height: 20),
 
             if (status.recommendations.isNotEmpty) ...[
-              Text(context.t('Pipeline Diagnostics'), style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,)),
+              Text(context.t('Pipeline diagnostics'), style: context.type.bodyMedium!.copyWith(fontWeight: FontWeight.w600,)),
               const SizedBox(height: 10),
               ...status.recommendations.map((rec) {
                 final color = rec.severity == 'critical'
