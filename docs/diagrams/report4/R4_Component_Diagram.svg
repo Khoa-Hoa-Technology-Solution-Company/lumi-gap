@@ -1,112 +1,118 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1480" height="800" viewBox="0 0 1480 800" font-family="Arial">
-<rect width="1480" height="800" fill="white"/>
-<text x="740.0" y="40" font-size="24" font-weight="bold" text-anchor="middle">LumiGap: UML component diagram (runtime blocks)</text>
-<rect x="40" y="100" width="300" height="120" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.8"/>
-<rect x="310" y="110" width="18" height="22" fill="white" stroke="#2E75B6"/>
-<rect x="305" y="114" width="10" height="5" fill="white" stroke="#2E75B6"/><rect x="305" y="123" width="10" height="5" fill="white" stroke="#2E75B6"/>
-<text x="190.0" y="124.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«component»</text>
-<text x="190.0" y="147.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Web client (SPA)</text>
-<text x="190.0" y="162.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">React 18, Vite; served by nginx</text>
-<rect x="40" y="330" width="300" height="120" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.8"/>
-<rect x="310" y="340" width="18" height="22" fill="white" stroke="#2E75B6"/>
-<rect x="305" y="344" width="10" height="5" fill="white" stroke="#2E75B6"/><rect x="305" y="353" width="10" height="5" fill="white" stroke="#2E75B6"/>
-<text x="190.0" y="354.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«component»</text>
-<text x="190.0" y="377.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Mobile app</text>
-<text x="190.0" y="392.4" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">Flutter (Dart), Riverpod, go_router,</text>
-<text x="190.0" y="407.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">Dio; Android and iOS</text>
-<rect x="560" y="90" width="380" height="130" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.8"/>
-<rect x="910" y="100" width="18" height="22" fill="white" stroke="#2E75B6"/>
-<rect x="905" y="104" width="10" height="5" fill="white" stroke="#2E75B6"/><rect x="905" y="113" width="10" height="5" fill="white" stroke="#2E75B6"/>
-<text x="750.0" y="114.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«component»</text>
-<text x="750.0" y="137.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">REST API</text>
-<text x="750.0" y="152.6" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">Express 5, /api/v1: auth, validation,</text>
-<text x="750.0" y="167.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">business services, Prisma; ws + Yjs</text>
-<text x="750.0" y="181.8" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">collaboration gateway</text>
-<rect x="560" y="330" width="380" height="130" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.8"/>
-<rect x="910" y="340" width="18" height="22" fill="white" stroke="#2E75B6"/>
-<rect x="905" y="344" width="10" height="5" fill="white" stroke="#2E75B6"/><rect x="905" y="353" width="10" height="5" fill="white" stroke="#2E75B6"/>
-<text x="750.0" y="354.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«component»</text>
-<text x="750.0" y="377.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Background workers</text>
-<text x="750.0" y="392.6" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">13 BullMQ worker processes: report,</text>
-<text x="750.0" y="407.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">gaps, ai-jobs, embedding, sync,</text>
-<text x="750.0" y="421.8" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">ingest, notifications, ...</text>
-<rect x="1090" y="90" width="350" height="150" fill="#F5F5F5" stroke="#666" stroke-width="1.8"/>
-<rect x="1410" y="100" width="18" height="22" fill="white" stroke="#666"/>
-<rect x="1405" y="104" width="10" height="5" fill="white" stroke="#666"/><rect x="1405" y="113" width="10" height="5" fill="white" stroke="#666"/>
-<text x="1265.0" y="114.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«external»</text>
-<text x="1265.0" y="137.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">External services</text>
-<text x="1265.0" y="152.7" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">LLM providers (Gemini, Ollama,</text>
-<text x="1265.0" y="167.4" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">user keys), OpenAlex, PayOS,</text>
-<text x="1265.0" y="182.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">Google OIDC, ORCID, SMTP,</text>
-<text x="1265.0" y="196.7" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">GitHub, LibreTranslate</text>
-<rect x="1090" y="310" width="350" height="100" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.8"/>
-<rect x="1410" y="320" width="18" height="22" fill="white" stroke="#2E75B6"/>
-<rect x="1405" y="324" width="10" height="5" fill="white" stroke="#2E75B6"/><rect x="1405" y="333" width="10" height="5" fill="white" stroke="#2E75B6"/>
-<text x="1265.0" y="334.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«component»</text>
-<text x="1265.0" y="357.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">AI reviewer service</text>
-<text x="1265.0" y="372.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">Python 3.12, FastAPI; SQLite</text>
-<rect x="1090" y="450" width="350" height="90" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.8"/>
-<rect x="1410" y="460" width="18" height="22" fill="white" stroke="#2E75B6"/>
-<rect x="1405" y="464" width="10" height="5" fill="white" stroke="#2E75B6"/><rect x="1405" y="473" width="10" height="5" fill="white" stroke="#2E75B6"/>
-<text x="1265.0" y="474.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«component»</text>
-<text x="1265.0" y="497.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">LaTeX compiler</text>
-<text x="1265.0" y="512.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">sandboxed compile service</text>
-<rect x="250" y="620" width="330" height="110" fill="#FFF4E5" stroke="#C55A11" stroke-width="1.8"/>
-<rect x="550" y="630" width="18" height="22" fill="white" stroke="#C55A11"/>
-<rect x="545" y="634" width="10" height="5" fill="white" stroke="#C55A11"/><rect x="545" y="643" width="10" height="5" fill="white" stroke="#C55A11"/>
-<text x="415.0" y="644.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«database»</text>
-<text x="415.0" y="667.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">PostgreSQL 16 + pgvector</text>
-<text x="415.0" y="682.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">system of record, vector search</text>
-<rect x="660" y="620" width="300" height="110" fill="#FFF4E5" stroke="#C55A11" stroke-width="1.8"/>
-<rect x="930" y="630" width="18" height="22" fill="white" stroke="#C55A11"/>
-<rect x="925" y="634" width="10" height="5" fill="white" stroke="#C55A11"/><rect x="925" y="643" width="10" height="5" fill="white" stroke="#C55A11"/>
-<text x="810.0" y="644.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«datastore»</text>
-<text x="810.0" y="667.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Redis 7</text>
-<text x="810.0" y="682.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">BullMQ queues, cache, heartbeats</text>
-<rect x="1040" y="620" width="320" height="110" fill="#FFF4E5" stroke="#C55A11" stroke-width="1.8"/>
-<rect x="1330" y="630" width="18" height="22" fill="white" stroke="#C55A11"/>
-<rect x="1325" y="634" width="10" height="5" fill="white" stroke="#C55A11"/><rect x="1325" y="643" width="10" height="5" fill="white" stroke="#C55A11"/>
-<text x="1200.0" y="644.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«datastore»</text>
-<text x="1200.0" y="667.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">File storage</text>
-<text x="1200.0" y="682.4" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">local volume, R2 (S3 API) or</text>
-<text x="1200.0" y="697.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">Cloudinary</text>
-<polyline points="340.0,135.0 560.0,135.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
-<polygon points="560.0,135.0 547.0,129.0 547.0,141.0" fill="#44546A"/>
-<text x="450.0" y="126.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTPS JSON, sync</text>
-<polyline points="340.0,190.0 560.0,190.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
-<polygon points="560.0,190.0 547.0,184.0 547.0,196.0" fill="#44546A"/>
-<text x="450.0" y="181.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">WSS Yjs updates, async</text>
-<polyline points="340.0,390.0 470.0,390.0 470.0,212.0 560.0,212.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
-<polygon points="560.0,212.0 547.0,206.0 547.0,218.0" fill="#44546A"/>
-<text x="405.0" y="381.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTPS JSON + SSE</text>
-<polyline points="940.0,130.0 1090.0,130.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
-<polygon points="1090.0,130.0 1077.0,124.0 1077.0,136.0" fill="#44546A"/>
-<text x="1015.0" y="122.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTPS, sync</text>
-<polyline points="940.0,175.0 1050.0,175.0 1050.0,345.0 1090.0,345.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
-<polygon points="1090.0,345.0 1077.0,339.0 1077.0,351.0" fill="#44546A"/>
-<text x="1150.0" y="281.9" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTP + X-Internal-Key</text>
-<text x="1150.0" y="296.5" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">(review, format), sync</text>
-<polyline points="940.0,380.0 1090.0,380.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
-<polygon points="1090.0,380.0 1077.0,374.0 1077.0,386.0" fill="#44546A"/>
-<text x="1015.0" y="372.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTP pre-review</text>
-<polyline points="940.0,440.0 1060.0,440.0 1060.0,495.0 1090.0,495.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
-<polygon points="1090.0,495.0 1077.0,489.0 1077.0,501.0" fill="#44546A"/>
-<text x="1000.0" y="432.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTP compile</text>
-<polyline points="900.0,330.0 900.0,275.0 1265.0,275.0 1265.0,240.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
-<polygon points="1265.0,240.0 1259.0,253.0 1271.0,253.0" fill="#44546A"/>
-<text x="1150.0" y="267.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTPS (LLM, OpenAlex, SMTP)</text>
-<polyline points="560.0,200.0 510.0,200.0 510.0,580.0 415.0,580.0 415.0,620.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
-<polygon points="415.0,620.0 421.0,607.0 409.0,607.0" fill="#44546A"/>
-<text x="420.0" y="571.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">SQL (Prisma), sync</text>
-<polyline points="560.0,420.0 510.0,420.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
-<polyline points="940.0,210.0 985.0,210.0 985.0,590.0 860.0,590.0 860.0,620.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
-<polygon points="860.0,620.0 866.0,607.0 854.0,607.0" fill="#44546A"/>
-<text x="905.0" y="582.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">enqueue jobs, async</text>
-<polyline points="760.0,460.0 760.0,620.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
-<polygon points="760.0,620.0 766.0,607.0 754.0,607.0" fill="#44546A"/>
-<text x="810.0" y="544.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">consume jobs</text>
-<polyline points="940.0,215.0 1015.0,215.0 1015.0,600.0 1200.0,600.0 1200.0,620.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
-<polygon points="1200.0,620.0 1206.0,607.0 1194.0,607.0" fill="#44546A"/>
-<text x="1110.0" y="592.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">files (S3 API)</text>
-<text x="40.0" y="779.5" font-size="13" text-anchor="start" font-weight="normal" fill="#555">Arrows point from the caller. sync = request/response; async = queued job or event stream. Source: code on main 40b22ffc (docker-compose.yml, apps/*).</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1640" height="900" viewBox="0 0 1640 900" font-family="Arial">
+<rect width="1640" height="900" fill="white"/>
+<text x="820.0" y="40" font-size="24" font-weight="bold" text-anchor="middle">LumiGap: UML component diagram (runtime blocks)</text>
+<rect x="40" y="70" width="300" height="110" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.8"/>
+<rect x="310" y="80" width="18" height="22" fill="white" stroke="#2E75B6"/>
+<rect x="305" y="84" width="10" height="5" fill="white" stroke="#2E75B6"/><rect x="305" y="93" width="10" height="5" fill="white" stroke="#2E75B6"/>
+<text x="190.0" y="94.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«component»</text>
+<text x="190.0" y="117.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Web client (SPA)</text>
+<text x="190.0" y="132.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">React 18, Vite; served by nginx</text>
+<rect x="40" y="195" width="300" height="100" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.8"/>
+<rect x="310" y="205" width="18" height="22" fill="white" stroke="#2E75B6"/>
+<rect x="305" y="209" width="10" height="5" fill="white" stroke="#2E75B6"/><rect x="305" y="218" width="10" height="5" fill="white" stroke="#2E75B6"/>
+<text x="190.0" y="219.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«component»</text>
+<text x="190.0" y="242.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Mobile app</text>
+<text x="190.0" y="257.4" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">Flutter (Dart), Riverpod, go_router,</text>
+<text x="190.0" y="272.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">Dio; Android and iOS</text>
+<rect x="560" y="70" width="480" height="190" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.8"/>
+<rect x="1010" y="80" width="18" height="22" fill="white" stroke="#2E75B6"/>
+<rect x="1005" y="84" width="10" height="5" fill="white" stroke="#2E75B6"/><rect x="1005" y="93" width="10" height="5" fill="white" stroke="#2E75B6"/>
+<text x="800.0" y="94.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«component»</text>
+<text x="800.0" y="117.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">REST API</text>
+<text x="800.0" y="132.6" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">Express 5, /api/v1: auth, validation,</text>
+<text x="800.0" y="147.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">business services, Prisma;</text>
+<text x="800.0" y="161.8" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">ws + Yjs collaboration gateway</text>
+<rect x="560" y="700" width="480" height="130" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.8"/>
+<rect x="1010" y="710" width="18" height="22" fill="white" stroke="#2E75B6"/>
+<rect x="1005" y="714" width="10" height="5" fill="white" stroke="#2E75B6"/><rect x="1005" y="723" width="10" height="5" fill="white" stroke="#2E75B6"/>
+<text x="800.0" y="724.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«component»</text>
+<text x="800.0" y="747.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Background workers</text>
+<text x="800.0" y="762.6" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">13 BullMQ worker processes: report, gaps,</text>
+<text x="800.0" y="777.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">ai-jobs, embedding, sync, ingest,</text>
+<text x="800.0" y="791.8" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">notifications, ...</text>
+<rect x="50" y="420" width="240" height="130" fill="#FFF4E5" stroke="#C55A11" stroke-width="1.8"/>
+<rect x="260" y="430" width="18" height="22" fill="white" stroke="#C55A11"/>
+<rect x="255" y="434" width="10" height="5" fill="white" stroke="#C55A11"/><rect x="255" y="443" width="10" height="5" fill="white" stroke="#C55A11"/>
+<text x="170.0" y="444.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«database»</text>
+<text x="170.0" y="467.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">PostgreSQL 16 + pgvector</text>
+<text x="170.0" y="482.4" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">system of record,</text>
+<text x="170.0" y="497.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">vector search</text>
+<rect x="312" y="420" width="240" height="130" fill="#FFF4E5" stroke="#C55A11" stroke-width="1.8"/>
+<rect x="522" y="430" width="18" height="22" fill="white" stroke="#C55A11"/>
+<rect x="517" y="434" width="10" height="5" fill="white" stroke="#C55A11"/><rect x="517" y="443" width="10" height="5" fill="white" stroke="#C55A11"/>
+<text x="432.0" y="444.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«datastore»</text>
+<text x="432.0" y="467.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">Redis 7</text>
+<text x="432.0" y="482.4" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">BullMQ queues, cache,</text>
+<text x="432.0" y="497.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">heartbeats</text>
+<rect x="574" y="420" width="240" height="130" fill="#FFF4E5" stroke="#C55A11" stroke-width="1.8"/>
+<rect x="784" y="430" width="18" height="22" fill="white" stroke="#C55A11"/>
+<rect x="779" y="434" width="10" height="5" fill="white" stroke="#C55A11"/><rect x="779" y="443" width="10" height="5" fill="white" stroke="#C55A11"/>
+<text x="694.0" y="444.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«datastore»</text>
+<text x="694.0" y="467.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">File storage</text>
+<text x="694.0" y="482.4" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">local volume, R2 (S3 API)</text>
+<text x="694.0" y="497.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">or Cloudinary</text>
+<rect x="836" y="420" width="240" height="130" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.8"/>
+<rect x="1046" y="430" width="18" height="22" fill="white" stroke="#2E75B6"/>
+<rect x="1041" y="434" width="10" height="5" fill="white" stroke="#2E75B6"/><rect x="1041" y="443" width="10" height="5" fill="white" stroke="#2E75B6"/>
+<text x="956.0" y="444.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«component»</text>
+<text x="956.0" y="467.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">AI reviewer service</text>
+<text x="956.0" y="482.4" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">Python 3.12, FastAPI;</text>
+<text x="956.0" y="497.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">SQLite</text>
+<rect x="1098" y="420" width="240" height="130" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.8"/>
+<rect x="1308" y="430" width="18" height="22" fill="white" stroke="#2E75B6"/>
+<rect x="1303" y="434" width="10" height="5" fill="white" stroke="#2E75B6"/><rect x="1303" y="443" width="10" height="5" fill="white" stroke="#2E75B6"/>
+<text x="1218.0" y="444.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«component»</text>
+<text x="1218.0" y="467.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">LaTeX compiler</text>
+<text x="1218.0" y="482.4" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">sandboxed compile</text>
+<text x="1218.0" y="497.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">service</text>
+<rect x="1360" y="420" width="240" height="130" fill="#F5F5F5" stroke="#666" stroke-width="1.8"/>
+<rect x="1570" y="430" width="18" height="22" fill="white" stroke="#666"/>
+<rect x="1565" y="434" width="10" height="5" fill="white" stroke="#666"/><rect x="1565" y="443" width="10" height="5" fill="white" stroke="#666"/>
+<text x="1480.0" y="444.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#555">«external»</text>
+<text x="1480.0" y="467.2" font-size="15" text-anchor="middle" font-weight="bold" fill="#1A1A1A">External services</text>
+<text x="1480.0" y="482.7" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">LLM providers (Gemini, Ollama,</text>
+<text x="1480.0" y="497.4" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">user keys), OpenAlex, PayOS,</text>
+<text x="1480.0" y="512.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">Google OIDC, ORCID, SMTP,</text>
+<text x="1480.0" y="526.7" font-size="12" text-anchor="middle" font-weight="normal" fill="#333">GitHub, LibreTranslate</text>
+<polyline points="340.0,105.0 560.0,105.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="560.0,105.0 547.0,99.0 547.0,111.0" fill="#44546A"/>
+<text x="450.0" y="96.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTPS JSON, sync</text>
+<polyline points="340.0,155.0 560.0,155.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="560.0,155.0 547.0,149.0 547.0,161.0" fill="#44546A"/>
+<text x="450.0" y="146.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">WSS Yjs updates, async</text>
+<polyline points="340.0,245.0 560.0,245.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="560.0,245.0 547.0,239.0 547.0,251.0" fill="#44546A"/>
+<text x="450.0" y="236.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTPS JSON + SSE</text>
+<polyline points="600.0,260.0 600.0,310.0 170.0,310.0 170.0,420.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="170.0,420.0 176.0,407.0 164.0,407.0" fill="#44546A"/>
+<text x="245.0" y="332.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">SQL (Prisma), sync</text>
+<polyline points="640.0,260.0 640.0,350.0 432.0,350.0 432.0,420.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="432.0,420.0 438.0,407.0 426.0,407.0" fill="#44546A"/>
+<text x="517.0" y="342.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">enqueue jobs, async</text>
+<polyline points="694.0,260.0 694.0,420.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="694.0,420.0 700.0,407.0 688.0,407.0" fill="#44546A"/>
+<text x="746.0" y="399.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">files (S3 API)</text>
+<polyline points="956.0,260.0 956.0,420.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="956.0,420.0 962.0,407.0 950.0,407.0" fill="#44546A"/>
+<text x="1038.0" y="376.9" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTP + X-Internal-Key</text>
+<text x="1038.0" y="391.5" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">(review, format), sync</text>
+<polyline points="1040.0,110.0 1480.0,110.0 1480.0,420.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="1480.0,420.0 1486.0,407.0 1474.0,407.0" fill="#44546A"/>
+<text x="1290.0" y="101.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTPS (LLM, OpenAlex, PayOS, OIDC), sync</text>
+<polyline points="560.0,790.0 170.0,790.0 170.0,550.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="170.0,550.0 164.0,563.0 176.0,563.0" fill="#44546A"/>
+<text x="220.0" y="614.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">SQL (Prisma)</text>
+<polyline points="600.0,700.0 600.0,620.0 432.0,620.0 432.0,550.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="432.0,550.0 426.0,563.0 438.0,563.0" fill="#44546A"/>
+<text x="487.0" y="594.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">consume jobs</text>
+<polyline points="956.0,700.0 956.0,550.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="956.0,550.0 950.0,563.0 962.0,563.0" fill="#44546A"/>
+<text x="898.0" y="664.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTP pre-review</text>
+<polyline points="1010.0,700.0 1010.0,620.0 1218.0,620.0 1218.0,550.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="1218.0,550.0 1212.0,563.0 1224.0,563.0" fill="#44546A"/>
+<text x="1270.0" y="594.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTP compile</text>
+<polyline points="1040.0,790.0 1480.0,790.0 1480.0,550.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
+<polygon points="1480.0,550.0 1474.0,563.0 1486.0,563.0" fill="#44546A"/>
+<text x="1375.0" y="614.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTPS (LLM, OpenAlex, SMTP)</text>
+<text x="40.0" y="874.5" font-size="13" text-anchor="start" font-weight="normal" fill="#555">Arrows point from the caller. sync = request/response; async = queued job or event stream. Source: code on main 40b22ffc (docker-compose.yml, apps/*).</text>
 </svg>
