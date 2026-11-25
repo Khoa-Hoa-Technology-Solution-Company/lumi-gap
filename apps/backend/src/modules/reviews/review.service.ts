@@ -308,6 +308,7 @@ export const reviewService = {
     const authorLinks = request?.origin === "MENTOR_GUIDANCE" ? await prisma.submissionAuthor.findMany({ where: { submissionId: submission.id }, orderBy: { position: "asc" }, select: { userId: true } }) : [];
     const authorPeople = authorLinks.length ? await prisma.user.findMany({ where: { id: { in: authorLinks.map(row => row.userId) } }, select: { id: true, fullName: true } }) : [];
     return {
+      previousReviews: reviews.filter(item => item.status === "SUBMITTED" && item.revisionId !== pinnedRevisionId).map(item => ({ id: item.id, roundNumber: item.roundNumber, revisionId: item.revisionId, revisionNumber: previousVersions.find(version => version.id === item.revisionId)?.revisionNumber, overallComment: item.overallComment ?? undefined, overallAssessment: item.overallAssessment ?? undefined, recommendation: item.recommendation ?? undefined, weightedScore: item.weightedScore ?? undefined, submittedAt: item.submittedAt?.toISOString() })),
       assignment: { ...assignment, id: publicDatabaseId(assignment), submissionId: submissionDto(submission) },
       request: request ? { id: publicDatabaseId(request), origin: request.origin, status: request.status, message: request.message, dueAt: request.dueAt } : undefined,
       review, responses: review ? await prisma.reviewResponse.findMany({ where: { reviewId: review.id } }) : [],

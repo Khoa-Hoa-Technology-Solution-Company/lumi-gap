@@ -205,17 +205,25 @@ export interface ReviewCriterionResponseInput {
   notApplicable?: boolean;
 }
 
+export type FeedbackItemPriority = "MAJOR" | "MINOR" | "SUGGESTION";
+
 export interface RequiredRevisionInput {
-  priority: "MINOR" | "MAJOR";
+  priority: FeedbackItemPriority;
   description: string;
   criterionKey?: string;
   locator?: string;
   quotation?: string;
 }
 
+export type MentorFeedbackAction = "CONTINUE" | "SELF_REVISE" | "RESUBMIT";
+
 export interface AcademicReviewInput {
   /** Submit mentor comments without a readiness assessment or requested changes. */
   commentOnly?: boolean;
+  /** Mentor guidance feedback-first mode: allows overall comment + prioritized items without requiring full rubric scoring. */
+  feedbackOnly?: boolean;
+  /** Mentor next-step recommendation when using feedback-first mode. */
+  mentorAction?: MentorFeedbackAction;
   clientKey?: string;
   integrityChecks?: Record<string, { status: "CHECKED" | "CONCERN" | "NOT_APPLICABLE"; note?: string }>;
   expectedRevisionId?: string;

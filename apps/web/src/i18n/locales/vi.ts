@@ -2,6 +2,7 @@ import { mentorSharingVi } from "./mentor-sharing";
 import { submissionDetailVi } from "./submission-detail";
 import { registrationVi } from "./registration";
 import { mentorWorkspaceVi } from "./mentor-workspace";
+import { mentorLifecycleVi } from "./mentor-lifecycle";
 import { scientificReviewVi } from "./scientific-review";
 import { mentorJourneyVi } from "./mentor-journey";
 import { academicConnectionsVi } from "./academic-connections";
@@ -53,6 +54,7 @@ export const vi: Record<keyof typeof en, string> = {
   ...registrationVi,
   ...en,
   ...mentorWorkspaceVi,
+  ...mentorLifecycleVi,
   ...personalizationViStrings,
   ...qualityEvaluationVi,
   ...adminCatalogVi,

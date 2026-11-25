@@ -1,6 +1,6 @@
 import { MentorSharedResourceInbox } from "@/features/projects/components/mentor-paper-sharing";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -33,7 +33,7 @@ import { cn } from "@/utils/cn";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import "@/features/projects/mentor-workspace-shell.css";
-import { mentorWorkspaceDestination } from "@/features/projects/utils/mentor-workspace-navigation";
+import { readMentorWorkFilters, writeMentorWorkFilters, mentorWorkspaceDestination, researchProjectDirectoryDestination } from "@/features/projects/utils/mentor-workspace-navigation";
 import { canLeaveWorkspace } from "@/features/projects/components/workspace-common";
 
 const EmbeddedAcademicSupport = lazy(() => import("./academic-support").then(m => ({ default: m.AcademicSupportPage })));
@@ -271,6 +271,13 @@ function MentorProjects({
 }
 
 export function MentorWorkspacePage() {
+  const [params] = useSearchParams();
+  const location = useLocation();
+  if (params.get("view") === "research-projects") return <Navigate to={researchProjectDirectoryDestination(params, location.hash)} replace />;
+  return <MentorWorkspaceContent />;
+}
+
+function MentorWorkspaceContent() {
   const { t } = useI18n();
   const [collapsed, toggleCollapse] = useSidebarCollapse();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -329,7 +336,8 @@ export function MentorWorkspacePage() {
     if (contentScrollRef.current) contentScrollRef.current.scrollTop = 0;
   }, [view]);
 
-  const [filters, setFilters] = useState<MentorWorkQuery>({ page: 1, status: "ACTIONABLE", sort: "priority" });
+  const filters = readMentorWorkFilters(params);
+  const setFilters = (next: MentorWorkQuery) => setParams(current => writeMentorWorkFilters(current, next));
   const [projectSearch, setProjectSearch] = useState("");
   const [projectPage, setProjectPage] = useState(1);
 
@@ -364,9 +372,9 @@ export function MentorWorkspacePage() {
     setMobileOpen(false);
   };
 
-  const openWorkWithFilter = (patch: Partial<MentorWorkQuery>) => {
-    setFilters({ page: 1, sort: "priority", status: "ACTIONABLE", ...patch });
-    void navigate("work");
+  const openWorkWithFilter = async (patch: Partial<MentorWorkQuery>) => {
+    if (!(await canLeaveWorkspace())) return;
+    setParams(writeMentorWorkFilters(new URLSearchParams({ view: "work" }), { page: 1, sort: "priority", status: "ACTIONABLE", ...patch }));
   };
 
   if (profile.isLoading) {
@@ -413,7 +421,7 @@ export function MentorWorkspacePage() {
           activeWorkspace="mentor"
           collapsed={collapsed}
           onToggleCollapse={toggleCollapse}
-          activeMentorView={view}
+          activeMentorView={view === "research-projects" ? "projects" : view}
           onSelectMentorView={navigate}
           mentorMetrics={metrics}
           recentProjects={data?.projects}
@@ -440,7 +448,7 @@ export function MentorWorkspacePage() {
           >
             <AppSingleSidebar
               activeWorkspace="mentor"
-              activeMentorView={view}
+              activeMentorView={view === "research-projects" ? "projects" : view}
               onSelectMentorView={navigate}
               mentorMetrics={metrics}
               recentProjects={data?.projects}
@@ -537,7 +545,7 @@ export function MentorWorkspacePage() {
             <Suspense fallback={<MentorQueueLoading />}>
               {view === "research-projects" ? (
                 <EmbeddedProjects
-                  embedded
+                  compact
                   invitationsOnly={params.get("directory") === "invitations"}
                   trashOnly={params.get("directory") === "trash"}
                 />

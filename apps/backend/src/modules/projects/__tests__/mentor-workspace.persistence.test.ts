@@ -26,7 +26,7 @@ describe("mentor workspace routes and filters", () => {
     expect(mentorWorkHref({ ...row, status: "IN_PROGRESS" })).toBe("/reviews/assignment");
     expect(mentorWorkHref({ ...row, kind: "MENTOR_QUESTION" })).toBe("/projects/project?tab=tasks&discussion=request");
     expect(mentorWorkHref({ ...row, kind: "TASK" })).toBe("/projects/project?tab=tasks&workItem=TASK:request");
-    expect(mentorWorkHref({ ...row, kind: "TASK", resourceId: "shared-submission" })).toBe("/submissions/shared-submission");
+    expect(mentorWorkHref({ ...row, kind: "TASK", resourceId: "shared-submission" })).toBe("/projects/project?view=resources&resourceId=shared-submission");
   });
 });
 
@@ -61,6 +61,34 @@ describe.skipIf(!enabled).sequential("mentor workspace PostgreSQL projection and
     return { submission, revision, request, assignment, share };
   }
 
+  it("computes facets before status, item and pagination while respecting project, search and kind", async () => {
+    const f = await fixture(), other = await fixture(f.actor);
+    const todo = await task(f, { title: "Facet work to do" });
+    await task(f, { title: "Facet work in progress", status: "IN_PROGRESS" });
+    await task(f, { title: "Facet work blocked", status: "BLOCKED", blockedReason: "Waiting for the research protocol" });
+    await task(f, { title: "Facet work done", status: "DONE", completedAt: new Date(), completedById: f.actor });
+    await task(other, { title: "Facet work in another project" });
+    await task(f, { title: "Excluded search match" });
+    await review(f);
+    const scoped = await read(f.actor, { projectId: f.p.id, q: "Facet", kind: "TASK", pageSize: 1, status: "DONE" });
+    expect(scoped.meta.total).toBe(1);
+    expect(scoped.facets).toMatchObject({ ALL: 4, ACTIONABLE: 3, TODO: 1, IN_PROGRESS: 1, WAITING: 0, BLOCKED: 1, DONE: 1 });
+    const selected = await read(f.actor, { projectId: f.p.id, q: "Facet", kind: "TASK", item: `TASK:${todo.id}`, status: "ALL" });
+    expect(selected.items).toHaveLength(1); expect(selected.facets).toEqual(scoped.facets);
+    await db.project.update({ where: { id: f.p.id }, data: { status: "ARCHIVED" } });
+    const archived = await read(f.actor, { projectId: f.p.id, q: "Facet", kind: "TASK", status: "ALL" });
+    expect(archived.facets).toMatchObject({ ALL: 4, ACTIONABLE: 0, IN_PROGRESS: 1, DONE: 1, BLOCKED: 1 });
+    expect(archived.items.every(item => item.readOnly && !item.needsAction)).toBe(true);
+  });
+  it("includes revision requests in waiting and all, without treating them as completed", async () => {
+    const f = await fixture(), r = await review(f);
+    await db.reviewRequest.update({ where: { id: r.request.id }, data: { status: "REVISION_REQUESTED" } });
+    const waiting = await read(f.actor, { projectId: f.p.id, status: "WAITING" });
+    expect(waiting.items.map(item => item.sourceId)).toEqual([r.request.id]);
+    expect(waiting.facets).toMatchObject({ ALL: 1, WAITING: 1, DONE: 0, ACTIONABLE: 0 });
+    expect((await read(f.actor, { projectId: f.p.id, status: "ALL" })).items).toEqual(waiting.items);
+    expect((await read(f.actor, { projectId: f.p.id, status: "DONE" })).items).toEqual([]);
+  });
   it("aggregates multiple accepted teams, excludes member tasks, and paginates after global priority sorting", async () => {
     const f = await fixture(), other = await fixture(f.actor);
     const normal = await task(f), late = await task(other, { title: "Overdue assignment", dueAt: new Date(Date.now() - 3600000) });
@@ -147,7 +175,7 @@ describe.skipIf(!enabled).sequential("mentor workspace PostgreSQL projection and
     expect(result.items[0]).toMatchObject({ accessIssue: "MANUSCRIPT_NOT_SHARED", canContactTeam: false, action: "VIEW", href: `/projects/${f.p.id}?tab=tasks&workItem=TASK:${legacy.id}` });
     const share = await db.mentorResourceShare.create({ data: { accessId: f.access.id, projectId: f.p.id, kind: "SUBMISSION", resourceId: r.submission.id, sharedById: f.owner, title: "Shared exact manuscript", content: "Shared" } });
     result = await read(f.actor);
-    expect(result.items[0]).toMatchObject({ status: "TODO", blocked: false, href: `/submissions/${r.submission.id}` });
+    expect(result.items[0]).toMatchObject({ status: "TODO", blocked: false, href: `/projects/${f.p.id}?view=resources&resourceId=${r.submission.id}` });
     expect(result.items[0]).not.toHaveProperty("accessIssue");
     expect((await db.projectTask.findUniqueOrThrow({ where: { id: legacy.id } })).status).toBe("TODO");
     await db.mentorResourceShare.update({ where: { id: share.id }, data: { revokedAt: new Date() } });

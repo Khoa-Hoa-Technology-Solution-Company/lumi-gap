@@ -2,7 +2,7 @@ import type { ManuscriptReference } from "@trend/shared-types";
 
 const citations = () => /(\\[A-Za-z]*cite[A-Za-z]*\*?\s*(?:\[[^\]]*\]\s*){0,2}\{)([^}]+)\}/gi;
 
-export async function resolveWritingCitations(text: string, sources: ManuscriptReference[], references: ManuscriptReference[], insert: (id: string) => Promise<{ key: string }>): Promise<string> {
+export async function resolveWritingCitations(text: string, sources: ReadonlyArray<Pick<ManuscriptReference, "id" | "citationKey">>, references: ManuscriptReference[], insert: (id: string) => Promise<{ key: string }>): Promise<string> {
   const keys = [...new Set([...text.matchAll(citations())].flatMap(match => match[2]!.split(",").map(key => key.trim())))];
   const pending = keys.flatMap(key => {
     const expected = sources.find(source => source.citationKey === key);

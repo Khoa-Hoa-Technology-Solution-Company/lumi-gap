@@ -52,6 +52,7 @@ export * from "./taxonomy.js";
 export * from "./personalization.js";
 
 export * from "./scientific-review.js";
+export * from "./system-rubric-catalog.js";
 export * from "./research-introduction.js";
 export * from "./mentor-manuscript.js";
 export * from "./mentorship-application.js";

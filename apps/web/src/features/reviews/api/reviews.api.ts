@@ -4,6 +4,7 @@ import type {
   CreateReviewRequestInput,
   CreateReviewTemplateInput,
   ReviewAvailabilitySettings,
+  ReviewIntegrityEvidenceMap,
   ReviewOpportunity,
   ReviewRequestStatus,
   ResubmitReviewRequestInput,
@@ -33,6 +34,7 @@ export interface ReviewAssignmentSummary {
 }
 
 export interface ReviewCenterItem {
+  respondedAt?: string;
   origin?: string;
   mentorRelationshipActive?: boolean;
   id: string;
@@ -45,7 +47,7 @@ export interface ReviewCenterItem {
   requester: { id: string; fullName: string; avatarUrl?: string };
   reviewer: { id: string; fullName: string; avatarUrl?: string; institution?: string };
   assignment: { id: string; status: string; dueAt?: string };
-  artifact: { submissionId: string; title: string; type?: string; projectId: string; revisionId: string; revisionNumber: number; contentType: string; sourceReportId?: string };
+  artifact: { submissionId: string; title: string; type?: string; projectId: string; projectTitle?: string; revisionId: string; revisionNumber: number; contentType: string; sourceReportId?: string };
   latestReview?: { id: string; roundNumber: number; status: string; overallAssessment?: string; submittedAt?: string };
 }
 
@@ -60,6 +62,7 @@ export interface ReviewerCandidate {
 }
 
 export interface ReviewWorkspace {
+  projectTitle?: string;
   delivery?: { sentAt: string; authors: string[] };
   comparisonVersions?: import("@trend/shared-types").ResearchVersion[];
   assignment: ReviewAssignmentSummary;
@@ -71,13 +74,47 @@ export interface ReviewWorkspace {
     overallComment?: string; overallAssessment?: AcademicReviewInput["overallAssessment"]; weightedScore?: number;
   };
   responses: Array<{ criterionKey: string; comment: string; evidence?: string; assessment?: string; performanceLevelId?: string; score?: number; notApplicable: boolean }>;
-  requiredRevisions: Array<{ id: string; priority: "MINOR" | "MAJOR"; description: string; locator?: string; criterionKey?: string; quotation?: string; status: string; responses?: Array<{ submissionRevisionId: string; responseText: string; status: string }> }>;
+  requiredRevisions: Array<{ id: string; priority: "MAJOR" | "MINOR"; description: string; locator?: string; criterionKey?: string; quotation?: string; status: string; responses?: Array<{ submissionRevisionId: string; responseText: string; status: string }> }>;
   templateVersion?: ReviewTemplateVersionDetail;
   criteria: ReviewTemplateVersionDetail["criteria"];
   artifactContent?: string;
   artifactRevision?: { id: string; revisionNumber: number; contentType: string };
   manuscriptSource?: ManuscriptSourceVersionLink;
-  previousRevisionItems: Array<{ id: string; description: string; status: string; responses: Array<{ submissionRevisionId: string; responseText: string; status: string }> }>;
+  integrityEvidence?: ReviewIntegrityEvidenceMap;
+  previousReviews?: Array<{
+    id: string;
+    roundNumber: number;
+    revisionId: string;
+    revisionNumber?: number;
+    templateVersionId?: string;
+    overallComment?: string;
+    overallAssessment?: string;
+    recommendation?: string;
+    weightedScore?: number;
+    integrityChecks?: AcademicReviewInput["integrityChecks"];
+    responses?: Array<{
+      criterionKey: string;
+      comment: string;
+      evidence?: string;
+      assessment?: string;
+      performanceLevelId?: string;
+      score?: number;
+      notApplicable: boolean;
+    }>;
+    submittedAt?: string;
+  }>;
+  previousRevisionItems: Array<{
+    id: string;
+    reviewId?: string;
+    roundNumber?: number;
+    revisionId?: string;
+    revisionNumber?: number;
+    priority?: "MAJOR" | "MINOR" | "SUGGESTION";
+    locator?: string;
+    description: string;
+    status: string;
+    responses: Array<{ submissionRevisionId: string; responseText: string; status: string; createdAt?: string }>;
+  }>;
   roundNumber: number;
 }
 
@@ -86,10 +123,14 @@ export interface ReviewRequestDetail extends ReviewCenterItem {
   templateVersion: ReviewTemplateVersionDetail;
   artifactContent?: string;
   reviews: Array<{
+    assignmentId?: string; templateVersionId?: string;
+    artifactRevision?: { id: string; revisionNumber: number; contentType: string };
+    templateVersion?: ReviewTemplateVersionDetail;
     id: string; revisionId: string; weightedScore?: number | null; roundNumber: number; status: string; keyStrengths?: string; keyConcerns?: string; overallComment?: string;
+    recommendation?: string | null;
     integrityChecks?: AcademicReviewInput["integrityChecks"];
     overallAssessment?: string; submittedAt?: string; responses: ReviewWorkspace["responses"];
-    requiredRevisions: Array<{ id: string; priority: "MINOR" | "MAJOR"; description: string; locator?: string; criterionKey?: string; quotation?: string; status: string; responses?: Array<{ submissionRevisionId: string; responseText: string; status: string }> }>;
+    requiredRevisions: Array<{ id: string; priority: "MAJOR" | "MINOR" | "SUGGESTION"; description: string; locator?: string; criterionKey?: string; quotation?: string; status: string; responses?: Array<{ submissionRevisionId: string; responseText: string; status: string }> }>;
   }>;
 }
 

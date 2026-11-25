@@ -9,6 +9,7 @@ import { MentorWorkQueue, MentorWorkRows } from "../components/mentor-work-queue
 import { MentorProjectTasks } from "../components/mentor-project-tasks";
 import { MentorWorkspacePage } from "@/pages/academics/mentor-workspace";
 import { mentorWorkspaceEn } from "@/i18n/locales/mentor-workspace";
+import { mentorLifecycleEn } from "@/i18n/locales/mentor-lifecycle";
 import { vi as vietnameseDictionary } from "@/i18n/locales/vi";
 import { mentorWorkspaceDestination } from "../utils/mentor-workspace-navigation";
 
@@ -17,7 +18,7 @@ vi.mock("../api/mentor-workspace.api", () => ({ mentorWorkspaceApi: { read: mock
 vi.mock("@/features/academic-profile/hooks/use-academic-profile", () => ({ useAcademicProfile: () => mocks.profile }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (v: unknown) => unknown) => select({ user: { id: mocks.actor } }) }));
 vi.mock("@/i18n", () => ({ LanguageSwitcher: () => null, useI18n: () => ({ language: "en", t: (key: string, values: Record<string, string | number> = {}) => {
-  let result = mentorWorkspaceEn[key as keyof typeof mentorWorkspaceEn] ?? key;
+  let result = ({ ...mentorWorkspaceEn, ...mentorLifecycleEn } as Record<string, string>)[key] ?? key;
   for (const [name, value] of Object.entries(values)) result = result.replaceAll(`{{${name}}}`, String(value));
   return result;
 } }) }));
@@ -174,7 +175,7 @@ it("does not present a previous filtered queue as the overview while its own req
   mocks.read.mockImplementation(() => new Promise(() => undefined));
   await act(async () => host.querySelector<HTMLButtonElement>('.mentor-shell-sidebar button[aria-label="Overview"]')!.click());
   expect(host.querySelector(".mentor-shell-content")?.textContent).not.toContain("Actual pinned manuscript");
-  expect(host.querySelector('.mentor-queue-loading[role="status"]')).not.toBeNull();
+  expect(host.querySelector('.mentor-shell-content [role="status"]')).not.toBeNull();
 });
 it.each([
   ["incoming", "Existing support screen: true"],
@@ -270,6 +271,33 @@ it("opens a selected manual task with its original description and only its scop
   await mount(<MentorProjectTasks projectId="project" />, "/projects/project?tab=tasks&workItem=TASK:task-id");
   expect(mocks.read).toHaveBeenCalledWith(expect.objectContaining({ item: "TASK:task-id", status: "ALL", projectId: "project" }));
   expect(host.textContent).toContain("Please assess our methods");
+});
+it("reads a selected task from page one while retaining the queue's later page in its URL", async () => {
+  data.items[0]!.kind = "TASK"; data.items[0]!.id = "TASK:task-id";
+  await mount(<MentorProjectTasks projectId="project" />, "/mentor-workspace?view=project&projectId=project&tab=tasks&workPage=3&workItem=TASK:task-id");
+  expect(mocks.read).toHaveBeenCalledWith(expect.objectContaining({ page: 1, item: "TASK:task-id", status: "ALL", projectId: "project" }));
+  expect(host.textContent).toContain("Please assess our methods");
+});
+it("uses server facets for all five tabs and preserves filters when opening waiting work", async () => {
+  data.facets = { ACTIONABLE: 2, IN_PROGRESS: 1, WAITING: 4, DONE: 5, ALL: 11, TODO: 1, BLOCKED: 0, OVERDUE: 0 };
+  data.items[0]!.status = "WAITING"; data.items[0]!.href = "/review-requests/request";
+  await mount(queue(vi.fn(), { query: { page: 2, status: "WAITING", q: "study", kind: "REVIEW" } }), "/mentor-workspace?view=work&workPage=2&workStatus=WAITING&workQ=study&workKind=REVIEW");
+  expect([...host.querySelectorAll('[role="tab"] span')].map(count => count.textContent)).toEqual(["2", "1", "4", "5", "11"]);
+  const link = [...host.querySelectorAll<HTMLAnchorElement>("a")].find(link => link.textContent?.includes("Track revisions"))!;
+  const target = new URL(link.href);
+  const back = new URL(target.searchParams.get("returnTo")!, "http://localhost");
+  expect(Object.fromEntries(back.searchParams)).toMatchObject({ view: "work", workPage: "2", workStatus: "WAITING", workQ: "study", workKind: "REVIEW" });
+});
+it("offers the waiting queue from an actionable empty state and hides counts on API failure", async () => {
+  data.items = []; data.facets = { ACTIONABLE: 0, IN_PROGRESS: 0, WAITING: 2, DONE: 0, ALL: 2, TODO: 0, BLOCKED: 0, OVERDUE: 0 };
+  const change = vi.fn(); await mount(queue(change));
+  expect(host.textContent).toContain("You are waiting for the team on 2 items");
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "View waiting work")!.click());
+  expect(change).toHaveBeenCalledWith(expect.objectContaining({ status: "WAITING", page: 1 }));
+  await mount(queue(change, { error: new Error("Network error") }));
+  expect(host.querySelector('[role="alert"]')).not.toBeNull();
+  expect(host.textContent).not.toContain("You are waiting for the team");
+  expect([...host.querySelectorAll('[role="tab"] span')].every(count => count.textContent === "—")).toBe(true);
 });
 it("explains blocked manuscript access on the queue and offers only the allowed team conversation", async () => {
   Object.assign(data.items[0]!, { kind: "TASK", status: "BLOCKED", blocked: true, accessIssue: "MANUSCRIPT_NOT_SHARED", canContactTeam: true, href: "/projects/project?tab=chat&channel=mentors", action: "RESPOND" });

@@ -1,3 +1,4 @@
+import { MentorReviewFollowUp } from "@/features/reviews/components/mentor-review-follow-up";
 import { useReviewPageNavigation } from "@/features/reviews/hooks/use-review-page-navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -66,7 +67,7 @@ export function ReviewRequestDetailPage() {
   const query = useReviewRequest(requestId);
   const actions = useReviewRequestAction();
   const submissionId = query.data?.artifact.submissionId ?? "";
-  const revisions = useSubmissionRevisions(submissionId);
+  const revisions = useSubmissionRevisions(submissionId, query.data?.artifact.revisionId);
   const [selectedVersion, setSelectedVersion] = useState("");
   const [responses, setResponses] = useState<Record<string, string>>({});
   const responseScope = useRef("");
@@ -139,6 +140,7 @@ export function ReviewRequestDetailPage() {
 
   const isRequester = currentUser?.id === detail.requester.id;
   const isReviewer = currentUser?.id === detail.reviewer.id;
+  if (embedded && isReviewer && detail.origin === "MENTOR_GUIDANCE") return <MentorReviewFollowUp detail={detail} />;
   const canAccept = isReviewer && detail.status === "REQUESTED" && detail.assignment?.status === "assigned";
   const reviewBackPath = detail.origin === "MENTOR_GUIDANCE" && isReviewer ? "/mentor-workspace?view=work" : "/reviews";
   const projectSubmissionHref =

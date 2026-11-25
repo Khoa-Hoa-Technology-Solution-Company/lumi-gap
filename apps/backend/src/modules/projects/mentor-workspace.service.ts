@@ -104,7 +104,7 @@ export function mentorWorkHref(row: Pick<WorkRow, "kind" | "sourceId" | "project
   if (row.kind === "MENTOR_QUESTION") return `/projects/${row.projectId}?tab=tasks&discussion=${row.sourceId}`;
   if (row.kind !== "TASK") return row.assignmentId && row.status === "IN_PROGRESS"
     ? `/reviews/${row.assignmentId}` : `/review-requests/${row.sourceId}`;
-  return row.resourceId ? `/submissions/${row.resourceId}` : `/projects/${row.projectId}?tab=tasks&workItem=TASK:${row.sourceId}`;
+  return row.resourceId ? `/projects/${row.projectId}?view=resources&resourceId=${row.resourceId}` : `/projects/${row.projectId}?tab=tasks&workItem=TASK:${row.sourceId}`;
 }
 
 export const mentorWorkspaceService = {
@@ -116,8 +116,8 @@ export const mentorWorkspaceService = {
       if (!actor) throw AppError.unauthorized();
       await assertVerifiedLecturer(tx, actor.id);
       const base = workspaceSql(actor.id);
-      const projectOptions = await tx.$queryRaw<{ id: string; title: string; legacyId: string | null }[]>`${base}
-        SELECT id::text AS id,title,legacy_mongo_id AS "legacyId" FROM scope ORDER BY lower(title),id`;
+      const projectOptions = await tx.$queryRaw<{ id: string; title: string; status: string; legacyId: string | null }[]>`${base}
+        SELECT id::text AS id,title,status,legacy_mongo_id AS "legacyId" FROM scope ORDER BY lower(title),id`;
       const selectedProject = query.projectId ? projectOptions.find(p => p.id === query.projectId || p.legacyId === query.projectId) : undefined;
       if (query.projectId && !selectedProject) throw AppError.notFound("This mentorship is unavailable or access has ended");
       const projectFilter = selectedProject ? Prisma.sql`AND "projectId"=${selectedProject.id}` : Prisma.empty;
@@ -126,6 +126,7 @@ export const mentorWorkspaceService = {
       if (query.q) filters.push(Prisma.sql`(title ILIKE ${`%${query.q.replace(/[\\%_]/g, "\\$&")}%`} OR "projectTitle" ILIKE ${`%${query.q.replace(/[\\%_]/g, "\\$&")}%`} OR sender ILIKE ${`%${query.q.replace(/[\\%_]/g, "\\$&")}%`})`);
       if (query.kind === "REVIEW") filters.push(Prisma.sql`kind IN ('MANUSCRIPT_REVIEW','PROPOSAL_REVIEW')`);
       else if (query.kind) filters.push(Prisma.sql`kind=${query.kind}`);
+      const facetWhere = Prisma.join([...filters], " AND ");
       if (query.status === "ACTIONABLE") filters.push(Prisma.sql`"needsAction"`);
       else if (query.status === "OVERDUE") filters.push(Prisma.sql`"needsAction" AND "dueAt"<NOW()`);
       else if (query.status !== "ALL") filters.push(Prisma.sql`status=${query.status}`);
@@ -139,6 +140,15 @@ export const mentorWorkspaceService = {
       const rows = await tx.$queryRaw<WorkRow[]>`${base} SELECT * FROM work WHERE ${where}
         ORDER BY ${order}, "updatedAt" DESC,id LIMIT ${query.pageSize} OFFSET ${(query.page - 1) * query.pageSize}`;
       const totals = await tx.$queryRaw<{ count: bigint }[]>`${base} SELECT COUNT(*) AS count FROM work WHERE ${where}`;
+      const facets = await tx.$queryRaw<Record<NonNullable<MentorWorkspaceQuery["status"]>, bigint>[]>`${base}
+        SELECT COUNT(*) AS "ALL", COUNT(*) FILTER (WHERE "needsAction") AS "ACTIONABLE",
+          COUNT(*) FILTER (WHERE "needsAction" AND "dueAt"<NOW()) AS "OVERDUE",
+          COUNT(*) FILTER (WHERE status='TODO') AS "TODO",
+          COUNT(*) FILTER (WHERE status='IN_PROGRESS') AS "IN_PROGRESS",
+          COUNT(*) FILTER (WHERE status='BLOCKED') AS "BLOCKED",
+          COUNT(*) FILTER (WHERE status='WAITING') AS "WAITING",
+          COUNT(*) FILTER (WHERE status='DONE') AS "DONE"
+        FROM work WHERE ${facetWhere}`;
       const metrics = await tx.$queryRaw<{ needsResponse: bigint; overdue: bigint; blocked: bigint; manuscripts: bigint; completed: bigint; waiting: bigint }[]>`${base}
         SELECT COUNT(*) FILTER (WHERE "needsAction") AS "needsResponse",
           COUNT(*) FILTER (WHERE "needsAction" AND "dueAt"<NOW()) AS overdue,
@@ -150,6 +160,11 @@ export const mentorWorkspaceService = {
       const recentRows = await tx.$queryRaw<WorkRow[]>`${base}
         SELECT * FROM work WHERE status IN ('DONE','WAITING') ${projectFilter}
         ORDER BY "updatedAt" DESC, id LIMIT 4`;
+      const roundReviews = await tx.humanReview.findMany({
+        where: { assignmentId: { in: [...rows, ...recentRows].flatMap(row => row.assignmentId ? [row.assignmentId] : []) } },
+        select: { assignmentId: true, revisionId: true, roundNumber: true, status: true, submittedAt: true },
+        orderBy: { roundNumber: "desc" },
+      });
       const invitationCounts = await tx.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*) AS count FROM mentorship_requests invitation
         JOIN projects p ON p.id=invitation.project_id AND p.deleted_at IS NULL
         WHERE invitation.mentor_user_id=${actor.id}::uuid AND invitation.direction='PROJECT_TO_LECTURER' AND invitation.status='PENDING'
@@ -183,10 +198,16 @@ export const mentorWorkspaceService = {
         projectId: row.projectId, projectTitle: row.projectTitle, sender: row.sender, status: row.status, priority: row.priority,
         dueAt: row.dueAt?.toISOString() ?? null, updatedAt: row.updatedAt.toISOString(), needsAction: row.needsAction,
         overdue: row.needsAction && Boolean(row.dueAt && row.dueAt < now), blocked: row.blocked, version: row.version,
+        readOnly: ["ARCHIVED", "COMPLETED"].includes(projectOptions.find(project => project.id === row.projectId)?.status ?? ""),
+        ...(row.assignmentId && row.revisionId ? {
+          roundNumber: roundReviews.find(review => review.assignmentId === row.assignmentId && review.revisionId === row.revisionId)?.roundNumber ?? (roundReviews.find(review => review.assignmentId === row.assignmentId)?.roundNumber ?? 0) + 1,
+          submittedAt: roundReviews.find(review => review.assignmentId === row.assignmentId && review.status === "SUBMITTED")?.submittedAt?.toISOString(),
+        } : {}),
         ...(row.accessIssue ? { accessIssue: row.accessIssue, canContactTeam: row.canContactTeam } : {}),
         href: mentorWorkHref(row), action: row.accessIssue && row.canContactTeam ? "RESPOND" as const : !row.needsAction || row.kind === "TASK" ? "VIEW" as const : row.kind === "MENTOR_QUESTION" ? "RESPOND" as const : "REVIEW" as const });
       return {
         items: rows.map(mapRow),
+        facets: Object.fromEntries(Object.entries(facets[0] ?? {}).map(([key, count]) => [key, Number(count)])) as NonNullable<MentorWorkspaceData["facets"]>,
         recentActivity: recentRows.map(mapRow),
         meta: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.ceil(total / query.pageSize) },
         projects: projects.map(p => ({ ...p, teamSize: Number(p.teamSize), pendingCount: Number(p.pendingCount), completedCount: Number(p.completedCount), sharedCount: Number(p.sharedCount), updatedAt: p.updatedAt.toISOString(), startedAt: p.startedAt.toISOString() })),

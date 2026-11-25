@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ArrowUpRight, AlertCircle, CheckCircle2, Search, SlidersHorizontal, X } from "lucide-react";
 import type { MentorWorkItem, MentorWorkQuery, MentorWorkspaceData } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import "../mentor-workspace.css";
-import { mentorWorkspaceDestination } from "../utils/mentor-workspace-navigation";
+import { mentorWorkspaceDestination, withMentorWorkReturn } from "../utils/mentor-workspace-navigation";
 
 export const mentorKindKeys = {
   TASK: "task",
@@ -29,6 +29,9 @@ export function MentorQueueLoading() {
 }
 
 function resolveActionLabelKey(item: MentorWorkItem): string {
+  if (["MANUSCRIPT_REVIEW", "PROPOSAL_REVIEW"].includes(item.kind) && item.status === "WAITING") return "mentorLifecycle.track";
+  if (["MANUSCRIPT_REVIEW", "PROPOSAL_REVIEW"].includes(item.kind) && item.status === "DONE") return "mentorLifecycle.results";
+  if (["MANUSCRIPT_REVIEW", "PROPOSAL_REVIEW"].includes(item.kind) && item.needsAction && item.status === "TODO" && (item.roundNumber ?? 1) > 1) return "mentorLifecycle.reviewRevision";
   if (item.accessIssue && item.canContactTeam) return "mentorWorkspace.contactTeam";
   if (item.kind === "TASK" && item.href.startsWith("/submissions/")) return "mentorWorkspace.openManuscript";
   if (item.action === "REVIEW" && item.status === "IN_PROGRESS") return "mentorWorkspace.action.CONTINUE_REVIEW";
@@ -38,13 +41,16 @@ function resolveActionLabelKey(item: MentorWorkItem): string {
 export function MentorWorkRows({
   items,
   groupBy = "none",
+  projectOnly = false,
 }: {
   items: MentorWorkItem[];
   groupBy?: "none" | "project" | "status";
+  projectOnly?: boolean;
 }) {
   const { t, language } = useI18n();
   const { pathname } = useLocation();
-  const href = (path: string) => (pathname === "/mentor-workspace" ? mentorWorkspaceDestination(path) : path);
+  const { search } = useLocation();
+  const href = (path: string) => (pathname === "/mentor-workspace" ? withMentorWorkReturn(mentorWorkspaceDestination(path), `${pathname}${search}`) : path);
   const groups = new Map<string, MentorWorkItem[]>();
   for (const item of items) {
     const key = groupBy === "project" ? item.projectId : groupBy === "status" ? item.status : "all";
@@ -69,6 +75,7 @@ export function MentorWorkRows({
                   {item.version !== null && (
                     <span className="mentor-version-tag">{t("mentorWorkspace.version", { version: item.version })}</span>
                   )}
+                  {item.roundNumber ? <span>{t("mentorWorkspace.round", { round: item.roundNumber })}</span> : null}
                   {item.overdue && <Badge variant="destructive">{t("mentorWorkspace.overdue")}</Badge>}
                   {item.blocked && <Badge variant="destructive">{t("mentorWorkspace.blocked")}</Badge>}
                 </div>
@@ -79,10 +86,10 @@ export function MentorWorkRows({
                       {item.title}
                     </Link>
                     <p>
-                      <Link to={href(`/projects/${encodeURIComponent(item.projectId)}?tab=tasks`)}>
+                      {!projectOnly && <><Link to={href(`/projects/${encodeURIComponent(item.projectId)}?tab=tasks`)}>
                         {item.projectTitle}
                       </Link>
-                      <span aria-hidden="true"> · </span>
+                      <span aria-hidden="true"> · </span></>}
                       <span>{item.sender}</span>
                     </p>
                   </div>
@@ -96,6 +103,8 @@ export function MentorWorkRows({
                     {t("mentorWorkspace.manuscriptNotShared")}
                   </p>
                 )}
+                {item.readOnly && <p className="mt-2 text-sm text-muted-foreground">{t("mentorWorkspace.workReadOnly")}</p>}
+                {item.submittedAt && <p className="mt-2 text-sm text-muted-foreground">{t("mentorWorkspace.feedbackSentAt", { date: new Date(item.submittedAt).toLocaleDateString(language) })}</p>}
 
                 <div className="mentor-row-footer">
                   <div>
@@ -130,6 +139,7 @@ export function MentorWorkRows({
 const WORK_TABS: Array<{ status: MentorWorkQuery["status"]; labelKey: string }> = [
   { status: "ACTIONABLE", labelKey: "mentorWorkspace.tab.actionable" },
   { status: "IN_PROGRESS", labelKey: "mentorWorkspace.tab.inProgress" },
+  { status: "WAITING", labelKey: "mentorWorkspace.tab.waiting" },
   { status: "DONE", labelKey: "mentorWorkspace.tab.done" },
   { status: "ALL", labelKey: "mentorWorkspace.tab.all" },
 ];
@@ -154,7 +164,14 @@ export function MentorWorkQueue({
   projectOnly?: boolean;
 }) {
   const { t } = useI18n();
-  const [groupBy, setGroupBy] = useState<"none" | "project" | "status">("none");
+  const [params, setParams] = useSearchParams();
+  const groupValue = params.get("workGroup");
+  const groupBy = groupValue === "status" || groupValue === "project" && !projectOnly ? groupValue : "none";
+  const setGroupBy = (value: "none" | "project" | "status") => setParams(current => {
+    const next = new URLSearchParams(current);
+    if (value === "none") next.delete("workGroup"); else next.set("workGroup", value);
+    return next;
+  });
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const update = (patch: Partial<MentorWorkQuery>) => onChange({ ...query, ...patch, page: 1 });
@@ -162,14 +179,13 @@ export function MentorWorkQueue({
   const activeAdvancedCount =
     (query.projectId && !projectOnly ? 1 : 0) +
     (query.kind ? 1 : 0) +
-    (!["ACTIONABLE", "IN_PROGRESS", "DONE", "ALL"].includes(currentStatus) ? 1 : 0) +
-    (query.sort && query.sort !== "priority" ? 1 : 0) +
-    (groupBy !== "none" ? 1 : 0);
+    (!["ACTIONABLE", "IN_PROGRESS", "WAITING", "DONE", "ALL"].includes(currentStatus) ? 1 : 0) +
+    (query.sort && query.sort !== "priority" ? 1 : 0);
   const hasActiveFilter = Boolean(query.q || activeAdvancedCount > 0 || currentStatus !== "ACTIONABLE");
   const totalCount = data?.meta.total ?? 0;
   // Adaptive density: show advanced filter selects automatically when there are >3 items or active filters;
   // otherwise keep the queue clean behind a single "Filters" toggle button.
-  const showAdvancedBar = filtersOpen || activeAdvancedCount > 0 || totalCount > 3;
+  const showAdvancedBar = filtersOpen || activeAdvancedCount > 0 || groupBy !== "none" || totalCount > 3;
 
   return (
     <section className="mentor-queue" aria-label={t("mentorWorkspace.work")}>
@@ -184,11 +200,21 @@ export function MentorWorkQueue({
                 type="button"
                 role="tab"
                 aria-selected={active}
+                tabIndex={active || !WORK_TABS.some(item => item.status === currentStatus) && tab === WORK_TABS[0] ? 0 : -1}
                 className="mentor-work-tab"
                 data-active={active ? "true" : undefined}
                 onClick={() => update({ status: tab.status })}
+                onKeyDown={event => {
+                  const index = WORK_TABS.indexOf(tab);
+                  const next = event.key === "ArrowRight" ? (index + 1) % WORK_TABS.length : event.key === "ArrowLeft" ? (index + WORK_TABS.length - 1) % WORK_TABS.length : event.key === "Home" ? 0 : event.key === "End" ? WORK_TABS.length - 1 : -1;
+                  if (next < 0) return;
+                  event.preventDefault();
+                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('button[role="tab"]')[next]?.focus();
+                  update({ status: WORK_TABS[next]!.status });
+                }}
               >
                 {t(tab.labelKey)}
+                <span className="ml-1.5 tabular-nums text-muted-foreground">{!error && !loading && data?.facets ? data.facets[tab.status!] : "—"}</span>
               </button>
             );
           })}
@@ -231,7 +257,6 @@ export function MentorWorkQueue({
               size="sm"
               className="gap-1 shrink-0"
               onClick={() => {
-                setGroupBy("none");
                 onChange({ page: 1, status: "ACTIONABLE", sort: "priority" });
               }}
             >
@@ -341,19 +366,18 @@ export function MentorWorkQueue({
         <MentorQueueLoading />
       ) : data?.items.length ? (
         <div aria-busy={fetching}>
-          <MentorWorkRows items={data.items} groupBy={groupBy} />
+          <MentorWorkRows items={data.items} groupBy={groupBy} projectOnly={projectOnly} />
         </div>
       ) : (
         <div className="mentor-queue-empty">
           <CheckCircle2 size={26} aria-hidden="true" />
-          <h3>{t("mentorWorkspace.emptyWork")}</h3>
-          <p>{t("mentorWorkspace.emptyWorkHint")}</p>
+          <h3>{t(`mentorWorkspace.empty.${currentStatus}`)}</h3>
+          {currentStatus === "ACTIONABLE" && (data?.facets?.WAITING ?? 0) > 0 ? <><p>{t("mentorWorkspace.waitingHint", { count: data!.facets!.WAITING })}</p><Button variant="outline" onClick={() => update({ status: "WAITING" })}>{t("mentorWorkspace.viewWaiting")}</Button></> : <p>{t("mentorWorkspace.emptyWorkHint")}</p>}
           {hasActiveFilter ? (
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
-                setGroupBy("none");
                 onChange({ page: 1, status: "ACTIONABLE", sort: "priority" });
               }}
             >
