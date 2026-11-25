@@ -108,5 +108,5 @@
 <polyline points="940.0,215.0 1015.0,215.0 1015.0,600.0 1200.0,600.0 1200.0,620.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
 <polygon points="1200.0,620.0 1206.0,607.0 1194.0,607.0" fill="#44546A"/>
 <text x="1110.0" y="592.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">files (S3 API)</text>
-<text x="40.0" y="779.5" font-size="13" text-anchor="start" font-weight="normal" fill="#555">Arrows point from the caller. sync = request/response; async = queued job or event stream. Source: code on main 0be3737 (docker-compose.yml, apps/*).</text>
+<text x="40.0" y="779.5" font-size="13" text-anchor="start" font-weight="normal" fill="#555">Arrows point from the caller. sync = request/response; async = queued job or event stream. Source: code on main 40b22ffc (docker-compose.yml, apps/*).</text>
 </svg>

@@ -1,6 +1,6 @@
 # Overall Logical ERD - Source (draw.io XML)
 
-Project: **LumiGap**. Notation: **Chen ERD**. Version: **1.2**. Code baseline: `main` ca5280c.
+Project: **LumiGap**. Notation: **Chen ERD**. Version: **1.2** (dictionary 1.3). Code baseline: `main` 40b22ffc.
 
 ## Files
 
