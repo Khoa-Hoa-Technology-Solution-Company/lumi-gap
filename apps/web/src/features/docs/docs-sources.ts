@@ -29,6 +29,8 @@ export type DocsSourceId =
   | "hyndman-fan-1996"
   | "leys-2013"
   | "tukey-1977"
+  | "rotolo-2015"
+  | "small-2014"
   | "openalex-works"
   | "openalex-topics"
   | "openalex-group-by";

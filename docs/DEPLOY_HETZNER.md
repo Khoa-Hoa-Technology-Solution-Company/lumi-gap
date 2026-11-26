@@ -20,7 +20,7 @@ Các file trong `deploy/vps/`:
 - `bootstrap-server.sh`: chạy một lần trên server mới (Docker, user deploy, swap 4 GB, firewall, chặn đăng nhập SSH bằng mật khẩu).
 - `deploy.sh`: `git pull` rồi build và khởi động lại toàn bộ stack.
 - `first-run.sh`: tạo provider OpenAlex và nạp danh mục chủ đề (chạy sau lần deploy đầu).
-- `make-admin.sh`: nâng một tài khoản đã đăng ký lên SUPER_ADMIN.
+- `make-admin.sh`: nâng một tài khoản đã đăng ký lên ADMIN.
 - `backup-db.sh`: `pg_dump` hằng ngày, giữ 7 bản gần nhất.
 
 LibreTranslate **không** chạy (tốn 1–2 GB RAM). Giữ `TRANSLATION_PROVIDER=gemini`.

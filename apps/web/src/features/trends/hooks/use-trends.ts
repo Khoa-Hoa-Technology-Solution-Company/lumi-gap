@@ -6,6 +6,7 @@ import {
   type TrendExplainHistoryParams,
   type TrendPeriodsParams,
   type TrendCompareParams,
+  type TrendEmergingParams,
   type TrendRelationshipParams,
   type TrendTopicCandidatesParams,
   type TrendsOverviewParams,
