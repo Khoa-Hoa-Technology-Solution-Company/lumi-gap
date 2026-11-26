@@ -86,7 +86,9 @@ it("places the lecturer workspace only in the avatar menu and opens it", async (
   expect(document.querySelector('[role="menu"] a[href="/mentor-workspace?view=templates"]')).not.toBeNull();
   expect(document.querySelector('[role="menu"] a[href="/mentor-workspace?view=research-projects"]')).toBeNull();
   expect(document.querySelector('[role="menu"] a[href="/projects"]')).not.toBeNull();
-  await act(async () => { workspace.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  // Close the Workspace menu from inside it (Radix listens on the open content), then open the avatar menu.
+  await act(async () => { document.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  expect(document.querySelector('[role="menu"]')).toBeNull();
   const account = host.querySelector<HTMLButtonElement>('button[aria-label="Account"]')!;
   await act(async () => { account.focus(); account.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
   const mentorItem = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === "mentorWorkspace.title")!;
