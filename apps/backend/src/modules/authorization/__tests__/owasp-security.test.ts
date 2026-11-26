@@ -177,7 +177,8 @@ describe("OWASP Security Hardening Suite for LumiGap", () => {
           projectId: PROJECT_ID,
           body: { content: "dGVzdA==", encoding: "base64" },
         }),
-      ).rejects.toThrowError(/restricted to the project owner/);
+      // Repository writes are owner-only before the export policy is even consulted.
+      ).rejects.toThrowError(/Only the project owner can modify GitHub repositories/);
     });
 
     it("blocks exporting private project manuscript to a public GitHub repository", async () => {

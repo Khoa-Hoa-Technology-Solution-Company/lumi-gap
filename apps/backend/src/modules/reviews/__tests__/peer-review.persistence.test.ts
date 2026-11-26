@@ -279,7 +279,8 @@ describe.sequential("peer-review versions and authorization (PostgreSQL)", () =>
       const v3 = await submissionService.addRevision(submission.id, "Further changes", { buffer: nextPdf, size: nextPdf.length, originalname: "revised.pdf" }, author, "user");
       uris.add((await getPrisma().submissionRevision.findUniqueOrThrow({ where: { id: v3.revision.id } })).storageUri!);
       const download = await submissionService.resolveDownload(submission.id, v2.revision.id, lecturer, "user");
-      expect(download.kind).toBe("local"); if (download.kind === "local") expect(await readFile(download.path)).toEqual(pdf);
+      // A blind reviewer receives the bytes, never a storage path or signed URL.
+      expect(download.kind).toBe("buffer"); if (download.kind === "buffer") expect(download.content).toEqual(pdf);
       await expect(submissionService.resolveDownload(submission.id, v3.revision.id, lecturer, "user")).rejects.toMatchObject({ statusCode: 404 });
       const restored = await submissionService.createVersion(submission.id, { sourceRevisionId: v2.revision.id, summary: "Restore PDF version 2", expectedRevisionNumber: 3 }, author, "user");
       expect(restored.revisionNumber).toBe(4); expect(restored.contentType).toBe("PDF");

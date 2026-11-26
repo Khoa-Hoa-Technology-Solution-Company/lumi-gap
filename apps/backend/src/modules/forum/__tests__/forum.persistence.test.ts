@@ -11,6 +11,7 @@ import { forumCategoryService } from "../forum-category.service.js";
 import { forumRouter } from "../forum.routes.js";
 import { notificationService } from "../../notifications/notification.service.js";
 import { backfillForumSlugs } from "../forum-slugs.js";
+import { deleteScreeningData } from "../../../test-utils/screening-cleanup.js";
 
 // Positional shim over the query-object `communityService.list` signature.
 const listCommunities = (userId: string | undefined, page: number, pageSize: number, role?: Parameters<typeof communityService.list>[2], activeOnly = false) =>
@@ -82,6 +83,7 @@ describe.sequential("research forum persistence and authorization", () => {
     }
     if (corpusId) await prisma.corpusPaper.deleteMany({ where: { corpusId } });
     await prisma.projectActivity.deleteMany({ where: { projectId: { in: [publicProjectId, privateProjectId].filter(Boolean) } } });
+    await deleteScreeningData([publicProjectId, privateProjectId]);
     await prisma.projectPaper.deleteMany({ where: { projectId: { in: [publicProjectId, privateProjectId].filter(Boolean) } } });
     if (gapId) await prisma.researchGap.deleteMany({ where: { id: gapId } });
     if (corpusId) await prisma.literatureCorpus.deleteMany({ where: { id: corpusId } });
@@ -238,7 +240,17 @@ describe.sequential("research forum persistence and authorization", () => {
     await expect(forumService.reviewCitationAsEvidence(gapId, { referenceId: citation!.id!, projectId: publicProjectId, relation: "COUNTER", confirmRelation: true, explanation: "This should not skip screening." }, authorId)).resolves.toMatchObject({ status: "PAPER_ADDED_TO_PROJECT" });
     expect(await getPrisma().gapEvidenceRecord.count({ where: { gapId } })).toBe(0);
 
-    await expect(forumService.reviewCitationAsEvidence(gapId, { referenceId: citation!.id!, projectId: publicProjectId, screeningStatus: "INCLUDED", relation: "COUNTER", confirmRelation: true, explanation: "The paper is included, but extraction must happen first." }, authorId)).resolves.toMatchObject({ status: "EVIDENCE_EXTRACTION_REQUIRED" });
+    // The forum cannot bypass screening: once the paper has a screening round, a screeningStatus sent here is ignored.
+    await expect(forumService.reviewCitationAsEvidence(gapId, { referenceId: citation!.id!, projectId: publicProjectId, screeningStatus: "INCLUDED", relation: "COUNTER", confirmRelation: true, explanation: "The forum must not include the paper on its own." }, authorId)).resolves.toMatchObject({ status: "SCREENING_REQUIRED" });
+    expect(await getPrisma().gapEvidenceRecord.count({ where: { gapId } })).toBe(0);
+
+    // Simulate the screening workflow finalizing the paper; each gate below is checked against that outcome.
+    const setScreening = (screeningStatus: "INCLUDED" | "EXCLUDED" | "UNDECIDED") => getPrisma().projectPaper.update({
+      where: { projectId_paperId: { projectId: publicProjectId, paperId } },
+      data: { screeningStatus },
+    });
+    await setScreening("INCLUDED");
+    await expect(forumService.reviewCitationAsEvidence(gapId, { referenceId: citation!.id!, projectId: publicProjectId, relation: "COUNTER", confirmRelation: true, explanation: "The paper is included, but extraction must happen first." }, authorId)).resolves.toMatchObject({ status: "EVIDENCE_EXTRACTION_REQUIRED" });
     expect(await getPrisma().gapEvidenceRecord.count({ where: { gapId } })).toBe(0);
 
     const projectPaper = await getPrisma().projectPaper.findUniqueOrThrow({ where: { projectId_paperId: { projectId: publicProjectId, paperId } } });
@@ -272,6 +284,7 @@ describe.sequential("research forum persistence and authorization", () => {
     }, authorId)).resolves.toMatchObject({ status: "EVIDENCE_SELECTION_REQUIRED" });
     expect(await getPrisma().gapEvidenceRecord.count({ where: { gapId } })).toBe(0);
 
+    await setScreening("EXCLUDED");
     await expect(forumService.reviewCitationAsEvidence(gapId, {
       referenceId: citation!.id!,
       projectId: publicProjectId,
@@ -284,6 +297,7 @@ describe.sequential("research forum persistence and authorization", () => {
     }, authorId)).resolves.toMatchObject({ status: "SCREENING_REQUIRED" });
     expect(await getPrisma().gapEvidenceRecord.count({ where: { gapId } })).toBe(0);
 
+    await setScreening("UNDECIDED");
     await expect(forumService.reviewCitationAsEvidence(gapId, {
       referenceId: citation!.id!,
       projectId: publicProjectId,
@@ -295,6 +309,7 @@ describe.sequential("research forum persistence and authorization", () => {
     }, authorId)).resolves.toMatchObject({ status: "SCREENING_REQUIRED" });
     expect(await getPrisma().gapEvidenceRecord.count({ where: { gapId } })).toBe(0);
 
+    await setScreening("INCLUDED");
     await expect(forumService.reviewCitationAsEvidence(gapId, {
       referenceId: citation!.id!,
       projectId: publicProjectId,
