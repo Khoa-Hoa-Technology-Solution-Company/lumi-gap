@@ -243,3 +243,55 @@ cd ~/lumi-gap && bash deploy/vps/deploy.sh
 - Khi không cần chạy (ví dụ nghỉ lễ), bấm **Stop** trên trang VM. Dữ liệu vẫn giữ nguyên,
   và khi tắt thì không bị tính tiền CPU/RAM.
 - Khi credit hết, subscription bị vô hiệu hoá chứ không tự trừ tiền. Nhớ tải backup về trước thời điểm đó.
+
+## 10. Tự động deploy bằng GitHub Actions
+
+Workflow [`.github/workflows/deploy-azure.yml`](../.github/workflows/deploy-azure.yml) chạy mỗi khi
+có push vào `main` (bỏ qua các thay đổi chỉ ở docs, `*.md`, `apps/flutter_mobile`, `tests`), hoặc
+khi bấm tay ở tab **Actions** (chọn **Deploy (Azure VM)**, rồi **Run workflow**):
+
+1. `pnpm typecheck` toàn bộ package. Nếu lỗi, workflow dừng và không deploy.
+2. SSH vào VM bằng một **key riêng cho GitHub**. Key này được gắn trên VM với lệnh bắt buộc
+   (`command="cd /home/deploy/lumi-gap && bash deploy/vps/deploy.sh"`, không cho mở shell hay
+   chuyển tiếp cổng). Gửi lệnh nào thì VM cũng chỉ chạy `deploy.sh`.
+3. Kiểm tra `AZURE_API_URL/ready` và trang web.
+
+Workflow không chờ workflow CI (test), vì bộ test hiện có lỗi không liên quan tới build.
+
+### Cài đặt một lần
+
+Trên máy có key (`~/.ssh/lumigap_gha_deploy`), từ thư mục repo:
+
+```powershell
+gh secret set AZURE_VM_HOST --body "<IP của VM>"
+```
+
+```powershell
+Get-Content $HOME\.ssh\lumigap_gha_deploy -Raw | gh secret set AZURE_VM_SSH_KEY
+```
+
+```powershell
+Get-Content $HOME\.ssh\lumigap_gha_known_hosts -Raw | gh secret set AZURE_VM_KNOWN_HOSTS
+```
+
+```powershell
+gh variable set AZURE_WEB_URL --body "https://<LUMIGAP_DOMAIN>"
+```
+
+```powershell
+gh variable set AZURE_API_URL --body "https://<API_DOMAIN>"
+```
+
+Key cho GitHub được thêm vào `/home/deploy/.ssh/authorized_keys` trên VM như sau (một dòng):
+
+```
+command="cd /home/deploy/lumi-gap && bash deploy/vps/deploy.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA... github-actions-deploy@lumigap-azure
+```
+
+Muốn thu hồi quyền deploy: xoá dòng đó trên VM và xoá secret `AZURE_VM_SSH_KEY`.
+
+Lưu ý:
+- VM phải ở nhánh `main` (`git -C ~/lumi-gap branch --show-current`), vì `deploy.sh` chạy `git pull --ff-only`
+  trên nhánh hiện tại.
+- Đổi domain thì sửa `.env` trên VM và cập nhật 2 biến `AZURE_WEB_URL` / `AZURE_API_URL`.
+- Đổi IP hoặc tạo lại VM thì cập nhật `AZURE_VM_HOST` và chạy lại `ssh-keyscan -t ed25519 <IP>` cho `AZURE_VM_KNOWN_HOSTS`.
