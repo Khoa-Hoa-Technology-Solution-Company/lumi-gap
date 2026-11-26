@@ -46,10 +46,10 @@ export function MentorMatchEvidenceDialog({ projectId, mentor, onClose }: { proj
                   </Badge>
                 )}
               </div>
-              {mentor.institution && (
+              {mentor.institutionName && (
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <GraduationCap className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{mentor.institution}</span>
+                  <span className="truncate">{mentor.institutionName}</span>
                 </p>
               )}
               <DialogDescription className="text-xs leading-5 text-muted-foreground">

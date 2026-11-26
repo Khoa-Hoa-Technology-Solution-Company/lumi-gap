@@ -142,7 +142,7 @@ export function TopicsTab({
 
   // Before the first page arrives, show the overview's own top topics.
   const sortedTopics = useMemo(() => {
-    const rows: Array<Pick<TrendingTopic, "topic" | "taxonomy" | "totalPapers" | "classification">> =
+    const rows: Array<Pick<TrendingTopic, "topic" | "taxonomy" | "totalPapers" | "classification" | "crossTopic">> =
       topicPages.data ? pagedTopics : verdictFilter === "all" ? barChartData : [];
     return sortTopics(rows, localSortBy);
   }, [topicPages.data, pagedTopics, barChartData, verdictFilter, localSortBy]);
