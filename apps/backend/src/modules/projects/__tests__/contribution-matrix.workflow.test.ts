@@ -406,30 +406,30 @@ describe.sequential("Contribution Matrix + Supporting Evidence + Member Confirma
     const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
     try {
-      // Attempt by memberB to confirm on memberC's behalf by injecting userId in body -> rejected with 400
-      const spoofed = await fetch(
-        `http://127.0.0.1:${port}/projects/${projectId}/contributions/revisions/${submitted.id}/decisions`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ decision: "APPROVE", userId: memberC }),
-        },
-      );
-      expect(spoofed.status).toBe(400);
+      // Percentage allocation is retired over HTTP: every write, spoofed or not, is refused with 409
+      // before validation, so a member can never confirm on someone else's behalf through the API.
+      // (Rejecting an injected userId is covered at schema level in contributions-domain.test.ts.)
+      for (const payload of [
+        { decision: "APPROVE", userId: memberC },
+        { decision: "APPROVE", explanation: "Confirmed my matrix shares" },
+      ]) {
+        const resp = await fetch(
+          `http://127.0.0.1:${port}/projects/${projectId}/contributions/revisions/${submitted.id}/decisions`,
+          { method: "POST", headers, body: JSON.stringify(payload) },
+        );
+        expect(resp.status).toBe(409);
+        const body = (await resp.json()) as { error: { code: string; message: string } };
+        expect(body.error.code).toBe("CONFLICT");
+        expect(body.error.message).toMatch(/Percentage allocation is retired/);
+      }
 
-      // Valid confirmation by memberB
-      const validResp = await fetch(
-        `http://127.0.0.1:${port}/projects/${projectId}/contributions/revisions/${submitted.id}/decisions`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ decision: "APPROVE", explanation: "Confirmed my matrix shares" }),
-        },
-      );
-      expect(validResp.status).toBe(200);
-      const body = (await validResp.json()) as { data: { status: string; matrix: { memberTotals: { userId: string; basisPoints: number }[] } } };
-      expect(body.data.status).toBe("AWAITING_APPROVAL");
-      expect(body.data.matrix.memberTotals.find((m) => m.userId === memberA)?.basisPoints).toBe(4550);
+      // The member's own decision still works at service level and leaves the proposal awaiting the others.
+      const decided = await allocations.decide(projectId, memberB, submitted.id, {
+        decision: "APPROVE",
+        explanation: "Confirmed my matrix shares",
+      });
+      expect(decided.status).toBe("AWAITING_APPROVAL");
+      expect(decided.matrix.memberTotals.find((m) => m.userId === memberA)?.basisPoints).toBe(4550);
     } finally {
       server.close();
       await once(server, "close");
