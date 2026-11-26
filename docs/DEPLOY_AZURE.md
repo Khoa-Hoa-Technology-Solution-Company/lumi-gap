@@ -12,7 +12,7 @@ và dùng chung cho cả Hetzner ([DEPLOY_HETZNER.md](DEPLOY_HETZNER.md)).
 | `bootstrap-server.sh` | Chạy một lần: cài Docker, tạo user `deploy`, swap 4 GB, firewall, chặn SSH bằng mật khẩu |
 | `deploy.sh` | `git pull`, build, khởi động lại toàn bộ stack |
 | `first-run.sh` | Tạo provider OpenAlex và nạp danh mục chủ đề (taxonomy) |
-| `make-admin.sh` | Nâng một tài khoản đã đăng ký lên SUPER_ADMIN |
+| `make-admin.sh` | Nâng một tài khoản đã đăng ký lên ADMIN |
 | `backup-db.sh` | `pg_dump` hằng ngày, giữ 7 bản |
 
 LibreTranslate **không** chạy. Giữ `TRANSLATION_PROVIDER=gemini`.
