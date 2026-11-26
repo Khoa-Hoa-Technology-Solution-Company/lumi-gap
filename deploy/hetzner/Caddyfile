@@ -1,0 +1,42 @@
+{
+	email {$ACME_EMAIL}
+}
+
+# Shared backend proxy. Requests go straight from Caddy to the backend so the
+# backend (trust proxy = 1) sees the real client IP for rate limiting.
+(backend) {
+	reverse_proxy backend:4000 {
+		transport http {
+			read_timeout 360s
+			write_timeout 360s
+		}
+	}
+}
+
+# Web app: API calls (including the manuscript-collaboration WebSocket) go to
+# the backend directly; everything else is the SPA served by the web container.
+{$LUMIGAP_DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size 61MB
+	}
+	handle /api/* {
+		import backend
+	}
+	handle {
+		reverse_proxy web:80
+	}
+}
+
+www.{$LUMIGAP_DOMAIN} {
+	redir https://{$LUMIGAP_DOMAIN}{uri} permanent
+}
+
+# Direct API origin for the Flutter app, OAuth callbacks and external clients.
+{$API_DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size 61MB
+	}
+	import backend
+}

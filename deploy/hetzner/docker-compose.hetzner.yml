@@ -1,0 +1,122 @@
+# Hetzner CX32 (4 vCPU, 8 GB) single-server override.
+#
+# Use together with the root compose file, from the repository root:
+#   docker compose -f docker-compose.yml -f deploy/hetzner/docker-compose.hetzner.yml up -d --build
+# (deploy/hetzner/deploy.sh does exactly this.)
+#
+# What it changes compared to the local stack:
+# - Only Caddy publishes ports (80/443). Postgres, Redis, backend, web and
+#   ai-reviewer are reachable only inside the Docker network.
+# - Caddy obtains Let's Encrypt certificates for LUMIGAP_DOMAIN and API_DOMAIN.
+# - Postgres is sized for an 8 GB machine.
+# - Backend and workers use the public HTTPS origins (CORS, e-mail links, Google callback).
+# LibreTranslate stays off (profile "translation"); keep TRANSLATION_PROVIDER=gemini.
+
+# The root file sets CORS_ORIGIN and GOOGLE_CALLBACK_URL to localhost in
+# `environment`, which wins over .env. The first CORS_ORIGIN entry is also the
+# origin used in e-mail links (invitations, verification), so the backend and
+# every worker get the public HTTPS values.
+x-public-urls: &public-urls
+  CORS_ORIGIN: https://${LUMIGAP_DOMAIN:?Set LUMIGAP_DOMAIN in .env}
+  GOOGLE_CALLBACK_URL: https://${API_DOMAIN:?Set API_DOMAIN in .env}/api/v1/auth/google/callback
+
+services:
+  postgres:
+    ports: !reset []
+    shm_size: 1g
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - effective_cache_size=3GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - max_connections=150
+    mem_limit: 2g
+
+  redis:
+    ports: !reset []
+    mem_limit: 512m
+
+  backend:
+    ports: !reset []
+    environment: *public-urls
+    mem_limit: 1g
+
+  web:
+    ports: !reset []
+    build:
+      args:
+        # Same-origin API: Caddy routes /api/* on LUMIGAP_DOMAIN to the backend.
+        VITE_API_BASE: /api/v1
+    mem_limit: 128m
+
+  ai-reviewer:
+    ports: !reset []
+    mem_limit: 768m
+
+  worker-sync:
+    environment: *public-urls
+
+  worker-report:
+    environment: *public-urls
+
+  worker-gaps:
+    environment: *public-urls
+
+  worker-ai-jobs:
+    environment: *public-urls
+
+  worker-embedding:
+    environment: *public-urls
+
+  worker-paper-analysis:
+    environment: *public-urls
+
+  worker-notifications:
+    environment: *public-urls
+
+  worker-corpus-validation:
+    environment: *public-urls
+
+  worker-community-summary:
+    environment: *public-urls
+
+  worker-tagging:
+    environment: *public-urls
+
+  worker-topic-backfill:
+    environment: *public-urls
+
+  worker-openalex-ingest:
+    environment: *public-urls
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      LUMIGAP_DOMAIN: ${LUMIGAP_DOMAIN:?Set LUMIGAP_DOMAIN in .env}
+      API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env}
+    volumes:
+      - ./deploy/hetzner/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_started
+      backend:
+        condition: service_healthy
+    mem_limit: 128m
+
+volumes:
+  caddy-data:
+  caddy-config:
