@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One-time preparation of a fresh Hetzner Ubuntu 24.04 server.
-# Run as root:  bash bootstrap-server.sh <deploy-user> "<ssh-public-key>"
+# One-time preparation of a fresh Ubuntu 24.04 server (Azure VM, Hetzner, ...).
+# Run as root (or with sudo):  bash bootstrap-server.sh <deploy-user> "<ssh-public-key>"
 #
 # Installs Docker, creates a sudo deploy user that can log in with the given
 # SSH key, adds 4 GB swap, enables the firewall (SSH, HTTP, HTTPS only) and
@@ -65,7 +65,7 @@ if [ ! -f /swapfile ]; then
   sysctl -p /etc/sysctl.d/99-swap.conf
 fi
 
-# Firewall. Docker publishes only Caddy's 80/443 in the Hetzner override.
+# Firewall. Docker publishes only Caddy's 80/443 in the VPS override.
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow OpenSSH

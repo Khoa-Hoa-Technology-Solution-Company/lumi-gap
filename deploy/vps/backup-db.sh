@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Dump the PostgreSQL database to ~/backups and keep the last 7 dumps.
 # Schedule daily with cron, for example:
-#   15 1 * * * bash /home/<deploy-user>/lumi-gap/deploy/hetzner/backup-db.sh >> /home/<deploy-user>/backups/backup.log 2>&1
+#   15 1 * * * bash /home/<deploy-user>/lumi-gap/deploy/vps/backup-db.sh >> /home/<deploy-user>/backups/backup.log 2>&1
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -11,7 +11,7 @@ mkdir -p "$BACKUP_DIR"
 cd "$ROOT"
 
 FILE="$BACKUP_DIR/lumigap-$(date +%Y%m%d-%H%M%S).dump"
-docker compose -f docker-compose.yml -f deploy/hetzner/docker-compose.hetzner.yml exec -T postgres \
+docker compose -f docker-compose.yml -f deploy/vps/docker-compose.vps.yml exec -T postgres \
   sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$FILE"
 chmod 600 "$FILE"
 

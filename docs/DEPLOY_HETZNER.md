@@ -2,7 +2,8 @@
 
 Tài liệu này hướng dẫn chạy **toàn bộ** stack (PostgreSQL + pgvector, Redis, backend,
 web, ai-reviewer và các worker BullMQ) trên **một** VPS Hetzner bằng Docker Compose,
-có HTTPS tự động qua Caddy.
+có HTTPS tự động qua Caddy. Cấu hình `deploy/vps/` dùng chung với Azure, xem thêm
+[DEPLOY_AZURE.md](DEPLOY_AZURE.md).
 
 | Thành phần | Giá trị |
 |---|---|
@@ -10,14 +11,16 @@ có HTTPS tự động qua Caddy.
 | Chi phí | khoảng €6,8/tháng (khoảng 205.000 ₫), tính theo giờ, có giá trần theo tháng |
 | Hệ điều hành | Ubuntu 24.04 |
 | Vị trí | Nuremberg/Falkenstein/Helsinki (dòng CX chỉ có ở EU; ping từ Việt Nam khoảng 200 ms) |
-| File cấu hình | [`deploy/hetzner/`](../deploy/hetzner) |
+| File cấu hình | [`deploy/vps/`](../deploy/vps) |
 
-Các file trong `deploy/hetzner/`:
+Các file trong `deploy/vps/`:
 
-- `docker-compose.hetzner.yml`: override của `docker-compose.yml`. Đóng mọi cổng nội bộ, thêm Caddy (cổng 80/443), tinh chỉnh Postgres cho máy 8 GB, đặt `mem_limit`, và dùng domain HTTPS cho CORS và Google callback.
+- `docker-compose.vps.yml`: override của `docker-compose.yml`. Đóng mọi cổng nội bộ, thêm Caddy (cổng 80/443), tinh chỉnh Postgres cho máy 8 GB, đặt `mem_limit`, và dùng domain HTTPS cho CORS và Google callback.
 - `Caddyfile`: `LUMIGAP_DOMAIN` phục vụ web, `/api/*` đi thẳng vào backend (để backend thấy IP thật của client), `API_DOMAIN` dành cho app Flutter và OAuth.
 - `bootstrap-server.sh`: chạy một lần trên server mới (Docker, user deploy, swap 4 GB, firewall, chặn đăng nhập SSH bằng mật khẩu).
 - `deploy.sh`: `git pull` rồi build và khởi động lại toàn bộ stack.
+- `first-run.sh`: tạo provider OpenAlex và nạp danh mục chủ đề (chạy sau lần deploy đầu).
+- `make-admin.sh`: nâng một tài khoản đã đăng ký lên SUPER_ADMIN.
 - `backup-db.sh`: `pg_dump` hằng ngày, giữ 7 bản gần nhất.
 
 LibreTranslate **không** chạy (tốn 1–2 GB RAM). Giữ `TRANSLATION_PROVIDER=gemini`.
@@ -52,7 +55,7 @@ Sau khi HTTPS đã chạy, có thể bật proxy (mây cam) với SSL mode **Ful
 ## 3. Chuẩn bị server (một lần)
 
 ```powershell
-scp deploy/hetzner/bootstrap-server.sh root@<server-ip>:/root/
+scp deploy/vps/bootstrap-server.sh root@<server-ip>:/root/
 ```
 
 ```powershell
@@ -116,7 +119,7 @@ Ghi chú:
 ## 5. Chạy lần đầu
 
 ```bash
-bash deploy/hetzner/deploy.sh
+bash deploy/vps/deploy.sh
 ```
 
 Lần build đầu mất khoảng 5–10 phút. Script sẽ build image, chạy migration, khởi động backend,
@@ -125,14 +128,16 @@ web, ai-reviewer, các worker và Caddy, rồi in trạng thái các container.
 Tạo provider OpenAlex (bắt buộc để sync dữ liệu, an toàn khi chạy lại nhiều lần):
 
 ```bash
-docker compose -f docker-compose.yml -f deploy/hetzner/docker-compose.hetzner.yml \
-  exec backend pnpm --filter backend seed:providers
+bash deploy/vps/first-run.sh
 ```
+
+Script này tạo provider OpenAlex và nạp danh mục chủ đề. Các bước tạo admin và bật
+tự động cào báo giống hệt bước 6 trong [DEPLOY_AZURE.md](DEPLOY_AZURE.md).
 
 Dữ liệu demo (tuỳ chọn, **không** dùng cho production thật):
 
 ```bash
-docker compose -f docker-compose.yml -f deploy/hetzner/docker-compose.hetzner.yml --profile seed up seed
+docker compose -f docker-compose.yml -f deploy/vps/docker-compose.vps.yml --profile seed up seed
 ```
 
 ## 6. Kiểm tra
@@ -147,7 +152,7 @@ Mở `https://lumigap.uk` trên trình duyệt, đăng ký, đăng nhập và th
 Theo dõi log và RAM:
 
 ```bash
-alias dc='docker compose -f docker-compose.yml -f deploy/hetzner/docker-compose.hetzner.yml'
+alias dc='docker compose -f docker-compose.yml -f deploy/vps/docker-compose.vps.yml'
 dc ps
 dc logs -f backend
 dc logs -f caddy          # lỗi xin chứng chỉ HTTPS thường nằm ở đây
@@ -158,7 +163,7 @@ free -h
 ## 7. Cập nhật phiên bản mới
 
 ```bash
-cd ~/lumi-gap && bash deploy/hetzner/deploy.sh
+cd ~/lumi-gap && bash deploy/vps/deploy.sh
 ```
 
 Migration mới được service `migrate` áp dụng tự động trước khi backend và worker khởi động.
@@ -173,7 +178,7 @@ crontab -e
 Thêm dòng:
 
 ```
-15 1 * * * bash /home/deploy/lumi-gap/deploy/hetzner/backup-db.sh >> /home/deploy/backups/backup.log 2>&1
+15 1 * * * bash /home/deploy/lumi-gap/deploy/vps/backup-db.sh >> /home/deploy/backups/backup.log 2>&1
 ```
 
 Nên tải bản backup về máy hoặc lưu sang nơi khác định kỳ (`scp deploy@<ip>:~/backups/*.dump .`).
