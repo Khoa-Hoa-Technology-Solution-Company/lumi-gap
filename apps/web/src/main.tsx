@@ -10,6 +10,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { I18nProvider } from "@/i18n";
 import { AppErrorBoundary } from "@/components/app-error-boundary";
+import { reloadOnceForStaleChunk } from "@/utils/stale-chunk";
 import "./theme/globals.css";
 import "./theme/lumi-surface.css";
 
@@ -26,6 +27,11 @@ const ReactQueryDevtools = import.meta.env.DEV
       })),
     )
   : null;
+
+// Vite fires this when a lazy chunk (or its CSS) from an older deploy is gone.
+window.addEventListener("vite:preloadError", (event) => {
+  if (reloadOnceForStaleChunk()) event.preventDefault();
+});
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing #root element");

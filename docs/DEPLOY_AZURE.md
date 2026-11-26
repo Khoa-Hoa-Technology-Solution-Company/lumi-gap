@@ -13,6 +13,7 @@ và dùng chung cho cả Hetzner ([DEPLOY_HETZNER.md](DEPLOY_HETZNER.md)).
 | `deploy.sh` | `git pull`, build, khởi động lại toàn bộ stack |
 | `first-run.sh` | Tạo provider OpenAlex và nạp danh mục chủ đề (taxonomy) |
 | `make-admin.sh` | Nâng một tài khoản đã đăng ký lên ADMIN |
+| `switch-domain.sh` | Kiểm tra DNS rồi chuyển sang domain mới (mục 11) |
 | `backup-db.sh` | `pg_dump` hằng ngày, giữ 7 bản |
 
 LibreTranslate **không** chạy. Giữ `TRANSLATION_PROVIDER=gemini`.
@@ -122,8 +123,8 @@ Sửa hoặc thêm các dòng sau trong `.env`:
 
 ```dotenv
 # Domain công khai (biến mới, chỉ override VPS dùng)
-LUMIGAP_DOMAIN=lumigap.uk
-API_DOMAIN=api.lumigap.uk
+LUMIGAP_DOMAIN=lumigap.io.vn
+API_DOMAIN=api.lumigap.io.vn
 ACME_EMAIL=<email nhận cảnh báo chứng chỉ>
 
 # Bắt buộc
@@ -157,7 +158,7 @@ WORKER_MEM_LIMIT=384m
 Ghi chú:
 
 - `CORS_ORIGIN` và `GOOGLE_CALLBACK_URL` được override sinh ra từ `LUMIGAP_DOMAIN` / `API_DOMAIN`.
-- Google OAuth: thêm redirect URI `https://api.lumigap.uk/api/v1/auth/google/callback`.
+- Google OAuth: thêm redirect URI `https://api.lumigap.io.vn/api/v1/auth/google/callback`.
 - Gói free của Gemini giới hạn số request mỗi ngày. Nếu bị lỗi quota, giảm `PAPER_ANALYSIS_MAX_PAPERS_PER_RUN`
   và `TOPIC_WATCH_DAILY_MAX_PAPERS`.
 - Không commit `.env` và không gửi file này qua chat.
@@ -185,7 +186,7 @@ Lưu ý: `deploy.sh` sẽ bật lại các worker này ở lần deploy sau, nê
 
 ## 6. Bật tự động cào báo
 
-1. Mở `https://lumigap.uk` và **đăng ký** tài khoản của bạn.
+1. Mở `https://lumigap.io.vn` và **đăng ký** tài khoản của bạn.
 2. Trên VM, nâng tài khoản đó lên admin:
    ```bash
    bash deploy/vps/make-admin.sh <email-vừa-đăng-ký>
@@ -212,8 +213,8 @@ dc logs -f worker-sync | grep "topic watch run finished"   # sau giờ SYNC_CRON
 ## 7. Kiểm tra chung
 
 ```bash
-curl -fsS https://api.lumigap.uk/health
-curl -fsS https://api.lumigap.uk/ready
+curl -fsS https://api.lumigap.io.vn/health
+curl -fsS https://api.lumigap.io.vn/ready
 dc ps
 docker stats --no-stream
 free -h
@@ -295,3 +296,41 @@ Lưu ý:
   trên nhánh hiện tại.
 - Đổi domain thì sửa `.env` trên VM và cập nhật 2 biến `AZURE_WEB_URL` / `AZURE_API_URL`.
 - Đổi IP hoặc tạo lại VM thì cập nhật `AZURE_VM_HOST` và chạy lại `ssh-keyscan -t ed25519 <IP>` cho `AZURE_VM_KNOWN_HOSTS`.
+
+## 11. Gắn hoặc đổi domain
+
+Môi trường hiện tại:
+
+| Thành phần | Giá trị |
+|---|---|
+| Web | https://lumigap.io.vn (`www` chuyển hướng về đây) |
+| API | https://api.lumigap.io.vn |
+| VM | `lumigap-prod`, resource group `lumigap-rg`, Malaysia West, `Standard_B2as_v2`, IP `85.211.181.233` |
+| DNS | OneShield (OnePortal): bản ghi A `@`, `www`, `api` trỏ về IP trên, **Bảo vệ = Tắt** |
+
+Các bước khi đổi sang domain khác:
+
+1. Tạo bản ghi **A** cho `@`, `www`, `api` trỏ về IP của VM. Tắt proxy/bảo vệ của nhà cung cấp DNS
+   để Let's Encrypt xác minh được. Không động vào các bản ghi email (MX, SPF, DKIM, DMARC).
+2. Trên VM, kiểm tra DNS (không thay đổi gì):
+   ```bash
+   cd ~/lumi-gap && CHECK_ONLY=1 bash deploy/vps/switch-domain.sh <domain>
+   ```
+   Script báo `WAIT` cho tên chưa trỏ đúng và thoát mà không sửa gì, nên domain cũ vẫn chạy.
+3. Khi cả domain chính và `api` đều `OK`, chạy lại không có `CHECK_ONLY`:
+   ```bash
+   bash deploy/vps/switch-domain.sh <domain>
+   ```
+   Script lưu `.env` cũ vào `~/env-backups/`, đổi `LUMIGAP_DOMAIN` và `API_DOMAIN`, deploy lại
+   (Caddy tự xin chứng chỉ HTTPS) và đợi HTTPS trả lời.
+4. Trên máy của bạn, cập nhật biến của workflow deploy:
+   ```powershell
+   gh variable set AZURE_WEB_URL --body "https://<domain>"
+   ```
+   ```powershell
+   gh variable set AZURE_API_URL --body "https://api.<domain>"
+   ```
+5. Nếu dùng đăng nhập Google: thêm redirect URI `https://api.<domain>/api/v1/auth/google/callback`
+   trong Google Cloud Console.
+
+Quay lại domain cũ: chép bản mới nhất trong `~/env-backups/` đè lên `.env`, rồi chạy `deploy/vps/deploy.sh`.

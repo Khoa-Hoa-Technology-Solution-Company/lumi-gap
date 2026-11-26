@@ -25,6 +25,19 @@ it("offers a retry without exposing an internal error or replacing the session",
   expect(container.textContent).not.toContain("Internal diagnostic detail");
   await act(async () => container.querySelector('button')!.click()); expect(retry).toHaveBeenCalledOnce();
 });
+it("reloads once when a chunk from an older deploy fails to load", async () => {
+  const reload = vi.fn(); window.sessionStorage.clear();
+  vi.stubGlobal("location", { ...window.location, reload });
+  function StaleChunkPage(): never { throw new TypeError("Failed to fetch dynamically imported module: https://lumigap.io.vn/assets/login-old.js"); }
+  await act(async () => root.render(<AppErrorBoundary><StaleChunkPage /></AppErrorBoundary>));
+  expect(reload).toHaveBeenCalledOnce();
+});
+it("does not reload for an ordinary rendering error", async () => {
+  const reload = vi.fn(); window.sessionStorage.clear();
+  vi.stubGlobal("location", { ...window.location, reload });
+  await act(async () => root.render(<AppErrorBoundary><BrokenPage /></AppErrorBoundary>));
+  expect(reload).not.toHaveBeenCalled();
+});
 it("uses English recovery copy for an English session", async () => {
   document.documentElement.lang = "en";
   await act(async () => root.render(<AppErrorBoundary><BrokenPage /></AppErrorBoundary>));
