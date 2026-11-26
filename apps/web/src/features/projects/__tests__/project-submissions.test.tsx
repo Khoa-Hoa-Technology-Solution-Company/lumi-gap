@@ -155,7 +155,8 @@ it("preserves structured research details on older submissions", async () => {
 it("uses the selected submission ID instead of the project's route ID and returns to its list", async () => {
   await render(<SubmissionDetailPage submissionId="manuscript" projectId="project-a" />);
   expect(mocks.detail).toHaveBeenCalledWith("manuscript", "project-a");
-  expect(container.querySelector("a")?.getAttribute("href")).toBe("/projects/project-a?tab=submissions");
+  // Inside a project the workspace breadcrumb returns to the list; the standalone back link is not duplicated.
+  expect(container.textContent).not.toContain("Quay lại danh sách bản thảo");
   expect(container.querySelector("h1")).toBeNull();
 });
 it("hides creation and all revision/review actions in a read-only project", async () => {
@@ -230,8 +231,12 @@ it("does not show an older AI result as feedback for the current version", async
   mocks.detail.mockReturnValue({ data: { title: "Updated paper", status: "revised", currentRevisionId: "v2" } });
   mocks.preReviews.mockReturnValue({ data: [{ id: "analysis", status: "COMPLETED", sourceRevisionId: "v1", sourceRevisionNumber: 1, summary: "Earlier analysis", reviewFocusAreas: [], limitations: [], unsupportedClaims: [], citationIssues: [] }] });
   await render(<SubmissionDetailPage submissionId="manuscript" />);
-  expect(container.textContent).not.toContain("Earlier analysis");
-  expect(container.querySelector('[data-testid="ai-prereview-panel"]')).toBeNull();
+  // The older analysis stays available for reference, collapsed and labelled as belonging to an older version.
+  const panel = container.querySelector<HTMLDetailsElement>('[data-testid="ai-prereview-panel"]')!;
+  expect(panel).not.toBeNull();
+  expect(panel.open).toBe(false);
+  expect(panel.textContent).toContain("Đánh giá AI này dành cho phiên bản cũ hơn bản hiện tại.");
+  expect(panel.textContent).toContain("Không phải góp ý của giảng viên");
 });
 it("refreshes both the request progress and the submission status", async () => {
   const historyRefresh = vi.fn(), detailRefresh = vi.fn();

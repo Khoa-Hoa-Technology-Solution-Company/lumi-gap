@@ -36,7 +36,8 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); container.remove(); vi.unstubAllGlobals(); });
 it("groups real actions, counts submitted ballots separately and links to the precise round and section", async () => {
   await render();
-  expect([...container.querySelectorAll('[role="tab"]')].map(el => el.textContent)).toEqual(["Cần xử lý3", "Đã đánh giá1"]);
+  // My ballot on the disputed round is still undecided, so it is not counted as reviewed yet.
+  expect([...container.querySelectorAll('[role="tab"]')].map(el => el.textContent)).toEqual(["Cần xử lý3", "Đã đánh giá0"]);
   expect(container.querySelector('[role="tab"]')?.getAttribute("aria-selected")).toBe("true");
   const review = container.querySelector('[aria-label="Đang đánh giá"]')!;
   const resolution = container.querySelector('[aria-label="Cần giải quyết"]')!;
@@ -48,16 +49,16 @@ it("groups real actions, counts submitted ballots separately and links to the pr
   expect(resolution.querySelector('a')?.getAttribute("href")).toContain("screeningRound=conflict-round&screeningPaper=conflict&screeningSection=statement");
   expect(adjudication.querySelector('a')?.getAttribute("href")).toContain("screeningSection=decision");
 });
-it("removes my action after my statement while retaining the ballot in reviewed history", async () => {
+it("removes my action after my statement and keeps the undecided round out of reviewed", async () => {
   await render();
   await act(async () => { client.setQueriesData({ queryKey: ["project-research", "reviewer", "project"] }, { ...summary, myTrackedDisputes: summary.myTrackedDisputes!.map(t => ({ ...t, needsMyStatement: false })) }); });
   await settle();
   expect(container.querySelector('[role="tab"]')?.textContent).toBe("Cần xử lý2");
   expect(container.querySelector('[aria-label="Cần giải quyết"]')?.textContent).not.toContain("Disputed study");
   await act(async () => (container.querySelectorAll('[role="tab"]')[1] as HTMLButtonElement).click());
-  expect(container.textContent).toContain("Disputed study");
-  expect(container.textContent).toContain("Đánh giá của tôiPhù hợp");
-  expect(container.textContent).toContain("Đang thu thập ý kiến");
+  // The ballot is kept in the paper history and appears under "Reviewed" once the team decides the case.
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe("Đã đánh giá0");
+  expect(container.querySelector('article')).toBeNull();
 });
 it("filters outcomes while preserving my vote and shows the adjudicator's reason", async () => {
   const final = { ...own, paperId: "final", roundId: "final-round", title: "Final study", groupStatus: "EXCLUDED", isAdjudicated: true, finalDecision: "EXCLUDED", resolverName: "Independent C", groupReason: "Population fails the registered inclusion criteria" };
@@ -69,10 +70,13 @@ it("filters outcomes while preserving my vote and shows the adjudicator's reason
   expect(container.textContent).toContain("Kết quả của nhómĐã loạiQuyết định sau phân xử");
   expect(container.textContent).toContain("Independent C");
   expect(container.querySelector(".screening-paper-card-reason")?.textContent).toContain(final.groupReason);
-  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe("Đã đánh giá2");
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe("Đã đánh giá1");
   const select = container.querySelector("select")!;
-  await act(async () => { select.value = "PENDING"; select.dispatchEvent(new Event("change", { bubbles: true })); });
-  expect(container.textContent).toContain("Disputed study"); expect(container.textContent).not.toContain("Final study");
+  expect([...select.options].map(o => o.value)).toEqual(["ALL", "INCLUDED", "EXCLUDED", "BACKGROUND"]);
+  await act(async () => { select.value = "INCLUDED"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(container.textContent).not.toContain("Final study");
+  await act(async () => { select.value = "EXCLUDED"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(container.textContent).toContain("Final study"); expect(container.textContent).not.toContain("Disputed study");
 });
 it("restores a directly opened adjudication statement URL", async () => {
   await render("/projects/project?tab=tasks&view=screening&screeningRound=conflict-round&screeningSection=statement");
@@ -81,10 +85,9 @@ it("restores a directly opened adjudication statement URL", async () => {
 it("opens the team board by default, including old screening links, without a separate screening section", async () => {
   await render("/projects/project?tab=tasks&view=screening&screeningTab=pending", true);
   expect(container.textContent).not.toContain("Đánh giá tài liệu");
-  expect(container.textContent).toContain("Existing team board");
-  const board = [...container.querySelectorAll(".task-section-nav button")].find(button => button.textContent === "Team tasks") as HTMLButtonElement;
-  await act(async () => board.click()); await settle();
-  expect(container.textContent).toContain("Existing team board");
+  // There is a single team board; the old section switcher was removed.
+  expect(container.querySelector(".task-section-nav")).toBeNull();
+  expect(container.textContent).toContain("Team tasks");
   expect(container.querySelector('[aria-label="Đánh giá tài liệu"]')).toBeNull();
 });
 it("keeps case links functional from the integrated team board", async () => {

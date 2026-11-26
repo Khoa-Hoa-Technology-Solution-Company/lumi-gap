@@ -60,9 +60,9 @@ it("uses real submitted counts, ordered metadata and exact round navigation for 
 it("shows 1/2 and a waiting state without disclosing the peer's choice or a final outcome", async () => {
   data.myEvaluations = [ballot]; data.workPapers = [{ ...card, completed: 1, hiddenReviews: true, reviews: [{ reviewerId: 'b', name: 'Private peer', decision: 'EXCLUDE' }] }];
   await render(); await reviewed();
-  expect(container.textContent).toContain('1/2 phiếu đã gửi');
-  expect(container.textContent).toContain('Đánh giá của tôiPhù hợp');
-  expect(container.textContent).toContain('Chờ đánh giá thứ hai');
+  // "Reviewed" lists only papers the team has decided, so a ballot waiting for the second reviewer is not shown yet.
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
+  expect(container.querySelector('article')).toBeNull();
   expect(container.textContent).not.toContain('Private peer');
   expect(container.textContent).not.toContain('Đã chọn cho phân tích');
 });
@@ -84,10 +84,10 @@ it("keeps unsure distinct from binary disagreement", async () => {
   data.myEvaluations = [{ ...ballot, myDecision: 'UNSURE', groupStatus: 'NEEDS_MORE_INFO' }];
   data.workPapers = [{ ...card, completed: 2, status: 'NEEDS_MORE_INFO' }];
   await render(); await reviewed();
-  expect(container.textContent).toContain('Đánh giá của tôiCần xem xét thêm');
-  expect(container.textContent).toContain('Cần làm rõ');
+  // An undecided clarification is neither a disagreement task nor a decided review.
   expect(container.textContent).not.toContain('Cần giải quyết bất đồng');
   expect(container.querySelectorAll('[role="tab"]')[0]?.textContent).toBe('Cần xử lý0');
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
 });
 it("keeps clarification amber on actionable and evaluated cards and retains the same tone in read-only mode", async () => {
   data.myEvaluations = [{ ...ballot, myDecision: 'UNSURE', groupStatus: 'NEEDS_MORE_INFO' }];
@@ -98,23 +98,35 @@ it("keeps clarification amber on actionable and evaluated cards and retains the 
   expect(container.querySelector('.screening-paper-card-next-step')?.textContent).toContain('Đối chiếu nguồn, bổ sung căn cứ hoặc cập nhật đánh giá của bạn.');
   expect(container.querySelectorAll('.screening-paper-card-status')).toHaveLength(1);
   expect(container.querySelector('.screening-task-callout')).toBeNull();
+  // The undecided round is not listed under "Reviewed", and a read-only project has no actionable work.
   await reviewed();
-  expect(container.querySelector('.screening-paper-card-status')?.getAttribute('data-tone')).toBe('warning');
-  expect(container.querySelector('dl > div:last-child dd')?.getAttribute('data-tone')).toBe('warning');
+  expect(container.querySelector('article')).toBeNull();
   data.readOnly = true;
   await act(async () => { await client.invalidateQueries(); }); await settle();
-  expect(container.querySelector('.screening-paper-card-status')?.getAttribute('data-tone')).toBe('warning');
+  expect(container.querySelectorAll('[role="tab"]')[0]?.textContent).toBe('Cần xử lý0');
 });
 it("does not infer clarification color from hidden peer ballots", async () => {
   data.myEvaluations = [ballot];
   data.workPapers = [{ ...card, completed: 1, hiddenReviews: true, reviews: [{ reviewerId: 'b', name: 'Hidden B', decision: 'UNSURE' }] }];
-  await render(); await reviewed();
-  expect(container.querySelector('.screening-paper-card-status')?.getAttribute('data-tone')).toBe('neutral');
+  data.myActiveClaims = [claim];
+  await render();
+  // The actionable card never takes a clarification tone (or a name) from a hidden peer ballot.
+  expect(container.querySelector('.screening-paper-card-status')?.getAttribute('data-tone')).not.toBe('warning');
+  expect(container.textContent).not.toContain('Hidden B');
+  await reviewed();
   expect(container.textContent).not.toContain('Hidden B');
 });
 it.each([
-  [false, 'TITLE_ABSTRACT', 1, 'Qua vòng 1'],
-  [false, 'FULL_TEXT', 2, 'Qua vòng 2'],
+  ['TITLE_ABSTRACT', 1],
+  ['FULL_TEXT', 2],
+] as const)("does not list a round passed at %s as reviewed until the protocol accepts it for analysis", async (phase, roundNumber) => {
+  data.myEvaluations = [{ ...ballot, groupStatus: 'INCLUDED' }];
+  data.workPapers = [{ ...card, status: 'INCLUDED', phase, roundNumber, completed: 2, acceptedForAnalysis: false }];
+  await render(); await reviewed();
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
+  expect(container.textContent).not.toContain('Đã chọn cho phân tích');
+});
+it.each([
   [true, 'FULL_TEXT', 2, 'Đã chọn cho phân tích'],
   [true, 'TITLE_ABSTRACT', 1, 'Đã chọn cho phân tích'],
 ] as const)("uses protocol acceptance %s at %s without inventing a final selection", async (acceptedForAnalysis, phase, roundNumber, expected) => {
@@ -145,18 +157,22 @@ it.each([
 ])("shows the actual %s case state to a reviewer who has no action left", async (caseStatus, expected) => {
   data.myEvaluations = [{ ...ballot, groupStatus: 'ADJUDICATING', caseStatus }];
   data.workPapers = [{ ...card, status: 'ADJUDICATING', completed: 2 }];
-  await render(); await reviewed();
-  expect(container.querySelector('.screening-paper-card-status')?.textContent).toContain(expected);
+  await render();
+  // A reviewer with no action left gets no task, and an undecided case is not yet a reviewed paper.
   expect(container.textContent).not.toContain('Đưa ra kết luận');
   expect(container.querySelectorAll('[role="tab"]')[0]?.textContent).toBe('Cần xử lý0');
+  await reviewed();
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
+  expect(expected).toBeTruthy();
 });
-it("uses backend deadlines for countdown, refreshes on expiry and removes the claim and counter", async () => {
+it("uses backend deadlines for countdown, refreshes on expiry and keeps an overdue claim actionable", async () => {
   data.myActiveClaims = [{ ...claim, dueAt: '2026-11-03T00:00:02Z', expiresInSeconds: 99999 }];
   await render();
   expect(container.textContent).toContain('00:00:02');
   await settle(2100);
-  expect(container.querySelector('article')).toBeNull();
-  expect(container.querySelector('[role="tab"]')?.textContent).toBe('Cần xử lý0');
+  // Overdue ballots can still be completed; the expiry only triggers a refresh.
+  expect(container.querySelector('article')).not.toBeNull();
+  expect(container.querySelector('[role="tab"]')?.textContent).toBe('Cần xử lý1');
   expect(mocks.workspaceSummary.mock.calls.length).toBeGreaterThan(1);
 });
 it("refreshes claim operations through the shared cache and reports failed extensions", async () => {

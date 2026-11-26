@@ -1,3 +1,4 @@
+import { uiCoverageBackfillEn } from "./ui-coverage-backfill";
 import { mentorSharingEn } from "./mentor-sharing";
 import { submissionDetailEn } from "./submission-detail";
 import { registrationEn } from "./registration";
@@ -44,6 +45,8 @@ import { adminCatalogEn } from "./admin-catalog";
 import { personalizationStrings } from "./personalization";
 
 export const en = {
+  // Spread first so feature-specific dictionaries below take precedence.
+  ...uiCoverageBackfillEn,
   ...mentorWorkspaceEn,
   ...mentorLifecycleEn,
   ...registrationEn,

@@ -76,18 +76,21 @@ it("keeps a personal include ballot distinct from team exclusion after adjudicat
   expect(row.textContent).toContain("Kết quả của nhómĐã loạiQuyết định sau phân xử");
   expect(row.textContent).toContain("Independent C");
 });
-it.each(["WAITING_REVIEWER", "CONFLICT", "ADJUDICATING", "INCLUDED", "EXCLUDED"] as const)("filters reviewed papers by team status %s without changing tab counters", async status => {
+// "Reviewed" lists only rounds the team has decided; undecided rounds (waiting, conflict, adjudicating) stay out of it.
+it.each(["INCLUDED", "EXCLUDED"] as const)("filters reviewed papers by team status %s without changing tab counters", async status => {
   const all = ["WAITING_REVIEWER", "CONFLICT", "ADJUDICATING", "INCLUDED", "EXCLUDED"] as const;
   await render({ ...summary, myTrackedDisputes: [], myEvaluations: all.map(s => evaluation(s, s)) });
   await reviewed();
+  expect([...container.querySelectorAll('article h4')].map(h => h.textContent).sort()).toEqual(["Study EXCLUDED", "Study INCLUDED"]);
   const filter = container.querySelector('select')!;
+  expect([...filter.options].map(o => o.value)).not.toContain("WAITING_REVIEWER");
   await act(async () => { filter.value = status; filter.dispatchEvent(new Event("change", { bubbles: true })); });
   expect([...container.querySelectorAll('article h4')].map(h => h.textContent)).toEqual([`Study ${status}`]);
-  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe("Đã đánh giá5");
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe("Đã đánh giá2");
 });
 it("counts one paper across screening phases and retains earlier ballots", async () => {
   const first = evaluation("same", "INCLUDED");
-  const later = { ...first, roundId: "full-text", phase: "FULL_TEXT" as const, submittedAt: "2026-11-03T09:00:00Z", groupStatus: "CONFLICT" as const, myDecision: "EXCLUDE" as const };
+  const later = { ...first, roundId: "full-text", phase: "FULL_TEXT" as const, submittedAt: "2026-11-03T09:00:00Z", groupStatus: "EXCLUDED" as const, myDecision: "EXCLUDE" as const };
   await render({ ...summary, myTrackedDisputes: [], myEvaluations: [first, later] });
   await reviewed();
   expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe("Đã đánh giá1");
@@ -102,9 +105,10 @@ it("shows project acceptance separately from my ballot and supports search and o
   const accepted = { paperId: "accepted", roundId: own.roundId, title: own.title, phase: own.phase, publicationYear: 2025, journalName: null, acceptedAt: own.submittedAt, isAdjudicated: true, resolverName: "Independent C" };
   await render({ ...summary, myTrackedDisputes: [], myEvaluations: [own, evaluation("waiting")], acceptedPapers: [accepted] });
   const tabs = container.querySelectorAll('[role="tab"]');
-  expect([...tabs].map(t => t.textContent)).toEqual(["Cần xử lý0", "Đã đánh giá2", "Bài được chấp nhận1"]);
+  // The waiting ballot has no team decision yet, so only the accepted paper counts as reviewed.
+  expect([...tabs].map(t => t.textContent)).toEqual(["Cần xử lý0", "Đã đánh giá1", "Bài được chấp nhận1"]);
   await reviewed();
-  expect(container.querySelectorAll('article')).toHaveLength(2);
+  expect(container.querySelectorAll('article')).toHaveLength(1);
   const reviewedPaper = [...container.querySelectorAll('article')].find(row => row.textContent?.includes("Study accepted"))!;
   expect(reviewedPaper.textContent).toContain("Đánh giá của tôiKhông phù hợp");
   expect(reviewedPaper.textContent).toContain("Kết quả của nhómĐã chọn cho phân tíchQuyết định sau phân xử");
