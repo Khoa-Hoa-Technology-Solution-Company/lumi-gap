@@ -285,7 +285,7 @@ describe.sequential("peer-review versions and authorization (PostgreSQL)", () =>
       const restored = await submissionService.createVersion(submission.id, { sourceRevisionId: v2.revision.id, summary: "Restore PDF version 2", expectedRevisionNumber: 3 }, author, "user");
       expect(restored.revisionNumber).toBe(4); expect(restored.contentType).toBe("PDF");
       const restoredDownload = await submissionService.resolveDownload(submission.id, restored.id, author, "user");
-      if (restoredDownload.kind === "local") expect(await readFile(restoredDownload.path)).toEqual(pdf);
+      expect(restoredDownload.kind).toBe("local"); if (restoredDownload.kind === "local") expect(await readFile(restoredDownload.path)).toEqual(pdf);
       expect((await reviewService.getReview(request.assignment.id, lecturer)).artifactRevision?.id).toBe(v2.revision.id);
     } finally {
       for (const uri of uris) await local.deletePdf(uri);

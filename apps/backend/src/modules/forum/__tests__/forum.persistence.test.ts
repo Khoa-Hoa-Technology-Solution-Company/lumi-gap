@@ -1,4 +1,4 @@
-import { createProjectFixture } from "../../../test-utils/project-fixture.js";
+import { createProjectFixture, purgeProjectFixture } from "../../../test-utils/project-fixture.js";
 import { forumCitationToken, forumCitationPaperIds } from "@trend/shared-types";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -11,7 +11,6 @@ import { forumCategoryService } from "../forum-category.service.js";
 import { forumRouter } from "../forum.routes.js";
 import { notificationService } from "../../notifications/notification.service.js";
 import { backfillForumSlugs } from "../forum-slugs.js";
-import { deleteScreeningData } from "../../../test-utils/screening-cleanup.js";
 
 // Positional shim over the query-object `communityService.list` signature.
 const listCommunities = (userId: string | undefined, page: number, pageSize: number, role?: Parameters<typeof communityService.list>[2], activeOnly = false) =>
@@ -83,11 +82,10 @@ describe.sequential("research forum persistence and authorization", () => {
     }
     if (corpusId) await prisma.corpusPaper.deleteMany({ where: { corpusId } });
     await prisma.projectActivity.deleteMany({ where: { projectId: { in: [publicProjectId, privateProjectId].filter(Boolean) } } });
-    await deleteScreeningData([publicProjectId, privateProjectId]);
-    await prisma.projectPaper.deleteMany({ where: { projectId: { in: [publicProjectId, privateProjectId].filter(Boolean) } } });
+
     if (gapId) await prisma.researchGap.deleteMany({ where: { id: gapId } });
     if (corpusId) await prisma.literatureCorpus.deleteMany({ where: { id: corpusId } });
-    await prisma.project.deleteMany({ where: { id: { in: [publicProjectId, privateProjectId].filter(Boolean) } } });
+    for (const id of [publicProjectId, privateProjectId].filter(Boolean)) await purgeProjectFixture(id);
     if (paperId) await prisma.paperAuthor.deleteMany({ where: { paperId } });
     if (citationSecondPaperId) await prisma.paper.deleteMany({ where: { id: citationSecondPaperId } });
     if (paperId) await prisma.paper.deleteMany({ where: { id: paperId } });

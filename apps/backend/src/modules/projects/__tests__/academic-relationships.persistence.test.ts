@@ -61,9 +61,8 @@ describe.skipIf(!enabled).sequential("academic relationship consent (PostgreSQL)
     expect(await getPrisma().mentorFeedback.count({ where: { projectId: project } })).toBe(1);
   });
 
-  it("offers require discovery opt-in and owner acceptance without private content leaks", async () => {
-    // Until the owner opts in to discovery the project is not accepting applications.
-    await expect(service.offer(project, lecturer, { message: "Offer research guidance" })).rejects.toMatchObject({ statusCode: 409, message: "This project is not accepting applications" });
+  it("offers require discovery opt-in and a separate invitation with lecturer consent without private content leaks", async () => {
+    await expect(service.offer(project, lecturer, { message: "Offer research guidance" })).rejects.toMatchObject({ statusCode: 409 });
     await service.settings(project, owner, { discovery: "SEEKING_MENTOR", summary: "We seek help designing evaluation", expertise: ["Empirical research"] });
     const previews = (await service.discovery(lecturer)).items;
     const preview = previews.find(p => p.id === project)!;
@@ -74,13 +73,21 @@ describe.skipIf(!enabled).sequential("academic relationship consent (PostgreSQL)
     // An offer is now a mentorship application: only the owner can act on it, and shortlisting is not
     // access. The project stays private until the owner sends an explicit mentor invitation.
     const offer = await service.offer(project, lecturer, { message: "I can mentor this project" });
-    const { version } = await getPrisma().mentorshipApplication.findUniqueOrThrow({ where: { id: offer.id } });
-    const act = (actor: string) => mentorshipApplicationsService.action(project, offer.id, actor, { action: "SHORTLIST", expectedVersion: version });
+    const application = await getPrisma().mentorshipApplication.findUniqueOrThrow({ where: { id: offer.id } });
+    expect(application.status).toBe("APPLIED");
+    expect(await getPrisma().mentorshipRequest.count({ where: { projectId: project } })).toBe(0);
+    const act = (actor: string) => mentorshipApplicationsService.action(project, offer.id, actor, { action: "SHORTLIST", expectedVersion: application.version });
     await expect(act(lecturer)).rejects.toMatchObject({ statusCode: 403 });
     await expect(act(member)).rejects.toMatchObject({ statusCode: expect.any(Number) });
     await expect(service.workspace(project, lecturer)).rejects.toMatchObject({ statusCode: 403 });
-    expect((await act(owner)).status).toBe("SHORTLISTED");
+    const shortlisted = await act(owner);
+    expect(shortlisted.status).toBe("SHORTLISTED");
     expect(await canAccessProjectAsMentor(project, lecturer)).toBe(false);
+    const invitation = await service.request(project, owner, { mentorUserId: lecturer, message: "Please guide our evaluation", applicationId: offer.id, expectedApplicationVersion: shortlisted.version });
+    await expect(service.accept(project, invitation.id, owner)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(service.accept(project, invitation.id, member)).rejects.toMatchObject({ statusCode: 403 });
+    await service.accept(project, invitation.id, lecturer);
+    expect(await canAccessProjectAsMentor(project, lecturer)).toBe(true);
     expect((await getPrisma().project.findUniqueOrThrow({ where: { id: project } })).visibility).toBe("PRIVATE");
   });
 

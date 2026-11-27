@@ -1,9 +1,9 @@
+import { purgeProjectFixture } from "../../../test-utils/project-fixture.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { hashOpaqueToken } from "../../auth/token.service.js";
 import { authService } from "../../auth/auth.service.js";
 import { projectService } from "../project.service.js";
-import { deleteScreeningData } from "../../../test-utils/screening-cleanup.js";
 
 describe.sequential("project workspace persistence", () => {
   const marker = crypto.randomUUID();
@@ -49,8 +49,7 @@ describe.sequential("project workspace persistence", () => {
 
   afterAll(async () => {
     const prisma = getPrisma();
-    await deleteScreeningData(projectIds);
-    if (projectIds.length) await prisma.project.deleteMany({ where: { id: { in: projectIds } } });
+    for (const id of projectIds) await purgeProjectFixture(id);
     if (paperId) await prisma.paper.deleteMany({ where: { id: paperId } });
     await prisma.user.deleteMany({ where: { email: { in: Object.values(emails) } } });
   });
@@ -161,7 +160,7 @@ describe.sequential("project workspace persistence", () => {
     const prisma = getPrisma();
     const project = await projectService.createProject({ title: "Token invitation review", visibility: "PRIVATE", status: "ACTIVE" }, ownerId);
     projectIds.push(project._id);
-    const token = "project_invitation_test_token_0123456789abcdef";
+    const token = "project_invitation_test_token_" + marker;
 
     await prisma.projectInvitation.create({
       data: {
@@ -250,8 +249,8 @@ describe.sequential("project workspace persistence", () => {
     const prisma = getPrisma();
     const project = await projectService.createProject({ title: "Expired token review", visibility: "PRIVATE", status: "ACTIVE" }, ownerId);
     projectIds.push(project._id);
-    const expiredToken = "expired_project_invitation_token_0123456789abcdef";
-    const cancelledToken = "cancelled_project_invitation_token_0123456789abcdef";
+    const expiredToken = "expired_project_invitation_token_" + marker;
+    const cancelledToken = "cancelled_project_invitation_token_" + marker;
 
     await prisma.projectInvitation.createMany({
       data: [

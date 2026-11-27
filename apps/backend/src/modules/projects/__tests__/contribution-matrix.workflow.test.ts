@@ -352,7 +352,7 @@ describe.sequential("Contribution Matrix + Supporting Evidence + Member Confirma
     expect(allWork.total).toBe(2);
   });
 
-  it("prevents unauthorized modifications and blocks confirming on another member's behalf over HTTP", async () => {
+  it("prevents unauthorized modifications and rejects all retired allocation decisions over HTTP", async () => {
     const projectId = await createThreeMemberProject();
     const period = await allocations.createPeriod(projectId, memberA, {
       title: "Security Verification Scope",
@@ -422,6 +422,8 @@ describe.sequential("Contribution Matrix + Supporting Evidence + Member Confirma
         expect(body.error.code).toBe("CONFLICT");
         expect(body.error.message).toMatch(/Percentage allocation is retired/);
       }
+
+      expect(await db.allocationApproval.count({ where: { revisionId: submitted.id } })).toBe(0);
 
       // The member's own decision still works at service level and leaves the proposal awaiting the others.
       const decided = await allocations.decide(projectId, memberB, submitted.id, {

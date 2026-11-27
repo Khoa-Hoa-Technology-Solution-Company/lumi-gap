@@ -554,22 +554,34 @@ describe.skipIf(!enabled).sequential("adaptive Lecturer verification with Postgr
     await profiles.requestVerification(user.id, VerificationRequestSchema.parse({ type: "POSITION", path: "MANUAL", institutionId, evidenceType: "DOCUMENT", submissionKey: randomUUID(), supplementsRequestId: request.id, expectedReviewedAt: tracking.selectedRequest!.reviewedAt, sources: [{ type: "OFFICIAL_FACULTY_PROFILE", sourceKind: "URL", reference: `https://${domain}/person` }] }));
     expect(await db.verificationEvidence.findFirstOrThrow({ where: { userId: user.id, status: "PENDING" } })).toMatchObject({ previousRequestId: request.id, revision: 2 });
   });
-  it("recovers committed verification outbox rows in the real notification worker without sending email", async () => {
+  it("recovers committed verification outbox rows beyond the first 100 in the real worker without sending email", async () => {
     const user = await account("ACCOUNT");
+    // These older rows share a timestamp to exercise stable paging as well as the batch boundary.
+    await db.notification.createMany({ data: Array.from({ length: 101 }, (_, index) => ({
+      userId: user.id, title: "Recovery backlog fixture", message: "Test-only pending dispatch",
+      type: "LECTURER_VERIFICATION_REVIEW_REQUESTED", emailStatus: "SKIPPED",
+      eventKey: `LECTURER_VERIFICATION_REVIEW_REQUESTED:fixture:${user.id}:${index}`,
+      createdAt: new Date(Date.now() - 60_000),
+    })) });
     await profiles.requestVerification(user.id, VerificationRequestSchema.parse({ type: "POSITION", path: "STANDARD", institutionId, evidenceType: "DOCUMENT", submissionKey: randomUUID(), sources: [{ type: "OFFICIAL_FACULTY_PROFILE", sourceKind: "URL", reference: `https://staff.${domain}/worker-test` }] }));
     const notification = await db.notification.findFirstOrThrow({ where: { userId: user.id, type: "LECTURER_VERIFICATION_SUBMITTED" } });
     expect(notification.dispatchedAt).toBeNull();
-    const worker = spawn(process.execPath, ["--import", "tsx", "src/workers/notification.worker.ts"], { windowsHide: true, stdio: "ignore", env: { ...process.env, EMAIL_DELIVERY_MODE: "disabled", LOG_LEVEL: "error" } });
+    const worker = spawn(process.execPath, ["--import", "tsx", "src/workers/notification.worker.ts"], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, EMAIL_DELIVERY_MODE: "disabled", LOG_LEVEL: "info" } });
+    let workerOutput = "";
+    const capture = (chunk: Buffer) => { workerOutput = (workerOutput + chunk.toString()).slice(-8000); };
+    worker.stdout.on("data", capture); worker.stderr.on("data", capture);
     let spawnError: Error | undefined; worker.on("error", error => { spawnError = error; });
     try {
-      const deadline = Date.now() + 10000; let row = notification;
+      // This includes cold TypeScript worker startup as well as draining the real queue.
+      const deadline = Date.now() + 30_000; let row = notification;
       while (Date.now() < deadline && (!row.dispatchedAt || !row.pushSentAt || row.emailStatus !== "SKIPPED")) {
         if (spawnError) throw spawnError;
+        if (worker.exitCode !== null) throw new Error(`Notification worker exited (${worker.exitCode}): ${workerOutput}`);
         await new Promise(resolve => setTimeout(resolve, 150));
         row = await db.notification.findUniqueOrThrow({ where: { id: notification.id } });
       }
-      expect(row.emailStatus).toBe("SKIPPED"); expect(row.dispatchedAt).not.toBeNull(); expect(row.pushSentAt).not.toBeNull();
+      expect(row.emailStatus, workerOutput).toBe("SKIPPED"); expect(row.dispatchedAt).not.toBeNull(); expect(row.pushSentAt).not.toBeNull();
       expect((await pending(user.id)).status).toBe("PENDING");
     } finally { worker.kill(); await new Promise<void>(resolve => { if (worker.exitCode !== null) resolve(); else worker.once("exit", () => resolve()); }); }
-  });
+  }, 45_000);
 });

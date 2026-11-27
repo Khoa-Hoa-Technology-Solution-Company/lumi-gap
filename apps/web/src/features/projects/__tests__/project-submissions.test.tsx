@@ -231,12 +231,8 @@ it("does not show an older AI result as feedback for the current version", async
   mocks.detail.mockReturnValue({ data: { title: "Updated paper", status: "revised", currentRevisionId: "v2" } });
   mocks.preReviews.mockReturnValue({ data: [{ id: "analysis", status: "COMPLETED", sourceRevisionId: "v1", sourceRevisionNumber: 1, summary: "Earlier analysis", reviewFocusAreas: [], limitations: [], unsupportedClaims: [], citationIssues: [] }] });
   await render(<SubmissionDetailPage submissionId="manuscript" />);
-  // The older analysis stays available for reference, collapsed and labelled as belonging to an older version.
-  const panel = container.querySelector<HTMLDetailsElement>('[data-testid="ai-prereview-panel"]')!;
-  expect(panel).not.toBeNull();
-  expect(panel.open).toBe(false);
-  expect(panel.textContent).toContain("Đánh giá AI này dành cho phiên bản cũ hơn bản hiện tại.");
-  expect(panel.textContent).toContain("Không phải góp ý của giảng viên");
+  expect(container.querySelector('[data-testid="ai-prereview-panel"]')).toBeNull();
+  expect(container.textContent).not.toContain("Earlier analysis");
 });
 it("refreshes both the request progress and the submission status", async () => {
   const historyRefresh = vi.fn(), detailRefresh = vi.fn();

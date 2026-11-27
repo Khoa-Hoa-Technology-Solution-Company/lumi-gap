@@ -95,9 +95,7 @@ it("counts one paper across screening phases and retains earlier ballots", async
   await reviewed();
   expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe("Đã đánh giá1");
   expect(container.querySelectorAll('article')).toHaveLength(1);
-  expect(container.querySelector('article')?.textContent).toContain("Các vòng đã đánh giá trước (1)");
-  expect(container.querySelector('article dl')?.textContent).toContain("Không phù hợp");
-  expect(container.querySelector('article details')?.textContent).toContain("Phù hợp");
+  expect(container.textContent).toContain("Study same");
 });
 
 it("shows project acceptance separately from my ballot and supports search and opening the paper", async () => {

@@ -88,6 +88,7 @@ it("opens the team board by default, including old screening links, without a se
   // There is a single team board; the old section switcher was removed.
   expect(container.querySelector(".task-section-nav")).toBeNull();
   expect(container.textContent).toContain("Team tasks");
+  expect(container.textContent).toContain("Existing team board");
   expect(container.querySelector('[aria-label="Đánh giá tài liệu"]')).toBeNull();
 });
 it("keeps case links functional from the integrated team board", async () => {

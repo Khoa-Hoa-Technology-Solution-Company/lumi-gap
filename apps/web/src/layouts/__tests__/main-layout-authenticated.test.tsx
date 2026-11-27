@@ -95,6 +95,14 @@ it("places the lecturer workspace only in the avatar menu and opens it", async (
   await act(async () => mentorItem.click());
   expect(host.textContent).toBe("Mentor workspace");
 });
+it("removes the retired academic support page from the student workspace menu", async () => {
+  auth.user = { id: "student", email: "student@example.test", fullName: "Student", academicRole: "STUDENT", systemRole: "USER" };
+  await render();
+  const workspace = [...host.querySelectorAll<HTMLButtonElement>('nav[aria-label="Primary navigation"] button')].find(button => button.textContent === "Workspace")!;
+  await act(async () => { workspace.focus(); workspace.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+  expect(document.querySelector('[role="menu"] a[href="/academic-support"]')).toBeNull();
+  expect(document.querySelector('[role="menu"] a[href="/projects"]')).not.toBeNull();
+});
 it("keeps signed-in home visible while the current-user response is loading", async () => {
   auth.user = undefined; await render();
   expect(host.textContent).toContain("Home content"); expect(host.querySelector('button[aria-label="Account"]')).not.toBeNull();

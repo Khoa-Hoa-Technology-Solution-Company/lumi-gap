@@ -57,12 +57,12 @@ it("uses real submitted counts, ordered metadata and exact round navigation for 
   await act(async () => { await client.invalidateQueries(); }); await settle();
   expect(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('1');
 });
-it("shows 1/2 and a waiting state without disclosing the peer's choice or a final outcome", async () => {
+it("omits unfinished ballots from completed work without disclosing the peer's choice or a final outcome", async () => {
   data.myEvaluations = [ballot]; data.workPapers = [{ ...card, completed: 1, hiddenReviews: true, reviews: [{ reviewerId: 'b', name: 'Private peer', decision: 'EXCLUDE' }] }];
   await render(); await reviewed();
-  // "Reviewed" lists only papers the team has decided, so a ballot waiting for the second reviewer is not shown yet.
-  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
   expect(container.querySelector('article')).toBeNull();
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
+  expect(container.textContent).toContain('Chưa có bài đã đánh giá xong');
   expect(container.textContent).not.toContain('Private peer');
   expect(container.textContent).not.toContain('Đã chọn cho phân tích');
 });
@@ -84,7 +84,8 @@ it("keeps unsure distinct from binary disagreement", async () => {
   data.myEvaluations = [{ ...ballot, myDecision: 'UNSURE', groupStatus: 'NEEDS_MORE_INFO' }];
   data.workPapers = [{ ...card, completed: 2, status: 'NEEDS_MORE_INFO' }];
   await render(); await reviewed();
-  // An undecided clarification is neither a disagreement task nor a decided review.
+  expect(container.querySelector('article')).toBeNull();
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
   expect(container.textContent).not.toContain('Cần giải quyết bất đồng');
   expect(container.querySelectorAll('[role="tab"]')[0]?.textContent).toBe('Cần xử lý0');
   expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
@@ -101,10 +102,13 @@ it("keeps clarification amber on actionable and evaluated cards and retains the 
   // The undecided round is not listed under "Reviewed", and a read-only project has no actionable work.
   await reviewed();
   expect(container.querySelector('article')).toBeNull();
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
   data.readOnly = true;
   await act(async () => { await client.invalidateQueries(); }); await settle();
+  expect(container.querySelector('article')).toBeNull();
   expect(container.querySelectorAll('[role="tab"]')[0]?.textContent).toBe('Cần xử lý0');
 });
+
 it("does not infer clarification color from hidden peer ballots", async () => {
   data.myEvaluations = [ballot];
   data.workPapers = [{ ...card, completed: 1, hiddenReviews: true, reviews: [{ reviewerId: 'b', name: 'Hidden B', decision: 'UNSURE' }] }];
@@ -114,6 +118,7 @@ it("does not infer clarification color from hidden peer ballots", async () => {
   expect(container.querySelector('.screening-paper-card-status')?.getAttribute('data-tone')).not.toBe('warning');
   expect(container.textContent).not.toContain('Hidden B');
   await reviewed();
+  expect(container.querySelector('article')).toBeNull();
   expect(container.textContent).not.toContain('Hidden B');
 });
 it.each([
@@ -133,7 +138,12 @@ it.each([
   data.myEvaluations = [{ ...ballot, groupStatus: 'INCLUDED' }];
   data.workPapers = [{ ...card, status: 'INCLUDED', phase, roundNumber, completed: 2, acceptedForAnalysis }];
   await render(); await reviewed();
-  expect(container.querySelector('.screening-paper-card-status')?.textContent).toContain(expected);
+  if (!acceptedForAnalysis) {
+    expect(container.querySelector('article')).toBeNull();
+    expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
+  } else {
+    expect(container.querySelector('.screening-paper-card-status')?.textContent).toContain(expected);
+  }
   expect(container.textContent).not.toContain('chấp nhận cuối cùng');
 });
 it("keeps my ballot intact after exclusion and bounds the reason on the card", async () => {
@@ -154,24 +164,22 @@ it("opens the assigned case directly and removes completed statements from actio
 it.each([
   ['COLLECTING', 'Đang thu thập ý kiến'], ['WAITING_ASSIGNMENT', 'Chờ phân công'],
   ['ASSIGNED', 'Đã phân công'], ['IN_PROGRESS', 'Đang phân xử'], ['NEEDS_MORE_INFO', 'Cần bổ sung thông tin'],
-])("shows the actual %s case state to a reviewer who has no action left", async (caseStatus, expected) => {
+])("keeps unresolved %s cases out of completed work when the reviewer has no action left", async (caseStatus, _expected) => {
   data.myEvaluations = [{ ...ballot, groupStatus: 'ADJUDICATING', caseStatus }];
   data.workPapers = [{ ...card, status: 'ADJUDICATING', completed: 2 }];
-  await render();
-  // A reviewer with no action left gets no task, and an undecided case is not yet a reviewed paper.
+  await render(); await reviewed();
+  expect(container.querySelector('article')).toBeNull();
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
   expect(container.textContent).not.toContain('Đưa ra kết luận');
   expect(container.querySelectorAll('[role="tab"]')[0]?.textContent).toBe('Cần xử lý0');
-  await reviewed();
-  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
-  expect(expected).toBeTruthy();
 });
 it("uses backend deadlines for countdown, refreshes on expiry and keeps an overdue claim actionable", async () => {
   data.myActiveClaims = [{ ...claim, dueAt: '2026-11-03T00:00:02Z', expiresInSeconds: 99999 }];
   await render();
   expect(container.textContent).toContain('00:00:02');
   await settle(2100);
-  // Overdue ballots can still be completed; the expiry only triggers a refresh.
   expect(container.querySelector('article')).not.toBeNull();
+  expect(button('Tiếp tục đánh giá')).toBeDefined();
   expect(container.querySelector('[role="tab"]')?.textContent).toBe('Cần xử lý1');
   expect(mocks.workspaceSummary.mock.calls.length).toBeGreaterThan(1);
 });

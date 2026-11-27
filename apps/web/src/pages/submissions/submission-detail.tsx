@@ -228,7 +228,7 @@ export function SubmissionDetailPage({
     { title: "Phạm vi nghiên cứu", value: data.scope },
   ].filter((item) => Boolean(item.value?.trim()));
 
-  const latestPreReview = preReviews.data?.[0];
+  const latestPreReview = preReviews.data?.find(review => review.sourceRevisionId === currentVersion.id);
   const preReviewRunning = latestPreReview?.status === "QUEUED" || latestPreReview?.status === "PROCESSING";
   const revisionPending = addRevision.isPending || createVersion.isPending;
 

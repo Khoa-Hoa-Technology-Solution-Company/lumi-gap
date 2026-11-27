@@ -499,7 +499,7 @@ describe.sequential("Research Contribution, Integrity & Security Workflow — Al
   // --------------------------------------------------------------------------
   // Scenario 11: Pre-submission attribution check detecting all contributors
   // --------------------------------------------------------------------------
-  it("Scenario 11: Pre-submission attribution check detects all active, departed and advisor contributors", async () => {
+  it("Scenario 11: Pre-submission attribution requires evidence scoped to the manuscript", async () => {
     const manuscript = await manuscriptService.create(testProjectId, ownerId, {
       title: "Integrity Manuscript Draft",
       documentType: "RESEARCH_PROPOSAL",
@@ -507,6 +507,13 @@ describe.sequential("Research Contribution, Integrity & Security Workflow — Al
       description: "",
       clientKey: crypto.randomUUID(),
     });
+
+    const unlinkedSnapshot = await manuscriptService.snapshot(testProjectId, ownerId, manuscript.id, {
+      label: "Before manuscript evidence is linked", clientKey: crypto.randomUUID(), minimumSequences: {},
+    });
+    const unlinked = await manuscriptAttributionService.getAttributionCheck(testProjectId, ownerId, manuscript.id, unlinkedSnapshot.id);
+    expect(unlinked.detectedContributors.some(c => c.userId === memberBId)).toBe(false);
+    expect(unlinked.detectedContributors.some(c => c.userId === advisorId)).toBe(false);
 
     // Attribution is scoped to this manuscript: project-wide work and mentorship agreements only count once
     // they are explicitly linked to it. Link member B's earlier work and an accepted advisor suggestion.
@@ -546,8 +553,8 @@ describe.sequential("Research Contribution, Integrity & Security Workflow — Al
     );
 
     expect(check.detectedContributors.some((c) => c.userId === ownerId)).toBe(true);
-    expect(check.detectedContributors.some((c) => c.userId === memberBId)).toBe(true); // Departed contributor detected!
-    expect(check.detectedContributors.some((c) => c.userId === advisorId)).toBe(true); // Advisor detected!
+    expect(check.detectedContributors.some((c) => c.userId === memberBId)).toBe(true);
+    expect(check.detectedContributors.some((c) => c.userId === advisorId)).toBe(true);
   });
 
   // --------------------------------------------------------------------------

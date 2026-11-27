@@ -152,7 +152,7 @@ describe.skipIf(!enabled).sequential("contribution evaluation with isolated Post
     expect(board.coverage.excluded).toBe(1); expect(board.items[0]!.reasons).toContain("SOURCE_OUTSIDE_PERIOD");
     expect((await calculate(f.id, p.id, f.rule.id)).calculation.status).toBe("INSUFFICIENT_DATA");
   });
-  it("authenticates actors and rejects forged or cross-project requests over HTTP", async () => {
+  it("authenticates reads and rejects retired evaluation writes over HTTP", async () => {
     const f = await fixture(), other = await fixture(), s = await source(f.id);
     const e = await service.propose(f.id, owner, proposal(f.rule.id, s.id));
     const app = express(); app.use(express.json()); app.use("/projects", projectRouter); app.use(errorHandler);
@@ -179,6 +179,8 @@ describe.skipIf(!enabled).sequential("contribution evaluation with isolated Post
         expect((await resp.json()).error.message).toMatch(/Percentage allocation is retired/);
       }
       // Historical outcomes stay readable, and only within their own project.
+      const beforeDecision = await fetch(`${base}/${f.id}/contributions/evaluation/outcomes/${e.id}`, { headers });
+      expect((await beforeDecision.json()).data.evaluation.decisions).toEqual([]);
       await service.decide(f.id, member, e.id, body);
       const detail = await fetch(`${base}/${f.id}/contributions/evaluation/outcomes/${e.id}`, { headers });
       expect(detail.status).toBe(200);

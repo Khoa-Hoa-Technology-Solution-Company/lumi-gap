@@ -392,7 +392,7 @@ function MentorWorkspaceContent() {
       </main>
     );
   }
-  if (!lecturer) return <Navigate to="/academic-support" replace />;
+  if (!lecturer) return <Navigate to="/projects" replace />;
   // A lecturer's own project library does not require mentor verification.
   if (!verified && view !== "research-projects") {
     return (
@@ -402,9 +402,6 @@ function MentorWorkspaceContent() {
         <div className="mt-4 flex flex-wrap gap-2">
           <Button asChild>
             <Link to="/settings/verification/lecturer">{t("mentorWorkspace.verify")}</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/academic-support?view=incoming">{t("mentorWorkspace.invitations")}</Link>
           </Button>
         </div>
       </main>

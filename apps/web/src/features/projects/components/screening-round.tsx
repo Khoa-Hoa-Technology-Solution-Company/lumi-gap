@@ -11,7 +11,7 @@ import { ScreeningPacketPreview } from "./screening-adjudication";
 import { LibraryAssessment } from "./library-assessment";
 import { LegacyScreeningRepair } from "./screening-legacy-repair";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { FileText, ExternalLink, Globe, Copy, Check, Quote, Tag, CheckCircle2, Bookmark, BookOpen, Info, Users, AlertTriangle, Edit3, RotateCcw, History, UserPlus } from "lucide-react";
+import { FileText, ExternalLink, Globe, Copy, Check, Quote, Tag, CheckCircle2, Bookmark, BookOpen, Info, Users, AlertTriangle, Edit3, RotateCcw, History } from "lucide-react";
 import { toast } from "sonner";
 import type { ScreeningChoice, ScreeningPaperRow, ScreeningPhase, ScreeningRescreenReasonCategory, ScreeningRoundView, ScreeningSettings, WorkspacePerson } from "@trend/shared-types";
 import { AssessmentContextFields, initialAssessmentContext, ReviewContextSummary } from "./assessment-context";
@@ -692,9 +692,6 @@ function RoundContentInner({ projectId, initial, paper, people, readOnly: projec
           </div>
         </section>
       )}
-      {round.canAssignReviewers && !readOnly && (
-        <ReplaceReviewerInline projectId={projectId} round={round} people={people} />
-      )}
       {round.settings.reviewMode !== "INDEPENDENT" && <ScreeningCaseStatus projectId={projectId} round={round} />}
       <div className="screening-actions">
         <h4>{roundHeaderLabel}</h4>
@@ -710,18 +707,7 @@ function RoundContentInner({ projectId, initial, paper, people, readOnly: projec
       {round.settings.reviewMode !== "INDEPENDENT" && round.finalizerAssigned && <p className="text-xs text-muted-foreground">Người phân xử: <strong>{round.finalizer.name}</strong></p>}
       {round.reviewerIntakeClosed && <p className="sr-only">Đã đóng nhận reviewer mới.{round.finalDecision ? " Các phiếu và kết quả đã được lưu." : " Reviewer chỉ có thể đổi kết luận khi xem xét lại sau thảo luận, có lưu phiên bản."}</p>}
       <progress className="h-1.5 w-full rounded-full overflow-hidden" value={round.completed} max={Math.max(round.assigned, round.settings.requiredReviewers)} aria-label="Tiến độ gửi phiếu" />
-      {!round.settings.inclusionCriteria.length && !round.settings.exclusionCriteria.length && (
-        <p role="status" className="sr-only">Vòng này chưa lưu tiêu chí đưa vào và tiêu chí loại. Nhóm nên thống nhất tiêu chí trước khi gửi phiếu. Chủ dự án có thể lưu cấu hình cho vòng mới; quy tắc của vòng hiện tại được giữ trong lịch sử.</p>
-      )}
-      {(!round.settings.researchQuestions?.length && !round.settings.inclusionCriteria?.length && !round.settings.exclusionCriteria?.length) ? (
-        <details className="sr-only">
-          <summary>Tiêu chí và quy tắc của vòng</summary>
-          <p>{round.settings.resolutionPolicy === "CONSENSUS" ? "Reviewer cần nhất trí theo tiêu chí của vòng" : "Người phụ trách phân xử nếu reviewer bất đồng"}. Chờ tất cả người được phân công gửi phiếu. {(round.settings.workflowVersion ?? 0) >= 3 && round.settings.reviewMode === "INDEPENDENT" ? "Nếu tất cả cùng Phù hợp hoặc Không phù hợp, hệ thống ghi kết quả và chuyển bước theo quy trình. Bất đồng cần hai reviewer trao đổi và cập nhật phiếu. Chỉ đóng Không đạt đồng thuận khi cả hai xác nhận." : "Kết quả cần người được giao xác nhận."}</p>
-          <FrozenCriteria title="Câu hỏi nghiên cứu" items={round.settings.researchQuestions} />
-          <FrozenCriteria title="Tiêu chí đưa vào" items={round.settings.inclusionCriteria} />
-          <FrozenCriteria title="Tiêu chí loại" items={round.settings.exclusionCriteria} />
-        </details>
-      ) : (
+      {Boolean(round.settings.researchQuestions?.length || round.settings.inclusionCriteria?.length || round.settings.exclusionCriteria?.length) && (
         <details className="text-xs text-muted-foreground rounded-lg border bg-muted/20 p-2.5">
           <summary className="cursor-pointer font-medium hover:text-foreground">Tiêu chí và quy tắc của vòng</summary>
           <div className="mt-2 space-y-2 pt-2 border-t">
@@ -950,7 +936,8 @@ function ResumeFullText({ projectId, round }: { projectId: string; round: Screen
   return <div className="space-y-3"><label className="block space-y-2 text-sm"><span>Đính kèm PDF toàn văn (tối đa 10 MiB)</span><input type="file" accept="application/pdf" disabled={command.isPending} onChange={e => { const file = e.target.files?.[0]; if (file) void command.run({ upload: file.name, size: file.size, modified: file.lastModified }, () => researchApi.upload(projectId, round.paperId, file)); e.target.value = ""; }} /></label><Button disabled={command.isPending} onClick={() => { const payload = { expectedVersion: round.version, confirmed: true, reason: "Đã bổ sung nguồn toàn văn để tiếp tục quy trình" }; void command.run(payload, clientKey => screeningApi.resumeFullText(projectId, round.id, { ...payload, clientKey })); }}>Đã có toàn văn · Mở vòng 2</Button><ScreeningError error={command.error} /></div>;
 }
 function FrozenCriteria({ title, items }: { title: string; items: string[] }) {
-  return <div><h5>{title}</h5>{items.length ? <ul>{items.map((item, index) => <li key={index}>{item}</li>)}</ul> : <p className="text-sm text-muted-foreground">Chưa thiết lập trong quy trình của vòng này.</p>}</div>;
+  if (!items.length) return null;
+  return <div><h5>{title}</h5><ul>{items.map((item, index) => <li key={index}>{item}</li>)}</ul></div>;
 }
 
 function ReviewForm({ projectId, round, readOnly, initialDecision, initialReason, onCancel }: {
@@ -1080,7 +1067,7 @@ function ReviewForm({ projectId, round, readOnly, initialDecision, initialReason
 }
 
 export function OwnerActions(props: { projectId: string; round: ScreeningRoundView; people: WorkspacePerson[]; readOnly: boolean }) {
-  if (props.round.settings.reviewMode === "INDEPENDENT") return null;
+  if (props.round.settings.reviewMode === "INDEPENDENT" && (props.round.settings.workflowVersion ?? 5) >= 5) return null;
   return (props.round.settings.workflowVersion ?? 0) >= 5 || props.round.adjudicationCase ? <CaseReopenAction {...props} /> : <LegacyOwnerActions {...props} />;
 }
 function CaseReopenAction({ projectId, round, readOnly }: { projectId: string; round: ScreeningRoundView; readOnly: boolean }) {
@@ -1181,64 +1168,6 @@ function ProposalReason({ projectId, paper, readOnly }: { projectId: string; pap
   </form></details>;
 }
 
-
-function ReplaceReviewerInline({ projectId, round, people }: { projectId: string; round: ScreeningRoundView; people: WorkspacePerson[] }) {
-  const existingIds = new Set(round.assignments.map(a => a.reviewerId));
-  const candidates = people.filter(p => !existingIds.has(p.id));
-  const [selectedId, setSelectedId] = useState("");
-  const command = useScreeningCommand(projectId);
-  const queryClient = useQueryClient();
-  const missingSlots = Math.max(0, round.settings.requiredReviewers - round.assignments.length);
-  if (!missingSlots) return null;
-
-  const handleAssign = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedId || command.isPending) return;
-    const reviewerIds = [...round.assignments.map(a => a.reviewerId), selectedId];
-    const ok = await command.run({ roundId: round.id, reviewerIds }, clientKey =>
-      screeningApi.assign(projectId, { roundIds: [round.id], mode: "MANUAL", reviewerIds, dueAt: null, clientKey })
-    );
-    if (ok) {
-      setSelectedId("");
-      toast.success("Đã phân công reviewer thay thế cho vòng đánh giá lại.");
-      void queryClient.invalidateQueries({ queryKey: ["project-research"] });
-    }
-  };
-
-  return (
-    <div className="mb-3 rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-xs space-y-2">
-      <div className="flex items-center gap-1.5 font-semibold text-amber-900 dark:text-amber-200">
-        <UserPlus size={14} aria-hidden="true" />
-        <span>Thiếu {missingSlots} reviewer cho vòng đánh giá lại</span>
-      </div>
-      <p className="text-muted-foreground">
-        Một reviewer trước đây không còn hợp lệ hoặc đã rời nhóm. Bạn có thể phân công người thay thế hoặc để thành viên khác nhận bài từ hàng đợi.
-      </p>
-      {candidates.length > 0 ? (
-        <form onSubmit={handleAssign} className="flex flex-wrap items-center gap-2">
-          <select
-            aria-label="Chọn reviewer thay thế"
-            value={selectedId}
-            disabled={command.isPending}
-            onChange={e => setSelectedId(e.target.value)}
-            className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
-          >
-            <option value="">Chọn thành viên thay thế…</option>
-            {candidates.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-          <Button type="submit" size="sm" variant="outline" className="h-8 text-xs" disabled={command.isPending || !selectedId}>
-            {command.isPending ? "Đang phân công…" : "Phân công thay thế"}
-          </Button>
-        </form>
-      ) : (
-        <p className="text-muted-foreground italic">Chưa có thành viên hợp lệ khác trong dự án để phân công.</p>
-      )}
-      <ScreeningError error={command.error} />
-    </div>
-  );
-}
 
 function RescreenAction({ projectId, round, paper, readOnly, onSuccess }: { projectId: string; round: ScreeningRoundView; paper?: ScreeningPaperRow; readOnly: boolean; onSuccess?: () => void }) {
   const [isReopenOpen, setIsReopenOpen] = useState(false);

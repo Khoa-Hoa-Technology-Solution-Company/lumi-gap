@@ -57,12 +57,12 @@ it.each([false, true])("does not offer an extra independent ballot to an unassig
   expect([...document.querySelectorAll("button")].some(b => b.textContent === "Gửi và khóa phiếu")).toBe(false);
   expect(mocks.action).not.toHaveBeenCalled();
 });
-it("explains empty frozen criteria without inventing or silently updating research rules", async () => {
+it("hides empty frozen criteria without changing the saved research rules", async () => {
   const empty = { ...round, settings: { ...settings, researchQuestions: [], inclusionCriteria: [], exclusionCriteria: [] } };
   mocks.detail.mockResolvedValue(empty); mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0], round: empty }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
-  expect(document.body.textContent).toContain("Vòng này chưa lưu tiêu chí đưa vào và tiêu chí loại.");
-  expect([...document.querySelectorAll("p")].filter(p => p.textContent === "Chưa thiết lập trong quy trình của vòng này.")).toHaveLength(3);
+  expect(document.body.textContent).not.toContain("Vòng này chưa lưu tiêu chí đưa vào và tiêu chí loại.");
+  expect(document.body.textContent).not.toContain("Chưa thiết lập trong quy trình của vòng này.");
   expect(mocks.configure).not.toHaveBeenCalled();
   expect(mocks.action).not.toHaveBeenCalled();
 });

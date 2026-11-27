@@ -81,7 +81,6 @@ export function TopicsTab({
   sortBy,
   navigate,
   getTopicTrendTarget,
-  getRisingKeywordTarget,
   selectedTopics,
   setSelectedTopics,
   setActiveTab,

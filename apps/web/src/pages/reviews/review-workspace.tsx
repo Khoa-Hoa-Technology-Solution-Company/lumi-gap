@@ -14,8 +14,6 @@ import {
   ArrowRight,
   BookOpen,
   Check,
-  ChevronDown,
-  ChevronUp,
   Columns2,
   Download,
   FileText,
@@ -108,12 +106,11 @@ export function ReviewWorkspacePage() {
   const [submitOpen, setSubmitOpen] = useState(false);
   const [artifactOpen, setArtifactOpen] = useState(false);
 
-  // UX helpers: layout ratio, active/expanded criteria, full scale compare
+  // UX helpers: layout ratio, active/expanded criteria
   const evalScrollRef = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<SplitLayout>("balanced");
   const [activeKey, setActiveKey] = useState<string>("");
   const [openKeys, setOpenKeys] = useState<Record<string, boolean>>({});
-  const [showFullScale, setShowFullScale] = useState<Record<string, boolean>>({});
   useUnsavedWorkspace(dirty);
 
   useEffect(() => {
@@ -783,28 +780,8 @@ export function ReviewWorkspacePage() {
                             )}
                           </div>
 
-                          <div className="rw-scale-controls">
-                            <button
-                              type="button"
-                              className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-                              onClick={() =>
-                                setShowFullScale(c => ({ ...c, [criterion.key]: !c[criterion.key] }))
-                              }
-                            >
-                              {showFullScale[criterion.key] ? (
-                                <>
-                                  <ChevronUp size={13} aria-hidden="true" />
-                                  <span>{t("reviewWorkspace.hideAllLevels")}</span>
-                                </>
-                              ) : (
-                                <>
-                                  <ChevronDown size={13} aria-hidden="true" />
-                                  <span>{t("reviewWorkspace.showAllLevels")}</span>
-                                </>
-                              )}
-                            </button>
-
-                            {criterion.allowNotApplicable ? (
+                          {criterion.allowNotApplicable ? (
+                            <div className="rw-scale-controls">
                               <button
                                 type="button"
                                 disabled={completed}
@@ -822,27 +799,9 @@ export function ReviewWorkspacePage() {
                               >
                                 {t("reviewWorkspace.notApplicable")}
                               </button>
-                            ) : null}
-                          </div>
-
-                          {showFullScale[criterion.key] ? (
-                            <div className="rw-full-scale-list">
-                              {criterion.levels.map(level => (
-                                <div
-                                  key={level.id}
-                                  className="rw-full-scale-row"
-                                  data-selected={state.performanceLevelId === level.id ? "true" : undefined}
-                                >
-                                  <strong>
-                                    {level.score} · {shortLevelLabel(level.label, language)}
-                                  </strong>
-                                  {level.description ? (
-                                    <p className="mt-0.5 text-muted-foreground">{level.description}</p>
-                                  ) : null}
-                                </div>
-                              ))}
                             </div>
                           ) : null}
+
                         </div>
                       ) : null}
 
