@@ -13,7 +13,7 @@ const optionalPostgresUri = z.preprocess(
   ).optional(),
 );
 
-const EnvSchema = z.object({
+export const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
@@ -89,7 +89,10 @@ const EnvSchema = z.object({
 
   // Transactional email for security-sensitive verification messages. "log" is
   // an explicit local-development transport and is forbidden in production.
-  EMAIL_DELIVERY_MODE: z.enum(["disabled", "log", "smtp"]).default("disabled"),
+  EMAIL_DELIVERY_MODE: z.preprocess(
+    value => typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.enum(["disabled", "log", "smtp"]).default("disabled"),
+  ),
   SMTP_HOST: optionalEnvString,
   SMTP_PORT: z.coerce.number().int().positive().max(65535).default(587),
   SMTP_SECURE: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),

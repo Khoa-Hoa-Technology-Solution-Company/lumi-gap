@@ -17,13 +17,28 @@ The focused recheck passed 89 tests. A full local web run exercised 240 files (2
 
 ## Azure
 
-The deployment typecheck and image builds passed. Docker Compose then reported the backend as unhealthy and skipped dependent services. The job did not capture backend logs or the failed health probes, so the startup cause is not established by that output. The previous Azure run for `5242ea7f` succeeded. Public API health and readiness returned HTTP 502 during this investigation.
+The deployment typecheck and image builds passed. Docker Compose then reported the backend as unhealthy and skipped dependent services. The initial job did not capture backend logs or the failed health probes. The previous Azure run for `5242ea7f` succeeded. Public API health and readiness returned HTTP 502 during this investigation.
 
 The deployment script now prints backend logs, container exit/OOM state and health-probe output after a failed `compose up`. It preserves the original failure exit code and does not print container environment configuration. Bash syntax validation and an isolated mocked deployment verified that diagnostics are emitted and exit code 42 is preserved.
 
 The backend Docker image built successfully. A fresh container using compiled JavaScript, `NODE_ENV=production`, a 1 GiB memory limit, disposable JWT keys and isolated local database/Redis connections returned HTTP 200 from `/ready`, with both dependencies ready. The container and temporary keys were removed afterwards. This does not reproduce the VM's workload or configuration.
 
-Production recovery is not confirmed. Backend logs from the VM are required to identify the actual runtime failure:
+### Confirmed startup cause
+
+Attempt 2 of run `45933411878`, job `140294702596`, captured the actual error:
+
+```text
+EMAIL_DELIVERY_MODE: Invalid enum value. Expected 'disabled' | 'log' | 'smtp', received ''
+status=restarting exit=1 oom_killed=false
+```
+
+The root `.env` supplies an empty mode. Zod's default applied only to an omitted value, so this empty value prevented the shared API/worker configuration from loading. All affected Node services restarted, preventing the web dependency from becoming ready. The first deployment after merging diagnostics still ran the already-loaded older shell script while `git pull` updated that script; retrying used the installed diagnostics correctly.
+
+The parser now treats omitted or whitespace-only email modes as `disabled`. Explicit SMTP configuration, required SMTP credentials, invalid mode rejection and the production ban on `log` remain enforced. Twelve new schema regressions and the existing environment suites passed (22 tests total). The old production Docker image reproduced the exact blank-mode startup error.
+
+The corrected Docker image was then started with `NODE_ENV=production` and `EMAIL_DELIVERY_MODE=` explicitly empty. It returned HTTP 200 from `/ready`, with PostgreSQL and Redis ready. Importing the compiled environment configuration separately confirmed that the blank mode resolved to `disabled`. Backend typecheck, Docker production build and changed-file ESLint passed.
+
+Production recovery still requires deploying this parser fix. Useful runtime checks are:
 
 ```bash
 docker compose -f docker-compose.yml -f deploy/vps/docker-compose.vps.yml logs --tail=100 backend
