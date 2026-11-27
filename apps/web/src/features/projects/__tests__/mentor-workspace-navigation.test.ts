@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { mentorWorkspaceDestination, researchProjectDirectoryDestination, safeMentorWorkReturn, withMentorWorkReturn } from "../utils/mentor-workspace-navigation";
+import { legacyAcademicSupportDestination, mentorWorkspaceDestination, researchProjectDirectoryDestination, safeMentorWorkReturn, withMentorWorkReturn } from "../utils/mentor-workspace-navigation";
 
 it.each([
   ["/projects", ""],
@@ -23,6 +23,7 @@ it("keeps mentor project, invitations, resources and notification links in the s
   expect(mentorWorkspaceDestination("/notifications")).toBe("/mentor-workspace?view=notifications");
   expect(mentorWorkspaceDestination("/academic-support?view=incoming&requestId=request")).toBe("/mentor-workspace?view=incoming&requestId=request");
   expect(mentorWorkspaceDestination("/academic-support?view=discover")).toBe("/mentor-workspace?view=discover");
+  expect(mentorWorkspaceDestination("/academic-support?view=active")).toBe("/mentor-workspace?view=projects");
   const project = new URL(mentorWorkspaceDestination("/projects/a%2Fb?tab=chat&channel=mentors&workItem=TASK%3Aitem"), "http://localhost");
   expect(project.pathname).toBe("/mentor-workspace");
   expect(Object.fromEntries(project.searchParams)).toEqual({ view: "project", projectId: "a/b", tab: "chat", channel: "mentors", workItem: "TASK:item" });
@@ -52,4 +53,23 @@ it("preserves reader, historical review and safe work context without accepting 
   expect(result.searchParams.get("returnTo")).toBe(safeMentorWorkReturn(back));
   expect(result.searchParams.get("returnTo")).toContain("workGroup=status");
   for (const unsafe of ["https://evil.example/mentor-workspace?view=work", "//evil.example/mentor-workspace?view=work", "/mentor-workspace?view=review&assignmentId=other", "/mentor-workspace?view=project&projectId=../private", "/mentor-workspace?view=work#unexpected"]) expect(safeMentorWorkReturn(unsafe)).toBeUndefined();
+});
+
+it.each([
+  ["view=history", true, "/mentor-workspace?view=history"],
+  ["view=active", true, "/mentor-workspace?view=projects"],
+  ["view=discover", true, "/mentor-workspace?view=discover"],
+  ["view=outgoing", true, "/mentor-workspace?view=outgoing"],
+  ["view=https://example.test", true, "/mentor-workspace?view=incoming"],
+  ["view=history", false, "/projects"],
+  ["projectId=project", false, "/projects/project?tab=support&view=requests"],
+  ["invitationProjectId=project&requestId=request", false, "/projects/project?tab=support&view=requests&requestId=request"],
+  ["projectId=project&section=gaps", true, "/mentor-workspace?view=project&projectId=project&section=gaps"],
+  ["view=incoming&invitationProjectId=project&requestId=request", true, "/mentor-workspace?view=incoming&invitationProjectId=project&requestId=request"],
+] as const)("retires standalone support links without losing their actor or context: %s", (query, lecturer, target) => {
+  expect(legacyAcademicSupportDestination(new URLSearchParams(query), lecturer)).toBe(target);
+});
+it("keeps the mentor preferences shortcut while refusing arbitrary redirect parameters", () => {
+  expect(legacyAcademicSupportDestination(new URLSearchParams("returnTo=https://example.test"), true, "#mentoring-settings"))
+    .toBe("/mentor-workspace?view=incoming#mentoring-settings");
 });

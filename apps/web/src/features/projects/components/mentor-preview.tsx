@@ -98,7 +98,8 @@ export function MentorInvitationAccessNotice() {
 /** Use the server-redacted sender DTO, never the signed-in user's full account object. */
 export function MentorInvitationSender({ sender }: { sender: MentorshipPerson }) {
   const { t } = useI18n();
-  const initials = sender.fullName
+  const displayName = sender.fullName?.trim() || t("Member");
+  const initials = displayName
     .split(/\s+/)
     .filter(Boolean)
     .slice(-2)
@@ -123,7 +124,7 @@ export function MentorInvitationSender({ sender }: { sender: MentorshipPerson })
           {initials}
         </span>
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground">{sender.fullName}</p>
+          <p className="text-sm font-semibold text-foreground">{displayName}</p>
           {meta ? <p className="text-xs text-muted-foreground">{meta}</p> : null}
         </div>
       </div>

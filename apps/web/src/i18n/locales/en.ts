@@ -1,3 +1,4 @@
+import { workflowSourceEn } from "./workflow-source";
 import { mentorSharingEn } from "./mentor-sharing";
 import { submissionDetailEn } from "./submission-detail";
 import { registrationEn } from "./registration";
@@ -44,6 +45,7 @@ import { adminCatalogEn } from "./admin-catalog";
 import { personalizationStrings } from "./personalization";
 
 export const en = {
+  ...workflowSourceEn,
   ...mentorWorkspaceEn,
   ...mentorLifecycleEn,
   ...registrationEn,

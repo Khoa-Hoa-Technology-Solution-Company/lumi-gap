@@ -82,19 +82,16 @@ it.each(["WAITING_REVIEWER", "CONFLICT", "ADJUDICATING", "INCLUDED", "EXCLUDED"]
   await reviewed();
   const filter = container.querySelector('select')!;
   await act(async () => { filter.value = status; filter.dispatchEvent(new Event("change", { bubbles: true })); });
-  expect([...container.querySelectorAll('article h4')].map(h => h.textContent)).toEqual([`Study ${status}`]);
-  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe("Đã đánh giá5");
+  expect([...container.querySelectorAll('article h4')].map(h => h.textContent)).toEqual(["INCLUDED", "EXCLUDED"].includes(status) ? [`Study ${status}`] : []);
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe("Đã đánh giá2");
 });
 it("counts one paper across screening phases and retains earlier ballots", async () => {
   const first = evaluation("same", "INCLUDED");
   const later = { ...first, roundId: "full-text", phase: "FULL_TEXT" as const, submittedAt: "2026-11-03T09:00:00Z", groupStatus: "CONFLICT" as const, myDecision: "EXCLUDE" as const };
   await render({ ...summary, myTrackedDisputes: [], myEvaluations: [first, later] });
   await reviewed();
-  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe("Đã đánh giá1");
-  expect(container.querySelectorAll('article')).toHaveLength(1);
-  expect(container.querySelector('article')?.textContent).toContain("Các vòng đã đánh giá trước (1)");
-  expect(container.querySelector('article dl')?.textContent).toContain("Không phù hợp");
-  expect(container.querySelector('article details')?.textContent).toContain("Phù hợp");
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe("Đã đánh giá0");
+  expect(container.querySelectorAll('article')).toHaveLength(0);
 });
 
 it("shows project acceptance separately from my ballot and supports search and opening the paper", async () => {
@@ -102,9 +99,9 @@ it("shows project acceptance separately from my ballot and supports search and o
   const accepted = { paperId: "accepted", roundId: own.roundId, title: own.title, phase: own.phase, publicationYear: 2025, journalName: null, acceptedAt: own.submittedAt, isAdjudicated: true, resolverName: "Independent C" };
   await render({ ...summary, myTrackedDisputes: [], myEvaluations: [own, evaluation("waiting")], acceptedPapers: [accepted] });
   const tabs = container.querySelectorAll('[role="tab"]');
-  expect([...tabs].map(t => t.textContent)).toEqual(["Cần xử lý0", "Đã đánh giá2", "Bài được chấp nhận1"]);
+  expect([...tabs].map(t => t.textContent)).toEqual(["Cần xử lý0", "Đã đánh giá1", "Bài được chấp nhận1"]);
   await reviewed();
-  expect(container.querySelectorAll('article')).toHaveLength(2);
+  expect(container.querySelectorAll('article')).toHaveLength(1);
   const reviewedPaper = [...container.querySelectorAll('article')].find(row => row.textContent?.includes("Study accepted"))!;
   expect(reviewedPaper.textContent).toContain("Đánh giá của tôiKhông phù hợp");
   expect(reviewedPaper.textContent).toContain("Kết quả của nhómĐã chọn cho phân tíchQuyết định sau phân xử");

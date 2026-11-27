@@ -5,6 +5,7 @@ import type {
   TrendTopicCandidatesResponse,
   TopicRelationshipResponse,
   TrendCompareResponse,
+  TrendEmergingResponse,
   TrendGranularity,
   TrendPeriodWindow,
   TrendPeriodsOverview,

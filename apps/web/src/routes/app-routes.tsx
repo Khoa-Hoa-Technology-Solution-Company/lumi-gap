@@ -80,7 +80,7 @@ const CommunityListPage = lazy(() => import("@/pages/communities/community-list"
 const CommunityDetailPage = lazy(() => import("@/pages/communities/community-detail").then((m) => ({ default: m.CommunityDetailPage })));
 const CommunityNewPage = lazy(() => import("@/pages/communities/community-new").then((m) => ({ default: m.CommunityNewPage })));
 const CommunityManagePage = lazy(() => import("@/pages/communities/community-manage").then((m) => ({ default: m.CommunityManagePage })));
-const AcademicSupportPage = lazy(() => import("@/pages/academics/academic-support").then(m => ({ default: m.AcademicSupportPage })));
+const AcademicSupportPage = lazy(() => import("@/pages/academics/academic-support").then(m => ({ default: m.AcademicSupportEntryPage })));
 const MentorWorkspacePage = lazy(() => import("@/pages/academics/mentor-workspace").then(m => ({ default: m.MentorWorkspacePage })));
 const MentorReviewEntryPage = lazy(() => import("@/pages/reviews/mentor-review-entry").then(m => ({ default: m.MentorReviewEntryPage })));
 const ScreeningAdjudicationPage = lazy(() => import("@/features/projects/components/screening-adjudication"));

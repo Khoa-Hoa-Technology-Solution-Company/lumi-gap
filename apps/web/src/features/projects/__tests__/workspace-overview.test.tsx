@@ -146,10 +146,11 @@ describe("WorkspaceOverviewPanel", () => {
     expect(container.textContent).not.toContain("Articles in library");
     expect(container.textContent).not.toContain("Chờ sàng lọcChờ sàng lọc");
 
-    // Artifacts show Manuscript vs Report badges and contributors render initials instead of emoji
+    // Artifact labels remain clear without presenting activity counts as contribution credit.
     expect(container.textContent).toContain("Bản thảo");
     expect(container.textContent).toContain("Báo cáo");
-    expect(container.textContent).toContain("NT");
+    expect(container.textContent).toContain("Nguyen Dinh Thanh");
+    expect(container.textContent).not.toContain("70%");
   });
 
   it("allows managers to switch research stages from the interactive pipeline", async () => {

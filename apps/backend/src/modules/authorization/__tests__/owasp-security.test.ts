@@ -177,7 +177,7 @@ describe("OWASP Security Hardening Suite for LumiGap", () => {
           projectId: PROJECT_ID,
           body: { content: "dGVzdA==", encoding: "base64" },
         }),
-      ).rejects.toThrowError(/restricted to the project owner/);
+      ).rejects.toMatchObject({ statusCode: 403 });
     });
 
     it("blocks exporting private project manuscript to a public GitHub repository", async () => {

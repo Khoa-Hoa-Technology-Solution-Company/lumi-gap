@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Request, Response } from "express";
 import { FeaturedWorkOptionsQuerySchema, LecturerListQuerySchema, PublicForumActivityQuerySchema, VerificationListQuerySchema } from "./dto/academic-profile.schema.js";
 import { featuredWorkOptions } from "./academic-featured-works.service.js";
@@ -70,7 +71,7 @@ export const academicProfileController = {
       res.redirect(302, location.url);
       return;
     }
-    res.type("webp").sendFile(location.path);
+    res.type("webp").sendFile(path.basename(location.path), { root: path.dirname(location.path) });
   },
   async removeCover(req: Request, res: Response) {
     res.json({ success: true, data: await academicProfileCoverService.remove(req.user!.sub) });
@@ -82,7 +83,7 @@ export const academicProfileController = {
       res.redirect(302, location.url);
       return;
     }
-    res.type("webp").sendFile(location.path);
+    res.type("webp").sendFile(path.basename(location.path), { root: path.dirname(location.path) });
   },
   async compactProfile(req: Request, res: Response) {
     res.json({ success: true, data: await academicProfileService.getCompact(req.params.userId as string, req.user?.sub) });
@@ -111,7 +112,7 @@ export const academicProfileController = {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.type(location.mimeType).setHeader("Content-Disposition", "attachment; filename=verification-evidence");
     await auditService.log("academic_profile.verification.evidence_accessed", { userId: req.user!.sub, targetTableName: "verification_evidence", targetRecordId: req.params.requestId as string });
-    if (location.kind === "local") { res.sendFile(location.path); return; }
+    if (location.kind === "local") { res.sendFile(path.basename(location.path), { root: path.dirname(location.path) }); return; }
     const upstream = await fetch(location.url, { signal: AbortSignal.timeout(15_000) });
     if (!upstream.ok) throw AppError.notFound("Verification evidence is unavailable or has been removed");
     res.send(Buffer.from(await upstream.arrayBuffer()));
@@ -156,6 +157,6 @@ export const academicProfileController = {
     }
     res.type(location.mimeType).setHeader("Content-Disposition", `attachment; filename=position-evidence.${extension}`);
     await auditService.log("academic_profile.verification.evidence_accessed", { userId: adminId, targetTableName: "verification_evidence", targetRecordId: req.params.requestId as string });
-    res.sendFile(location.path);
+    res.sendFile(path.basename(location.path), { root: path.dirname(location.path) });
   },
 };

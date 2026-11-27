@@ -152,7 +152,7 @@ describe.skipIf(!enabled).sequential("contribution evaluation with isolated Post
     expect(board.coverage.excluded).toBe(1); expect(board.items[0]!.reasons).toContain("SOURCE_OUTSIDE_PERIOD");
     expect((await calculate(f.id, p.id, f.rule.id)).calculation.status).toBe("INSUFFICIENT_DATA");
   });
-  it("authenticates actors and rejects forged or cross-project requests over HTTP", async () => {
+  it("authenticates reads and rejects retired evaluation writes over HTTP", async () => {
     const f = await fixture(), other = await fixture(), s = await source(f.id);
     const e = await service.propose(f.id, owner, proposal(f.rule.id, s.id));
     const app = express(); app.use(express.json()); app.use("/projects", projectRouter); app.use(errorHandler);
@@ -166,13 +166,14 @@ describe.skipIf(!enabled).sequential("contribution evaluation with isolated Post
     try {
       expect((await fetch(`${base}/${f.id}/contributions/evaluation/rules`)).status).toBe(401);
       const path = `${base}/${f.id}/contributions/evaluation/outcomes/${e.id}/decisions`;
-      expect((await fetch(path, { method: "POST", headers, body: JSON.stringify({ ...body, userId: owner }) })).status).toBe(400);
+      expect((await fetch(path, { method: "POST", headers, body: JSON.stringify({ ...body, userId: owner }) })).status).toBe(409);
       expect((await fetch(path, { method: "POST", headers, body: JSON.stringify({ ...body, payloadHash: "0".repeat(64) }) })).status).toBe(409);
-      expect((await fetch(`${base}/${other.id}/contributions/evaluation/outcomes/${e.id}/decisions`, { method: "POST", headers, body: JSON.stringify(body) })).status).toBe(404);
+      expect((await fetch(`${base}/${other.id}/contributions/evaluation/outcomes/${e.id}/decisions`, { method: "POST", headers, body: JSON.stringify(body) })).status).toBe(409);
       const approved = await fetch(path, { method: "POST", headers, body: JSON.stringify(body) });
-      expect(approved.status).toBe(200); expect((await approved.json()).success).toBe(true);
+      expect(approved.status).toBe(409);
+      expect((await approved.json()).error.message).toContain("Percentage allocation is retired");
       const detail = await fetch(`${base}/${f.id}/contributions/evaluation/outcomes/${e.id}`, { headers });
-      expect((await detail.json()).data.evaluation.decisions).toEqual([expect.objectContaining({ userId: member, kind: "PARTICIPANT" })]);
+      expect((await detail.json()).data.evaluation.decisions).toEqual([]);
     } finally { server.close(); await once(server, "close"); }
   });
   it("invalidates changed sources/rules, resets consent on revisions, preserves former-member review", async () => {

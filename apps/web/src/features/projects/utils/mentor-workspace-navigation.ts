@@ -1,5 +1,27 @@
 import { mentorWorkKinds, type MentorWorkQuery } from "@trend/shared-types";
 
+/** Retire the standalone support page while keeping old invitations and bookmarks usable. */
+export function legacyAcademicSupportDestination(params: URLSearchParams, lecturer: boolean, hash = ""): string {
+  const projectId = params.get("projectId");
+  if (!lecturer) {
+    const teamProjectId = params.get("invitationProjectId") || projectId;
+    if (!teamProjectId) return "/projects";
+    const search = new URLSearchParams({ tab: "support", view: "requests" });
+    if (params.has("requestId")) search.set("requestId", params.get("requestId")!);
+    return `/projects/${encodeURIComponent(teamProjectId)}?${search}`;
+  }
+  const view = params.get("view");
+  const next = new URLSearchParams({ view: projectId ? "project" : view === "active" ? "projects" : ["incoming", "outgoing", "history", "discover"].includes(view ?? "") ? view! : "incoming" });
+  if (projectId) {
+    next.set("projectId", projectId);
+    if (params.has("section")) next.set("section", params.get("section")!);
+  }
+  for (const key of ["invitationProjectId", "requestId"]) {
+    if (params.has(key)) next.set(key, params.get(key)!);
+  }
+  return `/mentor-workspace?${next}${hash === "#mentoring-settings" ? hash : ""}`;
+}
+
 const workStatuses = ["ACTIONABLE", "IN_PROGRESS", "WAITING", "DONE", "ALL", "TODO", "BLOCKED", "OVERDUE"];
 export function readMentorWorkFilters(params: URLSearchParams): MentorWorkQuery {
   const page = Number(params.get("workPage"));
@@ -64,7 +86,7 @@ export function mentorWorkspaceDestination(href: string): string {
   }
   if (href === "/notifications") return "/mentor-workspace?view=notifications";
   const support = /^\/academic-support(?:\?([^#]*))?$/.exec(href);
-  if (support) return `/mentor-workspace?${support[1] || "view=incoming"}`;
+  if (support) return legacyAcademicSupportDestination(new URLSearchParams(support[1]), true);
   const project = /^\/(?:projects|academic-support\/projects)\/([^/?#]+)(?:\?([^#]*))?(#.*)?$/.exec(href);
   if (!project) return href;
   const params = new URLSearchParams(project[2]);

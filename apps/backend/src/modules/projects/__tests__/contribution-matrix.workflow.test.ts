@@ -352,7 +352,7 @@ describe.sequential("Contribution Matrix + Supporting Evidence + Member Confirma
     expect(allWork.total).toBe(2);
   });
 
-  it("prevents unauthorized modifications and blocks confirming on another member's behalf over HTTP", async () => {
+  it("prevents unauthorized modifications and rejects all retired allocation decisions over HTTP", async () => {
     const projectId = await createThreeMemberProject();
     const period = await allocations.createPeriod(projectId, memberA, {
       title: "Security Verification Scope",
@@ -406,7 +406,7 @@ describe.sequential("Contribution Matrix + Supporting Evidence + Member Confirma
     const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
     try {
-      // Attempt by memberB to confirm on memberC's behalf by injecting userId in body -> rejected with 400
+      // Retired allocation writes reject both spoofed and otherwise valid requests.
       const spoofed = await fetch(
         `http://127.0.0.1:${port}/projects/${projectId}/contributions/revisions/${submitted.id}/decisions`,
         {
@@ -415,9 +415,9 @@ describe.sequential("Contribution Matrix + Supporting Evidence + Member Confirma
           body: JSON.stringify({ decision: "APPROVE", userId: memberC }),
         },
       );
-      expect(spoofed.status).toBe(400);
+      expect(spoofed.status).toBe(409);
 
-      // Valid confirmation by memberB
+      // A valid payload must not bypass the retirement guard either.
       const validResp = await fetch(
         `http://127.0.0.1:${port}/projects/${projectId}/contributions/revisions/${submitted.id}/decisions`,
         {
@@ -426,10 +426,10 @@ describe.sequential("Contribution Matrix + Supporting Evidence + Member Confirma
           body: JSON.stringify({ decision: "APPROVE", explanation: "Confirmed my matrix shares" }),
         },
       );
-      expect(validResp.status).toBe(200);
-      const body = (await validResp.json()) as { data: { status: string; matrix: { memberTotals: { userId: string; basisPoints: number }[] } } };
-      expect(body.data.status).toBe("AWAITING_APPROVAL");
-      expect(body.data.matrix.memberTotals.find((m) => m.userId === memberA)?.basisPoints).toBe(4550);
+      expect(validResp.status).toBe(409);
+      const body = (await validResp.json()) as { error: { code: string; message: string } };
+      expect(body.error.message).toContain("Percentage allocation is retired");
+      expect(await db.allocationApproval.count({ where: { revisionId: submitted.id } })).toBe(0);
     } finally {
       server.close();
       await once(server, "close");

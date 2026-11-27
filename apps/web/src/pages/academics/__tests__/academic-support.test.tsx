@@ -2,20 +2,20 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { AcademicSupportPage, MentorProjectPanel, ConsentComposer } from '../academic-support';
+import { AcademicSupportEntryPage, AcademicSupportPage, MentorProjectPanel, ConsentComposer } from '../academic-support';
 import { MentorAccessWorkspace } from '@/features/projects/components/mentor-access-workspace';
 const mocks=vi.hoisted(()=>({mine:vi.fn(),preferences:vi.fn(),savePreferences:vi.fn(),opportunities:vi.fn(),respond:vi.fn(),requestInfo:vi.fn(),offer:vi.fn(),draft:vi.fn(),saveDraft:vi.fn(),projects:vi.fn(),workspace:vi.fn(),list:vi.fn(),mentors:vi.fn(),guidance:vi.fn(),settings:vi.fn(),saveSettings:vi.fn(),request:vi.fn(),requestDetail:vi.fn(),previewDossier:vi.fn(),suggestions:vi.fn(),suggest:vi.fn(),dismissSuggestion:vi.fn(),plan:vi.fn(),changePlan:vi.fn(),mentorEvidence:vi.fn()}));
 const accessMocks=vi.hoisted(()=>({workspace:vi.fn(),feedback:vi.fn(),history:vi.fn(),agreements:vi.fn(),comment:vi.fn()}));
 vi.mock('@/features/projects/api/mentor-access.api',()=>({mentorAccessApi:accessMocks}));
 const applications=vi.hoisted(()=>({apply:vi.fn(),mine:vi.fn(),list:vi.fn(),detail:vi.fn(),action:vi.fn(),note:vi.fn()}));
 vi.mock('@/features/projects/api/mentorship-applications.api',()=>({mentorshipApplicationsApi:applications}));
-const state=vi.hoisted(()=>({role:'LECTURER'}));
+const state=vi.hoisted(()=>({role:'LECTURER',loading:false,failed:false}));
 vi.mock('@/features/projects/api/academic-support.api',()=>({academicSupportApi:mocks}));
 vi.mock('@/features/projects/api/projects.api',()=>({projectsApi:{list:mocks.projects}}));
 vi.mock('@/features/auth/api/auth.api',()=>({authApi:{academicOnboardingOptions:async()=>({researchAreas:[]})}}));
-vi.mock('@/features/academic-profile/hooks/use-academic-profile',()=>({useAcademicProfile:()=>({data:{academicRole:state.role},isLoading:false,isError:false})}));
+vi.mock('@/features/academic-profile/hooks/use-academic-profile',()=>({useAcademicProfile:()=>({data:{academicRole:state.role},isLoading:state.loading,isError:state.failed,refetch:vi.fn()})}));
 vi.mock('@/features/academic-profile/components/position-verification-panel',()=>({PositionVerificationPanel:()=> <p>Verify position</p>}));
 vi.mock('@/features/projects/components/mentor-discovery-settings',()=>({MentorDiscoverySettings:()=>null}));
 vi.mock('@/features/projects/components/mentor-preview',()=>({MentorPreviewContent:({preview}:any)=><p>{preview.summary}</p>,MentorInvitationSender:({sender}:any)=><p>{sender.fullName}</p>,MentorInvitationAccessNotice:()=><p>Project access starts after acceptance</p>}));
@@ -31,7 +31,7 @@ function LocationProbe(){return <output data-testid="current-location">{useLocat
 async function mount(url='/academic-support?view=incoming', embedded=false){await act(async()=>root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[url]}><AcademicSupportPage embedded={embedded}/><LocationProbe/></MemoryRouter></QueryClientProvider>));await tick();await tick();}
 function button(label:string){return [...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.startsWith(label))!;}
 async function click(label:string){await act(async()=>button(label).click());await tick();}
-beforeEach(()=>{vi.resetAllMocks();sessionStorage.clear();vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);state.role='LECTURER';
+beforeEach(()=>{vi.resetAllMocks();sessionStorage.clear();vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);state.role='LECTURER';state.loading=false;state.failed=false;
 applications.apply.mockResolvedValue({id:'application'});applications.mine.mockResolvedValue({items:[],meta:{page:1,pageSize:10,total:0,totalPages:0}});applications.list.mockResolvedValue({items:[],meta:{page:1,pageSize:10,total:0,totalPages:0}});
 accessMocks.workspace.mockResolvedValue({viewerId:'mentor',projectId:'project',title:project.title,canManage:false,readOnly:false,policies:[],page:1,pageSize:20,total:0,hasNext:false});
 for (const method of ['feedback','history','agreements'] as const) accessMocks[method].mockResolvedValue({items:[],total:0,page:1,pageSize:20,hasNext:false});
@@ -47,6 +47,28 @@ mocks.changePlan.mockResolvedValue({});
 mocks.draft.mockResolvedValue({message:'I can help with experiments',mentorRole:'PRIMARY',attachments:[],version:1});mocks.saveDraft.mockImplementation(async(_p:any,_d:any,input:any)=>({...input,attachments:[],version:2}));
 client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});host=document.createElement('div');document.body.append(host);root=createRoot(host);});
 afterEach(async()=>{await act(async()=>root.unmount());client.clear();host.remove();vi.unstubAllGlobals();});
+function EntryLocation() { const location=useLocation();return <output data-testid="entry-destination">{location.pathname}{location.search}{location.hash}</output>; }
+async function mountEntry(url='/academic-support?view=history') {
+  await act(async()=>root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[url]} future={{v7_startTransition:true,v7_relativeSplatPath:true}}><Routes><Route path="/academic-support" element={<AcademicSupportEntryPage/>}/><Route path="*" element={<p>Canonical workspace</p>}/></Routes><EntryLocation/></MemoryRouter></QueryClientProvider>));
+  await tick();
+}
+it.each([
+  ['LECTURER','/academic-support?view=history','/mentor-workspace?view=history'],
+  ['LECTURER','/academic-support?view=active','/mentor-workspace?view=projects'],
+  ['STUDENT','/academic-support?view=history','/projects'],
+  ['RESEARCHER','/academic-support?projectId=project','/projects/project?tab=support&view=requests'],
+])('replaces the standalone support page with the correct workspace for %s',async(role,url,destination)=>{
+  state.role=role;await mountEntry(url);
+  expect(host.querySelector('[data-testid="entry-destination"]')?.textContent).toBe(destination);
+  expect(host.querySelector('.academic-support-page')).toBeNull();
+  expect(mocks.mine).not.toHaveBeenCalled();expect(mocks.projects).not.toHaveBeenCalled();expect(mocks.preferences).not.toHaveBeenCalled();
+});
+it.each(['loading','failed'] as const)('does not redirect or load mentorship data while the profile is %s',async status=>{
+  state[status]=true;await mountEntry();
+  expect(host.querySelector('[data-testid="entry-destination"]')?.textContent).toBe('/academic-support?view=history');
+  expect(host.querySelector(status==='loading'?'[role="status"]':'[role="alert"]')).not.toBeNull();
+  expect(mocks.mine).not.toHaveBeenCalled();expect(mocks.projects).not.toHaveBeenCalled();
+});
 it('reuses real invitation queries and tabs within the mentor workspace',async()=>{
   await mount('/mentor-workspace?view=incoming',true);
   expect(host.querySelector('.mentor-embedded-support')).not.toBeNull();

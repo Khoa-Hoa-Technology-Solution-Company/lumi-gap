@@ -52,7 +52,6 @@ const navGroups: readonly NavGroup[] = [
       { to: "/projects", label: "Projects" },
       { to: "/reviews", label: "Review Center" },
       { to: "/review-templates", label: "Review Templates" },
-      { to: "/academic-support", label: "Academic Support" },
     ],
   },
   {
@@ -224,8 +223,7 @@ export function MainLayout() {
   const activeUser = currentUserData?.user ?? user;
   const visibleNavGroups = navGroups.map(group => ({
     ...group,
-    items: group.items.filter(item => item.to !== "/academic-support" || activeUser?.academicRole !== "LECTURER")
-      .map(item => activeUser?.academicRole === "LECTURER" && ["/reviews", "/review-templates"].includes(item.to)
+    items: group.items.map(item => activeUser?.academicRole === "LECTURER" && ["/reviews", "/review-templates"].includes(item.to)
         ? { ...item, to: mentorWorkspaceDestination(item.to) } : item),
   }));
   const { data: balanceData } = useCreditBalance({ enabled: isAuthed && !currentUserQuery.isFetching && !!currentUserData?.user });

@@ -8,6 +8,8 @@ import { ScreeningQueueView } from "./screening-queue-view";
 import { MyProposalsView } from "./my-proposals-view";
 import { ScreeningWorkspace } from "./screening-workspace";
 import { ResearchEvidence } from "./research-evidence";
+import { LiteratureMatrixView } from "./literature-matrix";
+import { ResearchLimitations } from "./research-limitations";
 import { LiteratureTopicClustersView } from "./literature-topic-clusters";
 import { ReadingPaperModal } from "./reading-paper-modal";
 import { Button } from "@/components/ui/button";
@@ -44,6 +46,12 @@ const PRIMARY_TABS: Array<{
   },
 ];
 
+const ANALYSIS_SUBTABS = [
+  { view: "clusters", label: "Chủ đề & So sánh" },
+  { view: "matrix", label: "Ma trận tài liệu" },
+  { view: "limitations", label: "Hạn chế nghiên cứu" },
+];
+
 const QUEUE_SUBTABS = [
   { view: "queue" as const, label: "Hàng đợi chung" },
   { view: "my-proposals" as const, label: "Tôi đã đề xuất" },
@@ -63,6 +71,7 @@ export function ResearchLiterature({
   const { t } = useI18n();
   const [params, setParams] = useSearchParams();
   const primaryTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const analysisTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const queueTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   // Actual subview comes from the `view` URL search param (defaults to "my-work").
@@ -238,9 +247,21 @@ export function ResearchLiterature({
           <header className="analysis-workspace-header">
             <h2 className="analysis-workspace-title">Phân tích tài liệu</h2>
             <p className="analysis-workspace-subtitle">
-              Phân cụm theo chủ đề, phương pháp, câu hỏi nghiên cứu và so sánh bài báo.
+              So sánh các công trình, tổng hợp bằng chứng và xác định hạn chế để phát triển hướng nghiên cứu.
             </p>
           </header>
+          <div className="analysis-subnav-bar papers-subnav-bar">
+            <nav role="tablist" aria-label="Phân tích tài liệu" className="papers-subnav-tabs">
+              {ANALYSIS_SUBTABS.map((tab, index) => (
+                <button key={tab.view} ref={el => { analysisTabRefs.current[index] = el; }}
+                  type="button" role="tab" aria-selected={view === tab.view}
+                  aria-controls="research-literature-tabpanel" tabIndex={view === tab.view ? 0 : -1}
+                  className={`papers-subnav-tab ${view === tab.view ? "active" : ""}`}
+                  onClick={() => void change(tab.view)}
+                  onKeyDown={event => handleTabKeyDown(event, index, analysisTabRefs.current, ANALYSIS_SUBTABS.map(item => ({ targetView: item.view })))}>{tab.label}</button>
+              ))}
+            </nav>
+          </div>
         </div>
       )}
 
@@ -299,6 +320,10 @@ export function ResearchLiterature({
           <ScreeningWorkspace key={`screening-${projectId}`} projectId={projectId} readOnly={readOnly} />
         ) : view === "evidence" ? (
           <ResearchEvidence projectId={projectId} readOnly={readOnly} />
+        ) : view === "matrix" ? (
+          <LiteratureMatrixView projectId={projectId} readOnly={readOnly} />
+        ) : view === "limitations" ? (
+          <ResearchLimitations projectId={projectId} readOnly={readOnly} />
         ) : primaryTab === "analysis" ? (
           <LiteratureTopicClustersView
             key={`clusters-${projectId}`}

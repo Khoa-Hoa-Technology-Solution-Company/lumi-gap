@@ -1,3 +1,4 @@
+import { purgeProjectFixture } from "../../../test-utils/project-fixture.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { hashOpaqueToken } from "../../auth/token.service.js";
@@ -48,7 +49,7 @@ describe.sequential("project workspace persistence", () => {
 
   afterAll(async () => {
     const prisma = getPrisma();
-    if (projectIds.length) await prisma.project.deleteMany({ where: { id: { in: projectIds } } });
+    for (const id of projectIds) await purgeProjectFixture(id);
     if (paperId) await prisma.paper.deleteMany({ where: { id: paperId } });
     await prisma.user.deleteMany({ where: { email: { in: Object.values(emails) } } });
   });
@@ -67,12 +68,10 @@ describe.sequential("project workspace persistence", () => {
 
     await projectService.addPaperToProject(project._id, paperId, memberId);
     await expect(projectService.addPaperToProject(project._id, paperId, memberId)).rejects.toMatchObject({ statusCode: 409 });
-    await projectService.updateProjectPaper(project._id, paperId, { screeningStatus: "INCLUDED", inclusionReason: "Matches the research question", readingStatus: "REVIEWED", notes: "Useful baseline" }, memberId);
-    await projectService.updateProjectPaper(project._id, paperId, { notes: "Updated reading note" }, memberId);
+    await expect(projectService.updateProjectPaper(project._id, paperId, { screeningStatus: "INCLUDED", inclusionReason: "Cannot bypass independent review" }, memberId)).rejects.toMatchObject({ statusCode: 403 });
+    await projectService.updateProjectPaper(project._id, paperId, { readingStatus: "REVIEWED", notes: "Updated reading note" }, memberId);
     const refreshed = await projectService.getProjectById(project._id, memberId);
-    expect(refreshed.papers[0]).toMatchObject({ screeningStatus: "INCLUDED", inclusionReason: "Matches the research question", readingStatus: "REVIEWED", notes: "Updated reading note" });
-    expect(refreshed.papers[0]?.screenedBy?._id).toBe(memberId);
-    expect(refreshed.papers[0]?.screenedAt).toBeTruthy();
+    expect(refreshed.papers[0]).toMatchObject({ screeningStatus: "UNDECIDED", readingStatus: "REVIEWED", notes: "Updated reading note" });
 
     const criteriaProject = await projectService.updateProject(project._id, {
       inclusionCriteria: ["Empirical software engineering studies"],
@@ -87,13 +86,10 @@ describe.sequential("project workspace persistence", () => {
     const second = await projectService.createProject({ title: "Different review", status: "ACTIVE" }, outsiderId);
     projectIds.push(second._id);
     await projectService.addPaperToProject(second._id, paperId, outsiderId);
-    await projectService.updateProjectPaper(second._id, paperId, { screeningStatus: "EXCLUDED", exclusionReason: "WRONG_POPULATION_CONTEXT", exclusionNote: "Not a software engineering population" }, outsiderId);
-    const secondRefreshed = await projectService.getProjectById(second._id, outsiderId);
-    expect(secondRefreshed.papers[0]).toMatchObject({ screeningStatus: "EXCLUDED", exclusionReason: "WRONG_POPULATION_CONTEXT", exclusionNote: "Not a software engineering population", screenedBy: { _id: outsiderId } });
-    expect((await projectService.getProjectById(project._id, ownerId)).papers[0]?.screeningStatus).toBe("INCLUDED");
-    await projectService.updateProjectPaper(second._id, paperId, { screeningStatus: "INCLUDED" }, outsiderId);
-    await expect(projectService.updateProjectPaper(second._id, paperId, { exclusionNote: "remove rationale" }, outsiderId)).rejects.toMatchObject({ statusCode: 400 });
-    expect((await projectService.getProjectById(second._id, outsiderId)).papers[0]).toMatchObject({ screeningStatus: "INCLUDED" });
+    await expect(projectService.updateProjectPaper(second._id, paperId, { screeningStatus: "EXCLUDED", exclusionReason: "WRONG_POPULATION_CONTEXT" }, outsiderId)).rejects.toMatchObject({ statusCode: 409 });
+    await projectService.updateProjectPaper(second._id, paperId, { notes: "Independent project notes" }, outsiderId);
+    expect((await projectService.getProjectById(second._id, outsiderId)).papers[0]).toMatchObject({ screeningStatus: "UNDECIDED", notes: "Independent project notes" });
+    expect((await projectService.getProjectById(project._id, ownerId)).papers[0]?.notes).toBe("Updated reading note");
 
     await projectService.removeMemberFromProject(project._id, memberId, ownerId);
     await expect(projectService.getProjectById(project._id, memberId)).rejects.toMatchObject({ statusCode: 404 });
@@ -156,7 +152,7 @@ describe.sequential("project workspace persistence", () => {
     const prisma = getPrisma();
     const project = await projectService.createProject({ title: "Token invitation review", visibility: "PRIVATE", status: "ACTIVE" }, ownerId);
     projectIds.push(project._id);
-    const token = "project_invitation_test_token_0123456789abcdef";
+    const token = "project_invitation_test_token_" + marker;
 
     await prisma.projectInvitation.create({
       data: {
@@ -245,8 +241,8 @@ describe.sequential("project workspace persistence", () => {
     const prisma = getPrisma();
     const project = await projectService.createProject({ title: "Expired token review", visibility: "PRIVATE", status: "ACTIVE" }, ownerId);
     projectIds.push(project._id);
-    const expiredToken = "expired_project_invitation_token_0123456789abcdef";
-    const cancelledToken = "cancelled_project_invitation_token_0123456789abcdef";
+    const expiredToken = "expired_project_invitation_token_" + marker;
+    const cancelledToken = "cancelled_project_invitation_token_" + marker;
 
     await prisma.projectInvitation.createMany({
       data: [

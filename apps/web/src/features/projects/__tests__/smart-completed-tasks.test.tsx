@@ -442,7 +442,7 @@ describe("Smart Completed-Task Management (Jira/Linear inspired)", () => {
   });
 
   it("sorts deterministically by unique ID when completion timestamps are identical", async () => {
-    const identicalTime = "2026-11-12T01:00:00.000Z";
+    const identicalTime = new Date(Date.now() - 3600000).toISOString();
     const taskA = makeManualTask("task-aaa", "Task AAA", "DONE", identicalTime);
     const taskZ = makeManualTask("task-zzz", "Task ZZZ", "DONE", identicalTime);
 

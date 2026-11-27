@@ -498,7 +498,7 @@ describe.sequential("Research Contribution, Integrity & Security Workflow — Al
   // --------------------------------------------------------------------------
   // Scenario 11: Pre-submission attribution check detecting all contributors
   // --------------------------------------------------------------------------
-  it("Scenario 11: Pre-submission attribution check detects all active, departed and advisor contributors", async () => {
+  it("Scenario 11: Pre-submission attribution requires evidence scoped to the manuscript", async () => {
     const manuscript = await manuscriptService.create(testProjectId, ownerId, {
       title: "Integrity Manuscript Draft",
       documentType: "RESEARCH_PROPOSAL",
@@ -521,8 +521,8 @@ describe.sequential("Research Contribution, Integrity & Security Workflow — Al
     );
 
     expect(check.detectedContributors.some((c) => c.userId === ownerId)).toBe(true);
-    expect(check.detectedContributors.some((c) => c.userId === memberBId)).toBe(true); // Departed contributor detected!
-    expect(check.detectedContributors.some((c) => c.userId === advisorId)).toBe(true); // Advisor detected!
+    expect(check.detectedContributors.some((c) => c.userId === memberBId)).toBe(false); // Project history alone is not manuscript evidence.
+    expect(check.detectedContributors.some((c) => c.userId === advisorId)).toBe(false); // An agreement alone does not establish work on this manuscript.
   });
 
   // --------------------------------------------------------------------------

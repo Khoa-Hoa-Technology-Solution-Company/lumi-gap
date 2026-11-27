@@ -155,7 +155,7 @@ it("preserves structured research details on older submissions", async () => {
 it("uses the selected submission ID instead of the project's route ID and returns to its list", async () => {
   await render(<SubmissionDetailPage submissionId="manuscript" projectId="project-a" />);
   expect(mocks.detail).toHaveBeenCalledWith("manuscript", "project-a");
-  expect(container.querySelector("a")?.getAttribute("href")).toBe("/projects/project-a?tab=submissions");
+  expect(container.querySelector("a")).toBeNull();
   expect(container.querySelector("h1")).toBeNull();
 });
 it("hides creation and all revision/review actions in a read-only project", async () => {

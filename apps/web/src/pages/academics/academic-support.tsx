@@ -10,7 +10,7 @@ import { MentorshipApplicantPool, MentorshipApplicationDialog, MyMentorshipAppli
 import { mentorshipApplicationsApi } from "@/features/projects/api/mentorship-applications.api";
 import type { MentorshipApplicationView } from "@trend/shared-types";
 import { useEffect, useState, useMemo, useRef } from "react";
-import { Link, Navigate, useSearchParams, useNavigate } from "react-router-dom";
+import { Link, Navigate, useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { AcademicPageMeta, AvailableMentor, MentorshipPerson, MentorRole, MentorPlanCandidate } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
@@ -45,7 +45,7 @@ import { useInvitationContent, InvitationAttachments, InvitationUpload } from "@
 import { MentorMatchEvidenceDialog } from "@/features/projects/components/mentor-match-evidence-dialog";
 import "@/features/projects/mentor-discovery.css";
 import "./academic-support.css";
-import { mentorWorkspaceDestination } from "@/features/projects/utils/mentor-workspace-navigation";
+import { legacyAcademicSupportDestination, mentorWorkspaceDestination } from "@/features/projects/utils/mentor-workspace-navigation";
 
 function useSupportRefresh() {
   const cache = useQueryClient();
@@ -139,6 +139,17 @@ function MentoringItems({ items, onOpen, onOpenAccess, onManageAccess, currentPr
   const history = items.filter(i => i.kind === "RELATIONSHIP" ? i.status !== "ACTIVE" : i.status !== "PENDING");
   return <div className="space-y-3"><MentorshipList items={current} onOpen={onOpen} onOpenAccess={onOpenAccess} showEmpty={false} /><details hidden={!history.length}><summary className="cursor-pointer text-xs text-muted-foreground">{t("Mentoring history")} ({history.length})</summary><div className="mt-3"><MentorshipList items={history} onOpen={onOpen} onOpenAccess={onOpenAccess} showEmpty={false} variant="history" /></div></details></div>;
 }
+/** Compatibility entry only; the support UI lives in the mentor shell or a team's project. */
+export function AcademicSupportEntryPage() {
+  const profile = useAcademicProfile();
+  const [params] = useSearchParams();
+  const { hash } = useLocation();
+  const { t } = useI18n();
+  if (profile.isLoading) return <main className="mx-auto max-w-5xl p-6" role="status">{t("Loading…")}</main>;
+  if (profile.isError || !profile.data) return <main className="mx-auto max-w-5xl space-y-3 p-6"><p role="alert">{t("Unable to load your profile.")}</p><Button variant="outline" onClick={() => void profile.refetch()}>{t("Try again")}</Button></main>;
+  return <Navigate to={legacyAcademicSupportDestination(params, profile.data.academicRole === "LECTURER", hash)} replace />;
+}
+
 export function AcademicSupportPage({ embedded = false }: { embedded?: boolean }) {
   const Container = embedded ? "section" : "main";
   const { t, language } = useI18n(), navigate = useNavigate(), profile = useAcademicProfile(), pref = useMentoringPreferences();

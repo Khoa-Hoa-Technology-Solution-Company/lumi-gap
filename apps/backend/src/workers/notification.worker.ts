@@ -177,12 +177,19 @@ async function main() {
       await projectService.purgeExpiredTrashedProjects();
       await maintainScreeningCases();
       await recoverProjectInvitationEmails();
-      const rows = await db.notification.findMany({ where: { userId: { not: null }, AND: [{ OR: [...reviewNotificationRecoveryConditions, { eventKey: { startsWith: "MENTORSHIP_" } }, { eventKey: { startsWith: "PROJECT_INVITATION_" } }, { eventKey: { startsWith: "LECTURER_VERIFICATION_" } }, { eventKey: { startsWith: "WORKSPACE:" } }, { eventKey: { startsWith: "CONTRIBUTIONS:" } }] }, { OR: [{ dispatchedAt: null }, { emailStatus: "PENDING" }, { pushSentAt: null }] }] }, take: 100, orderBy: { createdAt: "asc" } });
-      for (const row of rows) {
-        const job = await notificationQueue.getJob(publicDatabaseId(row));
-        if (job && await job.isFailed()) await job.retry();
-        else if (job && await job.isCompleted()) { await job.remove(); await notificationService.dispatch(row); }
-        else if (!job) await notificationService.dispatch(row);
+      // Drain the existing outbox in stable pages so older pending rows cannot starve later notifications.
+      const recoveryStartedAt = new Date();
+      let cursor: string | undefined;
+      for (;;) {
+        const rows = await db.notification.findMany({ where: { createdAt: { lte: recoveryStartedAt }, userId: { not: null }, AND: [{ OR: [...reviewNotificationRecoveryConditions, { eventKey: { startsWith: "MENTORSHIP_" } }, { eventKey: { startsWith: "PROJECT_INVITATION_" } }, { eventKey: { startsWith: "LECTURER_VERIFICATION_" } }, { eventKey: { startsWith: "WORKSPACE:" } }, { eventKey: { startsWith: "CONTRIBUTIONS:" } }] }, { OR: [{ dispatchedAt: null }, { emailStatus: "PENDING" }, { pushSentAt: null }] }] }, take: 100, orderBy: [{ createdAt: "asc" }, { id: "asc" }], ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+        for (const row of rows) {
+          const job = await notificationQueue.getJob(publicDatabaseId(row));
+          if (job && await job.isFailed()) await job.retry();
+          else if (job && await job.isCompleted()) { await job.remove(); await notificationService.dispatch(row); }
+          else if (!job) await notificationService.dispatch(row);
+        }
+        if (rows.length < 100) break;
+        cursor = rows[rows.length - 1]!.id;
       }
     } catch (err) { logger.warn({ err }, "Notification recovery will retry on the next maintenance tick"); }
     finally { maintenanceRunning = false; }

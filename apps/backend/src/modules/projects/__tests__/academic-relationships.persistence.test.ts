@@ -60,20 +60,25 @@ describe.skipIf(!enabled).sequential("academic relationship consent (PostgreSQL)
     expect(await getPrisma().mentorFeedback.count({ where: { projectId: project } })).toBe(1);
   });
 
-  it("offers require discovery opt-in and owner acceptance without private content leaks", async () => {
-    await expect(service.offer(project, lecturer, { message: "Offer research guidance" })).rejects.toMatchObject({ statusCode: 403 });
+  it("offers require discovery opt-in and a separate invitation with lecturer consent without private content leaks", async () => {
+    await expect(service.offer(project, lecturer, { message: "Offer research guidance" })).rejects.toMatchObject({ statusCode: 409 });
     await service.settings(project, owner, { discovery: "SEEKING_MENTOR", summary: "We seek help designing evaluation", expertise: ["Empirical research"] });
     const previews = (await service.discovery(lecturer)).items;
     const preview = previews.find(p => p.id === project)!;
     expect(preview.summary).toContain("evaluation");
-    expect(Object.keys(preview).sort()).toEqual(["availableRoles", "discovery", "expertise", "id", "mentoringNeeds", "researchAreas", "researchField", "stage", "summary", "teamMemberCount", "title"].sort());
+    expect(Object.keys(preview).sort()).toEqual(["availableRoles", "discovery", "expertise", "id", "mentoringNeeds", "methodologies", "researchAreas", "researchField", "stage", "summary", "teamMemberCount", "title"].sort());
     expect(JSON.stringify(preview)).not.toContain("CONFIDENTIAL");
     await expect(service.discovery(unverified)).rejects.toMatchObject({ statusCode: 403 });
     const offer = await service.offer(project, lecturer, { message: "I can mentor this project" });
-    await expect(service.accept(project, offer.id, lecturer)).rejects.toMatchObject({ statusCode: 403 });
-    await expect(service.accept(project, offer.id, member)).rejects.toMatchObject({ statusCode: 403 });
+    const application = await getPrisma().mentorshipApplication.findUniqueOrThrow({ where: { id: offer.id } });
+    expect(application.status).toBe("APPLIED");
+    expect(await getPrisma().mentorshipRequest.count({ where: { projectId: project } })).toBe(0);
     await expect(service.workspace(project, lecturer)).rejects.toMatchObject({ statusCode: 403 });
-    await service.accept(project, offer.id, owner);
+    const invitation = await service.request(project, owner, { mentorUserId: lecturer, message: "Please guide our evaluation", applicationId: offer.id, expectedApplicationVersion: application.version });
+    await expect(service.accept(project, invitation.id, owner)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(service.accept(project, invitation.id, member)).rejects.toMatchObject({ statusCode: 403 });
+    expect(await canAccessProjectAsMentor(project, lecturer)).toBe(false);
+    await service.accept(project, invitation.id, lecturer);
     expect(await canAccessProjectAsMentor(project, lecturer)).toBe(true);
     expect((await getPrisma().project.findUniqueOrThrow({ where: { id: project } })).visibility).toBe("PRIVATE");
   });

@@ -57,12 +57,12 @@ it("uses real submitted counts, ordered metadata and exact round navigation for 
   await act(async () => { await client.invalidateQueries(); }); await settle();
   expect(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('1');
 });
-it("shows 1/2 and a waiting state without disclosing the peer's choice or a final outcome", async () => {
+it("omits unfinished ballots from completed work without disclosing the peer's choice or a final outcome", async () => {
   data.myEvaluations = [ballot]; data.workPapers = [{ ...card, completed: 1, hiddenReviews: true, reviews: [{ reviewerId: 'b', name: 'Private peer', decision: 'EXCLUDE' }] }];
   await render(); await reviewed();
-  expect(container.textContent).toContain('1/2 phiếu đã gửi');
-  expect(container.textContent).toContain('Đánh giá của tôiPhù hợp');
-  expect(container.textContent).toContain('Chờ đánh giá thứ hai');
+  expect(container.querySelector('article')).toBeNull();
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
+  expect(container.textContent).toContain('Chưa có bài đã đánh giá xong');
   expect(container.textContent).not.toContain('Private peer');
   expect(container.textContent).not.toContain('Đã chọn cho phân tích');
 });
@@ -84,8 +84,8 @@ it("keeps unsure distinct from binary disagreement", async () => {
   data.myEvaluations = [{ ...ballot, myDecision: 'UNSURE', groupStatus: 'NEEDS_MORE_INFO' }];
   data.workPapers = [{ ...card, completed: 2, status: 'NEEDS_MORE_INFO' }];
   await render(); await reviewed();
-  expect(container.textContent).toContain('Đánh giá của tôiCần xem xét thêm');
-  expect(container.textContent).toContain('Cần làm rõ');
+  expect(container.querySelector('article')).toBeNull();
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
   expect(container.textContent).not.toContain('Cần giải quyết bất đồng');
   expect(container.querySelectorAll('[role="tab"]')[0]?.textContent).toBe('Cần xử lý0');
 });
@@ -99,17 +99,18 @@ it("keeps clarification amber on actionable and evaluated cards and retains the 
   expect(container.querySelectorAll('.screening-paper-card-status')).toHaveLength(1);
   expect(container.querySelector('.screening-task-callout')).toBeNull();
   await reviewed();
-  expect(container.querySelector('.screening-paper-card-status')?.getAttribute('data-tone')).toBe('warning');
-  expect(container.querySelector('dl > div:last-child dd')?.getAttribute('data-tone')).toBe('warning');
+  expect(container.querySelector('article')).toBeNull();
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
   data.readOnly = true;
   await act(async () => { await client.invalidateQueries(); }); await settle();
-  expect(container.querySelector('.screening-paper-card-status')?.getAttribute('data-tone')).toBe('warning');
+  expect(container.querySelector('article')).toBeNull();
 });
+
 it("does not infer clarification color from hidden peer ballots", async () => {
   data.myEvaluations = [ballot];
   data.workPapers = [{ ...card, completed: 1, hiddenReviews: true, reviews: [{ reviewerId: 'b', name: 'Hidden B', decision: 'UNSURE' }] }];
   await render(); await reviewed();
-  expect(container.querySelector('.screening-paper-card-status')?.getAttribute('data-tone')).toBe('neutral');
+  expect(container.querySelector('article')).toBeNull();
   expect(container.textContent).not.toContain('Hidden B');
 });
 it.each([
@@ -121,7 +122,12 @@ it.each([
   data.myEvaluations = [{ ...ballot, groupStatus: 'INCLUDED' }];
   data.workPapers = [{ ...card, status: 'INCLUDED', phase, roundNumber, completed: 2, acceptedForAnalysis }];
   await render(); await reviewed();
-  expect(container.querySelector('.screening-paper-card-status')?.textContent).toContain(expected);
+  if (!acceptedForAnalysis) {
+    expect(container.querySelector('article')).toBeNull();
+    expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
+  } else {
+    expect(container.querySelector('.screening-paper-card-status')?.textContent).toContain(expected);
+  }
   expect(container.textContent).not.toContain('chấp nhận cuối cùng');
 });
 it("keeps my ballot intact after exclusion and bounds the reason on the card", async () => {
@@ -142,21 +148,23 @@ it("opens the assigned case directly and removes completed statements from actio
 it.each([
   ['COLLECTING', 'Đang thu thập ý kiến'], ['WAITING_ASSIGNMENT', 'Chờ phân công'],
   ['ASSIGNED', 'Đã phân công'], ['IN_PROGRESS', 'Đang phân xử'], ['NEEDS_MORE_INFO', 'Cần bổ sung thông tin'],
-])("shows the actual %s case state to a reviewer who has no action left", async (caseStatus, expected) => {
+])("keeps unresolved %s cases out of completed work when the reviewer has no action left", async (caseStatus, _expected) => {
   data.myEvaluations = [{ ...ballot, groupStatus: 'ADJUDICATING', caseStatus }];
   data.workPapers = [{ ...card, status: 'ADJUDICATING', completed: 2 }];
   await render(); await reviewed();
-  expect(container.querySelector('.screening-paper-card-status')?.textContent).toContain(expected);
+  expect(container.querySelector('article')).toBeNull();
+  expect(container.querySelectorAll('[role="tab"]')[1]?.textContent).toBe('Đã đánh giá0');
   expect(container.textContent).not.toContain('Đưa ra kết luận');
   expect(container.querySelectorAll('[role="tab"]')[0]?.textContent).toBe('Cần xử lý0');
 });
-it("uses backend deadlines for countdown, refreshes on expiry and removes the claim and counter", async () => {
+it("uses backend deadlines for countdown, refreshes on expiry and keeps the overdue claim actionable", async () => {
   data.myActiveClaims = [{ ...claim, dueAt: '2026-11-03T00:00:02Z', expiresInSeconds: 99999 }];
   await render();
   expect(container.textContent).toContain('00:00:02');
   await settle(2100);
-  expect(container.querySelector('article')).toBeNull();
-  expect(container.querySelector('[role="tab"]')?.textContent).toBe('Cần xử lý0');
+  expect(container.querySelector('article')).not.toBeNull();
+  expect(button('Tiếp tục đánh giá')).toBeDefined();
+  expect(container.querySelector('[role="tab"]')?.textContent).toBe('Cần xử lý1');
   expect(mocks.workspaceSummary.mock.calls.length).toBeGreaterThan(1);
 });
 it("refreshes claim operations through the shared cache and reports failed extensions", async () => {

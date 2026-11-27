@@ -250,10 +250,10 @@ it("never uses another account's work as placeholder data while the new account 
   expect(host.textContent).not.toContain("Actual pinned manuscript");
   expect(host.textContent).not.toContain("Actual research team");
 });
-it("keeps students in the existing support flow without issuing a mentor API request", async () => {
+it("keeps students in their project workspace without issuing a mentor API request", async () => {
   mocks.profile.data.academicRole = "STUDENT";
-  await mount(<Routes><Route path="/mentor-workspace" element={<MentorWorkspacePage />} /><Route path="/academic-support" element={<p>Existing student support</p>} /></Routes>);
-  expect(host.textContent).toContain("Existing student support"); expect(mocks.read).not.toHaveBeenCalled();
+  await mount(<Routes><Route path="/mentor-workspace" element={<MentorWorkspacePage />} /><Route path="/projects" element={<p>Research projects</p>} /></Routes>);
+  expect(host.textContent).toContain("Research projects"); expect(mocks.read).not.toHaveBeenCalled();
 });
 it("scopes project tasks to the current project, ignores assignee URL tampering and removes the adjudication section", async () => {
   await mount(<MentorProjectTasks projectId="project" />, "/projects/project?tab=tasks&taskAssignee=someone-else");

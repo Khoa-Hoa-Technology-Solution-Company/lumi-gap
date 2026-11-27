@@ -160,7 +160,7 @@ export function ScreeningTaskCard({ projectId, summary, task, onOpen, href, now,
     if (ok) toast.success(action === "extend" ? "Đã gia hạn thêm 24 giờ." : "Đã trả bài lại hàng đợi.");
   };
   const expired = Boolean(task.deadline && new Date(task.deadline).getTime() <= now);
-  const canAct = !readOnly && !summary.readOnly && !expired;
+  const canAct = !readOnly && !summary.readOnly && (!expired || task.kind === "REVIEW");
   const tone: ScreeningTone = expired ? "warning"
     : statement || adjudication || task.kind === "COORDINATION" ? screeningStatusTone({ status: "ADJUDICATING", caseStatus: paper.caseStatus })
     : task.kind === "REVIEW" ? "attention"

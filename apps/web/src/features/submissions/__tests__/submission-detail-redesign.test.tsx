@@ -630,6 +630,25 @@ it("keeps AI pre-review clearly separate from Mentor Review and links formal con
   expect(container.querySelector('a[href="/projects/proj-1?tab=contributions"]')?.textContent).toContain("Đóng góp phản biện (1 giảng viên)");
 });
 
+it("selects AI feedback for the current revision when another revision appears first", async () => {
+  const preReview = { status: "COMPLETED", rqCoverage: [], unsupportedClaims: [], citationIssues: [], reviewFocusAreas: [], limitations: [], createdAt: "2026-11-15T00:00:00.000Z" };
+  mocks.preReviews.mockReturnValue({ data: [
+    { ...preReview, id: "other-ai", sourceRevisionId: "rev-other", summary: "Feedback for another revision" },
+    { ...preReview, id: "current-ai", sourceRevisionId: "rev-1", summary: "Feedback for the current revision" },
+  ], refetch: vi.fn() });
+  await renderPage(<SubmissionDetailPage submissionId="sub-1" projectId="proj-1" />);
+  const aiPanel = container.querySelector('[data-testid="ai-prereview-panel"]');
+  expect(aiPanel?.textContent).toContain("Feedback for the current revision");
+  expect(aiPanel?.textContent).not.toContain("Feedback for another revision");
+});
+
+it("does not display another revision's AI feedback as the current revision's analysis", async () => {
+  mocks.preReviews.mockReturnValue({ data: [{ id: "old-ai", status: "COMPLETED", sourceRevisionId: "rev-old", summary: "Stale feedback" }], refetch: vi.fn() });
+  await renderPage(<SubmissionDetailPage submissionId="sub-1" projectId="proj-1" />);
+  expect(container.querySelector('[data-testid="ai-prereview-panel"]')).toBeNull();
+  expect(container.textContent).not.toContain("Stale feedback");
+});
+
 it("maps all review statuses and primary action plans accurately without fabricating publication acceptance", () => {
   expect(normalizeReviewStatus({ requestStatus: "REQUESTED" }).label).toBe("Chờ giảng viên phản hồi");
   expect(normalizeReviewStatus({ requestStatus: "IN_REVIEW" }).label).toBe("Giảng viên đang đánh giá");

@@ -1,3 +1,4 @@
+import { workflowSourceVi } from "./workflow-source";
 import { mentorSharingVi } from "./mentor-sharing";
 import { submissionDetailVi } from "./submission-detail";
 import { registrationVi } from "./registration";
@@ -51,6 +52,7 @@ import { adminCatalogVi } from "./admin-catalog";
 import { personalizationViStrings } from "./personalization";
 
 export const vi: Record<keyof typeof en, string> = {
+  ...workflowSourceVi,
   ...registrationVi,
   ...en,
   ...mentorWorkspaceVi,

@@ -287,7 +287,7 @@ describe("Re-screening & Decision Revision UI", () => {
     expect(document.body.textContent).toContain("Phiếu của vòng này đang được ẩn theo chế độ đánh giá độc lập");
   });
 
-  it("renders inline replacement reviewer selector for Project Owner when a previous reviewer left", async () => {
+  it("leaves replacement reviewers to claim the round instead of offering manual assignment", async () => {
     const round2 = makeRound({
       id: "round-2",
       number: 2,
@@ -315,8 +315,9 @@ describe("Re-screening & Decision Revision UI", () => {
 
     await mount(<ScreeningPaperDetail projectId="proj-1" paper={makePaper(round2)} people={people} readOnly={false} />);
 
-    expect(document.body.textContent).toContain("Thiếu 1 reviewer cho vòng đánh giá lại");
-    expect(document.querySelector('select[aria-label="Chọn reviewer thay thế"]')).not.toBeNull();
+    expect(document.body.textContent).not.toContain("Phân công thay thế");
+    expect(mocks.assign).not.toHaveBeenCalled();
+    expect(document.querySelector('select[aria-label="Chọn reviewer thay thế"]')).toBeNull();
   });
 
   it("renders PRISMA summary with active re-screening warning and separates Closed Without Consensus from Excluded", async () => {
