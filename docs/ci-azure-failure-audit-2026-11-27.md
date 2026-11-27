@@ -13,13 +13,15 @@ Typecheck passed. The web suite reported five failures in three files:
 - The modern independent-screening test used historical workflow version 3. It now covers current, future and omitted workflow versions; historical permission tests remain in place.
 - The mentoring preferences failure assertion ran before React Query delivered its mutation-error notification. It now waits for the alert and still asserts that the saved preference is unchanged.
 
-The focused recheck passed 89 tests. A full web run also exposed two timing-sensitive assertions in the task board's lazy loading and the mentor composer's pending state. Both now await the observable UI state; their two suites passed all 55 tests on recheck. Changed-file ESLint passed.
+The focused recheck passed 89 tests. A full local web run exercised 240 files (2,238 tests passed, three timing-sensitive tests failed). It exposed assertions made before the task board loaded, the mentor composer's pending state rendered, and Radix restored focus before opening the next menu. Those three suites passed all 73 tests after correction. Changed-file ESLint passed. This is not a second full local-suite pass; GitHub CI is rerun on the updated branch.
 
 ## Azure
 
 The deployment typecheck and image builds passed. Docker Compose then reported the backend as unhealthy and skipped dependent services. The job did not capture backend logs or the failed health probes, so the startup cause is not established by that output. The previous Azure run for `5242ea7f` succeeded. Public API health and readiness returned HTTP 502 during this investigation.
 
 The deployment script now prints backend logs, container exit/OOM state and health-probe output after a failed `compose up`. It preserves the original failure exit code and does not print container environment configuration. Bash syntax validation and an isolated mocked deployment verified that diagnostics are emitted and exit code 42 is preserved.
+
+The backend Docker image built successfully. A fresh container using compiled JavaScript, `NODE_ENV=production`, a 1 GiB memory limit, disposable JWT keys and isolated local database/Redis connections returned HTTP 200 from `/ready`, with both dependencies ready. The container and temporary keys were removed afterwards. This does not reproduce the VM's workload or configuration.
 
 Production recovery is not confirmed. Backend logs from the VM are required to identify the actual runtime failure:
 
