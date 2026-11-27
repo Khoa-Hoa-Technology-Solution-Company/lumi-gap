@@ -54,7 +54,7 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `CLOUDINARY_CLOUD_NAME` | `EnvSchema` / backend | Default / optional (see template) |
 | `CLOUDINARY_API_KEY` | `EnvSchema` / backend | Default / optional (see template) |
 | `CLOUDINARY_API_SECRET` | `EnvSchema` / backend | Default / optional (see template) |
-| `EMAIL_DELIVERY_MODE` | `EnvSchema` / backend | Default / optional (see template) |
+| `EMAIL_DELIVERY_MODE` | `EnvSchema` / backend | Defaults to `disabled` when omitted or blank; explicit `smtp` requires SMTP credentials; `log` is forbidden in production |
 | `SMTP_HOST` | `EnvSchema` / backend | Default / optional (see template) |
 | `SMTP_PORT` | `EnvSchema` / backend | Default / optional (see template) |
 | `SMTP_SECURE` | `EnvSchema` / backend | Default / optional (see template) |
