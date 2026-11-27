@@ -131,8 +131,10 @@ class TrendVerdictPill extends StatelessWidget {
     final style = trendVerdictStyle(verdict, lumi);
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 3, 10, 3),
+      // Opaque: the tint over the card colour, so the pill also reads on
+      // the blue feature card.
       decoration: BoxDecoration(
-        color: style.color.withValues(alpha: 0.1),
+        color: Color.alphaBlend(style.color.withValues(alpha: 0.1), lumi.surface),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(

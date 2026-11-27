@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/utils/haptics.dart';
 import 'package:flutter_mobile/core/utils/relative_time.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_action_sheet.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_swipe_action.dart';
 import 'package:flutter_mobile/features/notifications/data/notifications_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -48,25 +51,71 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     }
   }
 
+  /// Marked read here but not yet confirmed by a reload: shown as read.
+  final Set<String> _readLocally = {};
+
+  bool _isRead(AppNotification item) =>
+      item.isRead || _readLocally.contains(item.id);
+
+  /// Swipe or sheet: mark one notification read without opening it. The row
+  /// stays in the list (the backend has no delete); a failure shows it
+  /// unread again.
+  Future<void> _markRead(AppNotification item) async {
+    if (_isRead(item)) return;
+    setState(() => _readLocally.add(item.id));
+    try {
+      await ref.read(notificationsApiProvider).markRead(item.id);
+      ref.invalidate(notificationsProvider);
+    } on Object catch (e) {
+      if (mounted) setState(() => _readLocally.remove(item.id));
+      _showError(e);
+    }
+  }
+
+  Future<void> _showActions(AppNotification item) async {
+    final actions = [
+      if (notificationRoute(item) != null)
+        LumiSheetAction(
+          value: 'open',
+          label: context.t('Open'),
+          icon: Icons.open_in_new,
+        ),
+      if (!_isRead(item))
+        LumiSheetAction(
+          value: 'read',
+          label: context.t('Mark as read'),
+          icon: Icons.done,
+        ),
+    ];
+    // A read notification with no screen has nothing to offer.
+    if (actions.isEmpty) return;
+    final action = await showLumiActionSheet<String>(
+      context,
+      title: item.title,
+      actions: actions,
+    );
+    if (!mounted) return;
+    switch (action) {
+      case 'open':
+        await _open(item);
+      case 'read':
+        await _markRead(item);
+    }
+  }
+
   Future<void> _open(AppNotification item) async {
     // Open first: a failed "mark as read" must not keep the user from the
     // thing the notification is about.
     final route = notificationRoute(item);
     if (route != null) unawaited(context.push(route));
-    if (item.isRead) return;
-    try {
-      await ref.read(notificationsApiProvider).markRead(item.id);
-      ref.invalidate(notificationsProvider);
-    } on Object catch (e) {
-      _showError(e);
-    }
+    await _markRead(item);
   }
 
   @override
   Widget build(BuildContext context) {
     final query = ref.watch(notificationsProvider);
     final unreadCount =
-        query.value?.where((item) => !item.isRead).length ?? 0;
+        query.value?.where((item) => !_isRead(item)).length ?? 0;
     return Scaffold(
       appBar: AppBar(
         title: Text(context.t('Notifications')),
@@ -112,9 +161,18 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             LumiRowGroup(
               children: [
                 for (final item in group)
-                  _NotificationRow(
-                    item: item,
-                    onTap: () => unawaited(_open(item)),
+                  LumiSwipeAction(
+                    key: ValueKey('notification-${item.id}'),
+                    enabled: !_isRead(item),
+                    label: context.t('Mark as read'),
+                    icon: Icons.done,
+                    onSwipe: () => unawaited(_markRead(item)),
+                    child: _NotificationRow(
+                      item: item,
+                      read: _isRead(item),
+                      onTap: () => unawaited(_open(item)),
+                      onLongPress: () => unawaited(_showActions(item)),
+                    ),
                   ),
               ],
             ),
@@ -225,10 +283,19 @@ IconData notificationIcon(String? targetKind) => switch (targetKind) {
     };
 
 class _NotificationRow extends StatelessWidget {
-  const _NotificationRow({required this.item, required this.onTap});
+  const _NotificationRow({
+    required this.item,
+    required this.read,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   final AppNotification item;
+
+  /// Read on the server or marked read here.
+  final bool read;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -242,9 +309,14 @@ class _NotificationRow extends StatelessWidget {
 
     return Semantics(
       // Unread is said, not only shown as a dot.
-      label: item.isRead ? null : context.t('Unread'),
+      label: read ? null : context.t('Unread'),
+      onLongPressHint: context.t('Show actions'),
       child: InkWell(
         onTap: onTap,
+        onLongPress: () {
+          unawaited(Haptics.select());
+          onLongPress();
+        },
         child: Padding(
           padding: const EdgeInsetsDirectional.fromSTEB(16, 14, 16, 14),
           child: Row(
@@ -254,13 +326,13 @@ class _NotificationRow extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: item.isRead ? lumi.surfaceMuted : lumi.primarySoft,
+                  color: read ? lumi.surfaceMuted : lumi.primarySoft,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   notificationIcon(item.targetKind),
                   size: 20,
-                  color: item.isRead ? lumi.foregroundSecondary : lumi.primary,
+                  color: read ? lumi.foregroundSecondary : lumi.primary,
                 ),
               ),
               const SizedBox(width: 12),
@@ -272,7 +344,7 @@ class _NotificationRow extends StatelessWidget {
                       item.title,
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight:
-                            item.isRead ? FontWeight.w500 : FontWeight.w700,
+                            read ? FontWeight.w500 : FontWeight.w700,
                       ),
                     ),
                     if (item.message.trim().isNotEmpty) ...[
@@ -294,7 +366,7 @@ class _NotificationRow extends StatelessWidget {
                   ],
                 ),
               ),
-              if (!item.isRead) ...[
+              if (!read) ...[
                 const SizedBox(width: 8),
                 Container(
                   width: 10,

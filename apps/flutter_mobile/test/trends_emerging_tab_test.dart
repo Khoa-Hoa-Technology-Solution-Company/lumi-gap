@@ -120,4 +120,41 @@ void main() {
     );
     expect(find.text('Tín hiệu sớm, không phải dự báo'), findsOneWidget);
   });
+
+  testWidgets('a failed request reads as a reason with a retry, never the '
+      'raw exception', (tester) async {
+    var calls = 0;
+    tester.view
+      ..physicalSize = const Size(412 * 2, 2000 * 2)
+      ..devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        // No automatic retries: the error state is what is checked.
+        retry: (_, _) => null,
+        overrides: [
+          trendEmergingProvider.overrideWith((ref, filters) async {
+            calls++;
+            throw Exception('DioException [bad response]: null');
+          }),
+        ],
+        child: MaterialApp(
+          locale: AppLocale.en.locale,
+          supportedLocales: AppLocale.supportedLocales,
+          localizationsDelegates: appLocalizationsDelegates,
+          theme: AppTheme.lightTheme,
+          home: const Scaffold(
+            body: TrendsEmergingTab(params: TrendsOverviewParams()),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('DioException'), findsNothing);
+    expect(find.text('Try again'), findsOneWidget);
+    final before = calls;
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(calls, before + 1);
+  });
 }

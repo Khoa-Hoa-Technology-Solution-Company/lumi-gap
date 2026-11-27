@@ -154,7 +154,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
           children: [
             Expanded(
               child: Text(
-                context.t('Publication Year Range'),
+                context.t('Publication year range'),
                 style: theme.textTheme.titleMedium,
               ),
             ),
@@ -166,7 +166,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
           children: [
             Expanded(
               child: yearField(
-                context.t('From Year'),
+                context.t('From year'),
                 from,
                 (y) => _emit(yearFrom: y),
               ),
@@ -174,7 +174,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
             const SizedBox(width: 12),
             Expanded(
               child: yearField(
-                context.t('To Year'),
+                context.t('To year'),
                 to,
                 (y) => _emit(yearTo: y),
               ),
@@ -186,7 +186,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
           // filter narrows by subfield; domain and field filters are not
           // offered (as on the web).
           _FacetChips(
-            title: context.t('Taxonomy Subfields'),
+            title: context.t('Taxonomy subfields'),
             buckets: facets.subfields,
             selected: _f.subfieldIds,
             onToggle: (id) => _emit(
@@ -201,7 +201,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                   _emit(sizeBands: _toggled(_p.sizeBands, band)),
             ),
           _FacetChips(
-            title: context.t('Paper Type'),
+            title: context.t('Paper type'),
             buckets: facets.paperKinds,
             selected: _f.paperKinds,
             onToggle: (id) => _emit(
@@ -209,7 +209,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
             ),
           ),
           _FacetChips(
-            title: context.t('Open Access Status'),
+            title: context.t('Open access status'),
             buckets: facets.openAccessStatuses,
             selected: _f.openAccessStatuses,
             onToggle: (id) => _emit(

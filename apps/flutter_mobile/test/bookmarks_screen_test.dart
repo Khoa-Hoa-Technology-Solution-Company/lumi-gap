@@ -84,6 +84,20 @@ Future<_FakeBookmarksApi> _pump(WidgetTester tester) async {
   return api;
 }
 
+/// The Undo snackbar has slid in; its timer starts on the next frame.
+Future<void> _snackIn(WidgetTester tester) async {
+  // The first frame starts the entrance animation; the next ones run it.
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 500));
+  await tester.pump();
+}
+
+/// The Undo window passes and the snackbar has gone.
+Future<void> _undoWindowEnds(WidgetTester tester) async {
+  await tester.pump(const Duration(seconds: 6));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('saved papers and reports, without bookmarks left behind',
       (tester) async {
@@ -97,35 +111,121 @@ void main() {
     expect(find.text('LLM in education'), findsOneWidget);
   });
 
-  testWidgets('removing asks first and removes only the bookmark',
+  testWidgets('remove hides at once; Undo keeps the bookmark, no request',
       (tester) async {
     final api = await _pump(tester);
-    final remove = find.byTooltip('Remove bookmark');
-    await tester.tap(remove.last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel'));
+    await tester.tap(find.byTooltip('Remove bookmark').last);
+    await _snackIn(tester);
+    expect(find.text('LLM in education'), findsNothing);
+    expect(find.text('Removed from bookmarks'), findsOneWidget);
+    await tester.tap(find.text('Undo'));
     await tester.pumpAndSettle();
     expect(api.deleted, isEmpty);
+    expect(find.text('LLM in education'), findsOneWidget);
+  });
 
-    await tester.tap(remove.last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Remove').last);
-    await tester.pumpAndSettle();
+  testWidgets('without Undo exactly one delete is sent when the window ends',
+      (tester) async {
+    final api = await _pump(tester);
+    await tester.tap(find.byTooltip('Remove bookmark').last);
+    await _snackIn(tester);
+    // Nothing is sent while Undo is still possible.
+    await tester.pump(const Duration(seconds: 3));
+    // Still inside the window: nothing sent yet.
+    expect(api.deleted, isEmpty);
+    await _undoWindowEnds(tester);
     // The report's bookmark, never the report.
     expect(api.deleted, ['b2']);
     expect(find.text('LLM in education'), findsNothing);
   });
 
-  testWidgets('a failed removal says why and keeps the item listed',
+  testWidgets('swiping a row removes it with the same Undo window',
+      (tester) async {
+    final api = await _pump(tester);
+    await tester.drag(
+      find.text('Privacy budgets in federated learning'),
+      const Offset(-400, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Privacy budgets in federated learning'), findsNothing);
+    expect(api.deleted, isEmpty);
+    await _undoWindowEnds(tester);
+    await tester.pumpAndSettle();
+    expect(api.deleted, ['b1']);
+  });
+
+  testWidgets('a second removal commits the first at once; none is lost',
+      (tester) async {
+    final api = await _pump(tester);
+    await tester.tap(find.byTooltip('Remove bookmark').first);
+    await _snackIn(tester);
+    await tester.tap(find.byTooltip('Remove bookmark').first);
+    await _snackIn(tester);
+    expect(api.deleted, ['b1']);
+    await _undoWindowEnds(tester);
+    await tester.pumpAndSettle();
+    expect(api.deleted, ['b1', 'b2']);
+    expect(find.text('All (0)'), findsOneWidget);
+  });
+
+  testWidgets('a failed delete says why and brings the row back',
       (tester) async {
     final api = await _pump(tester)
       ..deleteError = httpFailure(500);
     await tester.tap(find.byTooltip('Remove bookmark').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Remove').last);
+    await _snackIn(tester);
+    await _undoWindowEnds(tester);
     await tester.pumpAndSettle();
     expect(api.deleted, ['b1']);
     expect(find.text('Something went wrong. Please try again.'), findsOneWidget);
     expect(find.text('Privacy budgets in federated learning'), findsOneWidget);
+  });
+
+  testWidgets('long-press opens the actions; Remove uses the Undo flow',
+      (tester) async {
+    final api = await _pump(tester);
+    await tester.longPress(find.text('LLM in education'));
+    await tester.pumpAndSettle();
+    expect(find.text('Open'), findsOneWidget);
+    await tester.tap(find.text('Remove bookmark'));
+    await _snackIn(tester);
+    expect(find.text('LLM in education'), findsNothing);
+    expect(api.deleted, isEmpty);
+    await _undoWindowEnds(tester);
+    expect(api.deleted, ['b2']);
+  });
+
+  testWidgets('leaving the screen commits a pending removal', (tester) async {
+    tester.view
+      ..physicalSize = const Size(412, 1400)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = _FakeBookmarksApi(List.of(_items));
+    final show = ValueNotifier(true);
+    addTearDown(show.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [bookmarksApiProvider.overrideWithValue(api)],
+        child: MaterialApp(
+          locale: AppLocale.en.locale,
+          supportedLocales: AppLocale.supportedLocales,
+          localizationsDelegates: appLocalizationsDelegates,
+          theme: AppTheme.lightTheme,
+          home: ValueListenableBuilder<bool>(
+            valueListenable: show,
+            builder: (_, visible, _) => visible
+                ? const BookmarksScreen()
+                : const Scaffold(body: SizedBox()),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Remove bookmark').first);
+    await _snackIn(tester);
+    show.value = false;
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(api.deleted, ['b1']);
   });
 }

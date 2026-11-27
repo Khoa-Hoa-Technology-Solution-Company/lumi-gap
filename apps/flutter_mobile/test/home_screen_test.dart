@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/theme/lumi_tints.dart';
 import 'package:flutter_mobile/core/utils/web_href.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_data.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
@@ -329,6 +330,12 @@ void main() {
       'classification': ?classification,
     };
 
+    // Trend cards on the dark feature surface.
+    int darkCards(WidgetTester tester) => tester
+        .widgetList<Material>(find.byType(Material))
+        .where((m) => m.color == LumiTints.light.ink)
+        .length;
+
     testWidgets(
       'the four main verdicts, each with its own word, colour and icon',
       (
@@ -350,10 +357,16 @@ void main() {
         await _pump(tester, h);
         await tester.pumpAndSettle();
         const lumi = LumiColors.light;
+        // The lead topic is rising: it, and only it, is highlighted.
+        expect(darkCards(tester), 1);
 
         // The pill: the icon in the verdict colour, the word in the text
         // colour (a coloured word on its tint is not readable enough).
-        void expectLabel(String text, IconData icon, Color color) {
+        void expectLabel(
+          String text,
+          IconData icon,
+          Color Function(LumiColors palette) color,
+        ) {
           expect(find.text(text), findsOneWidget, reason: text);
           final pill = find
               .ancestor(
@@ -364,18 +377,22 @@ void main() {
           final iconWidget = tester.widget<Icon>(
             find.descendant(of: pill, matching: find.byIcon(icon)),
           );
-          expect(iconWidget.color, color, reason: text);
+          // The leading (featured) card is dark, so its pill reads the
+          // dark palette; the others the page's.
+          final palette =
+              Theme.of(tester.element(pill)).extension<LumiColors>() ?? lumi;
+          expect(iconWidget.color, color(palette), reason: text);
           expect(
             tester.widget<Text>(find.text(text)).style?.color,
-            lumi.foreground,
+            palette.foreground,
             reason: text,
           );
         }
 
-        expectLabel('Đang tăng', Icons.trending_up, lumi.success);
-        expectLabel('Đang giảm', Icons.trending_down, lumi.error);
-        expectLabel('Ổn định', Icons.trending_flat, lumi.muted);
-        expectLabel('Chưa đủ dữ liệu', Icons.help_outline, lumi.muted);
+        expectLabel('Đang tăng', Icons.trending_up, (p) => p.success);
+        expectLabel('Đang giảm', Icons.trending_down, (p) => p.error);
+        expectLabel('Ổn định', Icons.trending_flat, (p) => p.muted);
+        expectLabel('Chưa đủ dữ liệu', Icons.help_outline, (p) => p.muted);
       },
     );
 
@@ -398,7 +415,11 @@ void main() {
 
       // The pill: the icon in the verdict colour, the word in the text
       // colour (a coloured word on its tint is not readable enough).
-      void expectLabel(String text, IconData icon, Color color) {
+      void expectLabel(
+          String text,
+          IconData icon,
+          Color Function(LumiColors palette) color,
+        ) {
         expect(find.text(text), findsOneWidget, reason: text);
         final pill = find
             .ancestor(
@@ -409,16 +430,37 @@ void main() {
         final iconWidget = tester.widget<Icon>(
           find.descendant(of: pill, matching: find.byIcon(icon)),
         );
-        expect(iconWidget.color, color, reason: text);
+        final palette =
+            Theme.of(tester.element(pill)).extension<LumiColors>() ?? lumi;
+        expect(iconWidget.color, color(palette), reason: text);
         expect(
           tester.widget<Text>(find.text(text)).style?.color,
-          lumi.foreground,
+          palette.foreground,
           reason: text,
         );
       }
 
-      expectLabel('Bão hoà', Icons.vertical_align_top, lumi.warning);
-      expectLabel('Qua đỉnh', Icons.south_east, lumi.warning);
+      expectLabel('Bão hoà', Icons.vertical_align_top, (p) => p.warning);
+      expectLabel('Qua đỉnh', Icons.south_east, (p) => p.warning);
+    });
+
+    testWidgets('with no rising topic no card is highlighted',
+        (tester) async {
+      // Rising topics are sorted first, so a lead that is not rising means
+      // none is.
+      final h = _Harness(
+        overview: () async => HomeOverview.fromJson(
+          _overview(
+            topics: [
+              topic('Chủ đề G', {'verdict': 'declining'}),
+              topic('Chủ đề H', {'verdict': 'stable'}),
+            ],
+          ),
+        ),
+      );
+      await _pump(tester, h);
+      await tester.pumpAndSettle();
+      expect(darkCards(tester), 0);
     });
 
     const allInsufficientCaption =
@@ -453,6 +495,8 @@ void main() {
         expect(find.byIcon(Icons.trending_flat), findsNothing);
         // Raw counts of an untested corpus are not drawn as a trend line.
         expect(find.byType(LumiSparkline), findsNothing);
+        // Nothing is rising, so no card is highlighted.
+        expect(darkCards(tester), 0);
       },
     );
 

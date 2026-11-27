@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="520" viewBox="0 0 1400 520" font-family="Arial">
+<rect width="1400" height="520" fill="white"/>
+<text x="700.0" y="38" font-size="22" font-weight="bold" text-anchor="middle">Evaluation design for RQ-1 (flowchart)</text>
+<rect x="30" y="230" width="150" height="60" rx="30.0" fill="#E2EFDA" stroke="#548235" stroke-width="1.6"/>
+<text x="105.0" y="265.0" font-size="14" text-anchor="middle">Start</text>
+<rect x="220" y="220" width="180" height="80" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="310.0" y="256.5" font-size="14" text-anchor="middle">Fix topic list</text>
+<text x="310.0" y="273.5" font-size="14" text-anchor="middle">and evidence packs</text>
+<rect x="450" y="90" width="190" height="70" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="545.0" y="121.5" font-size="14" text-anchor="middle">Run configuration</text>
+<text x="545.0" y="138.5" font-size="14" text-anchor="middle">A: LLM only</text>
+<line x1="400" y1="260" x2="450" y2="125" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="450,125 441.1,134.5 450.5,138.0" fill="#44546A"/>
+<line x1="640" y1="125" x2="690" y2="260" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="690,260 690.5,247.0 681.1,250.5" fill="#44546A"/>
+<rect x="450" y="230" width="190" height="70" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="545.0" y="261.5" font-size="14" text-anchor="middle">Run configuration</text>
+<text x="545.0" y="278.5" font-size="14" text-anchor="middle">B: + local test</text>
+<line x1="400" y1="260" x2="450" y2="265" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="450,265 438.6,258.8 437.6,268.8" fill="#44546A"/>
+<line x1="640" y1="265" x2="690" y2="260" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="690,260 677.6,256.2 678.6,266.2" fill="#44546A"/>
+<rect x="450" y="370" width="190" height="70" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="545.0" y="401.5" font-size="14" text-anchor="middle">Run configuration</text>
+<text x="545.0" y="418.5" font-size="14" text-anchor="middle">C: + global veto</text>
+<line x1="400" y1="260" x2="450" y2="405" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="450,405 450.8,392.0 441.4,395.3" fill="#44546A"/>
+<line x1="640" y1="405" x2="690" y2="260" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="690,260 681.4,269.7 690.8,273.0" fill="#44546A"/>
+<rect x="690" y="220" width="180" height="80" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="780.0" y="256.5" font-size="14" text-anchor="middle">Pool and shuffle</text>
+<text x="780.0" y="273.5" font-size="14" text-anchor="middle">candidates (blind)</text>
+<rect x="910" y="220" width="170" height="80" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="995.0" y="256.5" font-size="14" text-anchor="middle">Two labellers:</text>
+<text x="995.0" y="273.5" font-size="14" text-anchor="middle">genuine / not</text>
+<polygon points="1175.0,205 1240,260.0 1175.0,315 1110,260.0" fill="#FFF4E5" stroke="#C55A11" stroke-width="1.6"/>
+<text x="1175.0" y="256.5" font-size="14" text-anchor="middle">Labels</text>
+<text x="1175.0" y="273.5" font-size="14" text-anchor="middle">agree?</text>
+<rect x="1110" y="380" width="130" height="70" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1175.0" y="411.5" font-size="14" text-anchor="middle">Supervisor</text>
+<text x="1175.0" y="428.5" font-size="14" text-anchor="middle">decides</text>
+<rect x="1270" y="220" width="110" height="80" fill="#EAF1FB" stroke="#2E75B6" stroke-width="1.6"/>
+<text x="1325.0" y="248.0" font-size="14" text-anchor="middle">Precision per</text>
+<text x="1325.0" y="265.0" font-size="14" text-anchor="middle">configuration</text>
+<text x="1325.0" y="282.0" font-size="14" text-anchor="middle">+ decision</text>
+<line x1="180" y1="260" x2="220" y2="260" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="220,260 208.0,255.0 208.0,265.0" fill="#44546A"/>
+<line x1="870" y1="260" x2="910" y2="260" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="910,260 898.0,255.0 898.0,265.0" fill="#44546A"/>
+<line x1="1080" y1="260" x2="1110" y2="260" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="1110,260 1098.0,255.0 1098.0,265.0" fill="#44546A"/>
+<line x1="1240" y1="260" x2="1270" y2="260" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="1270,260 1258.0,255.0 1258.0,265.0" fill="#44546A"/>
+<text x="1260.0" y="254.0" font-size="12" fill="#7A2E0E">yes</text>
+<line x1="1175" y1="315" x2="1175" y2="380" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="1175,380 1180.0,368.0 1170.0,368.0" fill="#44546A"/>
+<text x="1180.0" y="341.5" font-size="12" fill="#7A2E0E">no</text>
+<line x1="1240" y1="415" x2="1325" y2="415" stroke="#44546A" stroke-width="1.6"/>
+<line x1="1325" y1="415" x2="1325" y2="300" stroke="#44546A" stroke-width="1.6"/>
+<polygon points="1325,300 1320.0,312.0 1330.0,312.0" fill="#44546A"/>
+<text x="30" y="500" font-size="13" fill="#555">The algorithm of each step is in Report 4, section 3.3; thresholds are the product values and are not tuned on the evaluation topics.</text>
+</svg>

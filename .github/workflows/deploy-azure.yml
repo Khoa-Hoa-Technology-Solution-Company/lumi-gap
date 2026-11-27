@@ -1,0 +1,131 @@
+name: Deploy (Azure VM)
+
+# Deploys main to the single Azure VM described in docs/DEPLOY_AZURE.md.
+#
+# The job only opens an SSH connection. The deploy key is installed on the VM
+# with a forced command (`cd ~/lumi-gap && bash deploy/vps/deploy.sh`), so
+# whatever command is sent, the VM runs `git pull --ff-only` + `docker compose
+# up -d --build` and nothing else. A leaked key can trigger a deploy of main,
+# but cannot open a shell.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   AZURE_VM_HOST         public IP or host name of the VM
+#   AZURE_VM_SSH_KEY      private key whose public half has the forced command
+#   AZURE_VM_KNOWN_HOSTS  output of `ssh-keyscan -t ed25519 <host>` (pins the host key)
+# Repository variables (same page, "Variables" tab), used for the smoke test:
+#   AZURE_WEB_URL         e.g. https://85-211-181-233.sslip.io
+#   AZURE_API_URL         e.g. https://api.85-211-181-233.sslip.io
+#
+# It does not wait for the CI workflow: deploy is gated on its own typecheck
+# so that a red test suite unrelated to the build does not block every release.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "apps/flutter_mobile/**"
+      - "tests/**"
+  workflow_dispatch:
+
+# Never run two deploys at once, and never cancel one half-way.
+concurrency:
+  group: deploy-azure
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (all packages)
+        run: pnpm typecheck
+
+  deploy:
+    name: deploy to Azure VM
+    needs: typecheck
+    runs-on: ubuntu-latest
+    # Forks never have the secrets; only deploy from this repository.
+    if: github.repository == 'Khoa-Hoa-Technology-Solution-Company/lumi-gap'
+    environment:
+      name: azure-production
+      url: ${{ vars.AZURE_WEB_URL }}
+    timeout-minutes: 40
+    steps:
+      - name: Check deploy secrets
+        env:
+          HOST: ${{ secrets.AZURE_VM_HOST }}
+          KEY: ${{ secrets.AZURE_VM_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.AZURE_VM_KNOWN_HOSTS }}
+        run: |
+          missing=""
+          [ -n "$HOST" ] || missing="$missing AZURE_VM_HOST"
+          [ -n "$KEY" ] || missing="$missing AZURE_VM_SSH_KEY"
+          [ -n "$KNOWN_HOSTS" ] || missing="$missing AZURE_VM_KNOWN_HOSTS"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing (see docs/DEPLOY_AZURE.md, section 10)"
+            exit 1
+          fi
+
+      - name: Configure SSH
+        env:
+          KEY: ${{ secrets.AZURE_VM_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.AZURE_VM_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy
+        env:
+          HOST: ${{ secrets.AZURE_VM_HOST }}
+        run: |
+          # The forced command on the VM ignores the remote command; "deploy" is a label.
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 \
+            "deploy@${HOST}" deploy
+
+      - name: Smoke test
+        if: vars.AZURE_API_URL != '' && vars.AZURE_WEB_URL != ''
+        env:
+          API_URL: ${{ vars.AZURE_API_URL }}
+          WEB_URL: ${{ vars.AZURE_WEB_URL }}
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 10 "$API_URL/ready"; then
+              echo
+              curl -fsS --max-time 10 -o /dev/null -w "web %{http_code}\n" "$WEB_URL/"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::API did not become ready within 5 minutes"
+          exit 1
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

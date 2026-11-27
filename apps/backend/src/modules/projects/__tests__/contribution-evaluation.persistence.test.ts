@@ -166,14 +166,26 @@ describe.skipIf(!enabled).sequential("contribution evaluation with isolated Post
     try {
       expect((await fetch(`${base}/${f.id}/contributions/evaluation/rules`)).status).toBe(401);
       const path = `${base}/${f.id}/contributions/evaluation/outcomes/${e.id}/decisions`;
-      expect((await fetch(path, { method: "POST", headers, body: JSON.stringify({ ...body, userId: owner }) })).status).toBe(409);
-      expect((await fetch(path, { method: "POST", headers, body: JSON.stringify({ ...body, payloadHash: "0".repeat(64) }) })).status).toBe(409);
-      expect((await fetch(`${base}/${other.id}/contributions/evaluation/outcomes/${e.id}/decisions`, { method: "POST", headers, body: JSON.stringify(body) })).status).toBe(409);
-      const approved = await fetch(path, { method: "POST", headers, body: JSON.stringify(body) });
-      expect(approved.status).toBe(409);
-      expect((await approved.json()).error.message).toContain("Percentage allocation is retired");
+      // Percentage evaluation writes are retired over HTTP: forged, stale, cross-project and valid requests are all
+      // refused with 409 before validation, so no request can decide on someone else's behalf.
+      for (const [url, payload] of [
+        [path, { ...body, userId: owner }],
+        [path, { ...body, payloadHash: "0".repeat(64) }],
+        [`${base}/${other.id}/contributions/evaluation/outcomes/${e.id}/decisions`, body],
+        [path, body],
+      ] as const) {
+        const resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload) });
+        expect(resp.status).toBe(409);
+        expect((await resp.json()).error.message).toMatch(/Percentage allocation is retired/);
+      }
+      // Historical outcomes stay readable, and only within their own project.
+      const beforeDecision = await fetch(`${base}/${f.id}/contributions/evaluation/outcomes/${e.id}`, { headers });
+      expect((await beforeDecision.json()).data.evaluation.decisions).toEqual([]);
+      await service.decide(f.id, member, e.id, body);
       const detail = await fetch(`${base}/${f.id}/contributions/evaluation/outcomes/${e.id}`, { headers });
-      expect((await detail.json()).data.evaluation.decisions).toEqual([]);
+      expect(detail.status).toBe(200);
+      expect((await detail.json()).data.evaluation.decisions).toEqual([expect.objectContaining({ userId: member, kind: "PARTICIPANT" })]);
+      expect((await fetch(`${base}/${other.id}/contributions/evaluation/outcomes/${e.id}`, { headers })).status).toBe(404);
     } finally { server.close(); await once(server, "close"); }
   });
   it("invalidates changed sources/rules, resets consent on revisions, preserves former-member review", async () => {

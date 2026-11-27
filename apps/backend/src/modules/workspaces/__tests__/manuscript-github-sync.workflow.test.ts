@@ -649,8 +649,12 @@ describe.sequential("Overleaf-Style GitHub Synchronization — All 25 Scenarios 
 
   // 22. GitHub synchronization does not alter scientific contribution percentages
   it("Scenario 22: GitHub synchronization does not affect contribution percentages or credit", async () => {
-    // Count work contributions / allocations before
-    const beforeCount = await db.allocationShare.count();
+    // Count this project's allocation shares only: other suites run in parallel against the same database.
+    const projectShareCount = async () => {
+      const revisions = await db.allocationRevision.findMany({ where: { projectId: testProjectId }, select: { id: true } });
+      return db.allocationShare.count({ where: { revisionId: { in: revisions.map((r) => r.id) } } });
+    };
+    const beforeCount = await projectShareCount();
 
     // Perform a bind
     const detail = await writing.detail(testProjectId, ownerId, manuscriptId);
@@ -665,8 +669,7 @@ describe.sequential("Overleaf-Style GitHub Synchronization — All 25 Scenarios 
       expectedVersion: detail.version,
     });
 
-    // Count work contributions / allocations after
-    const afterCount = await db.allocationShare.count();
+    const afterCount = await projectShareCount();
     expect(afterCount).toBe(beforeCount);
   });
 

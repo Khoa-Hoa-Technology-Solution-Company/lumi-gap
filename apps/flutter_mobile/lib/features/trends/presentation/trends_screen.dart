@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
-import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/trends/components/trends_ai_tab.dart';
@@ -84,6 +83,8 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen> {
   Future<void> _openScope(TrendsOverview? overview) async {
     if (overview == null) return;
     final picked = await showModalBottomSheet<TrendsOverviewParams>(
+      // Over the bottom navigation bar, dimming it too.
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -105,6 +106,7 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen> {
         actions: [
           LumiFilterButton(
             activeCount: active,
+            onHero: true,
             onPressed: () => _openScope(query.value),
           ),
           const SizedBox(width: 12),
@@ -135,10 +137,14 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen> {
               data: (overview) => IndexedStack(
                 index: _tab.index,
                 children: [
-                  TrendsSignalsTab(
-                    overview: overview,
-                    params: params,
-                    onExplainTopic: _explain,
+                  RefreshIndicator(
+                    onRefresh: () =>
+                        ref.refresh(trendsOverviewProvider(params).future),
+                    child: TrendsSignalsTab(
+                      overview: overview,
+                      params: params,
+                      onExplainTopic: _explain,
+                    ),
                   ),
                   TrendsCompareTab(
                     overview: overview,
@@ -156,9 +162,17 @@ class _TrendsScreenState extends ConsumerState<TrendsScreen> {
                   ),
                 ],
               ),
-              loading: () => const LumiPageSkeleton(height: 120),
-              error: (error, _) =>
-                  AppErrorState(message: context.t(failureMessageKey(error))),
+              // The shape of Signals: the strongest topic, then its rows.
+              loading: () => const LumiPageSkeleton(
+                leadHeight: 240,
+                rows: 5,
+                height: 64,
+              ),
+              error: (error, _) => LumiErrorState(
+                message: context.t(failureMessageKey(error)),
+                retrying: query.isLoading,
+                onRetry: () => ref.invalidate(trendsOverviewProvider(params)),
+              ),
             ),
           ),
         ],

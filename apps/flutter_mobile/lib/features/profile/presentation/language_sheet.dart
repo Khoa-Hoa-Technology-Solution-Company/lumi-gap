@@ -18,6 +18,8 @@ String languageChoiceLabel(BuildContext context, AppLocale? choice) =>
 /// Bottom sheet with the three language choices; a choice applies immediately.
 Future<void> showLanguageSheet(BuildContext context) {
   return showModalBottomSheet<void>(
+    // Over the bottom navigation bar, dimming it too.
+    useRootNavigator: true,
     context: context,
     builder: (_) => const LanguageSheet(),
   );

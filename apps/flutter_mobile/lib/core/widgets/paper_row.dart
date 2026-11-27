@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/utils/haptics.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_action_sheet.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,7 +13,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// button showing the server's real state.
 ///
 /// A missing part is left out, never "Unknown". The whole row opens the
-/// paper; the save button is its only other action.
+/// paper; the save button is its only other action. A long-press offers the
+/// same two actions in a sheet.
 class PaperRow extends ConsumerWidget {
   const PaperRow({
     required this.id,
@@ -45,8 +50,41 @@ class PaperRow extends ConsumerWidget {
                 ?.bookmarked ??
             false);
 
-    return InkWell(
+    Future<void> showActions() async {
+      final bookmark = onBookmarkTap;
+      final action = await showLumiActionSheet<String>(
+        context,
+        title: title,
+        actions: [
+          LumiSheetAction(
+            value: 'open',
+            label: context.t('Open'),
+            icon: Icons.open_in_new,
+          ),
+          if (bookmark != null)
+            LumiSheetAction(
+              value: 'bookmark',
+              label: saved ? context.t('Remove bookmark') : context.t('Bookmark'),
+              icon: saved ? Icons.bookmark_remove_outlined : Icons.bookmark_border,
+            ),
+        ],
+      );
+      switch (action) {
+        case 'open':
+          onTap();
+        case 'bookmark':
+          bookmark?.call();
+      }
+    }
+
+    return Semantics(
+      onLongPressHint: context.t('Show actions'),
+      child: InkWell(
       onTap: onTap,
+      onLongPress: () {
+        unawaited(Haptics.select());
+        unawaited(showActions());
+      },
       child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(16, 14, 4, 14),
         child: Row(
@@ -100,6 +138,7 @@ class PaperRow extends ConsumerWidget {
               const SizedBox(width: 12),
           ],
         ),
+      ),
       ),
     );
   }

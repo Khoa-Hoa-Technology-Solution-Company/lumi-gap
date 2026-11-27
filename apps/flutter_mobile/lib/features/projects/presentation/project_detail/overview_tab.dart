@@ -1,14 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
-import 'package:flutter_mobile/core/theme/app_typography.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
-import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
+import 'package:flutter_mobile/features/projects/presentation/project_detail/project_header.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+/// The overview under the project header: the one next step the data
+/// supports, then the latest papers. The counts live in the header.
 class ProjectOverviewTab extends StatelessWidget {
   const ProjectOverviewTab({
     required this.project,
@@ -21,230 +27,150 @@ class ProjectOverviewTab extends StatelessWidget {
   final String projectId;
   final WidgetRef ref;
 
+  /// How many papers the overview lists before "View all".
+  static const int recentPapersLimit = 3;
+
+  @override
+  Widget build(BuildContext context) {
+    final reports = ref.watch(projectReportsCountProvider(projectId));
+    void tab(int i) => DefaultTabController.of(context).animateTo(i);
+
+    // One next step, from what is known. No papers: add some (nothing else
+    // works without them). Papers but no report: generate one. Otherwise
+    // ask the assistant. While the report count is unknown, no guess.
+    final _NextStep? next;
+    if (project.paperCount == 0) {
+      next = _NextStep(
+        title: context.t('Ground your research'),
+        body: context.t('Add publications to power grounding reports, chat, and gap detection.'),
+        action: context.t('Search publications'),
+        onPressed: () => unawaited(context.push('/search')),
+      );
+    } else if (reports.hasValue && reports.requireValue == 0) {
+      next = _NextStep(
+        title: context.t('Generate your first report'),
+        body: context.t(
+          'Turn the papers of this project into an analytical report.',
+        ),
+        action: context.t('Generate report'),
+        onPressed: () => tab(ProjectTabs.outputs),
+      );
+    } else if (reports.hasValue) {
+      next = _NextStep(
+        title: context.t('Ask about your papers'),
+        body: context.t('The AI assistant answers from the papers in this project.'),
+        action: context.t('Open chat'),
+        onPressed: () => tab(ProjectTabs.chat),
+      );
+    } else {
+      next = null;
+    }
+
+    final recent = project.papers.take(recentPapersLimit).toList();
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref
+          ..invalidate(projectProvider(projectId))
+          ..invalidate(reportsProvider(ReportsParams(projectId: projectId)))
+          ..invalidate(gapsProvider(GapsListParams(projectId: projectId)));
+        await ref.read(projectProvider(projectId).future);
+      },
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        children: [
+          if (next != null) ...[
+            _NextStepCard(step: next),
+            const SizedBox(height: 20),
+          ],
+          if (recent.isNotEmpty) ...[
+            LumiSectionHeader(
+              title: context.t('Recent papers'),
+              actionLabel: project.papers.length > recent.length
+                  ? context.t('View all')
+                  : null,
+              onAction: project.papers.length > recent.length
+                  ? () => tab(ProjectTabs.papers)
+                  : null,
+            ),
+            LumiRowGroup(
+              children: [
+                for (final paper in recent)
+                  LumiListRow(
+                    icon: Icons.article_outlined,
+                    iconInTile: true,
+                    title: paper.title,
+                    subtitle: context.t(
+                      'Year: {{year}} · Citations: {{citations}}',
+                      {
+                        'year': paper.publicationYear ?? context.t('N/A'),
+                        'citations': paper.citationCount ?? 0,
+                      },
+                    ),
+                    onTap: () => unawaited(context.push('/paper/${paper.id}')),
+                  ),
+              ],
+            ),
+          ],
+          // No activity log: the API sends none, and a fixed sentence here
+          // would read as one.
+        ],
+      ),
+    );
+  }
+}
+
+class _NextStep {
+  const _NextStep({
+    required this.title,
+    required this.body,
+    required this.action,
+    required this.onPressed,
+  });
+
+  final String title;
+  final String body;
+  final String action;
+  final VoidCallback onPressed;
+}
+
+class _NextStepCard extends StatelessWidget {
+  const _NextStepCard({required this.step});
+
+  final _NextStep step;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    final reportsAsync = ref.watch(
-      reportsProvider(ReportsParams(projectId: projectId)),
-    );
-    final gapsAsync = ref.watch(
-      gapsProvider(GapsListParams(projectId: projectId)),
-    );
-
-    // A count is only shown once it is known: "0" while loading or after a
-    // failed request would state something false. A dash means "not known".
-    final reportsCount = reportsAsync.hasValue
-        ? reportsAsync.requireValue.reports.length.toString()
-        : '—';
-    final gapsCount = gapsAsync.hasValue
-        ? gapsAsync.requireValue.data.length.toString()
-        : '—';
-    final description = project.description?.trim() ?? '';
-    final isOwner = project.viewerIsOwner;
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // The app bar cuts a long title to one line; here it is in full,
-        // with the viewer's role and what the project is about.
-        LumiCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(project.title, style: theme.textTheme.titleLarge),
-              if (isOwner != null) ...[
-                const SizedBox(height: 8),
-                LumiChip(
-                  label: isOwner ? context.t('Owner') : context.t('Member'),
-                  tone: isOwner ? LumiChipTone.primary : LumiChipTone.neutral,
-                ),
-              ],
-              const SizedBox(height: 12),
-              Text(
-                description.isEmpty
-                    ? context.t('No description yet.')
-                    : description,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: context.lumi.foregroundSecondary,
-                  fontStyle:
-                      description.isEmpty ? FontStyle.italic : FontStyle.normal,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-
-        // Workspace counters Grid
-        GridView(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            // A fixed height, not a ratio: a ratio makes the tiles too short
-            // on a 320dp screen. It grows with the text size setting.
-            mainAxisExtent: 28 + MediaQuery.textScalerOf(context).scale(48),
-          ),
-          children: [
-            _buildCounterCard(
-              context,
-              context.t('Papers'),
-              project.paperCount.toString(),
-              Icons.article_outlined,
-              context.lumi.primary,
-            ),
-            _buildCounterCard(
-              context,
-              context.t('Team Members'),
-              project.memberCount.toString(),
-              Icons.people_outline,
-              context.lumi.primary,
-            ),
-            _buildCounterCard(
-              context,
-              context.t('Reports'),
-              reportsCount,
-              Icons.description_outlined,
-              context.lumi.primary,
-            ),
-            _buildCounterCard(
-              context,
-              context.t('Gaps Detected'),
-              gapsCount,
-              Icons.travel_explore,
-              context.lumi.primary,
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-
-        // Add Papers CTA Card
-        Card(
-          elevation: 0,
-          color: context.lumi.primarySoft,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: BorderSide(color: context.lumi.primary, width: 1.5),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.add_circle_outline,
-                  color: context.lumi.primary,
-                  size: 24,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        context.t('Ground Your Research'),
-                        style: context.type.bodyMedium!.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        context.t('Add publications to power grounding reports, chat, and gap detection.'),
-                        style: context.type.bodySmall!.copyWith(
-                          // On `primarySoft`: `muted` is under 4.5:1 there.
-                          color: context.lumi.foregroundSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: context.lumi.primary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                  ),
-                  onPressed: () => DefaultTabController.of(
-                    context,
-                  ).animateTo(1), // Go to Papers Tab
-                  child: Text(
-                    context.t('Add'),
-                    style: context.type.bodySmall!.copyWith(
-                      color: context.lumi.onPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
+    final lumi = context.lumi;
+    return LumiCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            context.t('Next step'),
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: lumi.foregroundSecondary,
+              fontWeight: FontWeight.w700,
             ),
           ),
-        ),
-        // No activity log: the API sends none, and a fixed sentence here
-        // would read as one.
-      ],
-    );
-  }
-
-  Widget _buildCounterCard(
-    BuildContext context,
-    String label,
-    String count,
-    IconData icon,
-    Color color,
-  ) {
-    final theme = Theme.of(context);
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      color: theme.cardColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: theme.dividerColor),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: color, size: 18),
+          const SizedBox(height: 4),
+          Semantics(
+            header: true,
+            child: Text(
+              step.title,
+              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    count,
-                    style: context.type.bodyLarge!.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.type.bodySmall!.copyWith(
-                      color: context.lumi.muted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            step.body,
+            style: theme.textTheme.bodyMedium?.copyWith(color: lumi.foregroundSecondary),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(onPressed: step.onPressed, child: Text(step.action)),
+        ],
       ),
     );
   }

@@ -14,6 +14,7 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi
 
 it("labels the topic, approved abstract and aggregate team size without exposing member identities", async () => {
   await act(async () => root.render(<MentorPreviewContent preview={preview} />));
+  // The card labels the topic and the shared abstract; team size is an aggregate badge, never a member list.
   expect(host.textContent).toContain("Research topic");
   expect(host.textContent).toContain("Shared research abstract");
   expect(host.textContent).toContain("An owner-approved abstract");

@@ -5,7 +5,7 @@ import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/search/domain/search_filters.dart';
 
 /// What the filter sheet hands back on "Apply". `clearedAll` also drops the
-/// scope and taxonomy filters carried over from Trends, as "Clear All" says.
+/// scope and taxonomy filters carried over from Trends, as "Clear all" says.
 typedef SearchFilterResult = ({SearchFilters filters, bool clearedAll});
 
 /// Opens the filter sheet on a copy of [initial]. Null when the reader
@@ -15,6 +15,8 @@ Future<SearchFilterResult?> showSearchFilterSheet(
   required SearchFilters initial,
 }) =>
     showModalBottomSheet<SearchFilterResult>(
+      // Over the bottom navigation bar, dimming it too.
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -23,8 +25,8 @@ Future<SearchFilterResult?> showSearchFilterSheet(
 
 final _sorts = <(String, String)>[
   ('relevance', tk('Relevance')),
-  ('citations', tk('Citation Count')),
-  ('year', tk('Publication Year')),
+  ('citations', tk('Citation count')),
+  ('year', tk('Publication year')),
 ];
 
 class _SearchFilterSheet extends StatefulWidget {
@@ -40,7 +42,7 @@ class _SearchFilterSheetState extends State<_SearchFilterSheet> {
   late SearchFilters _draft = widget.initial;
   bool _clearedAll = false;
 
-  /// Bumped by "Clear All" so the dropdowns rebuild with the reset value.
+  /// Bumped by "Clear all" so the dropdowns rebuild with the reset value.
   int _resets = 0;
 
   late final _from =
@@ -102,13 +104,13 @@ class _SearchFilterSheetState extends State<_SearchFilterSheet> {
               children: [
                 Expanded(
                   child: Text(
-                    context.t('Search Filters'),
+                    context.t('Search filters'),
                     style: theme.textTheme.titleLarge,
                   ),
                 ),
                 TextButton(
                   onPressed: _clearAll,
-                  child: Text(context.t('Clear All')),
+                  child: Text(context.t('Clear all')),
                 ),
               ],
             ),
@@ -116,7 +118,7 @@ class _SearchFilterSheetState extends State<_SearchFilterSheet> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(
-                context.t('Semantic Reranking'),
+                context.t('Semantic reranking'),
                 style: theme.textTheme.titleSmall,
               ),
               subtitle: Text(
@@ -131,7 +133,7 @@ class _SearchFilterSheetState extends State<_SearchFilterSheet> {
                   setState(() => _draft = _draft.copyWith(rerank: v)),
             ),
             const SizedBox(height: 16),
-            Text(context.t('Publication Years'),
+            Text(context.t('Publication years'),
                 style: theme.textTheme.titleSmall),
             const SizedBox(height: 8),
             Row(
@@ -143,7 +145,7 @@ class _SearchFilterSheetState extends State<_SearchFilterSheet> {
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     maxLength: 4,
-                    decoration: yearDecoration('From Year', from.error),
+                    decoration: yearDecoration('From year', from.error),
                     onChanged: (_) => setState(() {}),
                   ),
                 ),
@@ -154,7 +156,7 @@ class _SearchFilterSheetState extends State<_SearchFilterSheet> {
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     maxLength: 4,
-                    decoration: yearDecoration('To Year', to.error),
+                    decoration: yearDecoration('To year', to.error),
                     onChanged: (_) => setState(() {}),
                   ),
                 ),
@@ -170,7 +172,7 @@ class _SearchFilterSheetState extends State<_SearchFilterSheet> {
                 ),
               ),
             const SizedBox(height: 16),
-            Text(context.t('Sort Results By'),
+            Text(context.t('Sort results by'),
                 style: theme.textTheme.titleSmall),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
@@ -186,15 +188,15 @@ class _SearchFilterSheetState extends State<_SearchFilterSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            Text(context.t('Paper Kind'), style: theme.textTheme.titleSmall),
+            Text(context.t('Paper kind'), style: theme.textTheme.titleSmall),
             const SizedBox(height: 8),
             DropdownButtonFormField<String?>(
-              // A new key after "Clear All", so the field shows the reset.
+              // A new key after "Clear all", so the field shows the reset.
               key: ValueKey('kind-$_resets'),
               isExpanded: true,
               initialValue: _draft.paperKind,
               items: [
-                DropdownMenuItem<String?>(child: Text(context.t('All Kinds'))),
+                DropdownMenuItem<String?>(child: Text(context.t('All kinds'))),
                 for (final (value, label) in searchPaperKinds)
                   DropdownMenuItem(value: value, child: Text(context.t(label))),
               ],
@@ -205,7 +207,7 @@ class _SearchFilterSheetState extends State<_SearchFilterSheet> {
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(
-                context.t('Open Access Only'),
+                context.t('Open access only'),
                 style: theme.textTheme.titleSmall,
               ),
               value: _draft.openAccess ?? false,
@@ -215,7 +217,7 @@ class _SearchFilterSheetState extends State<_SearchFilterSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            Text(context.t('Journal / Venue Source'),
+            Text(context.t('Journal / venue source'),
                 style: theme.textTheme.titleSmall),
             const SizedBox(height: 8),
             TextField(
@@ -243,7 +245,7 @@ class _SearchFilterSheetState extends State<_SearchFilterSheet> {
                             clearedAll: _clearedAll,
                           ),
                         ),
-                child: Text(context.t('Apply Filters')),
+                child: Text(context.t('Apply filters')),
               ),
             ),
           ],

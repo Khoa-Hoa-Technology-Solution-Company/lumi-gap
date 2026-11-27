@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
-import 'package:flutter_mobile/core/widgets/confirm_dialog.dart';
+import 'package:flutter_mobile/core/utils/haptics.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_action_sheet.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_swipe_action.dart';
+import 'package:flutter_mobile/core/widgets/undo_snackbar.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/reports/presentation/report_builder/report_status.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,37 +39,70 @@ class BookmarksScreen extends ConsumerStatefulWidget {
 class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
   _Filter _filter = _Filter.all;
 
-  /// Bookmarks being removed: a second tap waits for the first.
-  final Set<String> _removing = {};
+  /// Bookmarks the user removed whose Undo window is open, or whose delete
+  /// is in flight: hidden at once, deleted on the server only once the Undo
+  /// snackbar closes without Undo.
+  final Set<String> _hidden = {};
 
-  Future<void> _remove(Bookmark bookmark) async {
-    if (_removing.contains(bookmark.id)) return;
-    final ok = await ConfirmDialog.show(
-      context,
-      title: context.t('Remove bookmark'),
-      message: context.t('Delete this saved item?'),
-      confirmText: context.t('Remove'),
-      isDestructive: true,
-    );
-    if (ok != true || !mounted || !_removing.add(bookmark.id)) return;
+  /// Commits the removal waiting in its Undo window, if any. Only one can
+  /// wait: a new removal replaces the snackbar, which commits the previous.
+  VoidCallback? _commitPending;
+  late ScaffoldMessengerState _messenger;
+  late ProviderContainer _container;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _messenger = ScaffoldMessenger.of(context);
+    _container = ProviderScope.containerOf(context, listen: false);
+  }
+
+  @override
+  void dispose() {
+    // Leaving the screen commits a pending removal now, so the list is
+    // right when the screen opens again.
+    _commitPending?.call();
+    super.dispose();
+  }
+
+  /// Hides the bookmark and offers Undo. Synchronous up to the first frame:
+  /// a swiped row must leave the list in the same call.
+  void _remove(Bookmark bookmark) {
+    if (!_hidden.add(bookmark.id)) return;
     setState(() {});
-    final container = ProviderScope.containerOf(context, listen: false);
+    final locale = context.appLocale;
+    _commitPending = showUndoSnackBar(
+      _messenger,
+      message: translate('Removed from bookmarks', locale),
+      undoLabel: translate('Undo', locale),
+      onUndo: () {
+        if (!mounted) return;
+        setState(() => _hidden.remove(bookmark.id));
+      },
+      onCommit: () {
+        unawaited(_commit(bookmark, locale));
+      },
+    );
+  }
+
+  Future<void> _commit(Bookmark bookmark, AppLocale locale) async {
+    var failed = false;
     try {
-      await container.read(bookmarksApiProvider).delete(bookmark.id);
+      await _container.read(bookmarksApiProvider).delete(bookmark.id);
     } on Object catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.t(failureMessageKey(e))),
-            backgroundColor: context.lumi.error,
-          ),
-        );
+      failed = true;
+      // The app's messenger outlives this screen; it is only gone when the
+      // whole app is torn down.
+      if (_messenger.mounted) {
+        _messenger.showSnackBar(
+        SnackBar(content: Text(translate(failureMessageKey(e), locale))),
+      );
       }
     } finally {
-      _removing.remove(bookmark.id);
-      if (mounted) setState(() {});
-      // The list shows what the server has, whether it worked or not.
-      container
+      // The list and the bookmark button show what the server has, whether
+      // it worked or not; a failed row comes back.
+      if (failed && mounted) setState(() => _hidden.remove(bookmark.id));
+      _container
         ..invalidate(bookmarksProvider)
         ..invalidate(
           bookmarkStatusProvider(
@@ -76,13 +112,53 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
     }
   }
 
+  void _open(Bookmark b) => unawaited(
+    context.push(
+      b.targetKind == 'paper'
+          ? '/paper/${b.targetId}'
+          : '/report/${b.targetId}',
+    ),
+  );
+
+  Future<void> _showActions(Bookmark b) async {
+    final action = await showLumiActionSheet<String>(
+      context,
+      title: b.targetKind == 'paper'
+          ? b.paperDetail?.title
+          : b.reportTitle?.trim(),
+      actions: [
+        LumiSheetAction(
+          value: 'open',
+          label: context.t('Open'),
+          icon: Icons.open_in_new,
+        ),
+        LumiSheetAction(
+          value: 'remove',
+          label: context.t('Remove bookmark'),
+          icon: Icons.bookmark_remove_outlined,
+          destructive: true,
+        ),
+      ],
+    );
+    if (!mounted) return;
+    switch (action) {
+      case 'open':
+        _open(b);
+      case 'remove':
+        _remove(b);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final query = ref.watch(bookmarksProvider);
 
     final Widget body;
     if (query.hasValue) {
-      final live = liveBookmarks(query.requireValue);
+      final live = [
+        for (final b in liveBookmarks(query.requireValue))
+          if (!_hidden.contains(b.id)) b,
+      ];
       final papers = live.where((b) => b.targetKind == 'paper').length;
       final reports = live.length - papers;
       final shown = [
@@ -119,7 +195,7 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
               message: _filter == _Filter.report
                   ? context.t('Save a report from its page to keep it here.')
                   : context.t(
-                      'Save papers from Home or Paper Detail to build your research library.',
+                      'Tap the bookmark on any paper to build your research library.',
                     ),
               compact: true,
             )
@@ -127,10 +203,22 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
             LumiRowGroup(
               children: [
                 for (final b in shown)
-                  _BookmarkRow(
-                    bookmark: b,
-                    removing: _removing.contains(b.id),
-                    onRemove: () => unawaited(_remove(b)),
+                  LumiSwipeAction(
+                    key: ValueKey('bookmark-${b.id}'),
+                    label: context.t('Remove'),
+                    icon: Icons.bookmark_remove_outlined,
+                    destructive: true,
+                    removesItem: true,
+                    onSwipe: () => _remove(b),
+                    child: _BookmarkRow(
+                      bookmark: b,
+                      onOpen: () => _open(b),
+                      onRemove: () {
+                        unawaited(Haptics.commit());
+                        _remove(b);
+                      },
+                      onLongPress: () => unawaited(_showActions(b)),
+                    ),
                   ),
               ],
             ),
@@ -159,13 +247,15 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
 class _BookmarkRow extends StatelessWidget {
   const _BookmarkRow({
     required this.bookmark,
-    required this.removing,
+    required this.onOpen,
     required this.onRemove,
+    required this.onLongPress,
   });
 
   final Bookmark bookmark;
-  final bool removing;
+  final VoidCallback onOpen;
   final VoidCallback onRemove;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -186,81 +276,83 @@ class _BookmarkRow extends StatelessWidget {
         : '';
     final note = bookmark.note?.trim() ?? '';
 
-    return InkWell(
-      onTap: () => unawaited(
-        context.push(
-          isPaper
-              ? '/paper/${bookmark.targetId}'
-              : '/report/${bookmark.targetId}',
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(16, 14, 4, 14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: lumi.primarySoft,
-                borderRadius: BorderRadius.circular(12),
+    return Semantics(
+      onLongPressHint: context.t('Show actions'),
+      child: InkWell(
+        onTap: onOpen,
+        onLongPress: () {
+          unawaited(Haptics.select());
+          onLongPress();
+        },
+        child: Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(16, 14, 4, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: lumi.primarySoft,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  isPaper ? Icons.article_outlined : Icons.description_outlined,
+                  size: 20,
+                  color: lumi.primary,
+                ),
               ),
-              child: Icon(
-                isPaper ? Icons.article_outlined : Icons.description_outlined,
-                size: 20,
-                color: lumi.primary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleMedium,
-                  ),
-                  if (meta.isNotEmpty) ...[
-                    const SizedBox(height: 2),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      meta,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: lumi.foregroundSecondary,
-                      ),
-                    ),
-                  ],
-                  if (!isPaper && (bookmark.reportStatus ?? '').isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    ReportStatusLabel(status: bookmark.reportStatus!),
-                  ],
-                  if (note.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      note,
+                      title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontStyle: FontStyle.italic,
-                      ),
+                      style: theme.textTheme.titleMedium,
                     ),
+                    if (meta.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        meta,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: lumi.foregroundSecondary,
+                        ),
+                      ),
+                    ],
+                    if (!isPaper &&
+                        (bookmark.reportStatus ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      ReportStatusLabel(status: bookmark.reportStatus!),
+                    ],
+                    if (note.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        note,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            IconButton(
-              tooltip: context.t('Remove bookmark'),
-              onPressed: removing ? null : onRemove,
-              icon: Icon(
-                Icons.bookmark_remove_outlined,
-                color: lumi.foregroundSecondary,
+              IconButton(
+                tooltip: context.t('Remove bookmark'),
+                onPressed: onRemove,
+                icon: Icon(
+                  Icons.bookmark_remove_outlined,
+                  color: lumi.foregroundSecondary,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

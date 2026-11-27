@@ -155,7 +155,8 @@ it("preserves structured research details on older submissions", async () => {
 it("uses the selected submission ID instead of the project's route ID and returns to its list", async () => {
   await render(<SubmissionDetailPage submissionId="manuscript" projectId="project-a" />);
   expect(mocks.detail).toHaveBeenCalledWith("manuscript", "project-a");
-  expect(container.querySelector("a")).toBeNull();
+  // Inside a project the workspace breadcrumb returns to the list; the standalone back link is not duplicated.
+  expect(container.textContent).not.toContain("Quay lại danh sách bản thảo");
   expect(container.querySelector("h1")).toBeNull();
 });
 it("hides creation and all revision/review actions in a read-only project", async () => {
@@ -230,8 +231,8 @@ it("does not show an older AI result as feedback for the current version", async
   mocks.detail.mockReturnValue({ data: { title: "Updated paper", status: "revised", currentRevisionId: "v2" } });
   mocks.preReviews.mockReturnValue({ data: [{ id: "analysis", status: "COMPLETED", sourceRevisionId: "v1", sourceRevisionNumber: 1, summary: "Earlier analysis", reviewFocusAreas: [], limitations: [], unsupportedClaims: [], citationIssues: [] }] });
   await render(<SubmissionDetailPage submissionId="manuscript" />);
-  expect(container.textContent).not.toContain("Earlier analysis");
   expect(container.querySelector('[data-testid="ai-prereview-panel"]')).toBeNull();
+  expect(container.textContent).not.toContain("Earlier analysis");
 });
 it("refreshes both the request progress and the submission status", async () => {
   const historyRefresh = vi.fn(), detailRefresh = vi.fn();

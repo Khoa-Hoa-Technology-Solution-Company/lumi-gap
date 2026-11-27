@@ -86,19 +86,12 @@ it("resets the draft when navigating to another adjudication round", async () =>
   await act(async () => [...container.querySelectorAll("a")].find(a => a.textContent === "Other packet")!.click()); await settle();
   expect(mocks.adjudication).toHaveBeenLastCalledWith("p", "other"); expect(container.querySelector("textarea")?.value).toBe("");
 });
-it("requires owner approval of the current packet before assigning an external lecturer", async () => {
+it("does not offer direct finalizer assignment for independent rounds; disputes go through the adjudication case", async () => {
   const round = { id: "r", paperId: "paper", version: 5, active: true, status: "NEEDS_RESOLUTION", finalizer: { id: "", name: "Chưa chỉ định" }, canManage: true, canFinalize: false, myAssignmentId: null, settings: { reviewMode: "INDEPENDENT", workflowVersion: 3, requiredReviewers: 2, resolutionPolicy: "ADJUDICATION" }, reviews: [], assignments: [], assigned: 2, completed: 2, discussionReady: true, finalDecision: null, adjudicators: [{ id: "lecturer", name: "Lecturer", mentor: true, proposer: false }] } as unknown as ScreeningRoundView;
   await render(<OwnerActions projectId="p" round={round} people={[]} readOnly={false} />);
-  const select = container.querySelectorAll("select")[1]!;
-  await act(async () => { select.value = "lecturer"; select.dispatchEvent(new Event("change", { bubbles: true })); }); await settle();
-  await reason("Independent expertise is needed to resolve this dispute");
-  const checkboxes = container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
-  await act(async () => checkboxes[checkboxes.length - 1]!.click()); await settle();
-  const send = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Xác nhận và lưu lịch sử")!;
-  expect(send.disabled).toBe(true); expect(container.querySelector('[aria-label="Gói phân xử được chia sẻ"]')).not.toBeNull();
-  await act(async () => checkboxes[0]!.click()); await settle(); expect(send.disabled).toBe(false);
-  await click("Xác nhận và lưu lịch sử");
-  expect(mocks.action).toHaveBeenCalledWith("p", "r", "finalizer", expect.objectContaining({ finalizerId: "lecturer", shareWithMentor: true, expectedVersion: 5 }));
+  expect(container.querySelector("select")).toBeNull();
+  expect(container.textContent).not.toContain("Giao người chốt");
+  expect(mocks.action).not.toHaveBeenCalled();
 });
 const agreementRound = {
   id: "r", version: 8, phase: "TITLE_ABSTRACT", hiddenReviews: false, canProposeAgreement: true,
@@ -187,24 +180,12 @@ it("also offers full reading for long unbroken comments and many short lines", a
   expect(container.querySelectorAll("button")).toHaveLength(2);
   for (const article of container.querySelectorAll("article")) expect(article.className).toContain("[overflow-wrap:anywhere]");
 });
-it("requires renewed sharing approval when the owner changes the selected discussion", async () => {
-  mocks.adjudication.mockResolvedValue({ ...view, availableDiscussion: [{ id: "c1", comment: "Share this methodological question", createdAt: "2026-10-31T00:00:00Z" }, { id: "c2", comment: "Keep this internal", createdAt: "2026-10-31T00:00:00Z" }] });
-  const round = { id: "r", paperId: "paper", version: 5, active: true, status: "NEEDS_RESOLUTION", finalizer: { id: "", name: "Chưa chỉ định" }, canManage: true, canFinalize: false, myAssignmentId: null, settings: { reviewMode: "INDEPENDENT", workflowVersion: 4, requiredReviewers: 2, resolutionPolicy: "ADJUDICATION" }, reviews: [], assignments: [], assigned: 2, completed: 2, discussionReady: true, finalDecision: null, adjudicators: [{ id: "lecturer", name: "Lecturer", mentor: true, proposer: false }] } as unknown as ScreeningRoundView;
+it("limits owners of case-based rounds to reopening a submitted ballot with history", async () => {
+  const round = { id: "r", paperId: "paper", version: 5, active: true, status: "NEEDS_RESOLUTION", finalizer: { id: "", name: "Chưa chỉ định" }, canManage: true, canFinalize: false, myAssignmentId: null, settings: { reviewMode: "SIMPLE", workflowVersion: 5, requiredReviewers: 2, resolutionPolicy: "ADJUDICATION" }, reviews: [], assignments: [], assigned: 2, completed: 2, discussionReady: true, finalDecision: null, adjudicators: [{ id: "lecturer", name: "Lecturer", mentor: true, proposer: false }] } as unknown as ScreeningRoundView;
   await render(<OwnerActions projectId="p" round={round} people={[]} readOnly={false} />);
-  const select = container.querySelectorAll("select")[1]!;
-  await act(async () => { select.value = "lecturer"; select.dispatchEvent(new Event("change", { bubbles: true })); }); await settle();
-  await reason("The lecturer should assess this methodological question");
-  const checkbox = (text: string) => [...container.querySelectorAll("label")].find(label => label.textContent?.includes(text))!.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-  await act(async () => { checkbox("Tôi đã duyệt").click(); checkbox("Tôi hiểu tác động").click(); }); await settle();
-  const send = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Xác nhận và lưu lịch sử")!;
-  expect(send.disabled).toBe(false);
-  await act(async () => checkbox("Share this methodological question").click()); await settle();
-  expect(send.disabled).toBe(true); expect(checkbox("Tôi đã duyệt").checked).toBe(false);
-  expect(container.querySelector('[aria-label="Gói phân xử được chia sẻ"]')?.textContent).toContain("Share this methodological question");
-  expect(container.querySelector('[aria-label="Gói phân xử được chia sẻ"]')?.textContent).not.toContain("Keep this internal");
-  await act(async () => { checkbox("Tôi đã duyệt").click(); checkbox("Tôi hiểu tác động").click(); }); await settle();
-  await click("Xác nhận và lưu lịch sử");
-  expect(mocks.action).toHaveBeenCalledWith("p", "r", "finalizer", expect.objectContaining({ discussionIds: ["c1"], shareWithMentor: true }));
+  expect(container.querySelector("summary")?.textContent).toBe("Mở lại phiếu có lưu lịch sử");
+  expect(container.textContent).not.toContain("Giao người chốt");
+  expect(container.querySelector('[aria-label="Gói phân xử được chia sẻ"]')).toBeNull();
 });
 
 it("supports further information and submits proposer agreement directly without redundant proposer checkbox", async () => {

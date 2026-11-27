@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/theme/lumi_tints.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 
 /// Section title with an optional "View all" text button (48dp tall) and an
@@ -28,11 +29,18 @@ class HomeSectionHeader extends StatelessWidget {
   }
 }
 
-BoxDecoration homeCardDecoration(LumiColors lumi) => BoxDecoration(
-  color: lumi.surface,
-  border: Border.all(color: lumi.line),
-  borderRadius: BorderRadius.circular(12),
-);
+/// The Home list card, the same surface as `LumiCard`: radius 20, a soft
+/// shadow in light mode, a hairline border in dark mode.
+BoxDecoration homeCardDecoration(BuildContext context) {
+  final lumi = context.lumi;
+  final brightness = Theme.of(context).brightness;
+  return BoxDecoration(
+    color: lumi.surface,
+    border: brightness == Brightness.dark ? Border.all(color: lumi.line) : null,
+    borderRadius: BorderRadius.circular(LumiElevation.cardRadius),
+    boxShadow: LumiElevation.card(brightness),
+  );
+}
 
 /// Loading placeholder: static blocks (no animation, so tests can settle).
 class HomeSkeleton extends StatelessWidget {

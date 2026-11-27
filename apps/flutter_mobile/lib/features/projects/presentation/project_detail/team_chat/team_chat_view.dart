@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/utils/haptics.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/projects/data/team_chat_models.dart';
@@ -240,7 +241,10 @@ class _TeamChatViewState extends ConsumerState<TeamChatView>
                   !item.message.isDeleted &&
                       state.stop == null &&
                       (item.mine || isOwner || isAdmin)
-                  ? () => unawaited(_deleteMessage(item.message))
+                  ? () {
+                      unawaited(Haptics.select());
+                      unawaited(_deleteMessage(item.message));
+                    }
                   : null,
             ),
             TeamChatPendingItem() => TeamChatPendingBubble(

@@ -28,8 +28,20 @@ const Map<String, dynamic> _full = {
       },
     ],
     'risingKeywords': [
-      {'keyword': 'large language models', 'growthRatePct': 93},
-      {'keyword': '', 'growthRatePct': 10},
+      // A rise that passed the test (z > 0, q < 0.05).
+      {
+        'keyword': 'large language models',
+        'shift': {'z': 3.2, 'qValue': 0.01},
+      },
+      // Not significant: not "emerging" on Explore (Trends lists it).
+      {
+        'keyword': 'graph neural networks',
+        'shift': {'z': 0, 'qValue': 0.8},
+      },
+      {
+        'keyword': '',
+        'shift': {'z': 2.0, 'qValue': 0.01},
+      },
     ],
   },
   'recentPapers': [
@@ -92,11 +104,27 @@ Future<void> _pump(WidgetTester tester, Map<String, dynamic> json) async {
 void main() {
   testWidgets('a rising keyword searches for itself', (tester) async {
     await _pump(tester, _full);
-    // A keyword without text is never shown as an empty chip.
+    // Only significant rises, and never an empty chip.
     expect(find.byType(ActionChip), findsOneWidget);
+    expect(find.textContaining('graph neural networks'), findsNothing);
+    // The test statistic is not shown to readers.
+    expect(find.textContaining('z 3.2'), findsNothing);
     await tester.tap(find.textContaining('large language models'));
     await tester.pumpAndSettle();
     expect(find.text('search q=large language models'), findsOneWidget);
+  });
+
+  testWidgets('a new paper can be saved from the list, as on Home', (
+    tester,
+  ) async {
+    await _pump(tester, _full);
+    // The save button is on the row, and the long-press sheet offers it too
+    // (never a one-item sheet that only repeats the tap).
+    expect(find.byTooltip('Bookmark'), findsOneWidget);
+    await tester.longPress(find.text('A new paper'));
+    await tester.pumpAndSettle();
+    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('Bookmark'), findsOneWidget);
   });
 
   testWidgets('a new paper opens the paper; trending topics stay on Home',

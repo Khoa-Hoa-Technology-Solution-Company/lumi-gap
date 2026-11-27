@@ -151,7 +151,7 @@ class _TrendsAiTabState extends ConsumerState<TrendsAiTab> {
                     ? null
                     : () => _explain(language),
                 icon: const Icon(Icons.summarize_outlined, size: 18),
-                label: Text(context.t('Explain Trend with AI')),
+                label: Text(context.t('Explain trend with AI')),
               ),
             ],
           ),

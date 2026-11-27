@@ -49,8 +49,8 @@ class GapAnalysisOverlay extends ConsumerWidget {
             ready
                 ? context.t('Analysis complete')
                 : failed
-                    ? context.t('Gap Analysis Failed')
-                    : context.t('Analyzing Gaps with AI'),
+                    ? context.t('Gap analysis failed')
+                    : context.t('Analyzing gaps with AI'),
             textAlign: TextAlign.center,
             style: theme.textTheme.titleMedium,
           ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
@@ -64,7 +66,7 @@ class PaperInsightsSection extends ConsumerWidget {
 
     return PaperSection(
       icon: Icons.analytics_outlined,
-      title: context.t('Analytical Insights & Critique'),
+      title: context.t('Analytical insights & critique'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -95,9 +97,10 @@ class PaperInsightsSection extends ConsumerWidget {
   }
 }
 
-/// Stars and a note from the signed-in reader. The form starts from the
-/// reader's saved review and sends one request at a time.
-class PaperReviewForm extends ConsumerStatefulWidget {
+/// The project reviews of the paper: their count and average, the reader's
+/// own stars, and one button that opens the rating form in a sheet. The
+/// form is not laid out inline on the page.
+class PaperReviewForm extends StatelessWidget {
   const PaperReviewForm({
     required this.paperId,
     required this.view,
@@ -108,10 +111,84 @@ class PaperReviewForm extends ConsumerStatefulWidget {
   final QualityView view;
 
   @override
-  ConsumerState<PaperReviewForm> createState() => _PaperReviewFormState();
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final lumi = context.lumi;
+    final mine = view.myStars ?? 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(context.t('Project reviews'), style: theme.textTheme.titleSmall),
+        const SizedBox(height: 4),
+        Text(
+          view.ratingCount == 0
+              ? context.t('No ratings yet')
+              : context.t('{{ratingCount}} ratings · {{average}} avg', {
+                  'ratingCount': view.ratingCount,
+                  'average': view.ratingAvg.toStringAsFixed(1),
+                }),
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: lumi.foregroundSecondary),
+        ),
+        if (mine > 0) ...[
+          const SizedBox(height: 4),
+          Semantics(
+            label: context.plural(
+              mine,
+              one: 'Your rating: {{count}} star',
+              other: 'Your rating: {{count}} stars',
+            ),
+            excludeSemantics: true,
+            child: Row(
+              children: [
+                for (var star = 1; star <= 5; star++)
+                  Icon(
+                    star <= mine ? Icons.star : Icons.star_border,
+                    size: 20,
+                    color: lumi.warning,
+                  ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+          onPressed: () => unawaited(
+            showModalBottomSheet<void>(
+              // Over the bottom navigation bar, dimming it too.
+              useRootNavigator: true,
+              context: context,
+              showDragHandle: true,
+              useSafeArea: true,
+              isScrollControlled: true,
+              builder: (_) => _PaperReviewSheet(paperId: paperId, view: view),
+            ),
+          ),
+          icon: const Icon(Icons.star_outline, size: 18),
+          label: Text(
+            mine > 0 ? context.t('Edit your review') : context.t('Rate this paper'),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-class _PaperReviewFormState extends ConsumerState<PaperReviewForm> {
+/// Stars and a note from the signed-in reader, in a sheet. It starts from
+/// the reader's saved review and sends one request at a time; it closes once
+/// the review is saved.
+class _PaperReviewSheet extends ConsumerStatefulWidget {
+  const _PaperReviewSheet({required this.paperId, required this.view});
+
+  final String paperId;
+  final QualityView view;
+
+  @override
+  ConsumerState<_PaperReviewSheet> createState() => _PaperReviewSheetState();
+}
+
+class _PaperReviewSheetState extends ConsumerState<_PaperReviewSheet> {
   final _comment = TextEditingController();
   int _rating = 0;
   bool _submitting = false;
@@ -119,8 +196,6 @@ class _PaperReviewFormState extends ConsumerState<PaperReviewForm> {
   @override
   void initState() {
     super.initState();
-    // Start from the saved review, once; later reloads never overwrite what
-    // the reader is typing.
     _rating = widget.view.myStars ?? 0;
     _comment.text = widget.view.myComment ?? '';
   }
@@ -135,26 +210,26 @@ class _PaperReviewFormState extends ConsumerState<PaperReviewForm> {
     if (_submitting || _rating < 1) return;
     setState(() => _submitting = true);
     final note = _comment.text.trim();
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final locale = context.appLocale;
+    final errorColor = context.lumi.error;
     try {
       await ref
           .read(qualityApiProvider)
           .rate('paper', widget.paperId, _rating, note.isEmpty ? null : note);
       ref.invalidate(qualityViewProvider(QualityTarget('paper', widget.paperId)));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t('Review submitted successfully.'))),
-        );
-      }
+      messenger.showSnackBar(
+        SnackBar(content: Text(translate('Review submitted successfully.', locale))),
+      );
+      navigator.pop();
     } on Object catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.t(failureMessageKey(e))),
-            backgroundColor: context.lumi.error,
-          ),
-        );
-      }
-    } finally {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(translate(failureMessageKey(e), locale)),
+          backgroundColor: errorColor,
+        ),
+      );
       if (mounted) setState(() => _submitting = false);
     }
   }
@@ -163,69 +238,66 @@ class _PaperReviewFormState extends ConsumerState<PaperReviewForm> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final lumi = context.lumi;
-    final view = widget.view;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: Text(
-                context.t('Workspace Reviews'),
-                style: theme.textTheme.titleSmall,
+            Text(context.t('Rate this paper'), style: theme.textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var star = 1; star <= 5; star++)
+                  IconButton(
+                    tooltip: context.plural(
+                      star,
+                      one: '{{count}} star',
+                      other: '{{count}} stars',
+                    ),
+                    isSelected: star <= _rating,
+                    onPressed: _submitting
+                        ? null
+                        : () => setState(() => _rating = star),
+                    icon: Icon(
+                      star <= _rating ? Icons.star : Icons.star_border,
+                      size: 32,
+                      color: lumi.warning,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _comment,
+              enabled: !_submitting,
+              minLines: 2,
+              maxLines: 5,
+              maxLength: 1000,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                labelText: context.t('Review notes (optional)'),
+                alignLabelWithHint: true,
               ),
             ),
-            Text(
-              view.ratingCount == 0
-                  ? context.t('No ratings yet')
-                  : context.t('{{ratingCount}} ratings · {{average}} avg', {
-                      'ratingCount': view.ratingCount,
-                      'average': view.ratingAvg.toStringAsFixed(1),
-                    }),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: lumi.foregroundSecondary),
+            const SizedBox(height: 12),
+            FilledButton(
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              onPressed: _rating == 0 || _submitting ? null : () => unawaited(_submit()),
+              child: Text(context.t('Submit review')),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+              child: Text(context.t('Cancel')),
             ),
           ],
         ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            for (var star = 1; star <= 5; star++)
-              IconButton(
-                tooltip: context.plural(
-                  star,
-                  one: '{{count}} star',
-                  other: '{{count}} stars',
-                ),
-                isSelected: star <= _rating,
-                onPressed: _submitting
-                    ? null
-                    : () => setState(() => _rating = star),
-                icon: Icon(
-                  star <= _rating ? Icons.star : Icons.star_border,
-                  color: lumi.warning,
-                ),
-              ),
-          ],
-        ),
-        TextField(
-          controller: _comment,
-          enabled: !_submitting,
-          maxLines: 2,
-          maxLength: 1000,
-          decoration: InputDecoration(
-            hintText: context.t('Add review notes...'),
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: _rating == 0 || _submitting ? null : _submit,
-            child: Text(context.t('Submit Review')),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

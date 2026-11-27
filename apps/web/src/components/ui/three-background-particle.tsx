@@ -38,7 +38,7 @@ type Particle = {
 
 export function ThreeBackgroundParticle() {
     const mountRef = useRef<HTMLDivElement>(null);
-    const { theme, resolvedTheme } = useTheme();
+    const { resolvedTheme } = useTheme();
 
     useEffect(() => {
         const isDark = resolvedTheme === "dark";
@@ -59,13 +59,23 @@ export function ThreeBackgroundParticle() {
         const container = mountRef.current;
         if (!container) return;
 
+        // Keep the layout's CSS background if the decorative renderer cannot start.
+        const canvas = document.createElement("canvas");
+        let renderer: THREE.WebGLRenderer;
+        try {
+            const context = canvas.getContext("webgl2", { alpha: false, antialias: true });
+            if (!context) return;
+            renderer = new THREE.WebGLRenderer({ canvas, context });
+        } catch {
+            return;
+        }
+
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(bgColor);
 
         const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
         camera.position.set(0, 0, 0);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(container.clientWidth, container.clientHeight);
         container.appendChild(renderer.domElement);
 
@@ -227,6 +237,7 @@ export function ThreeBackgroundParticle() {
 
     return (
         <div
+            aria-hidden="true"
             ref={mountRef}
             style={{
                 position: "absolute",

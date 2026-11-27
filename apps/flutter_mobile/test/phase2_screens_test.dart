@@ -484,7 +484,8 @@ void main() {
       _FakeProjectsApi? api,
     }) async {
       final fake = await _pumpProjects(tester, api: api);
-      await tester.tap(find.byTooltip('Create project'));
+      // The screen's one create action is its FAB.
+      await tester.tap(find.widgetWithText(FloatingActionButton, 'Create project'));
       await tester.pumpAndSettle();
       return fake;
     }
@@ -635,11 +636,11 @@ void main() {
         (tester) async {
       _setSize(tester, const Size(412, 1600));
       await _pumpProfile(tester, testUser());
-      // Projects / Notifications have their own tab and bell; Rankings and
-      // Submit paper have one entry each (Home shortcut, My papers).
+      // Projects has its own tab; Rankings and Submit paper have one entry
+      // each (Home shortcut, My papers). Notifications is a row here: the
+      // bell is on Home only.
       for (final label in [
         'Projects',
-        'Notifications',
         'Font size',
         'Leaderboard',
         'Rankings',
@@ -657,6 +658,16 @@ void main() {
       expect(find.text('route:/my-papers'), findsOneWidget);
     });
 
+    testWidgets('Notifications is one row, the bell being on Home only',
+        (tester) async {
+      _setSize(tester, const Size(412, 1600));
+      await _pumpProfile(tester, testUser());
+      expect(find.widgetWithText(LumiListRow, 'Notifications'), findsOneWidget);
+      await tester.tap(find.widgetWithText(LumiListRow, 'Notifications'));
+      await tester.pumpAndSettle();
+      expect(find.text('route:/notifications'), findsOneWidget);
+    });
+
     testWidgets('sign out asks first; cancel keeps the session', (tester) async {
       _setSize(tester, const Size(412, 1600));
       final auth = await _pumpProfile(tester, testUser());
@@ -667,13 +678,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(auth.logouts, 0);
 
-      // Two taps in one frame open one dialog and sign out once.
+      // Two taps in one frame open one sheet and sign out once.
       final row = find.widgetWithText(LumiListRow, 'Sign out');
       await tester.tap(row);
       await tester.tap(row, warnIfMissed: false);
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsOneWidget);
-      await tester.tap(find.widgetWithText(TextButton, 'Sign out'));
+      expect(find.byType(BottomSheet), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign out'));
       await tester.pumpAndSettle();
       expect(auth.logouts, 1);
     });
@@ -794,7 +805,12 @@ void main() {
               ),
             );
             expect(tester.takeException(), isNull);
-            await tester.tap(find.byTooltip(translate('Create project', locale)));
+            await tester.tap(
+              find.widgetWithText(
+                FloatingActionButton,
+                translate('Create project', locale),
+              ),
+            );
             await tester.pumpAndSettle();
             expect(tester.takeException(), isNull);
 

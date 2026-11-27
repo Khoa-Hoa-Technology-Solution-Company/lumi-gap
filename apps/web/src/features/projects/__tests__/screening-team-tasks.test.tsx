@@ -104,8 +104,10 @@ it("does not present actions for read-only projects", async () => {
   expect(container.querySelectorAll('.task-screening-card')).toHaveLength(0);
 });
 
+// Relative to now: the Done column only shows recently completed work (default 14 days).
+const recent = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 function obligation(id: string, status: ScreeningAutomaticTask["status"], actionType: ScreeningAutomaticTask["actionType"] = "REVIEW"): ScreeningAutomaticTask {
-  return { id, paperId: id, roundId: `${id}-round`, assigneeId: "reviewer", actionType, status, reason: `Backend reason for ${id}`, title: `Paper ${id}`, phase: "TITLE_ABSTRACT", roundNumber: 1, roundStatus: "IN_REVIEW", roundActive: true, dueAt: null, endedAt: ["TODO", "IN_PROGRESS", "BLOCKED"].includes(status) ? null : new Date().toISOString(), updatedAt: "2026-11-03T00:00:00Z" };
+  return { id, paperId: id, roundId: `${id}-round`, assigneeId: "reviewer", actionType, status, reason: `Backend reason for ${id}`, title: `Paper ${id}`, phase: "TITLE_ABSTRACT", roundNumber: 1, roundStatus: "IN_REVIEW", roundActive: true, dueAt: null, endedAt: ["TODO", "IN_PROGRESS", "BLOCKED"].includes(status) ? null : recent, updatedAt: recent };
 }
 it("places backend obligations in their real columns and keeps expired/replaced work in history", async () => {
   mocks.workspaceSummary.mockResolvedValue({ ...summary, automaticTasks: [obligation("todo", "TODO"), obligation("progress", "IN_PROGRESS", "ADJUDICATION"), obligation("blocked", "BLOCKED", "ADJUDICATION"), obligation("done", "DONE"), obligation("expired", "EXPIRED"), obligation("replaced", "REPLACED", "DISCUSSION")] });

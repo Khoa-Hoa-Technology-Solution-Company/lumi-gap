@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
-import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_confirm_sheet.dart';
 import 'package:flutter_mobile/features/reviews/data/review_requests_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -52,9 +52,22 @@ class ReviewActions {
   /// Asks first (with an optional reason), then declines or withdraws.
   Future<bool> decline(BuildContext context, ReviewRequest request) async {
     final withdrawing = request.status != 'REQUESTED';
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (_) => _DeclineDialog(withdrawing: withdrawing),
+    final reason = await showLumiInputSheet(
+      context,
+      title: withdrawing
+          ? context.t('Withdraw from this review?')
+          : context.t('Decline review request?'),
+      message: context.t('The requester will be notified. A short reason helps them choose another reviewer.'),
+      field: LumiSheetField(
+        label: context.t('Reason (optional)'),
+        hint: context.t('Workload, subject mismatch, or conflict of interest'),
+        maxLength: declineReasonMax,
+        minLines: 3,
+        maxLines: 6,
+      ),
+      confirmText: withdrawing ? context.t('Withdraw') : context.t('Decline request'),
+      cancelText: context.t('Keep request'),
+      destructive: true,
     );
     if (reason == null) return false;
     try {
@@ -79,23 +92,13 @@ class ReviewActions {
 
   /// The requester takes the request back.
   Future<bool> cancel(BuildContext context, ReviewRequest request) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.t('Cancel this review request?')),
-        content: Text(context.t('The reviewer will lose access to the assigned review workspace. Existing submitted feedback is never deleted.')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(context.t('Keep request')),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: context.lumi.error),
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(context.t('Cancel request')),
-          ),
-        ],
-      ),
+    final ok = await showLumiConfirmSheet(
+      context,
+      title: context.t('Cancel this review request?'),
+      message: context.t('The reviewer will lose access to the assigned review workspace. Existing submitted feedback is never deleted.'),
+      confirmText: context.t('Cancel request'),
+      cancelText: context.t('Keep request'),
+      destructive: true,
     );
     if (ok != true) return false;
     try {
@@ -110,67 +113,5 @@ class ReviewActions {
     } finally {
       _refresh(request.id);
     }
-  }
-}
-
-/// Returns the reason ('' for none), or null when kept.
-class _DeclineDialog extends StatefulWidget {
-  const _DeclineDialog({required this.withdrawing});
-  final bool withdrawing;
-
-  @override
-  State<_DeclineDialog> createState() => _DeclineDialogState();
-}
-
-class _DeclineDialogState extends State<_DeclineDialog> {
-  final _reason = TextEditingController();
-
-  @override
-  void dispose() {
-    _reason.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.withdrawing
-          ? context.t('Withdraw from this review?')
-          : context.t('Decline review request?')),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(context.t('The requester will be notified. A short reason helps them choose another reviewer.')),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _reason,
-              maxLength: declineReasonMax,
-              minLines: 3,
-              maxLines: 6,
-              decoration: InputDecoration(
-                labelText: context.t('Reason (optional)'),
-                hintText: context.t('Workload, subject mismatch, or conflict of interest'),
-                alignLabelWithHint: true,
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(context.t('Keep request')),
-        ),
-        TextButton(
-          style: TextButton.styleFrom(foregroundColor: context.lumi.error),
-          onPressed: () => Navigator.pop(context, _reason.text.trim()),
-          child: Text(widget.withdrawing
-              ? context.t('Withdraw')
-              : context.t('Decline request')),
-        ),
-      ],
-    );
   }
 }

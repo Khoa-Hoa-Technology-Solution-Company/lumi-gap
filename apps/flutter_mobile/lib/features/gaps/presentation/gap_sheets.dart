@@ -19,12 +19,12 @@ String? gapTopicError(String raw) {
 
 /// Server-side orders, the same as the web list.
 final List<(String, String)> gapSorts = [
-  ('newest', tk('Newest Opportunities First')),
+  ('newest', tk('Newest opportunities first')),
   ('recommended', tk('Recommended (evidence + confidence)')),
-  ('evidence', tk('Most Evidence-backed')),
-  ('confidence', tk('Highest Confidence')),
-  ('papers', tk('Most Supporting Papers')),
-  ('ai_only_last', tk('AI-only Last')),
+  ('evidence', tk('Most evidence-backed')),
+  ('confidence', tk('Highest confidence')),
+  ('papers', tk('Most supporting papers')),
+  ('ai_only_last', tk('AI-only last')),
 ];
 
 const String gapDefaultSort = 'newest';
@@ -60,6 +60,8 @@ Future<GapListFilters?> showGapFilterSheet(
   GapListFilters current,
 ) =>
     showModalBottomSheet<GapListFilters>(
+      // Over the bottom navigation bar, dimming it too.
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -161,6 +163,8 @@ class _FilterSheetState extends State<_FilterSheet> {
 /// field, without closing. Returns the trimmed topic, or null when closed.
 Future<String?> showAnalyzeTopicSheet(BuildContext context) =>
     showModalBottomSheet<String>(
+      // Over the bottom navigation bar, dimming it too.
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       useSafeArea: true,

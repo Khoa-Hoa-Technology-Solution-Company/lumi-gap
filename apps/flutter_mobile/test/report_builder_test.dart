@@ -67,7 +67,7 @@ void main() {
       findsOneWidget,
     );
     final button = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Generate Report'),
+      find.widgetWithText(FilledButton, 'Generate report'),
     );
     expect(button.onPressed, isNull);
     expect(generated, 0);
@@ -91,7 +91,7 @@ void main() {
     expect(find.text('Failed'), findsOneWidget);
     expect(find.text('The report could not be generated.'), findsOneWidget);
     expect(find.textContaining('compiling'), findsNothing);
-    expect(find.text('View Full Report'), findsNothing);
+    expect(find.text('View full report'), findsNothing);
   });
 
   testWidgets('a running report shows a translated state, no raw code',
@@ -124,8 +124,11 @@ void main() {
         onDelete: (id) async => deleted.add(id),
       ),
     );
-    // A button with a label, not a swipe: reachable with a screen reader.
-    await tester.tap(find.byTooltip('Delete report'));
+    // A labelled button opens the actions (not only a gesture): reachable
+    // with a screen reader. Delete is the destructive one.
+    await tester.tap(find.byTooltip('More report actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete report'));
     await tester.pumpAndSettle();
     expect(
       find.text('Delete this report? This cannot be undone.'),
@@ -151,9 +154,12 @@ void main() {
         onDelete: (_) async {},
       ),
     );
-    final button = tester.widget<IconButton>(
-      find.widgetWithIcon(IconButton, Icons.delete_outline),
+    // The same sheet from a long-press; Delete is off while one runs.
+    await tester.longPress(find.text('T'));
+    await tester.pumpAndSettle();
+    final delete = tester.widget<ListTile>(
+      find.widgetWithText(ListTile, 'Delete report'),
     );
-    expect(button.onPressed, isNull);
+    expect(delete.enabled, isFalse);
   });
 }

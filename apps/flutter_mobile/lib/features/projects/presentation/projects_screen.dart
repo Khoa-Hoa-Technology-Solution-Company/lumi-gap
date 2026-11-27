@@ -6,9 +6,9 @@ import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_hero_app_bar.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_list_row.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
-import 'package:flutter_mobile/core/widgets/notification_bell.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/projects/data/invitations_api.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
@@ -125,7 +125,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                   ? _EmptyProjects(filter: filter, onCreate: _openCreateSheet)
                   : ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 96),
                       children: [
                         const ProjectInvitationsSection(),
                         if (shown.isEmpty)
@@ -172,18 +172,12 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Text(context.t('Projects')),
-        actions: [
-          IconButton(
-            tooltip: context.t('Create project'),
-            onPressed: () => unawaited(_openCreateSheet()),
-            icon: const Icon(Icons.add),
-          ),
-          const NotificationBell(),
-          const SizedBox(width: 4),
-        ],
+      appBar: LumiHeroAppBar(title: context.t('Projects')),
+      // The one create action of the screen, within thumb reach.
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => unawaited(_openCreateSheet()),
+        icon: const Icon(Icons.add),
+        label: Text(context.t('Create project')),
       ),
       body: SafeArea(child: body),
     );

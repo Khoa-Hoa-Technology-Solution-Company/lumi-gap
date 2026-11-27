@@ -68,10 +68,16 @@ describe.sequential("project workspace persistence", () => {
 
     await projectService.addPaperToProject(project._id, paperId, memberId);
     await expect(projectService.addPaperToProject(project._id, paperId, memberId)).rejects.toMatchObject({ statusCode: 409 });
-    await expect(projectService.updateProjectPaper(project._id, paperId, { screeningStatus: "INCLUDED", inclusionReason: "Cannot bypass independent review" }, memberId)).rejects.toMatchObject({ statusCode: 403 });
-    await projectService.updateProjectPaper(project._id, paperId, { readingStatus: "REVIEWED", notes: "Updated reading note" }, memberId);
+    // Screening decisions are no longer written directly on the project paper: members vote in
+    // independent screening (403 here) and the owner finalizes in paper review (409 here).
+    await expect(projectService.updateProjectPaper(project._id, paperId, { screeningStatus: "INCLUDED", inclusionReason: "Matches the research question" }, memberId)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(projectService.updateProjectPaper(project._id, paperId, { screeningStatus: "INCLUDED", inclusionReason: "Matches the research question" }, ownerId)).rejects.toMatchObject({ statusCode: 409 });
+    // Reading status and notes stay editable by members.
+    await projectService.updateProjectPaper(project._id, paperId, { readingStatus: "REVIEWED", notes: "Useful baseline" }, memberId);
+    await projectService.updateProjectPaper(project._id, paperId, { notes: "Updated reading note" }, memberId);
     const refreshed = await projectService.getProjectById(project._id, memberId);
-    expect(refreshed.papers[0]).toMatchObject({ screeningStatus: "UNDECIDED", readingStatus: "REVIEWED", notes: "Updated reading note" });
+    expect(refreshed.papers[0]).toMatchObject({ readingStatus: "REVIEWED", notes: "Updated reading note" });
+    expect(refreshed.papers[0]?.screeningStatus).not.toBe("INCLUDED");
 
     const criteriaProject = await projectService.updateProject(project._id, {
       inclusionCriteria: ["Empirical software engineering studies"],
@@ -86,10 +92,12 @@ describe.sequential("project workspace persistence", () => {
     const second = await projectService.createProject({ title: "Different review", status: "ACTIVE" }, outsiderId);
     projectIds.push(second._id);
     await projectService.addPaperToProject(second._id, paperId, outsiderId);
-    await expect(projectService.updateProjectPaper(second._id, paperId, { screeningStatus: "EXCLUDED", exclusionReason: "WRONG_POPULATION_CONTEXT" }, outsiderId)).rejects.toMatchObject({ statusCode: 409 });
-    await projectService.updateProjectPaper(second._id, paperId, { notes: "Independent project notes" }, outsiderId);
-    expect((await projectService.getProjectById(second._id, outsiderId)).papers[0]).toMatchObject({ screeningStatus: "UNDECIDED", notes: "Independent project notes" });
-    expect((await projectService.getProjectById(project._id, ownerId)).papers[0]?.notes).toBe("Updated reading note");
+    // The same paper in another project is a separate record: its owner cannot finalize it directly either,
+    // and its notes never leak into the first project.
+    await expect(projectService.updateProjectPaper(second._id, paperId, { screeningStatus: "EXCLUDED", exclusionReason: "WRONG_POPULATION_CONTEXT", exclusionNote: "Not a software engineering population" }, outsiderId)).rejects.toMatchObject({ statusCode: 409 });
+    await projectService.updateProjectPaper(second._id, paperId, { notes: "Second project note" }, outsiderId);
+    expect((await projectService.getProjectById(second._id, outsiderId)).papers[0]).toMatchObject({ notes: "Second project note" });
+    expect((await projectService.getProjectById(project._id, ownerId)).papers[0]).toMatchObject({ notes: "Updated reading note" });
 
     await projectService.removeMemberFromProject(project._id, memberId, ownerId);
     await expect(projectService.getProjectById(project._id, memberId)).rejects.toMatchObject({ statusCode: 404 });

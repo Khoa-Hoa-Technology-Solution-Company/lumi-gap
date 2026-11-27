@@ -7,6 +7,7 @@ import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/web_href.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_chip.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_confirm_sheet.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_controls.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
 import 'package:flutter_mobile/features/community/data/communities_api.dart';
@@ -62,20 +63,12 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
 
   Future<void> _leave(Community c) async {
     if (_busy) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.t('Leave this community?')),
-        content: Text('${c.name} — ${context.t('You will stop being a member. You can join again later.')}'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.t('Cancel'))),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: context.lumi.error),
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(context.t('Leave community')),
-          ),
-        ],
-      ),
+    final ok = await showLumiConfirmSheet(
+      context,
+      title: context.t('Leave this community?'),
+      message: '${c.name} — ${context.t('You will stop being a member. You can join again later.')}',
+      confirmText: context.t('Leave community'),
+      destructive: true,
     );
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
@@ -174,7 +167,10 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
       const SizedBox(height: 12),
     ];
     if (_tab != _Tab.discussions) {
-      return ListView(
+      return RefreshIndicator(
+        onRefresh: () => ref.refresh(communityProvider(widget.slug).future),
+        child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
           ...header,
@@ -186,6 +182,7 @@ class _CommunityDetailScreenState extends ConsumerState<CommunityDetailScreen> {
             CommunityRelated(communityId: c.id),
           ],
         ],
+        ),
       );
     }
     return ForumFeedList(

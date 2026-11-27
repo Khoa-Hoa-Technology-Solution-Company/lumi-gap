@@ -6,6 +6,7 @@ import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/web_href.dart';
+import 'package:flutter_mobile/core/widgets/lumi/lumi_confirm_sheet.dart';
 import 'package:flutter_mobile/features/community/data/forum_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -27,20 +28,12 @@ Future<void> copyForumLink(BuildContext context, String path) async {
 
 /// "Remove this discussion?" / "Remove this response?"; true to remove.
 Future<bool> confirmForumRemove(BuildContext context, {required bool reply}) async {
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(reply ? context.t('Remove this response?') : context.t('Remove this discussion?')),
-      content: Text(context.t('This action cannot be undone.')),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.t('Cancel'))),
-        TextButton(
-          style: TextButton.styleFrom(foregroundColor: context.lumi.error),
-          onPressed: () => Navigator.pop(context, true),
-          child: Text(context.t('Remove')),
-        ),
-      ],
-    ),
+  final ok = await showLumiConfirmSheet(
+    context,
+    title: reply ? context.t('Remove this response?') : context.t('Remove this discussion?'),
+    message: context.t('This action cannot be undone.'),
+    confirmText: context.t('Remove'),
+    destructive: true,
   );
   return ok ?? false;
 }
@@ -49,6 +42,8 @@ Future<bool> confirmForumRemove(BuildContext context, {required bool reply}) asy
 /// one, or null when dismissed.
 Future<String?> pickNotificationLevel(BuildContext context, String current) {
   return showModalBottomSheet<String>(
+    // Over the bottom navigation bar, dimming it too.
+    useRootNavigator: true,
     context: context,
     showDragHandle: true,
     builder: (context) => SafeArea(
@@ -92,9 +87,14 @@ Future<bool> reportForumContent(
   final api = ref.read(forumApiProvider);
   final messenger = ScaffoldMessenger.of(context);
   final locale = context.appLocale;
-  final input = await showDialog<(String, String)>(
+  final input = await showModalBottomSheet<(String, String)>(
+    // Over the bottom navigation bar, dimming it too.
+    useRootNavigator: true,
     context: context,
-    builder: (_) => _ReportDialog(reply: reply, id: id),
+    showDragHandle: true,
+    useSafeArea: true,
+    isScrollControlled: true,
+    builder: (_) => _ReportSheet(reply: reply, id: id),
   );
   if (input == null) return false;
   try {
@@ -119,16 +119,16 @@ Future<bool> reportForumContent(
   }
 }
 
-class _ReportDialog extends ConsumerStatefulWidget {
-  const _ReportDialog({required this.reply, required this.id});
+class _ReportSheet extends ConsumerStatefulWidget {
+  const _ReportSheet({required this.reply, required this.id});
   final bool reply;
   final String id;
 
   @override
-  ConsumerState<_ReportDialog> createState() => _ReportDialogState();
+  ConsumerState<_ReportSheet> createState() => _ReportSheetState();
 }
 
-class _ReportDialogState extends ConsumerState<_ReportDialog> {
+class _ReportSheetState extends ConsumerState<_ReportSheet> {
   // The web starts on "Off topic" too.
   String _reason = 'OFF_TOPIC';
   final _context = TextEditingController();
@@ -141,34 +141,50 @@ class _ReportDialogState extends ConsumerState<_ReportDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(context.t('Report content')),
-      content: SingleChildScrollView(
+    final theme = Theme.of(context);
+    return Padding(
+      // Rise with the keyboard so the context field stays visible.
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(context.t('Reports are for policy or community-rule issues, not ordinary academic disagreement.')),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              initialValue: _reason,
-              isExpanded: true,
-              decoration: InputDecoration(labelText: context.t('Reason')),
-              items: [
-                for (final (value, label) in forumReportReasons)
-                  DropdownMenuItem(value: value, child: Text(context.t(label))),
-              ],
+            Text(context.t('Report content'), style: theme.textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Text(
+              context.t('Reports are for policy or community-rule issues, not ordinary academic disagreement.'),
+              style: theme.textTheme.bodyMedium?.copyWith(color: context.lumi.foregroundSecondary),
+            ),
+            const SizedBox(height: 8),
+            // Radio rows instead of a dropdown: every reason is one tap away.
+            RadioGroup<String>(
+              groupValue: _reason,
               onChanged: (v) => setState(() => _reason = v ?? _reason),
+              child: Column(
+                children: [
+                  for (final (value, label) in forumReportReasons)
+                    RadioListTile<String>(
+                      value: value,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(context.t(label)),
+                    ),
+                ],
+              ),
             ),
             if (_reason == 'COPYRIGHT_CONCERN')
-              TextButton.icon(
-                onPressed: () => unawaited(openWebPage(
-                  context,
-                  ref,
-                  '/forum/copyright?type=${widget.reply ? 'RESPONSE' : 'THREAD'}&id=${Uri.encodeComponent(widget.id)}',
-                )),
-                icon: const Icon(Icons.open_in_new, size: 18),
-                label: Text(context.t('Submit a copyright claim')),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton.icon(
+                  onPressed: () => unawaited(openWebPage(
+                    context,
+                    ref,
+                    '/forum/copyright?type=${widget.reply ? 'RESPONSE' : 'THREAD'}&id=${Uri.encodeComponent(widget.id)}',
+                  )),
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: Text(context.t('Submit a copyright claim')),
+                ),
               ),
             const SizedBox(height: 12),
             TextField(
@@ -182,16 +198,21 @@ class _ReportDialogState extends ConsumerState<_ReportDialog> {
                 alignLabelWithHint: true,
               ),
             ),
+            const SizedBox(height: 16),
+            FilledButton(
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              onPressed: () => Navigator.pop(context, (_reason, _context.text.trim())),
+              child: Text(context.t('Submit report')),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              onPressed: () => Navigator.pop(context),
+              child: Text(context.t('Cancel')),
+            ),
           ],
         ),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: Text(context.t('Cancel'))),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, (_reason, _context.text.trim())),
-          child: Text(context.t('Submit report')),
-        ),
-      ],
     );
   }
 }

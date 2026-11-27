@@ -1,4 +1,5 @@
 import { workflowSourceEn } from "./workflow-source";
+import { uiCoverageBackfillEn } from "./ui-coverage-backfill";
 import { mentorSharingEn } from "./mentor-sharing";
 import { submissionDetailEn } from "./submission-detail";
 import { registrationEn } from "./registration";
@@ -45,7 +46,9 @@ import { adminCatalogEn } from "./admin-catalog";
 import { personalizationStrings } from "./personalization";
 
 export const en = {
+  // Real English translations override source-language fallbacks; feature dictionaries take precedence.
   ...workflowSourceEn,
+  ...uiCoverageBackfillEn,
   ...mentorWorkspaceEn,
   ...mentorLifecycleEn,
   ...registrationEn,

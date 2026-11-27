@@ -1,11 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/errors/failure_message.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/number_format.dart';
 import 'package:flutter_mobile/core/widgets/app_alert.dart';
-import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_data.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_states.dart';
@@ -42,7 +42,12 @@ class TrendsEmergingTab extends ConsumerWidget {
           const LumiSkeleton(rows: 4, height: 96),
         ],
       ),
-      error: (error, _) => AppErrorState(message: error.toString()),
+      // A readable reason and a retry, never the raw exception.
+      error: (error, _) => LumiErrorState(
+        message: context.t(failureMessageKey(error)),
+        retrying: query.isLoading,
+        onRetry: () => ref.invalidate(trendEmergingProvider(params.scopeFilters)),
+      ),
     );
   }
 }

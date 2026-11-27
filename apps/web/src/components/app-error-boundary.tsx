@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { isStaleChunkError, reloadOnceForStaleChunk } from "@/utils/stale-chunk";
 
 export class AppErrorBoundary extends Component<{ children: ReactNode; onRetry?: () => void }, { failed: boolean }> {
   override state = { failed: false };
@@ -6,6 +7,8 @@ export class AppErrorBoundary extends Component<{ children: ReactNode; onRetry?:
   static getDerivedStateFromError() { return { failed: true }; }
 
   override componentDidCatch(error: Error, info: ErrorInfo) {
+    // A chunk from before the latest deploy: reload once to pick up the new build.
+    if (isStaleChunkError(error) && reloadOnceForStaleChunk()) return;
     console.error("[LumiGap] Rendering failed", error, info.componentStack);
   }
 

@@ -14,6 +14,7 @@ import { manuscriptService } from "../../workspaces/manuscript.service.js";
 import { manuscriptEvents } from "../../workspaces/manuscript-events.js";
 import { pdfStorageService } from "../../../infrastructure/pdf-storage.service.js";
 import { cloudinaryPrivateDownloadUrl } from "../../../infrastructure/cloudinary-storage.service.js";
+import { env } from "../../../config/env.js";
 import { resolveFeaturedWorks } from "../../academic-profiles/academic-featured-works.service.js";
 import { workContributionsService } from "../work-contributions.service.js";
 
@@ -507,6 +508,37 @@ describe.sequential("Research Contribution, Integrity & Security Workflow — Al
       clientKey: crypto.randomUUID(),
     });
 
+    const unlinkedSnapshot = await manuscriptService.snapshot(testProjectId, ownerId, manuscript.id, {
+      label: "Before manuscript evidence is linked", clientKey: crypto.randomUUID(), minimumSequences: {},
+    });
+    const unlinked = await manuscriptAttributionService.getAttributionCheck(testProjectId, ownerId, manuscript.id, unlinkedSnapshot.id);
+    expect(unlinked.detectedContributors.some(c => c.userId === memberBId)).toBe(false);
+    expect(unlinked.detectedContributors.some(c => c.userId === advisorId)).toBe(false);
+
+    // Attribution is scoped to this manuscript: project-wide work and mentorship agreements only count once
+    // they are explicitly linked to it. Link member B's earlier work and an accepted advisor suggestion.
+    await db.projectContributionProposal.update({
+      where: { id: memberBWorkRecordId },
+      data: { evidenceRefs: [{ kind: "MANUSCRIPT", id: manuscript.id }] },
+    });
+    const advisorAccess = await db.mentorAccess.findFirstOrThrow({ where: { projectId: testProjectId, mentorUserId: advisorId } });
+    const share = await db.mentorResourceShare.create({
+      data: { projectId: testProjectId, accessId: advisorAccess.id, kind: "MANUSCRIPT", resourceId: manuscript.id, title: "Integrity Manuscript Draft", sectionKey: "introduction", content: "Introduction section shared for advisor review.", sharedById: ownerId },
+    });
+    await db.mentorFeedback.create({
+      data: {
+        projectId: testProjectId,
+        accessId: advisorAccess.id,
+        shareId: share.id,
+        authorId: advisorId,
+        kind: "SUGGESTION",
+        creditRoles: ["METHODOLOGY"],
+        status: "ACCEPTED",
+        body: "Tighten the validation protocol and report the sampling frame explicitly.",
+        clientKey: crypto.randomUUID(),
+      },
+    });
+
     const snap = await manuscriptService.snapshot(testProjectId, ownerId, manuscript.id, {
       label: "Attribution Baseline",
       clientKey: crypto.randomUUID(),
@@ -521,8 +553,8 @@ describe.sequential("Research Contribution, Integrity & Security Workflow — Al
     );
 
     expect(check.detectedContributors.some((c) => c.userId === ownerId)).toBe(true);
-    expect(check.detectedContributors.some((c) => c.userId === memberBId)).toBe(false); // Project history alone is not manuscript evidence.
-    expect(check.detectedContributors.some((c) => c.userId === advisorId)).toBe(false); // An agreement alone does not establish work on this manuscript.
+    expect(check.detectedContributors.some((c) => c.userId === memberBId)).toBe(true);
+    expect(check.detectedContributors.some((c) => c.userId === advisorId)).toBe(true);
   });
 
   // --------------------------------------------------------------------------
@@ -831,10 +863,23 @@ describe.sequential("Research Contribution, Integrity & Security Workflow — Al
     const traversal = pdfStorageService.resolveLocalPath("/uploads/../../etc/passwd");
     expect(traversal).toBeNull();
 
-    // Signed URLs have bounded expiration timestamps and cryptographic signatures
-    const signedUrl = cloudinaryPrivateDownloadUrl("secure-manuscript-asset", 300);
-    expect(signedUrl).toContain("secure-manuscript-asset");
-    expect(signedUrl).toContain("signature=");
+    // Signed URLs have bounded expiration timestamps and cryptographic signatures.
+    // Signing is local (no network), so CI without Cloudinary credentials uses throwaway test values.
+    const saved = { cloud: env.CLOUDINARY_CLOUD_NAME, key: env.CLOUDINARY_API_KEY, secret: env.CLOUDINARY_API_SECRET };
+    env.CLOUDINARY_CLOUD_NAME ||= "lumigap-test";
+    env.CLOUDINARY_API_KEY ||= "123456789012345";
+    env.CLOUDINARY_API_SECRET ||= "test-signing-secret";
+    try {
+      const signedUrl = cloudinaryPrivateDownloadUrl("secure-manuscript-asset", 300);
+      expect(signedUrl).toContain("secure-manuscript-asset");
+      expect(signedUrl).toContain("signature=");
+      const expiresAt = Number(new URL(signedUrl).searchParams.get("expires_at"));
+      expect(expiresAt - Math.floor(Date.now() / 1000)).toBeLessThanOrEqual(300);
+    } finally {
+      env.CLOUDINARY_CLOUD_NAME = saved.cloud;
+      env.CLOUDINARY_API_KEY = saved.key;
+      env.CLOUDINARY_API_SECRET = saved.secret;
+    }
   });
 
   // --------------------------------------------------------------------------

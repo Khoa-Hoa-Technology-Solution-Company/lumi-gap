@@ -34,8 +34,16 @@ All 168 Prisma migrations replayed successfully on dedicated local test database
 
 ## Limits and follow-up
 
-- `workflow-source.ts` registers existing UI copy and reuses existing translations when available. Many Vietnamese strings remain explicit source-language fallbacks in English and inherited dictionaries. Key coverage passing does **not** mean translation into every supported language is complete. Existing curated translations take precedence.
+- `workflow-source.ts` registers existing UI copy and reuses existing translations when available. At the original audit, many Vietnamese strings were explicit source-language fallbacks. During PR #111 conflict resolution, the English backfill from `main` was retained with higher precedence; it covers 1,097 of the 1,100 source-copy keys. Key coverage passing does **not** mean translation into every supported language is complete. Existing feature dictionaries take precedence.
 - Authenticated browser E2E, Flutter tests and production deployment were not validated in this audit.
 - Existing Browserslist age and large lazy-chunk warnings do not fail the production build.
 - GitHub Actions currently runs for pull requests targeting `main` and pushes to `main`. Uploading a feature branch alone does not start that workflow or establish a green remote CI result.
 - The localhost checkout at `D:\lumi-gap` contains additional ongoing development. Compatible fixes were applied there separately; this branch contains the changes from the attached mentor review worktree.
+
+## PR #111 conflict resolution
+
+Merged `origin/main` at `5242ea7f` into the feature branch. Resolved all 19 conflicting files, retaining the extra checks from both branches: shortlisting still grants no mentor access, an invitation requires lecturer consent, retired HTTP allocation writes create no decisions, historical outcomes remain scoped, and manuscript contribution detection is tested before and after linking evidence.
+
+The current-revision AI selection, overdue review action and sender-name fallback remain in place. Additional main-branch layout tests and locale coverage were included in the merge verification.
+
+After resolution, the seven backend recheck suites passed all 127 tests, followed by all 168 integration tests. The affected web tests and supplementary layout/submission tests passed across the initial run and focused recheck (175 distinct tests). Web/backend builds, backend typecheck, changed-file lint and conflict-marker/whitespace checks also passed.

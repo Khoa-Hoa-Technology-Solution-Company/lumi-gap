@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/theme/lumi_tints.dart';
 import 'package:flutter_mobile/core/utils/number_format.dart';
 import 'package:flutter_mobile/core/widgets/lumi/lumi_data.dart';
 import 'package:flutter_mobile/features/home/data/home_models.dart';
@@ -27,7 +28,7 @@ class HomeTrendList extends StatelessWidget {
     final showVerdicts = !homeTrendsAllInsufficient(topics);
     return Container(
       clipBehavior: Clip.antiAlias,
-      decoration: homeCardDecoration(lumi),
+      decoration: homeCardDecoration(context),
       child: Column(
         children: [
           for (var i = 0; i < topics.length; i++) ...[
@@ -132,6 +133,12 @@ class HomeTrendingCards extends StatelessWidget {
                 child: _TrendCard(
                   topic: topics[i],
                   showVerdict: showVerdicts,
+                  // The lead topic goes on the dark feature surface only
+                  // when it really is rising: a dark card with nothing to
+                  // say would claim a highlight the data does not make.
+                  featured: i == 0 &&
+                      showVerdicts &&
+                      topics[i].verdict == TrendVerdict.rising,
                   onOpen: onOpen,
                 ),
               ),
@@ -148,11 +155,13 @@ class _TrendCard extends StatelessWidget {
     required this.topic,
     required this.showVerdict,
     required this.onOpen,
+    this.featured = false,
   });
 
   final HomeTrendTopic topic;
   final bool showVerdict;
   final VoidCallback onOpen;
+  final bool featured;
 
   @override
   Widget build(BuildContext context) {
@@ -175,11 +184,23 @@ class _TrendCard extends StatelessWidget {
       ?papers,
     ].join(' · ');
 
-    return Material(
-      color: lumi.surface,
+    final tints = context.tints;
+    final brightness = theme.brightness;
+    final ink = featured ? tints.ink : lumi.surface;
+    final onInk = featured ? tints.onInk : lumi.foreground;
+    final onInkSoft = featured ? tints.onInkSoft : lumi.foregroundSecondary;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: LumiElevation.card(brightness),
+      ),
+      child: Material(
+      color: ink,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: lumi.line),
+        borderRadius: BorderRadius.circular(24),
+        side: brightness == Brightness.dark && !featured
+            ? BorderSide(color: lumi.line)
+            : BorderSide.none,
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -190,14 +211,22 @@ class _TrendCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (showVerdict) ...[
-                TrendVerdictPill(verdict: topic.verdict),
+                // On the blue card the pill takes the light palette (a
+                // light pill), so it reads in both themes.
+                if (featured)
+                  Theme(
+                    data: theme.copyWith(extensions: const [LumiColors.light]),
+                    child: TrendVerdictPill(verdict: topic.verdict),
+                  )
+                else
+                  TrendVerdictPill(verdict: topic.verdict),
                 const SizedBox(height: 10),
               ],
               Text(
                 topic.topic,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleMedium,
+                style: theme.textTheme.titleMedium?.copyWith(color: onInk),
               ),
               const Spacer(),
               const SizedBox(height: 12),
@@ -214,7 +243,8 @@ class _TrendCard extends StatelessWidget {
                                 ? '+${pct.toStringAsFixed(1)}%'
                                 : '${pct.toStringAsFixed(1)}%',
                             style: theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
+                              color: onInk,
+                              fontWeight: FontWeight.w800,
                               fontFeatures: const [
                                 FontFeature.tabularFigures(),
                               ],
@@ -226,7 +256,7 @@ class _TrendCard extends StatelessWidget {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodyMedium
-                                ?.copyWith(color: lumi.foregroundSecondary),
+                                ?.copyWith(color: onInkSoft),
                           ),
                       ],
                     ),
@@ -235,7 +265,9 @@ class _TrendCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     LumiSparkline(
                       values: values,
-                      color: trendVerdictStyle(topic.verdict, lumi).color,
+                      color: featured
+                          ? tints.blue.background
+                          : trendVerdictStyle(topic.verdict, lumi).color,
                     ),
                   ],
                 ],
@@ -243,6 +275,7 @@ class _TrendCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

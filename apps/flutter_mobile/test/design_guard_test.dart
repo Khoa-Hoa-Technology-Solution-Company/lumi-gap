@@ -15,7 +15,8 @@ const _themeDir = 'lib/core/theme/';
 /// Corner radii of the shape scale (§11): 4 small, 6 chip, 8 card / button /
 /// input, 12 sheet / dialog, 999 pill / avatar. 2 and 3 are half the height
 /// of a 4–6dp progress bar or drag handle, which is what makes it round.
-const _allowedRadii = {2, 3, 4, 6, 8, 12, 999};
+// 16-24: the rounded cards and tiles of the mobile direction (2026-11-22).
+const _allowedRadii = {2, 3, 4, 6, 8, 12, 14, 16, 20, 24, 999};
 
 /// Icons that read as "AI magic" rather than say what a control does.
 const _aiLookingIcons = [
@@ -124,7 +125,7 @@ void main() {
     // result has no shape yet; each use is listed here with its reason.
     const allowed = {
       'lib/core/widgets/app_loading.dart', // the widget itself
-      'lib/core/router/app_router.dart', // splash while the session restores
+      'lib/features/auth/presentation/auth_startup_screen.dart', // session check at start-up
       'lib/features/gaps/presentation/gap_analysis_overlay.dart', // queueing a job
       'lib/features/trends/components/trends_ai_tab.dart', // LLM running
     };
@@ -148,6 +149,23 @@ void main() {
       if (lines > limit) long.add('$path ($lines lines)');
     }
     expect(long, isEmpty);
+  });
+
+  test('every bottom sheet opens over the navigation bar', () {
+    // Opened on a tab's own navigator, a sheet stops at the floating bar,
+    // which stays bright and tappable beside a modal.
+    final missing = <String>[];
+    for (final file in _libFiles()) {
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        if (!lines[i].contains('showModalBottomSheet')) continue;
+        final call = lines.skip(i).take(6).join(' ');
+        if (!call.contains('useRootNavigator: true')) {
+          missing.add('${_norm(file.path)}:${i + 1}');
+        }
+      }
+    }
+    expect(missing, isEmpty);
   });
 
   test('every TabBar scrolls instead of clipping its labels', () {

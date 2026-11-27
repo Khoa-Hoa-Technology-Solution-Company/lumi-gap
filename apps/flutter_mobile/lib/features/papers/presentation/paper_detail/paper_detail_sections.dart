@@ -8,39 +8,43 @@ import 'package:flutter_mobile/core/widgets/lumi/lumi_card.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
 import 'package:flutter_mobile/features/projects/presentation/add_to_project_sheet.dart';
 
-/// One collapsible section of the paper page: a card with an icon, a title
-/// and its content, so every section looks and aligns the same.
+/// One section of the paper page: a card with an icon, a title and its
+/// content, so every section looks and aligns the same. Always open: a page
+/// of collapsible panels reads as a web page, and each panel cost a tap.
 class PaperSection extends StatelessWidget {
   const PaperSection({
     required this.icon,
     required this.title,
     required this.child,
-    this.initiallyExpanded = true,
     super.key,
   });
 
   final IconData icon;
   final String title;
   final Widget child;
-  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
     final lumi = context.lumi;
     return LumiCard(
-      padding: EdgeInsets.zero,
-      child: Theme(
-        // No extra divider lines around the open tile: the card has a border.
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          initiallyExpanded: initiallyExpanded,
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          expandedCrossAxisAlignment: CrossAxisAlignment.start,
-          leading: Icon(icon, color: lumi.primary, size: 22),
-          title: Text(title, style: Theme.of(context).textTheme.titleSmall),
-          children: [child],
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: lumi.primary, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Semantics(
+                  header: true,
+                  child: Text(title, style: Theme.of(context).textTheme.titleSmall),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
       ),
     );
   }
@@ -70,7 +74,7 @@ class _PaperAbstractSectionState extends State<PaperAbstractSection> {
     if (text.isEmpty) {
       return PaperSection(
         icon: Icons.subject,
-        title: context.t('Abstract & Description'),
+        title: context.t('Abstract & description'),
         child: Text(
           context.t('No abstract description available for this publication.'),
           style: theme.textTheme.bodyLarge?.copyWith(
@@ -84,7 +88,7 @@ class _PaperAbstractSectionState extends State<PaperAbstractSection> {
         ?.copyWith(height: 1.6, color: lumi.foreground);
     return PaperSection(
       icon: Icons.subject,
-      title: context.t('Abstract & Description'),
+      title: context.t('Abstract & description'),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final painter = TextPainter(
@@ -143,11 +147,21 @@ class PaperPublicationDetails extends StatelessWidget {
     topic ??= paper.topics.isEmpty ? null : paper.topics.first;
 
     String? text(String? v) => (v ?? '').trim().isEmpty ? null : v!.trim();
+    // As the web work facts: open when there is a free copy or the status
+    // is anything but "closed". Unknown status and no copy: no row.
+    final oaStatus = text(paper.openAccessStatus)?.toLowerCase();
+    final oaUrl = text(paper.openAccessUrl);
+    final openAccess = oaUrl != null || (oaStatus != null && oaStatus != 'closed')
+        ? context.t('Yes (Open Access)')
+        : oaStatus == 'closed'
+            ? context.t('No')
+            : null;
     final rows = <(String, String?)>[
       (context.t('Year'), paper.publicationYear > 0 ? '${paper.publicationYear}' : null),
       (context.t('Type'), text(paper.paperKind)),
       (context.t('Source'), text(paper.journalName)),
-      (context.t('Language'), text(paper.language)),
+      // Language codes as the web shows them ("EN").
+      (context.t('Language'), text(paper.language)?.toUpperCase()),
       (context.t('Cited by'), formatNumber(paper.citationCount)),
       // i18n-ignore: metric name
       ('FWCI', paper.fwci?.toStringAsFixed(2)),
@@ -157,8 +171,7 @@ class PaperPublicationDetails extends StatelessWidget {
             ? null
             : formatNumber(paper.relatedWorksCount!),
       ),
-      (context.t('Provider'), text(paper.primaryProvider)),
-      (context.t('Open Access'), text(paper.openAccessStatus)?.toUpperCase()),
+      (context.t('Open access'), openAccess),
       // i18n-ignore: identifier name
       ('DOI', text(paper.externalIds.doi)),
     ];
@@ -181,11 +194,8 @@ class PaperPublicationDetails extends StatelessWidget {
             if (value != null) _MetaRow(label: label, value: value),
           const SizedBox(height: 12),
           Text(
-            context.t('TAXONOMY SCOPE'),
-            style: Theme.of(context)
-                .textTheme
-                .labelMedium
-                ?.copyWith(color: lumi.muted),
+            context.t('Taxonomy scope'),
+            style: Theme.of(context).textTheme.titleSmall,
           ),
           const SizedBox(height: 4),
           if (taxonomy.every((r) => r.$2 == null))
@@ -205,6 +215,8 @@ class PaperPublicationDetails extends StatelessWidget {
   }
 }
 
+/// One detail as on a phone: the label above its value, full width, so a
+/// long venue or DOI is never squeezed into a narrow table column.
 class _MetaRow extends StatelessWidget {
   const _MetaRow({required this.label, required this.value});
 
@@ -215,25 +227,20 @@ class _MetaRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 108,
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: context.lumi.foregroundSecondary),
-            ),
+          Text(
+            label,
+            style: theme.textTheme.labelMedium
+                ?.copyWith(color: context.lumi.foregroundSecondary),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: SelectableText(
-              value,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: context.lumi.foreground),
-            ),
+          const SizedBox(height: 2),
+          SelectableText(
+            value,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: context.lumi.foreground),
           ),
         ],
       ),
@@ -252,7 +259,7 @@ class PaperProjectCta extends StatelessWidget {
     final theme = Theme.of(context);
     return PaperSection(
       icon: Icons.chat_bubble_outline,
-      title: context.t('Workspace Interactive Chat'),
+      title: context.t('Project chat'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -269,7 +276,7 @@ class PaperProjectCta extends StatelessWidget {
               showAddToProjectSheet(context, paperId: paperId),
             ),
             icon: const Icon(Icons.add, size: 18),
-            label: Text(context.t('Add to Project Workspace')),
+            label: Text(context.t('Add to project workspace')),
           ),
         ],
       ),

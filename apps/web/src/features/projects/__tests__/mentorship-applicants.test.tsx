@@ -45,7 +45,7 @@ it('renders external academic metadata as text, with no academic quality percent
   await act(async()=>root.render(<ApplicantEvidence evidence={{...evidence,publications:[{title:'<img src=x onerror=alert(1)>',source:'MANUAL',matchedTerms:['Computer vision'],attribution:'SELF_DECLARED'}]} as any}/>));
   expect(host.querySelector('img')).toBeNull();expect(host.textContent).toContain('<img src=x');expect(host.textContent).toContain('Authorship self-declared');expect(host.textContent).not.toContain('%');
 });
-it('sends a support offer without reserving a mentor role',async()=>{
+it('submits an application without choosing a role; the owner assigns primary/secondary after selection',async()=>{
   const project:MentorProjectPreview={id:'project',title:'Research project',summary:'Approved research preview',stage:'PLANNING',discovery:'SEEKING_MENTOR',expertise:[],researchAreas:[],mentoringNeeds:'Weekly feedback',availableRoles:['SECONDARY']};
   api.apply.mockResolvedValue({id:'new-application'});
   await act(async()=>root.render(<QueryClientProvider client={client}><MentorshipApplicationDialog project={project} onClose={vi.fn()}/></QueryClientProvider>));
@@ -55,5 +55,6 @@ it('sends a support offer without reserving a mentor role',async()=>{
     await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(text,value);text.dispatchEvent(new Event('input',{bubbles:true}));});
   }
   await act(async()=>button('Send support offer').click());await tick();
-  expect(api.apply).toHaveBeenCalledWith('project',expect.objectContaining({message:'I can guide your research methodology and analysis'}));
+  expect(api.apply).toHaveBeenCalledWith('project',expect.objectContaining({message:'I can guide your research methodology and analysis',availability:'Feedback once every week'}));
+  expect(api.apply.mock.calls[0]![1]).not.toHaveProperty('mentorRole');
 });

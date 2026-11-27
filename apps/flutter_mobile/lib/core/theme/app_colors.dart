@@ -24,11 +24,13 @@ abstract final class LumiLight {
 }
 
 abstract final class LumiDark {
-  // The web's dark palette (globals.css `.dark`): slate-950 page, slate-900 cards.
-  static const Color background = Color(0xFF020817);
-  static const Color surface = Color(0xFF0F172A);
-  static const Color surfaceMuted = Color(0xFF1E293B);
-  static const Color line = Color(0xFF1E293B);
+  // One step lighter than the web's near-black (slate-950): on a phone the
+  // pure-black page read as "too dark" (2026-11-23). Slate-900 page,
+  // slate-800 cards, slate-700 lines.
+  static const Color background = Color(0xFF0F172A);
+  static const Color surface = Color(0xFF1E293B);
+  static const Color surfaceMuted = Color(0xFF334155);
+  static const Color line = Color(0xFF334155);
   static const Color foreground = Color(0xFFF1F5F9);
   static const Color foregroundSecondary = Color(0xFFCBD5E1);
   static const Color muted = Color(0xFF94A3B8);

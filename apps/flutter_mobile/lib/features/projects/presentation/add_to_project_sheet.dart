@@ -25,6 +25,8 @@ Future<void> showAddToProjectSheet(
   final container = ProviderScope.containerOf(context, listen: false);
   final lumi = context.lumi;
   return showModalBottomSheet<void>(
+    // Over the bottom navigation bar, dimming it too.
+    useRootNavigator: true,
     context: context,
     builder: (sheetContext) => _AddToProjectSheet(
       onPick: (project) async {
