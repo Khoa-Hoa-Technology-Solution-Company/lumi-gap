@@ -51,6 +51,9 @@ it("keeps the prior preference on a failed update and offers the existing error 
   await mount();
   const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Email for mentorship invitations and decisions"]')!;
   await act(async () => toggle.click());
-  expect(toggle.checked).toBe(false);
-  expect(host.querySelector('[role="alert"]')).not.toBeNull();
+  await vi.waitFor(async () => {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(toggle.checked).toBe(false);
+    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+  });
 });
