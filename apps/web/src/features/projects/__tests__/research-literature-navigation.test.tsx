@@ -165,20 +165,20 @@ it("renders exactly 4 primary tabs and preserves existing views", async () => {
   expect(selectedTabLabels(".papers-primary-tabs")).toEqual(["Thư viện"]);
   expect(container.textContent).toContain("COLLABORATIVE_LIBRARY_VIEW");
 
-  // Literature analysis is a single topic-cluster view; the matrix and limitations now live in the
-  // research-gap steps (?tab=gaps&research=matrix|limitations), so there is no analysis sub-navigation.
+  // The analysis subviews preserve existing matrix and limitations links.
   await clickTab(".papers-primary-tabs button", "Phân tích tài liệu");
   expect(selectedTabLabels(".papers-primary-tabs")).toEqual(["Phân tích tài liệu"]);
-  expect(container.querySelector(".analysis-subnav-bar")).toBeNull();
-  expect(container.textContent).toContain("Phân cụm theo chủ đề, phương pháp, câu hỏi nghiên cứu và so sánh bài báo.");
+  expect(container.querySelector(".analysis-subnav-bar")).not.toBeNull();
+  expect(selectedTabLabels(".analysis-subnav-bar")).toEqual(["Chủ đề & So sánh"]);
+  expect(container.textContent).toContain("So sánh các công trình, tổng hợp bằng chứng và xác định hạn chế để phát triển hướng nghiên cứu.");
   expect(container.querySelector('[data-testid="loc"]')?.textContent).toContain("view=clusters");
 });
 
 it.each([
   ["?tab=papers&view=my-proposals", "Hàng đợi đánh giá", "Tôi đã đề xuất", "MY_PROPOSALS_VIEW"],
   // Legacy analysis deep links keep working and land on the literature analysis view.
-  ["?tab=papers&view=matrix", "Phân tích tài liệu", null, "Phân cụm theo chủ đề, phương pháp, câu hỏi nghiên cứu và so sánh bài báo."],
-  ["?tab=papers&view=limitations", "Phân tích tài liệu", null, "Phân cụm theo chủ đề, phương pháp, câu hỏi nghiên cứu và so sánh bài báo."],
+  ["?tab=papers&view=matrix", "Phân tích tài liệu", "Ma trận tài liệu", "Ma trận chưa có dòng nào"],
+  ["?tab=papers&view=limitations", "Phân tích tài liệu", "Hạn chế nghiên cứu", "Hạn chế đã xác định (0)"],
   ["?tab=papers&view=evidence", "Việc của tôi", null, "RESEARCH_EVIDENCE_VIEW"],
 ])("resolves direct deep link %s accurately on initial load", async (search, expectedPrimary, expectedSecondary, expectedContent) => {
   await renderPath(`/projects/proj-1${search}`);

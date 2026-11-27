@@ -276,7 +276,10 @@ it("blocks simultaneous duplicate sends and clears the composer only after succe
   });
   expect(api.comment).toHaveBeenCalledTimes(1);
   expect(host.querySelector("textarea")!.value).toBe("Tiến độ mới của nhóm");
-  expect(host.querySelector("form")?.getAttribute("aria-busy")).toBe("true");
+  await vi.waitFor(async () => {
+    await tick();
+    expect(host.querySelector("form")?.getAttribute("aria-busy")).toBe("true");
+  });
   await act(async () => finish({ id: "saved" })); await tick();
   expect(host.querySelector("textarea")!.value).toBe("");
   expect(host.querySelector("form")?.getAttribute("aria-busy")).toBe("false");

@@ -255,10 +255,13 @@ it("hides archive write actions even on a direct new-task URL", async () => {
 it("falls back to the task board when visiting view=milestones without milestone UI", async () => {
   await render(<WorkspaceTasksPanel projectId="p" readOnly={false} />, "/projects/p?tab=tasks&view=milestones");
   await act(async () => { await vi.dynamicImportSettled(); });
+  await vi.waitFor(async () => {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(container.querySelector(".task-board")).not.toBeNull();
+  });
   expect(container.querySelector(".task-section-nav")).toBeNull();
   expect(container.textContent).not.toContain("Milestones");
   expect(container.textContent).not.toContain("New milestone");
-  expect(container.querySelector(".task-board")).not.toBeNull();
 });
 it("renders discussion content as text and denies mentor editing or team decisions", async () => {
   mocks.discussion!.mockResolvedValue({ thread: { id: "thread", title: "Source question", body: '<img src=x onerror="alert(1)">', category: "MENTOR_QUESTION", status: "OPEN", conclusion: "", author: { id: "owner", name: "Owner" }, link: null, mentorRelationshipId: "relationship", version: 1, replyCount: 0, createdAt: "2026-10-14T10:00:00Z", updatedAt: "2026-10-14T10:00:00Z" }, messages: empty, canResolve: false, canReply: true, canEdit: false });

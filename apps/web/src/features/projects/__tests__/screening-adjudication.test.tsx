@@ -86,8 +86,8 @@ it("resets the draft when navigating to another adjudication round", async () =>
   await act(async () => [...container.querySelectorAll("a")].find(a => a.textContent === "Other packet")!.click()); await settle();
   expect(mocks.adjudication).toHaveBeenLastCalledWith("p", "other"); expect(container.querySelector("textarea")?.value).toBe("");
 });
-it("does not offer direct finalizer assignment for independent rounds; disputes go through the adjudication case", async () => {
-  const round = { id: "r", paperId: "paper", version: 5, active: true, status: "NEEDS_RESOLUTION", finalizer: { id: "", name: "Chưa chỉ định" }, canManage: true, canFinalize: false, myAssignmentId: null, settings: { reviewMode: "INDEPENDENT", workflowVersion: 3, requiredReviewers: 2, resolutionPolicy: "ADJUDICATION" }, reviews: [], assignments: [], assigned: 2, completed: 2, discussionReady: true, finalDecision: null, adjudicators: [{ id: "lecturer", name: "Lecturer", mentor: true, proposer: false }] } as unknown as ScreeningRoundView;
+it.each([5, 6, undefined])("does not offer direct finalizer assignment for modern independent workflow %s", async workflowVersion => {
+  const round = { id: "r", paperId: "paper", version: 5, active: true, status: "NEEDS_RESOLUTION", finalizer: { id: "", name: "Chưa chỉ định" }, canManage: true, canFinalize: false, myAssignmentId: null, settings: { reviewMode: "INDEPENDENT", workflowVersion, requiredReviewers: 2, resolutionPolicy: "ADJUDICATION" }, reviews: [], assignments: [], assigned: 2, completed: 2, discussionReady: true, finalDecision: null, adjudicators: [{ id: "lecturer", name: "Lecturer", mentor: true, proposer: false }] } as unknown as ScreeningRoundView;
   await render(<OwnerActions projectId="p" round={round} people={[]} readOnly={false} />);
   expect(container.querySelector("select")).toBeNull();
   expect(container.textContent).not.toContain("Giao người chốt");

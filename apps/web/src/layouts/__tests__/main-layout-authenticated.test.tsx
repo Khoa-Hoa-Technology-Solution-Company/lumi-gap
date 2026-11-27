@@ -88,9 +88,17 @@ it("places the lecturer workspace only in the avatar menu and opens it", async (
   expect(document.querySelector('[role="menu"] a[href="/projects"]')).not.toBeNull();
   // Close the Workspace menu from inside it (Radix listens on the open content), then open the avatar menu.
   await act(async () => { document.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-  expect(document.querySelector('[role="menu"]')).toBeNull();
+  await vi.waitFor(async () => {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(workspace);
+  });
   const account = host.querySelector<HTMLButtonElement>('button[aria-label="Account"]')!;
   await act(async () => { account.focus(); account.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+  await vi.waitFor(async () => {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect([...document.querySelectorAll('[role="menuitem"]')].some(item => item.textContent === "mentorWorkspace.title")).toBe(true);
+  });
   const mentorItem = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === "mentorWorkspace.title")!;
   await act(async () => mentorItem.click());
   expect(host.textContent).toBe("Mentor workspace");
