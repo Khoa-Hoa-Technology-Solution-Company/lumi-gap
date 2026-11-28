@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { apiSyncQueue, corpusValidationQueue, openAlexIngestQueue } from "../../infrastructure/queue.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { env } from "../../config/env.js";
+import { hasApiKey } from "../api-keys/api-key-pool.js";
 import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import type { TriggerSyncInput } from "./dto/trigger-sync.schema.js";
@@ -55,12 +56,12 @@ export const syncController = {
   },
 
   async planOpenAlexIngestCampaign(req: Request<unknown, unknown, PlanOpenAlexCampaignInput>, res: Response) {
-    if (!env.OPENALEX_API_KEY) {
+    if (!await hasApiKey("OPENALEX")) {
       res.status(409).json({
         success: false,
         error: {
           code: "OPENALEX_API_KEY_REQUIRED",
-          message: "Million-scale OpenAlex campaigns require OPENALEX_API_KEY before planning can run.",
+          message: "Million-scale OpenAlex campaigns require an OpenAlex API key (Admin → API Keys or OPENALEX_API_KEY) before planning can run.",
         },
       });
       return;
@@ -132,12 +133,12 @@ export const syncController = {
   },
 
   async startIngestCampaign(req: Request<{ campaignId: string }>, res: Response) {
-    if (!env.OPENALEX_API_KEY) {
+    if (!await hasApiKey("OPENALEX")) {
       res.status(409).json({
         success: false,
         error: {
           code: "OPENALEX_API_KEY_REQUIRED",
-          message: "Million-scale OpenAlex campaigns require OPENALEX_API_KEY before they can start.",
+          message: "Million-scale OpenAlex campaigns require an OpenAlex API key (Admin → API Keys or OPENALEX_API_KEY) before they can start.",
         },
       });
       return;

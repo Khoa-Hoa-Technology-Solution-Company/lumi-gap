@@ -7,6 +7,7 @@ import { aiJobsQueue } from "../../infrastructure/queue.js";
 import { redis } from "../../infrastructure/redis.js";
 import { cache } from "../../infrastructure/cache.js";
 import { appendOpenAlexIdentity } from "../api-sync/providers/openalex.client.js";
+import { openAlexFetch } from "../api-keys/openalex-key-fetch.js";
 import { resolveResearchClassification } from "../taxonomy/research-classification.service.js";
 import { assertAcademicRelationshipManager } from "./academic-relationship-access.js";
 
@@ -52,7 +53,7 @@ export const mentorshipTopicSuggestions = {
       // Distributed, provider-wide 1 request/second gate. A busy gate retries through BullMQ.
       if (!await redis.set("openalex:text:rate", "1", "EX", 1, "NX")) throw AppError.conflict("Classifier rate limit; retry shortly");
       const url = new URL("https://api.openalex.org/text"); appendOpenAlexIdentity(url); url.searchParams.set("version", "2");
-      const response = await fetch(url, { method: "POST", redirect: "error", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ title: payload.title, abstract: payload.abstract }), signal: AbortSignal.timeout(15_000) });
+      const response = await openAlexFetch(url, { method: "POST", redirect: "error", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ title: payload.title, abstract: payload.abstract }), signal: AbortSignal.timeout(15_000) });
       if (!response.ok) throw new Error("Classifier unavailable");
       // Never log provider bodies: they can contain the submitted private text or credentials.
       result = await this.importSuggestions(responseSchema.parse(await response.json()));

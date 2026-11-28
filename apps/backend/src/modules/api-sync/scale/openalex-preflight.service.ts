@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 
-import { env } from "../../../config/env.js";
 import { AppError } from "../../../common/exceptions/app-error.js";
 import { buildOpenAlexPageUrl, fetchOpenAlexGroupCounts } from "../providers/openalex.client.js";
+import { hasApiKey } from "../../api-keys/api-key-pool.js";
 
 const ELIGIBILITY_FILTER = "has_abstract:true";
 
@@ -13,8 +13,8 @@ const ELIGIBILITY_FILTER = "has_abstract:true";
  */
 export const openAlexPreflightService = {
   async run() {
-    if (!env.OPENALEX_API_KEY) {
-      throw AppError.conflict("OPENALEX_API_KEY is required before OpenAlex preflight can run");
+    if (!await hasApiKey("OPENALEX")) {
+      throw AppError.conflict("An OpenAlex API key (Admin → API Keys or OPENALEX_API_KEY) is required before OpenAlex preflight can run");
     }
 
     const contractUrl = buildOpenAlexPageUrl({

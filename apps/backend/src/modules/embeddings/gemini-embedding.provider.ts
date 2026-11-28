@@ -98,7 +98,7 @@ export class GeminiEmbeddingProvider implements EmbeddingProvider {
       if (isApiKeyError(err)) {
         logger.error({ err }, "gemini API key appears expired/invalid");
         throw AppError.serviceUnavailable(
-          "AI service is unavailable (Gemini API key expired or invalid). Check GEMINI_API_KEY.",
+          "AI service is unavailable (every Gemini API key is expired or invalid). Check Admin → API Keys or GEMINI_API_KEY.",
         );
       }
       throw err;

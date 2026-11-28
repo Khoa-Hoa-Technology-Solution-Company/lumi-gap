@@ -65,3 +65,32 @@ model PlatformEmbeddingConnection {
 
   @@map("platform_embedding_connections")
 }
+
+/**
+ * Pool of platform API keys an admin manages per provider (GEMINI, OPENALEX). Calls use the enabled key with the
+ * lowest `priority` that is not cooling down or marked invalid, and fail over to the next one when the provider rejects
+ * the key. Without a usable pool key the env key (GEMINI_API_KEY / OPENALEX_API_KEY) is used. The key is encrypted
+ * and bound to the row id; only `keyHint` (last 4 characters) is ever returned.
+ */
+model PlatformApiKey {
+  id            String    @id @default(uuid()) @db.Uuid
+  provider      String    @db.VarChar(16)
+  label         String    @db.VarChar(100)
+  encryptedKey  String    @map("encrypted_key")
+  keyHint       String    @map("key_hint") @db.VarChar(8)
+  priority      Int       @default(100)
+  isEnabled     Boolean   @default(true) @map("is_enabled")
+  cooldownUntil DateTime? @map("cooldown_until") @db.Timestamptz(6)
+  invalidAt     DateTime? @map("invalid_at") @db.Timestamptz(6)
+  lastError     String?   @map("last_error")
+  lastErrorAt   DateTime? @map("last_error_at") @db.Timestamptz(6)
+  lastUsedAt    DateTime? @map("last_used_at") @db.Timestamptz(6)
+  successCount  BigInt    @default(0) @map("success_count")
+  failureCount  Int       @default(0) @map("failure_count")
+  createdById   String?   @map("created_by_id") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([provider, priority])
+  @@map("platform_api_keys")
+}

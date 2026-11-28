@@ -45,6 +45,7 @@ import {
 import { literatureRouter } from "../modules/literature/literature.routes.js";
 import { userAiRouter } from "../modules/user-ai/user-ai.routes.js";
 import { platformAiRouter } from "../modules/user-ai/platform-ai.routes.js";
+import { apiKeyRouter } from "../modules/api-keys/api-key.routes.js";
 import { githubRouter } from "../modules/github/github.routes.js";
 import { personalizationRouter } from "../modules/personalization/personalization.routes.js";
 
@@ -94,5 +95,6 @@ apiRouter.use("/admin/tags", tagRouter); // curated tags + rules
 apiRouter.use("/admin/topic-backfill", adminTopicBackfillRouter); // admin-triggered OpenAlex imports
 apiRouter.use("/admin/topic-watches", topicWatchRouter); // entries the daily OpenAlex job keeps following
 apiRouter.use("/admin/ai-connections", platformAiRouter); // platform-wide AI connection (admins)
+apiRouter.use("/admin/api-keys", apiKeyRouter); // platform Gemini/OpenAlex key pool with rotation (admins)
 apiRouter.use("/admin", adminRouter); // /admin/users, /admin/stats — user management
 apiRouter.use("/admin", academicProfileAdminRouter);

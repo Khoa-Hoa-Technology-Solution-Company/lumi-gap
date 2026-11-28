@@ -3,6 +3,7 @@ import type { TagCampaign, TagCampaignPreflight, TagCampaignQuery } from "@trend
 
 import { AppError } from "../../../common/exceptions/app-error.js";
 import { env } from "../../../config/env.js";
+import { hasApiKey } from "../../api-keys/api-key-pool.js";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { readWorkerHeartbeats } from "../../../infrastructure/worker-heartbeat.js";
 import { auditService } from "../../audit/audit.service.js";
@@ -115,7 +116,7 @@ export const tagCampaignService = {
       keywordRulesSkipped: Math.max(0, includedKeywords - keywordQueries),
       excludeRuleCount: rules.filter((rule) => rule.effect === "exclude").length,
       maxTarget: env.TAG_CAMPAIGN_MAX_WORKS,
-      openAlexKeyConfigured: Boolean(env.OPENALEX_API_KEY),
+      openAlexKeyConfigured: await hasApiKey("OPENALEX"),
       ingestWorkerOnline,
       embeddingBacklog: { pendingPapers, papersPerDay: env.EMBED_MAX_PAPERS_PER_RUN },
       liveCampaign: live ? toCampaign(live) : null,
@@ -126,8 +127,8 @@ export const tagCampaignService = {
     if (input.targetUniqueWorks > env.TAG_CAMPAIGN_MAX_WORKS) {
       throw new AppError(400, "TAG_CAMPAIGN_TOO_LARGE", `A tag campaign can sample at most ${env.TAG_CAMPAIGN_MAX_WORKS} works`);
     }
-    if (!env.OPENALEX_API_KEY) {
-      throw new AppError(409, "OPENALEX_API_KEY_REQUIRED", "OpenAlex campaigns require OPENALEX_API_KEY before planning can run");
+    if (!await hasApiKey("OPENALEX")) {
+      throw new AppError(409, "OPENALEX_API_KEY_REQUIRED", "OpenAlex campaigns require an OpenAlex API key (Admin → API Keys or OPENALEX_API_KEY) before planning can run");
     }
     const prisma = getPrisma();
     const provider = await prisma.apiProvider.findUnique({ where: { providerName: "openalex" }, select: { id: true } });
