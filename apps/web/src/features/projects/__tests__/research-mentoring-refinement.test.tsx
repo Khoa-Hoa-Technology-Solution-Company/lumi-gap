@@ -264,7 +264,8 @@ describe("Research Mentoring & Academic Support UI/UX Refinement", () => {
     const card = host.querySelector(".mentor-result")!;
     expect(card.className).not.toContain("has-topic-match");
     expect(card.querySelector(".mentor-profile-primary")?.textContent).toContain("Chuyên môn & hỗ trợ");
-    const profileLink = card.querySelector<HTMLAnchorElement>('a[href="/academics/lect-1"]');
+    const profileLink = [...card.querySelectorAll<HTMLAnchorElement>('a[href="/academics/lect-1"]')]
+      .find(link => link.textContent?.includes("Xem hồ sơ"));
     expect(profileLink?.textContent).toContain("Xem hồ sơ");
     expect(profileLink?.getAttribute("href")).toBe("/academics/lect-1");
     expect(card.textContent).toContain("Chuyên môn & hỗ trợ");
