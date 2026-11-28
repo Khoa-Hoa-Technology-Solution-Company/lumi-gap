@@ -104,6 +104,11 @@ export const researchHomeVi = {
   "Deep Learning": "Học Sâu",
   "Carbon Nanotubes": "Ống Nano Cacbon",
   "Economics": "Economics",
+  // Search suggestions fill the search box with t(value); the corpus is English, so they stay untranslated.
+  "Large Language Models": "Large Language Models",
+  "Object Detection": "Object Detection",
+  "Blockchain": "Blockchain",
+  "Internet of Things": "Internet of Things",
   "Paper type": "Loại bài báo",
   "Paper type, {{count}} selected": "Loại bài báo, đã chọn {{count}}",
   "Sign in to use AI reranking.": "Đăng nhập để dùng AI sắp xếp lại.",

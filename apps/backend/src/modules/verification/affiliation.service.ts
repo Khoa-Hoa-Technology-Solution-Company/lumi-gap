@@ -84,6 +84,7 @@ export const affiliationService = {
     if (!claimedEmail?.verifiedAt) throw AppError.badRequest("Verify ownership of the institutional email first");
     const now = new Date();
     let affiliationId: string | undefined;
+    let alreadyVerified = false;
     await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id}::uuid FOR UPDATE`;
       const liveUser = await tx.user.findUniqueOrThrow({ where: { id: user.id } });
@@ -95,6 +96,36 @@ export const affiliationService = {
       }
       const current = await tx.affiliation.findFirst({ where: { userId: user.id, isPrimary: true, isCurrent: true } });
       const sameInstitution = current?.institutionId === institution.id;
+      // Idempotent: repeated sign-ins (e.g. Google login) must not append another VERIFIED
+      // evidence row or audit entry while a live verification for this institution/email exists.
+      if (current && sameInstitution && current.verificationStatus === "VERIFIED"
+        && current.verificationMethod === verificationMethod
+        && current.institutionDomain === domain
+        && (!current.validUntil || current.validUntil > now)) {
+        const profileNow = await tx.academicProfile.findUnique({ where: { userId: user.id } });
+        const [liveEvidence, openEvidence] = profileNow
+          && profileNow.institutionalEmail?.toLowerCase() === email
+          && profileNow.institutionalEmailVerifiedAt
+          && profileNow.affiliationStatus === "VERIFIED"
+          ? await Promise.all([
+              tx.verificationEvidence.findFirst({
+                where: {
+                  userId: user.id, verificationType: "AFFILIATION", sourceType: verificationMethod,
+                  sourceReference: domain, status: "VERIFIED", supersededAt: null, invalidatedAt: null,
+                  OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+                },
+              }),
+              tx.verificationEvidence.findFirst({
+                where: { userId: user.id, verificationType: "AFFILIATION", status: { in: ["PENDING", "NEEDS_MORE_INFORMATION"] }, supersededAt: null },
+              }),
+            ])
+          : [null, null];
+        if (liveEvidence && !openEvidence) {
+          alreadyVerified = true;
+          affiliationId = current.id;
+          return;
+        }
+      }
       if (options.requireCurrentProfileEmail && !sameInstitution) throw AppError.conflict("Your selected institution changed; refresh before linking affiliation evidence");
       const changedPosition = !sameInstitution ? {
         positionStatus: "NOT_SUBMITTED", roleVerificationStatus: "SELF_DECLARED", roleVerificationMethod: null,
@@ -185,7 +216,7 @@ export const affiliationService = {
         },
       });
     });
-    await auditService.log("AFFILIATION_VERIFIED", {
+    if (!alreadyVerified) await auditService.log("AFFILIATION_VERIFIED", {
       userId: user.id, targetTableName: "affiliations", targetRecordId: affiliationId,
       details: { institutionId: institution.id, domain, method: verificationMethod },
     });
