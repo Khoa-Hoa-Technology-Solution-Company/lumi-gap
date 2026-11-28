@@ -13,7 +13,8 @@ import type { ReadingContextQueryInput } from "./dto/quality.schema.js";
 
 export const READING_CONTEXT_TTL_SECONDS = 6 * 3600;
 // v3: related papers follow a requested topic; CAGR guard; partialYear.
-const READING_CONTEXT_VERSION = "v3";
+// v4: related papers are deduplicated by normalized title (one work indexed twice, e.g. preprint + venue).
+const READING_CONTEXT_VERSION = "v4";
 /** Below this many papers in the base year a 3-year CAGR is noise (e.g. 1 → 9 papers = +108%/year). */
 export const MIN_CAGR_BASE_COUNT = 5;
 const MAX_RELATED = 5;
@@ -27,14 +28,45 @@ type Candidate = Omit<Related, "reason">;
 const normalizeTopic = (value: string) => value.normalize("NFKC").replace(/\s+/gu, " ").trim().toLowerCase();
 
 /**
+ * One work is often indexed as two OpenAlex records (arXiv preprint + venue version, different years and
+ * ids). Compare titles letters-and-digits only so both records count as the same reading suggestion.
+ */
+export const relatedTitleKey = (title: string) => title.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+/** Short generic titles ("Introduction", "Editorial") are shared by unrelated papers, so they never merge. */
+const MIN_DEDUP_TITLE_KEY_LENGTH = 20;
+
+/** Tracks ids and title keys already suggested; `claim` returns false for a repeat of either. */
+function createRelatedSeen(initial: Array<{ id: string; title: string }> = []) {
+  const ids = new Set<string>();
+  const titles = new Set<string>();
+  const claim = (item: { id: string; title: string }) => {
+    const fullKey = relatedTitleKey(item.title);
+    const key = fullKey.length >= MIN_DEDUP_TITLE_KEY_LENGTH ? fullKey : "";
+    if (ids.has(item.id) || (key && titles.has(key))) return false;
+    ids.add(item.id);
+    if (key) titles.add(key);
+    return true;
+  };
+  for (const item of initial) claim(item);
+  return claim;
+}
+
+/**
  * Pick at most five papers to read next: newer work on the same topic, the most cited work on the same
  * topic, then the closest semantic neighbours. Deterministic for a given neighbour list.
  */
 export function pickRelatedPapers(paperYear: number | null, candidates: Candidate[]): Related[] {
   const bySimilarity = (a: Candidate, b: Candidate) => b.similarity - a.similarity || a.id.localeCompare(b.id);
   const sameTopic = candidates.filter((item) => item.sharedTopics.length).sort(bySimilarity);
-  const picked = new Set<string>();
-  const take = (items: Candidate[], count: number, reason: Related["reason"]) => items.filter((item) => !picked.has(item.id)).slice(0, count).map((item) => { picked.add(item.id); return { ...item, reason }; });
+  const claim = createRelatedSeen();
+  const take = (items: Candidate[], count: number, reason: Related["reason"]) => {
+    const taken: Related[] = [];
+    for (const item of items) {
+      if (taken.length >= count) break;
+      if (claim(item)) taken.push({ ...item, reason });
+    }
+    return taken;
+  };
   const newer = paperYear === null ? [] : take(sameTopic.filter((item) => item.publicationYear !== null && item.publicationYear > paperYear), 2, "same_topic_newer");
   const mostCited = take([...sameTopic].sort((a, b) => (b.citationCount ?? 0) - (a.citationCount ?? 0) || bySimilarity(a, b)), 2, "same_topic_most_cited");
   const neighbours = take([...candidates].sort(bySimilarity), MAX_RELATED - newer.length - mostCited.length, "semantic_neighbor");
@@ -81,12 +113,11 @@ async function topicFallback(paper: { id: string; publicationYear: number | null
 /** Fill the remaining slots from topic peers: newer work first (up to two newer in total), then the most cited. */
 export function fillFromTopicPeers(picked: Related[], fallback: { newer: Candidate[]; mostCited: Candidate[] }): Related[] {
   const result = [...picked];
-  const seen = new Set(result.map((item) => item.id));
+  const claim = createRelatedSeen(result);
   const add = (items: Candidate[], reason: Related["reason"], until: () => boolean) => {
     for (const item of items) {
       if (result.length >= MAX_RELATED || until()) return;
-      if (seen.has(item.id)) continue;
-      seen.add(item.id);
+      if (!claim(item)) continue;
       result.push({ ...item, reason });
     }
   };
@@ -116,7 +147,8 @@ async function relatedPapers(paper: { id: string; publicationYear: number | null
   }
   if (picked.length >= MAX_RELATED) return picked;
   // Most papers have no embedding yet; topic peers still give a useful reading list.
-  return fillFromTopicPeers(picked, await topicFallback(paper, ownTopics.slice(0, FALLBACK_TOPICS), MAX_RELATED));
+  // Fetch a few spare peers: title deduplication can drop duplicates and still fill every slot.
+  return fillFromTopicPeers(picked, await topicFallback(paper, ownTopics.slice(0, FALLBACK_TOPICS), MAX_RELATED * 2));
 }
 
 /** Exact known topic (case-insensitive) first; otherwise one of this paper's own topics containing the text. */

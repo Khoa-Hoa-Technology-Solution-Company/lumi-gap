@@ -22,7 +22,8 @@ import { api } from "@/services/api-client";
 import { useCreateGapCandidate } from "@/features/gaps";
 import { compactFacets, FacetInputs } from "@/features/gap-closure";
 
-type SearchPaper = { _id: string; title: string; publicationYear?: number; journalName?: string };
+/** Shape returned by GET /papers: the PostgreSQL id is `id` (there is no `_id`). */
+type SearchPaper = { id: string; title: string; publicationYear?: number; journalName?: string };
 const gapTypes: ResearchGapType[] = ["COVERAGE_GAP", "EMPIRICAL_VALIDATION_GAP", "CONTRADICTORY_EVIDENCE_GAP", "CONTEXT_GAP", "METHODOLOGICAL_GAP", "OUTCOME_GAP", "TEMPORAL_GAP", "EMERGING_GAP", "MISSING_CONNECTION_GAP", "ASSUMPTION_GAP", "OTHER"];
 
 function usePaperSearch(query: string) {
@@ -130,7 +131,7 @@ function CorpusWorkspace({ corpusId }: { corpusId: string }) {
     event.preventDefault();
     if (!selected) return;
     try {
-      await addPaper.mutateAsync({ paperId: selected._id, evidence });
+      await addPaper.mutateAsync({ paperId: selected.id, evidence });
       toast.success("Paper added to corpus");
       setSelected(null); setQuery(""); setEvidence({});
     } catch { toast.error("Could not add this paper"); }
@@ -138,7 +139,7 @@ function CorpusWorkspace({ corpusId }: { corpusId: string }) {
   return <div className="space-y-8">
     <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-2xl font-bold">{data.corpus.name}</h2><Badge variant="outline">{data.corpus.status}</Badge></div><p className="mt-2 text-sm text-muted-foreground">{data.corpus.topic}</p></div><CandidateGapDialog corpus={data.corpus} /></header>
     <section className="rounded-xl border bg-card p-5"><h3 className="font-semibold">Add a LumiGap paper</h3><p className="mt-1 text-sm text-muted-foreground">Record only evidence present in the paper. Leave unknown fields empty.</p><form onSubmit={submit} className="mt-4 space-y-4">
-      <div className="relative space-y-2"><Label htmlFor="corpus-paper-search">Search papers</Label><Input id="corpus-paper-search" value={selected ? selected.title : query} onChange={(event) => { setSelected(null); setQuery(event.target.value); }} placeholder="Search by paper title" />{!selected && query.length >= 3 ? <div className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-lg border bg-popover shadow-lg">{searching ? <p className="p-3 text-sm text-muted-foreground">Searching...</p> : results.length ? results.map((paper) => <button type="button" key={paper._id} onClick={() => setSelected(paper)} className="block w-full border-b px-3 py-2 text-left text-sm last:border-0 hover:bg-muted"><span className="font-medium">{paper.title}</span><span className="ml-2 text-xs text-muted-foreground">{paper.publicationYear ?? "Year unavailable"}</span></button>) : <p className="p-3 text-sm text-muted-foreground">No papers found</p>}</div> : null}</div>
+      <div className="relative space-y-2"><Label htmlFor="corpus-paper-search">Search papers</Label><Input id="corpus-paper-search" value={selected ? selected.title : query} onChange={(event) => { setSelected(null); setQuery(event.target.value); }} placeholder="Search by paper title" />{!selected && query.length >= 3 ? <div className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-lg border bg-popover shadow-lg">{searching ? <p className="p-3 text-sm text-muted-foreground">Searching...</p> : results.length ? results.map((paper) => <button type="button" key={paper.id} onClick={() => setSelected(paper)} className="block w-full border-b px-3 py-2 text-left text-sm last:border-0 hover:bg-muted"><span className="font-medium">{paper.title}</span><span className="ml-2 text-xs text-muted-foreground">{paper.publicationYear ?? "Year unavailable"}</span></button>) : <p className="p-3 text-sm text-muted-foreground">No papers found</p>}</div> : null}</div>
       <div className="grid gap-3 sm:grid-cols-2">{(["methodology", "context", "outcome", "researchType", "limitations", "futureWork"] as const).map((key) => <div key={key} className="space-y-1.5"><Label htmlFor={`evidence-${key}`} className="capitalize">{key === "researchType" ? "Research type" : key === "futureWork" ? "Future work" : key}</Label><Input id={`evidence-${key}`} value={evidence[key] ?? ""} onChange={(event) => setEvidence((current) => ({ ...current, [key]: event.target.value }))} /></div>)}</div>
       <Button type="submit" size="sm" disabled={!selected || addPaper.isPending}>{addPaper.isPending ? "Adding..." : "Add paper"}</Button>
     </form></section>

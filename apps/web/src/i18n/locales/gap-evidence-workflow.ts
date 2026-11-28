@@ -176,6 +176,9 @@ export const gapEvidenceWorkflowStrings = {
   "No corpus probe attached. AI-derived hypothesis.":
     "No corpus probe attached. AI-derived hypothesis.",
   "No research opportunities match your search": "No research opportunities match your search",
+  "No research opportunities yet": "No research opportunities yet",
+  "Enter a research topic above and review the evidence papers to run your first grounded gap analysis.":
+    "Enter a research topic above and review the evidence papers to run your first grounded gap analysis.",
   "No suggestions yet. Click to generate 2-4 research directions for this gap.":
     "No suggestions yet. Click to generate 2-4 research directions for this gap.",
   "No supporting papers attached": "No supporting papers attached",
@@ -609,6 +612,9 @@ export const gapEvidenceWorkflowViStrings: Record<
   "No corpus probe attached. AI-derived hypothesis.":
     "Chưa có kiểm tra trên kho dữ liệu. Đây là giả thuyết do AI đề xuất.",
   "No research opportunities match your search": "Không có cơ hội nghiên cứu phù hợp",
+  "No research opportunities yet": "Chưa có cơ hội nghiên cứu nào",
+  "Enter a research topic above and review the evidence papers to run your first grounded gap analysis.":
+    "Nhập chủ đề nghiên cứu ở trên và duyệt các bài báo làm bằng chứng để chạy phân tích khoảng trống đầu tiên.",
   "No suggestions yet. Click to generate 2-4 research directions for this gap.":
     "Chưa có đề xuất. Nhấn nút để tạo 2-4 hướng nghiên cứu cho cơ hội này.",
   "No supporting papers attached": "Chưa có bài báo hỗ trợ",

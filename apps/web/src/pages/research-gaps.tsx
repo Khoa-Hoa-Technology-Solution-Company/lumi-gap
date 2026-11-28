@@ -280,8 +280,18 @@ export function ResearchGapsPage() {
     });
   }, []);
 
+  // A user with no gaps yet must not be told that their (empty) search matched nothing.
+  const hasActiveFilters = Boolean(clientSearch.trim() || searchTopic.trim()) || sourceFilter !== "all" || minConfidence > 0 || filterStatus !== "active";
+  const clearFilters = () => {
+    setClientSearch("");
+    setSearchTopic("");
+    setSourceFilter("all");
+    setMinConfidence(0);
+    setFilterStatus("active");
+  };
+
   // The API searches and sorts the entire result set before pagination.
-  const rawGaps = showShortlistedOnly ? shortlistedGaps : gapsData?.data ?? [];
+  const rawGaps =showShortlistedOnly ? shortlistedGaps : gapsData?.data ?? [];
   const processedGaps = [...rawGaps];
 
   if (showShortlistedOnly && debouncedSearch.trim()) {
@@ -554,12 +564,16 @@ export function ResearchGapsPage() {
           <h3 className="text-slate-900 dark:text-white font-bold text-base">
             {showShortlistedOnly
               ? t("Your shortlist is empty")
-              : t("No research opportunities match your search")}
+              : hasActiveFilters
+                ? t("No research opportunities match your search")
+                : t("No research opportunities yet")}
           </h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto">
             {showShortlistedOnly
               ? t("Star interesting research opportunities from the main list. This shortlist is saved on this device.")
-              : t("We couldn't find matching results. Try clearing the search or lowering the confidence threshold.")}
+              : hasActiveFilters
+                ? t("We couldn't find matching results. Try clearing the search or lowering the confidence threshold.")
+                : t("Enter a research topic above and review the evidence papers to run your first grounded gap analysis.")}
           </p>
           <div className="pt-2">
             {showShortlistedOnly ? (
@@ -571,16 +585,16 @@ export function ResearchGapsPage() {
               >
                 {t("Show all opportunities")}
               </Button>
-            ) : (
+            ) : hasActiveFilters ? (
               <Button
                 variant="outline"
                 size="sm"
                 className="h-8 border-slate-200 dark:border-slate-800 text-xs font-semibold"
-                onClick={() => setClientSearch("")}
+                onClick={clearFilters}
               >
                 {t("Clear search")}
               </Button>
-            )}
+            ) : null}
           </div>
         </div>
       )}

@@ -87,10 +87,10 @@ export const paperDetailIaStrings = {
     "This score is calculated deterministically from citation counts, field-weighted citation impact (FWCI), publication recency, and metadata field presence. It does not invoke a generative LLM.",
   "This work cites": "This work cites",
   "Uploader reward:": "Uploader reward:",
-  "View citing reports": "Xem các báo cáo trích dẫn",
-  "View original English": "Xem bản gốc Tiếng Anh",
-  "Work facts": "Thông tin tác phẩm",
-  "Write a review": "Viết đánh giá",
+  "View citing reports": "View citing reports",
+  "View original English": "View original English",
+  "Work facts": "Work facts",
+  "Write a review": "Write a review",
 };
 
 export const paperDetailIaViStrings: Record<keyof typeof paperDetailIaStrings, string> = {

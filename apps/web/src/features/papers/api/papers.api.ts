@@ -95,8 +95,11 @@ export const papersApi = {
   async references(id: string): Promise<{ references: PaperRef[]; totalReferenced?: number; inCorpus: number }> {
     const res = await api.get(`/papers/${id}/references`);
     const data = res.data.data;
-    // The current API returns an array of indexed works, without a source total.
-    if (Array.isArray(data)) return { references: data, inCorpus: data.length };
+    // `data` is the array of indexed works; `meta.totalReferenced` is how many works the source lists.
+    if (Array.isArray(data)) {
+      const total = res.data.meta?.totalReferenced;
+      return { references: data, inCorpus: data.length, totalReferenced: typeof total === "number" ? total : undefined };
+    }
     if (!Array.isArray(data?.references)) throw new Error("Dữ liệu tài liệu trích dẫn không hợp lệ.");
     return data;
   },

@@ -184,7 +184,7 @@ export function FormatCheckerPage() {
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {history.map((h: any) => (
                     <div
-                      key={h._id}
+                      key={h.id}
                       onClick={() => setCurrentResult(h)}
                       className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer flex items-center justify-between transition-colors"
                     >

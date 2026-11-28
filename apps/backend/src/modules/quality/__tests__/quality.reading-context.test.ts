@@ -136,6 +136,24 @@ describe("related paper selection", () => {
     expect(picked).toHaveLength(5);
     expect(new Set(picked.map((item) => item.id)).size).toBe(5);
   });
+  it("suggests one work only once when it is indexed twice under different ids and years", () => {
+    const bert = (id: string, year: number, title: string) => ({ id, title, publicationYear: year, citationCount: 100, similarity: 0, sharedTopics: ["T"] });
+    const fallback = {
+      newer: [],
+      mostCited: [
+        bert("bert-2019", 2019, "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"),
+        bert("bert-2018", 2018, "BERT: pre-training of deep bidirectional transformers for language understanding."),
+        bert("other", 2017, "Attention Is All You Need"),
+      ],
+    };
+    expect(fillFromTopicPeers([], fallback).map((item) => item.id)).toEqual(["bert-2019", "other"]);
+    const picked = pickRelatedPapers(2010, fallback.mostCited.map((item, index) => ({ ...item, similarity: 0.9 - index / 10 })));
+    expect(picked.map((item) => item.id)).toEqual(["bert-2019", "other"]);
+  });
+  it("keeps different papers that share a short generic title", () => {
+    const generic = (id: string) => ({ id, title: "Introduction", publicationYear: 2020, citationCount: 1, similarity: 0, sharedTopics: ["T"] });
+    expect(fillFromTopicPeers([], { newer: [], mostCited: [generic("a"), generic("b")] }).map((item) => item.id)).toEqual(["a", "b"]);
+  });
   it("labels only semantic neighbours when nothing shares a topic or the year is unknown", () => {
     expect(pickRelatedPapers(null, [candidate("a", 2024, 10, 0.9)]).map((item) => item.reason)).toEqual(["semantic_neighbor"]);
   });
