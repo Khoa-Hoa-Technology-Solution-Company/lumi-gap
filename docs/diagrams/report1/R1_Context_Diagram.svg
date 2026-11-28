@@ -138,5 +138,5 @@
 <line x1="400" y1="1148" x2="450" y2="1148" stroke="#1F4E79" stroke-width="2.2"/><text x="460" y="1153" font-size="14" fill="#1F4E79">data sent to LumiGap</text>
 <line x1="640" y1="1148" x2="690" y2="1148" stroke="#9C3D10" stroke-width="2.2"/><text x="700" y="1153" font-size="14" fill="#9C3D10">data sent by LumiGap</text>
 <text x="60" y="1180" font-size="14" fill="#555">Arrows carry data, not actions. Users work through the web app or the mobile app. Internal parts (clients, API, workers,</text>
-<text x="60" y="1200" font-size="14" fill="#555">AI reviewer, compiler, database, queue) are inside the black box and not shown. Source: code on main 40b22ffc.</text>
+<text x="60" y="1200" font-size="14" fill="#555">AI reviewer, compiler, database, queue) are inside the black box and not shown. Source: code on main 8f638288.</text>
 </svg>

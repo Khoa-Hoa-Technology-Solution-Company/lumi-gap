@@ -114,5 +114,5 @@
 <polyline points="1040.0,790.0 1480.0,790.0 1480.0,550.0" fill="none" stroke="#44546A" stroke-width="1.7"/>
 <polygon points="1480.0,550.0 1474.0,563.0 1486.0,563.0" fill="#44546A"/>
 <text x="1375.0" y="614.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#7A2E0E">HTTPS (LLM, OpenAlex, SMTP)</text>
-<text x="40.0" y="874.5" font-size="13" text-anchor="start" font-weight="normal" fill="#555">Arrows point from the caller. sync = request/response; async = queued job or event stream. Source: code on main 40b22ffc (docker-compose.yml, apps/*).</text>
+<text x="40.0" y="874.5" font-size="13" text-anchor="start" font-weight="normal" fill="#555">Arrows point from the caller. sync = request/response; async = queued job or event stream. Source: code on main 8f638288 (docker-compose.yml, apps/*).</text>
 </svg>
