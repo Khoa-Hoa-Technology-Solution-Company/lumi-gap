@@ -2,6 +2,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import type { StructuredSubmissionInput } from "@trend/shared-types";
+import { refreshMentorReviewQueries } from "@/features/reviews/hooks/use-reviews";
 import { submissionsApi, type MentorFeedbackPayload } from "../api/submissions.api";
 
 export function useSubmissions(projectId?: string) {
@@ -32,9 +33,8 @@ export function useCreateSubmission() {
     mutationFn: ({ input, file }: { input: StructuredSubmissionInput & { mentorId?: string; contentSnapshot?: string; message?: string }; file?: File }) =>
       submissionsApi.create(input, file),
     onSuccess: () => {
-      client.invalidateQueries({ queryKey: ["submissions"] });
-      client.invalidateQueries({ queryKey: ["workspace-tasks"] });
-      client.invalidateQueries({ queryKey: ["mentor-workspace"] });
+      void refreshMentorReviewQueries(client);
+      void client.invalidateQueries({ queryKey: ["mentor-send-context"] });
     },
   });
 }
@@ -83,23 +83,31 @@ export function useCreateSubmissionVersion(id: string) {
 export function useAiPreReviews(id: string, enabled = true) {
   const actorId = useAuthStore(state => state.user?.id);
   const client = useQueryClient();
-  // Pre-reviews run in a worker; poll while the latest one is still queued or processing.
-  const query = useQuery({ queryKey: ["submissions", id, "ai-pre-reviews", actorId], queryFn: ({ signal }) => submissionsApi.aiPreReviews(id, signal), enabled: Boolean(id) && enabled, refetchInterval: (query) => ["QUEUED", "PROCESSING"].includes(query.state.data?.[0]?.status ?? "") ? 3000 : false });
-  const latestId = query.data?.[0]?.id;
-  const latestStatus = query.data?.[0]?.status;
+  // Pre-reviews run in a worker; poll while ANY job on this submission is still queued or processing, stop once terminal.
+  const query = useQuery({
+    queryKey: ["submissions", id, "ai-pre-reviews", actorId],
+    queryFn: ({ signal }) => submissionsApi.aiPreReviews(id, signal),
+    enabled: Boolean(id) && enabled,
+    refetchInterval: (q) =>
+      q.state.data?.some((item) => item.status === "QUEUED" || item.status === "PROCESSING") ? 3000 : false,
+  });
+  const latestCompletedId = query.data?.find((item) => item.status === "COMPLETED")?.id;
   useEffect(() => {
-    if (!enabled || latestStatus !== "COMPLETED") return;
+    if (!enabled || !latestCompletedId) return;
     void client.invalidateQueries({ queryKey: ["submissions", id, "detail"] });
     void client.invalidateQueries({ queryKey: ["submissions", "list"] });
-  }, [client, id, enabled, latestId, latestStatus]);
+  }, [client, id, enabled, latestCompletedId]);
   return query;
 }
 
 export function useRunAiPreReview(id: string) {
   const client = useQueryClient();
-  return useMutation({ mutationFn: () => submissionsApi.runAiPreReview(id), onSuccess: () => {
-    client.invalidateQueries({ queryKey: ["submissions", id, "ai-pre-reviews"] });
-  } });
+  return useMutation({
+    mutationFn: (revisionId?: string) => submissionsApi.runAiPreReview(id, revisionId),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["submissions", id, "ai-pre-reviews"] });
+    },
+  });
 }
 
 export function useSubmissionHistory(id: string, enabled = true) {

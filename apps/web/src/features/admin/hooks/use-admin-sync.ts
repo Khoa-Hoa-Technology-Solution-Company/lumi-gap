@@ -26,10 +26,11 @@ export function useTriggerSync() {
   return useMutation({
     mutationFn: (input: TriggerSyncInput) => adminApi.triggerSync(input),
     onSuccess: () => {
-      // Đợi worker chạy nền 2 giây rồi mới làm mới query để lấy kết quả mới nhất
+      void qc.invalidateQueries({ queryKey: ["admin", "sync-runs"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "stats"] });
       setTimeout(() => {
-        qc.invalidateQueries({ queryKey: ["admin", "sync-runs"] });
-        qc.invalidateQueries({ queryKey: ["admin", "stats"] });
+        void qc.invalidateQueries({ queryKey: ["admin", "sync-runs"] });
+        void qc.invalidateQueries({ queryKey: ["admin", "stats"] });
       }, 2000);
     },
   });

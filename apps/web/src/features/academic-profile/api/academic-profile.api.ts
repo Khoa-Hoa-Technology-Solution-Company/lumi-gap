@@ -163,12 +163,16 @@ export const academicProfileApi = {
     const response = await api.post(API_ROUTES.academicProfiles.institutionalEmailVerify, { code, email });
     return response.data.data;
   },
-  async publicProfile(userId: string): Promise<PublicAcademicProfile> {
-    const response = await api.get(API_ROUTES.academicProfiles.public(userId));
+  async publicProfile(userId: string, options?: { preview?: "public" }): Promise<PublicAcademicProfile> {
+    const response = await api.get(API_ROUTES.academicProfiles.public(userId), {
+      params: options?.preview ? { preview: options.preview } : undefined,
+    });
     return response.data.data;
   },
-  async publicProfileByHandle(handle: string): Promise<PublicAcademicProfile> {
-    const response = await api.get(API_ROUTES.academicProfiles.byHandle(handle));
+  async publicProfileByHandle(handle: string, options?: { preview?: "public" }): Promise<PublicAcademicProfile> {
+    const response = await api.get(API_ROUTES.academicProfiles.byHandle(handle), {
+      params: options?.preview ? { preview: options.preview } : undefined,
+    });
     return response.data.data;
   },
   async setPublicHandle(handle: string): Promise<AcademicProfile> {
@@ -211,12 +215,30 @@ export const academicProfileApi = {
     const response = await api.get(API_ROUTES.academicProfiles.lecturers, { params });
     return { data: response.data.data, meta: response.data.meta };
   },
-  async listVerifications(status = "ALL", page = 1, pageSize = 10): Promise<AcademicVerificationListResponse> {
-    const response = await api.get(API_ROUTES.admin.academicVerifications, { params: { status, page, pageSize } });
+  async listVerifications(
+    status = "ALL",
+    page = 1,
+    pageSize = 10,
+    options?: { search?: string; verificationType?: "ALL" | "POSITION" | "AFFILIATION"; sortOrder?: "asc" | "desc" },
+  ): Promise<AcademicVerificationListResponse> {
+    const response = await api.get(API_ROUTES.admin.academicVerifications, {
+      params: {
+        status,
+        page,
+        pageSize,
+        ...(options?.search?.trim() ? { search: options.search.trim() } : {}),
+        ...(options?.verificationType && options.verificationType !== "ALL" ? { verificationType: options.verificationType } : {}),
+        ...(options?.sortOrder ? { sortOrder: options.sortOrder } : {}),
+      },
+    });
     return { data: response.data.data, meta: response.data.meta };
   },
   async decide(requestId: string, input: AcademicVerificationDecision): Promise<AcademicProfile> {
     const response = await api.patch(`${API_ROUTES.admin.academicVerifications}/${requestId}`, input);
+    return response.data.data;
+  },
+  async revoke(requestId: string, input: { reason: string; note?: string }): Promise<AcademicProfile> {
+    const response = await api.post(`${API_ROUTES.admin.academicVerifications}/${requestId}/revoke`, input);
     return response.data.data;
   },
   async verificationDetails(requestId: string): Promise<AdminAcademicVerificationItem> {

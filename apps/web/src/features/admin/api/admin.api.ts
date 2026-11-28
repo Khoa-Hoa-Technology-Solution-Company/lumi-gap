@@ -1,4 +1,19 @@
-import type { CorpusValidationRun, CorpusValidationRunState, SyncOptions } from "@trend/shared-types";
+import type {
+  AdminAiOperationsQuery,
+  AdminAiOperationsResponse,
+  AdminApiProviderSettingItem,
+  AdminAuditLogsQuery,
+  AdminAuditLogsResponse,
+  AdminInstitutionSettingItem,
+  AdminPlatformSettings,
+  AdminStats,
+  AdminWorkersFleetResponse,
+  CorpusValidationRun,
+  CorpusValidationRunState,
+  SyncOptions,
+  UpdateAdminApiProviderRequest,
+  UpdateAdminInstitutionRequest,
+} from "@trend/shared-types";
 import { api } from "@/services/api-client";
 import { API_ROUTES } from "@/constants";
 
@@ -156,20 +171,32 @@ export const adminApi = {
     const res = await api.get(API_ROUTES.admin.corpusValidationRun(validationRunId));
     return res.data.data as CorpusValidationRun;
   },
-  async getStats() {
+  async getStats(): Promise<AdminStats> {
     const res = await api.get(API_ROUTES.admin.stats);
-    return res.data.data;
+    return res.data.data as AdminStats;
   },
-  async getAuditLogs(params?: { search?: string; page?: number; pageSize?: number }) {
+  async getAuditLogs(params?: AdminAuditLogsQuery): Promise<AdminAuditLogsResponse> {
     const res = await api.get(API_ROUTES.admin.auditLogs, { params });
-    return res.data;
+    return { data: res.data.data, meta: res.data.meta };
   },
-  async getWorkers() {
+  async getWorkers(): Promise<AdminWorkersFleetResponse> {
     const res = await api.get(API_ROUTES.admin.workers);
-    return res.data.data;
+    return res.data.data as AdminWorkersFleetResponse;
   },
-  async getSettings() {
+  async getAiOperations(params?: AdminAiOperationsQuery): Promise<AdminAiOperationsResponse> {
+    const res = await api.get(API_ROUTES.admin.aiOperations, { params });
+    return res.data.data as AdminAiOperationsResponse;
+  },
+  async getSettings(): Promise<AdminPlatformSettings> {
     const res = await api.get(API_ROUTES.admin.settings);
-    return res.data.data;
+    return res.data.data as AdminPlatformSettings;
+  },
+  async updateInstitution(id: string, input: UpdateAdminInstitutionRequest): Promise<AdminInstitutionSettingItem> {
+    const res = await api.patch(API_ROUTES.admin.settingInstitution(id), input);
+    return res.data.data as AdminInstitutionSettingItem;
+  },
+  async updateApiProvider(id: string, input: UpdateAdminApiProviderRequest): Promise<AdminApiProviderSettingItem> {
+    const res = await api.patch(API_ROUTES.admin.settingApiProvider(id), input);
+    return res.data.data as AdminApiProviderSettingItem;
   },
 };

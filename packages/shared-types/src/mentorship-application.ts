@@ -5,17 +5,38 @@ export interface MentorshipApplicationInput {
   message: string; mentorRole?: MentorRole; areas?: string[]; methodologies?: string[]; capabilities?: string[]; availability?: string; idempotencyKey: string;
 }
 export interface LecturerMatchEvidence {
-  method: "STRUCTURED_TERMS_V1";
+  method: "STRUCTURED_TERMS_V1" | "HYBRID_EVIDENCE_V2";
   profileVisible: boolean;
   verifiedLecturer: boolean;
-  topics: Array<{ term: string; source: "PROFILE_DECLARATION" | "APPLICATION_DECLARATION" | "PUBLICATION_TITLE" }>;
+  topics: Array<{ term: string; source: import("./mentor-recommendation.js").MentorEvidenceSourceKind }>;
   methodologies: string[];
   mentoringNeeds: string[];
-  publications: Array<{ title: string; year?: number; source: string; href?: string; matchedTerms: string[]; attribution: "LINKED_IDENTITY" | "SELF_DECLARED" }>;
+  publications: Array<{
+    paperId?: string;
+    title: string;
+    year?: number;
+    authors?: string[];
+    venue?: string;
+    doi?: string;
+    source: string;
+    href?: string;
+    matchedTerms: string[];
+    relatedNeedIds?: string[];
+    evidenceScope?: import("./mentor-recommendation.js").PublicationEvidenceScope;
+    evidenceExcerpt?: string;
+    explanation?: string;
+    attribution: import("./mentor-recommendation.js").PublicationAttributionStatus;
+  }>;
   identities: Array<{ provider: string; href: string; verified: boolean }>;
   missing: string[];
+  missingReasons?: import("./mentor-recommendation.js").MentorUncertaintyItem[];
   requestedTopics: string[];
   requestedMethodologies: string[];
+  recommendation?: import("./mentor-recommendation.js").MentorRecommendationSummary;
+  evidenceItems?: import("./mentor-recommendation.js").MentorEvidenceItem[];
+  publicationEvidence?: import("./mentor-recommendation.js").PublicationExpertiseEvidence[];
+  canGenerateAiExplanation?: boolean;
+  aiExplanationDisabledReason?: string;
 }
 export interface MentorshipApplicationView {
   id: string; projectId: string; project: MentorProjectPreview;

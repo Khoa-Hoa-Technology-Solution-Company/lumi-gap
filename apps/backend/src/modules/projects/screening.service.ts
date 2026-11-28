@@ -5,7 +5,7 @@ import { loadManuscriptGovernanceMap } from "../workspaces/manuscript-governance
 import { citationKey, sourceText } from "../workspaces/manuscript-source.js";
 import { proposeUnresolvedClosure, respondUnresolvedClosure, updateConsensusEvaluation, maintainProjectConsensus, consensusPending, usesTwoReviewerConsensus } from "./screening-consensus.js";
 import { invalidateDependentStages } from "./screening-reopen.js";
-import { screeningFullTextAvailable } from "./screening-fulltext.js";
+import { evaluatePaperFullTextStatus, screeningFullTextAvailable } from "./screening-fulltext.js";
 import { screeningCaseService } from "./screening-case.service.js";
 import { reconcileScreeningObligations, screeningObligationDtos } from "./screening-obligations.js";
 import { acceptedScreeningPapers } from "./screening-accepted.js";
@@ -541,7 +541,7 @@ export const screeningService = {
       const where = { projectId: c.project.id, paperId: { in: ids } };
       const [links, total, people, settings] = await Promise.all([c.tx.projectPaper.findMany({ where: sortedPage ? { projectId: c.project.id, paperId: { in: sortedPage } } : where, orderBy: [{ createdAt: query.sort === "oldest" ? "asc" : "desc" }, { id: "desc" }], ...(sortedPage ? {} : { skip: (query.page-1)*query.pageSize, take: query.pageSize }) }), c.tx.projectPaper.count({ where }), screeningPeople(c), screeningSettings(c)]);
       const [papers, legacy, authors, files, keywords] = await Promise.all([
-        c.tx.paper.findMany({ where: { id: { in: links.map(l => l.paperId) } }, select: { id: true, title: true, abstractText: true, doi: true, publicationYear: true, journalName: true, paperKind: true, paperLink: true, openAccessUrl: true, pdfPath: true, citationCount: true, openAccessStatus: true } }),
+        c.tx.paper.findMany({ where: { id: { in: links.map(l => l.paperId) } }, select: { id: true, title: true, abstractText: true, doi: true, publicationYear: true, journalName: true, paperKind: true, paperLink: true, openAccessUrl: true, pdfPath: true, paperStatus: true, citationCount: true, openAccessStatus: true } }),
         c.tx.screeningLegacyRecord.findMany({ where: { projectId: c.project.id, paperId: { in: links.map(l => l.paperId) } }, select: { paperId: true, snapshot: true } }),
         c.tx.paperAuthor.findMany({ where: { paperId: { in: links.map(l => l.paperId) } }, orderBy: { position: "asc" }, select: { paperId: true, displayName: true } }),
         c.tx.projectPaperFile.findMany({ where: { projectId: c.project.id, paperId: { in: links.map(l => l.paperId) } }, select: { paperId: true } }),
@@ -616,6 +616,14 @@ export const screeningService = {
         const evidenceStatus: "NOT_STARTED" | "AI_SUGGESTED" | "IN_PROGRESS" | "COMPLETED" =
           pEv.length === 0 ? "NOT_STARTED" : verifiedCount > 0 ? "COMPLETED" : aiPending ? "AI_SUGGESTED" : "IN_PROGRESS";
         const citedList = citedByPaper.get(l.paperId) ?? [];
+        const projectFileCount = files.filter(f => f.paperId === l.paperId).length;
+        const ftState = evaluatePaperFullTextStatus({
+          pdfPath: paper.pdfPath,
+          paperStatus: paper.paperStatus,
+          openAccessUrl: paper.openAccessUrl,
+          paperLink: paper.paperLink,
+          projectFileCount,
+        });
         return {
           tags: l.tags, notes: l.notes, importSource: l.importSource,
           proposer: l.addedById ? { id: l.addedById, name: proposers.find(p => p.id === l.addedById)?.fullName || "Thành viên" } : null,
@@ -625,7 +633,8 @@ export const screeningService = {
           journalName: paper.journalName, paperKind: paper.paperKind,
           authors: authors.filter(a => a.paperId === l.paperId).map(a => a.displayName),
           paperLink: paper.paperLink ?? paper.openAccessUrl,
-          fullTextAvailable: Boolean(paper.openAccessUrl || paper.pdfPath || files.some(f => f.paperId === l.paperId)),
+          fullTextAvailable: ftState.fullTextAvailable,
+          fullTextStatus: ftState.fullTextStatus,
           citationCount: paper.citationCount, openAccessStatus: paper.openAccessStatus,
           keywords: keywords.filter(k => k.paperId === l.paperId).map(k => k.keywordName),
           legacyStatus: l.screeningStatus,

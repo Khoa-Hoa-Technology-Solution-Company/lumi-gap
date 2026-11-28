@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { FormRequiredLegend, RequiredMark } from "@/components/ui/required-mark";
 import { useCreateReviewRequest, useReviewerCandidates, useReviewTemplates } from "@/features/reviews";
 
 import { useI18n } from "@/i18n";
@@ -84,19 +85,25 @@ export function SubmitReviewDialog({ reportId, submissionId, revisionId, artifac
     } finally { sending.current = false; }
   }
 
+  const readinessReasons: string[] = [];
+  if (!templateVersionId) readinessReasons.push(t("Chưa chọn mẫu phản biện."));
+  if (!reviewerId) readinessReasons.push(t("Chưa chọn người phản biện."));
+  if (!dueAt) readinessReasons.push(t("Chưa chọn hạn phản hồi."));
+
   return <Dialog open={open} onOpenChange={setOpen}>
     <DialogTrigger asChild>{trigger ?? <Button><Send className="h-4 w-4" />Submit for Review</Button>}</DialogTrigger>
     <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
       <DialogHeader><DialogTitle>Submit for Review</DialogTitle><DialogDescription>Invite a qualified reviewer to assess this exact artifact version.</DialogDescription></DialogHeader>
+      <FormRequiredLegend className="-mt-1" />
       <div className="space-y-6 py-2">
         <section className="rounded-xl border bg-muted/30 p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Artifact</p><p className="mt-1 font-semibold">{artifactTitle}</p>{artifactType ? <Badge variant="outline" className="mt-2">{artifactType.replaceAll("_", " ")}</Badge> : null}</section>
 
-        <fieldset><legend className="text-sm font-semibold">Review Template</legend>
+        <fieldset><legend className="text-sm font-semibold">Review Template<RequiredMark /></legend>
           {templates.isLoading ? <div className="mt-2 h-24 animate-pulse rounded-xl bg-muted" /> : grouped.length ? <div className="mt-3 space-y-4">{grouped.map((group) => <div key={group.source}><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</p><div className="grid gap-2 sm:grid-cols-2">{group.items.map((template) => <button type="button" key={template.id} onClick={() => { setTemplateVersionId(template.activeVersion!.id); setPreview(false); }} className={`rounded-xl border p-3 text-left transition-colors ${templateVersionId === template.activeVersion!.id ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30" : "hover:border-slate-300 hover:bg-muted/30"}`}><div className="flex items-start justify-between gap-2"><span className="text-sm font-medium">{template.name}</span>{templateVersionId === template.activeVersion!.id ? <Check className="h-4 w-4 text-blue-600" /> : null}</div><p className="mt-1 text-xs text-muted-foreground">{template.activeVersion!.reviewMode.replaceAll("_", " ")} · v{template.activeVersion!.versionNumber}</p></button>)}</div></div>)}</div> : <p className="mt-2 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No published template matches this artifact type.</p>}
           {selectedTemplate ? <div className="mt-3"><Button type="button" variant="ghost" size="sm" onClick={() => setPreview((value) => !value)}><BookOpenCheck className="h-4 w-4" />{preview ? "Hide preview" : "Preview Template"}</Button>{preview ? <div className="mt-2 rounded-xl border p-4"><p className="text-sm font-semibold">{selectedTemplate.name}</p><ol className="mt-3 space-y-2 text-sm">{selectedTemplate.activeVersion!.criteria.map((criterion, index) => <li key={criterion.id} className="flex gap-2"><span className="text-muted-foreground">{index + 1}.</span><span><span className="font-medium">{criterion.title}</span>{criterion.description ? <span className="block text-xs leading-5 text-muted-foreground">{criterion.description}</span> : null}</span></li>)}</ol></div> : null}</div> : null}
         </fieldset>
 
-        <fieldset><legend className="text-sm font-semibold">Reviewer</legend><div className="relative mt-2"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search qualified reviewers" /></div>
+        <fieldset><legend className="text-sm font-semibold">Reviewer<RequiredMark /></legend><div className="relative mt-2"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search qualified reviewers" /></div>
           <div className="mt-2 max-h-52 divide-y overflow-y-auto rounded-xl border">{reviewers.isLoading ? <div className="h-20 animate-pulse bg-muted" /> : (reviewers.data ?? []).map((reviewer) => <button type="button" key={reviewer.id} onClick={() => setReviewerId(reviewer.id)} className={`flex w-full items-start gap-3 p-3 text-left transition-colors ${reviewerId === reviewer.id ? "bg-blue-50 dark:bg-blue-950/30" : "hover:bg-muted/40"}`}><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold dark:bg-slate-800">{reviewer.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="truncate text-sm font-medium">{reviewer.name}</span>{reviewer.assignedMentor && <Badge variant="outline">{t("Assigned mentor")}</Badge>}{reviewer.availableForReview ? <Badge variant="secondary">Available</Badge> : null}</div><p className="mt-0.5 text-xs text-muted-foreground">{reviewer.institution || "Institution not listed"}</p><p className="mt-1 truncate text-xs text-muted-foreground">{reviewer.expertiseAreas.slice(0, 3).join(" · ") || "Expertise not listed"}</p></div>{reviewerId === reviewer.id ? <UserRoundCheck className="h-4 w-4 text-blue-600" /> : null}</button>)}{!reviewers.isLoading && reviewers.data?.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No qualified reviewer matches this search.</p> : null}</div>
           {selectedReviewer?.assignedMentor && <p className="mt-2 text-xs text-muted-foreground">{t("mentorWorkspace.deliveryAccessHint")}</p>}
           {selectedReviewer && !selectedReviewer.availableForReview ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">This reviewer has the required capability but is not currently advertising open availability. They may still decline.</p> : null}
@@ -111,9 +118,15 @@ export function SubmitReviewDialog({ reportId, submissionId, revisionId, artifac
           <textarea id="review-request-message" value={message} onChange={event => setMessage(event.target.value)} maxLength={3000} rows={4} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" placeholder={t("For example: Please focus on our methodology and whether the conclusions are supported by the data.")} />
           <p className="text-xs leading-5 text-muted-foreground">{t("Choose a suggestion or write freely. You can edit the message before sending; it is saved with the review request.")}</p>
         </fieldset>
-        <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">Due date<div className="relative mt-2"><CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input type="date" required min={dateInput(0)} max={dateInput(MAX_DUE_DAYS - 1)} value={dueAt} onChange={(event) => setDueAt(event.target.value)} className="pl-9" /></div><span className="mt-1 block text-xs font-normal text-muted-foreground">Once the reviewer accepts, you can only cancel after this date.</span></label></div>
+        <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">Due date<RequiredMark /><div className="relative mt-2"><CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input type="date" required aria-required="true" min={dateInput(0)} max={dateInput(MAX_DUE_DAYS - 1)} value={dueAt} onChange={(event) => setDueAt(event.target.value)} className="pl-9" /></div><span className="mt-1 block text-xs font-normal text-muted-foreground">Once the reviewer accepts, you can only cancel after this date.</span></label></div>
       </div>
-      <DialogFooter><Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button><Button type="button" onClick={submit} disabled={!templateVersionId || !reviewerId || create.isPending}>{create.isPending ? "Sending…" : "Send review request"}</Button></DialogFooter>
+      {!create.isPending && readinessReasons.length > 0 && (
+        <div className="rounded-lg border border-border/80 bg-muted/25 px-3 py-2 text-xs text-muted-foreground" role="status">
+          <span className="font-medium text-foreground">{t("Chưa thể gửi:")} </span>
+          {readinessReasons.join(" · ")}
+        </div>
+      )}
+      <DialogFooter><Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button><Button type="button" onClick={submit} disabled={!templateVersionId || !reviewerId || !dueAt || create.isPending}>{create.isPending ? "Sending…" : "Send review request"}</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
 }

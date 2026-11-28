@@ -1,8 +1,10 @@
 import type { AvailableMentor } from "@trend/shared-types";
 import { MENTOR_SUPPORT_AREAS } from "@trend/shared-types";
-import { Sparkles } from "lucide-react";
 import { useI18n } from "@/i18n";
 
+/**
+ * Neutral factual overlap summary — never renders suitability ratings ("Highly relevant", "% match", etc.).
+ */
 export function MentorRelevanceSummary({ match }: { match?: AvailableMentor["matchExplanation"] }) {
   const { t } = useI18n();
   if (!match) return null;
@@ -20,7 +22,6 @@ export function MentorRelevanceSummary({ match }: { match?: AvailableMentor["mat
     ],
   ] as const;
 
-  // Deduplicate identical terms across groups so the same term (e.g. "Artificial Intelligence") is not repeated on consecutive lines
   const seen = new Set<string>();
   const groups = rawGroups
     .map(([label, values]) => {
@@ -34,30 +35,8 @@ export function MentorRelevanceSummary({ match }: { match?: AvailableMentor["mat
     })
     .filter(([, values]) => values.length > 0);
 
-  const relevanceLabel =
-    match.relevance === "HIGHLY_RELEVANT"
-      ? "Highly relevant"
-      : match.relevance === "RELEVANT"
-        ? "Relevant"
-        : "Potential match";
-
-  const isStrong = match.relevance === "HIGHLY_RELEVANT" || match.relevance === "RELEVANT";
-
   return (
-    <section data-no-i18n className="mt-2.5 space-y-2" aria-label={t("Why this lecturer")}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold ${
-            isStrong
-              ? "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-              : "bg-muted text-muted-foreground"
-          }`}
-        >
-          <Sparkles className="h-3 w-3 shrink-0" aria-hidden="true" />
-          {t(relevanceLabel)}
-        </span>
-      </div>
-
+    <section data-no-i18n className="mt-2 space-y-1.5" aria-label={t("Shared declared research terms")}>
       {groups.length > 0 ? (
         <dl className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs leading-5">
           {groups.map(([label, values]) => (
@@ -80,17 +59,6 @@ export function MentorRelevanceSummary({ match }: { match?: AvailableMentor["mat
         <p className="text-xs text-muted-foreground">
           {t("No specific expertise overlap yet. Review the profile before inviting.")}
         </p>
-      )}
-
-      {match.gaps.length > 0 && (
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer hover:text-foreground">{t("Evidence to discuss")}</summary>
-          <ul className="mt-1 list-inside list-disc space-y-0.5">
-            {match.gaps.map((gap) => (
-              <li key={gap}>{t(gap)}</li>
-            ))}
-          </ul>
-        </details>
       )}
     </section>
   );

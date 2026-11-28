@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Download,
@@ -19,7 +19,6 @@ import {
   CheckCheck,
   FileText,
   Search,
-  History,
   X,
   Sparkles,
   ChevronRight,
@@ -45,7 +44,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/utils/cn";
 import { useI18n } from "@/i18n";
-import { EvidenceBlobPreview } from "@/features/academic-profile/components/evidence-blob-preview";
 import type {
   LecturerReviewChecklist,
   AcademicVerificationSource,
@@ -58,6 +56,7 @@ import {
   useAcademicVerificationEvidenceFile,
   useAcademicVerifications,
   useDecideAcademicVerification,
+  useRevokeAcademicVerification,
 } from "@/features/academic-profile";
 
 const loadPdfPreviewComponent = () =>
@@ -164,36 +163,45 @@ function VerificationStatusCell({ item }: { item: AdminAcademicVerificationItem 
 
 export function AdminAcademicVerificationsPage() {
   const { t, language } = useI18n();
+  const isVi = language === "vi";
   const [params, setParams] = useSearchParams();
   const selectedId = params.get("requestId");
   function setSelectedId(id: string | null) {
     setParams(previous => { const next = new URLSearchParams(previous); if (id) next.set("requestId", id); else next.delete("requestId"); return next; }, { replace: true });
   }
-  const [status, setStatus] = useState("ALL");
+  const [status, setStatus] = useState(params.get("status") || "ALL");
+  const [verificationType, setVerificationType] = useState<"ALL" | "POSITION" | "AFFILIATION">(
+    (params.get("type") as "ALL" | "POSITION" | "AFFILIATION") || "ALL",
+  );
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(params.get("q") || "");
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery.trim());
 
-  const { data, isLoading, error } = useAcademicVerifications(status, page, pageSize);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, status, verificationType, sortOrder, pageSize]);
+
+  const { data, isLoading, isFetching, error, refetch } = useAcademicVerifications(
+    status,
+    page,
+    pageSize,
+    { search: debouncedSearch || undefined, verificationType, sortOrder },
+  );
   const detail = useAcademicVerificationDetails(selectedId);
 
-  const rawRequests = data?.data ?? [];
+  const requests = data?.data ?? [];
   const statusCounts = data?.meta?.statusCounts ?? {};
-
-  const requests = useMemo(() => {
-    if (!searchQuery.trim()) return rawRequests;
-    const query = searchQuery.toLowerCase().trim();
-    return rawRequests.filter(({ profile, request, accountEmail }) => {
-      const name = (profile.displayName || "").toLowerCase();
-      const email = (accountEmail || profile.affiliation?.institutionalEmail || "").toLowerCase();
-      const institution = String(request.metadata?.institutionName || profile.affiliation?.institutionName || "").toLowerCase();
-      const position = (request.targetValue || profile.positionTitle || "").toLowerCase();
-      return name.includes(query) || email.includes(query) || institution.includes(query) || position.includes(query);
-    });
-  }, [rawRequests, searchQuery]);
-
-  const totalItems = searchQuery.trim() ? requests.length : (data?.meta?.total ?? requests.length);
-  const totalPages = Math.max(1, searchQuery.trim() ? Math.ceil(requests.length / pageSize) : (data?.meta?.totalPages ?? Math.ceil(totalItems / pageSize)));
+  const totalItems = data?.meta?.total ?? 0;
+  const totalPages = Math.max(1, data?.meta?.totalPages ?? Math.ceil(totalItems / pageSize));
   const startItem = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
   const endItem = Math.min(page * pageSize, totalItems);
 
@@ -283,9 +291,30 @@ export function AdminAcademicVerificationsPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            aria-label={isVi ? "Loại xác minh" : "Verification type"}
+            className="h-9 rounded-lg border border-slate-200 bg-background px-2.5 text-xs font-semibold text-slate-800 shadow-2xs dark:border-slate-700 dark:text-slate-200"
+            value={verificationType}
+            onChange={(e) => setVerificationType(e.target.value as "ALL" | "POSITION" | "AFFILIATION")}
+          >
+            <option value="ALL">{isVi ? "Tất cả loại" : "All types"}</option>
+            <option value="POSITION">{isVi ? "Vị trí / Chức danh" : "Academic position"}</option>
+            <option value="AFFILIATION">{isVi ? "Đơn vị công tác" : "Institutional affiliation"}</option>
+          </select>
+
+          <select
+            aria-label={isVi ? "Sắp xếp ngày gửi" : "Sort order"}
+            className="h-9 rounded-lg border border-slate-200 bg-background px-2.5 text-xs font-semibold text-slate-800 shadow-2xs dark:border-slate-700 dark:text-slate-200"
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value as "desc" | "asc")}
+          >
+            <option value="desc">{isVi ? "Mới nhất trước" : "Newest first"}</option>
+            <option value="asc">{isVi ? "Cũ nhất trước" : "Oldest first"}</option>
+          </select>
+
           <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-            <span>Filter:</span>
+            <span>{isVi ? "Trạng thái:" : "Filter:"}</span>
             <select
               aria-label="Filter status"
               className="h-9 rounded-lg border border-slate-200 bg-background px-3 text-xs font-semibold text-slate-800 shadow-2xs dark:border-slate-700 dark:text-slate-200"
@@ -302,6 +331,12 @@ export function AdminAcademicVerificationsPage() {
               ))}
             </select>
           </label>
+          {isFetching && !isLoading ? (
+            <span className="text-[11px] text-muted-foreground">{isVi ? "Đang lọc…" : "Filtering…"}</span>
+          ) : null}
+          <Button type="button" size="sm" variant="outline" className="h-9 text-xs" onClick={() => void refetch()} disabled={isFetching}>
+            {isVi ? "Làm mới" : "Refresh"}
+          </Button>
         </div>
       </div>
 
@@ -361,9 +396,7 @@ export function AdminAcademicVerificationsPage() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {requests.map((item) => {
                 const { profile, request, accountEmail } = item;
-                const statusConf = getStatusBadgeConfig(request.status);
                 const roleBadge = getRoleBadge(profile.academicRole);
-                const StatusIcon = statusConf.icon;
                 const instName = String(request.metadata?.institutionName || profile.affiliation?.institutionName || "Not provided");
                 const claimText = request.type === "POSITION"
                   ? (request.targetValue || profile.positionTitle || "Position claim")
@@ -589,6 +622,7 @@ export function AdminAcademicVerificationsPage() {
           className="flex h-[88vh] max-h-[88vh] w-[94vw] max-w-5xl flex-col overflow-hidden overscroll-contain p-0 md:left-[calc(50%+8rem)]"
           overlayClassName="md:left-64 bg-slate-950/45 backdrop-blur-xs"
         >
+          <DialogTitle className="sr-only">{t("Academic Verification Dossier")}</DialogTitle>
           {detail.isLoading ? (
             <div className="flex h-full items-center justify-center p-8">
               <div className="h-48 w-full max-w-md animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
@@ -831,7 +865,7 @@ function VerificationModalHeader({
 
 function RequestSummary({ item }: { item: AdminAcademicVerificationItem }) {
   const { t, language } = useI18n();
-  const { request, profile, accountEmail, accountEmailVerified } = item;
+  const { request, profile } = item;
   const roleBadge = getRoleBadge(profile.academicRole);
   const claimText = request.type === "POSITION"
     ? (request.targetValue || profile.positionTitle || "Position claim")
@@ -1306,10 +1340,15 @@ function ReviewDetail({
   const reviewTabs = TABS_CONFIG;
   const nextTab = reviewTabs[reviewTabs.findIndex((entry) => entry.id === tab) + 1];
   const decide = useDecideAcademicVerification();
+  const revoke = useRevokeAcademicVerification();
   const evidenceFile = useAcademicVerificationEvidenceFile();
   const [mode, setMode] = useState<"approve" | "reject" | "more_info">("approve");
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
+  const [revokeOpen, setRevokeOpen] = useState(false);
+  const [revokeReason, setRevokeReason] = useState("");
+  const [revokeNote, setRevokeNote] = useState("");
+  const [revokeError, setRevokeError] = useState("");
   const [bindingMethod, setBindingMethod] = useState<"INSTITUTION_CONTACT" | "TRUSTED_INSTITUTION_RECORD">("INSTITUTION_CONTACT");
   const [bindingReference, setBindingReference] = useState("");
   const [error, setError] = useState("");
@@ -1364,6 +1403,83 @@ function ReviewDetail({
       ? [["independentEvidence", "Sources independently corroborate the institutional claim"]] as Array<[keyof LecturerReviewChecklist, string]>
       : []),
   ];
+
+  const approvalBlockers: string[] = (() => {
+    if (!lecturer || request.status !== "PENDING") return [];
+    const list: string[] = [];
+    const isVi = language === "vi";
+    if (!adaptive) list.push(isVi ? "Hồ sơ cũ không có phương thức xác minh chuẩn — cần yêu cầu bổ sung." : "Legacy request without adaptive verification path — request updated evidence.");
+    if (sourceCount === 0) list.push(isVi ? "Không có nguồn minh chứng nào được nộp." : "No supporting evidence sources attached.");
+    for (const source of request.sources ?? []) {
+      if (checks[source.id] !== "VALID") {
+        list.push(isVi ? `Chưa xác nhận HỢP LỆ cho minh chứng #${source.slot} (${source.type}).` : `Mark evidence #${source.slot} (${source.type}) as VALID.`);
+      }
+      if ((source.sourceKind === "DOCUMENT" || source.fileName) && !source.documentAvailable) {
+        list.push(isVi ? `Tài liệu minh chứng #${source.slot} không còn khả dụng.` : `Private document for evidence #${source.slot} is unavailable.`);
+      }
+      if (source.urlTrustStatus === "PENDING_ADMIN_VALIDATION" && !domainConfirmed[source.id]) {
+        list.push(isVi ? `Cần xác nhận tên miền đơn vị chưa đăng ký cho minh chứng #${source.slot}.` : `Confirm unregistered institution domain for evidence #${source.slot}.`);
+      }
+    }
+    for (const [key, label] of reviewLabels) {
+      if (!checklist[key]) {
+        list.push(isVi ? `Chưa xác nhận tiêu chí: ${t(label)}.` : `Checklist item pending: ${t(label)}.`);
+      }
+    }
+    if (singleManual && note.trim().length < 20) {
+      list.push(isVi ? "Ghi chú nội bộ giải thích liên kết danh tính tối thiểu 20 ký tự." : "Internal explanation of identity binding requires at least 20 characters.");
+    }
+    if (request.requiresIndependentIdentityBinding && (bindingReference.trim().length < 10 || note.trim().length < 20)) {
+      list.push(isVi ? "Cần ghi nhận kênh đối chiếu độc lập (≥10 ký tự) và giải thích (≥20 ký tự)." : "Record independent identity binding channel (≥10 chars) and explanation (≥20 chars).");
+    }
+    return list;
+  })();
+
+  const claimMatchesCurrent =
+    (!request.metadata?.institutionName || String(request.metadata.institutionName).trim().toLowerCase() === (profile.affiliation?.institutionName ?? "").trim().toLowerCase())
+    && (!request.metadata?.positionTitle || String(request.metadata.positionTitle) === (profile.positionTitle ?? ""));
+
+  const automatedTechnicalChecks = [
+    {
+      label: language === "vi" ? "Email tài khoản đã xác minh quyền sở hữu" : "Account email ownership verified",
+      ok: Boolean(accountEmailVerified),
+    },
+    {
+      label: language === "vi" ? "Thông tin học thuật chưa thay đổi sau khi nộp" : "Academic claim unchanged since submission",
+      ok: claimMatchesCurrent,
+    },
+    {
+      label: language === "vi" ? "Tất cả tài liệu minh chứng đính kèm vẫn truy cập được" : "Attached evidence files remain accessible",
+      ok: (request.sources ?? []).every((s) => !(s.sourceKind === "DOCUMENT" || s.fileName) || s.documentAvailable),
+    },
+    ...(request.verificationMethod === "INSTITUTIONAL_EMAIL_AND_PROFILE"
+      ? [{
+          label: language === "vi" ? "Email tổ chức đã xác minh trong hồ sơ" : "Institutional email verified in request",
+          ok: Boolean(request.metadata?.institutionalEmail),
+        }]
+      : []),
+  ];
+
+  async function submitRevoke() {
+    setRevokeError("");
+    if (revokeReason.trim().length < 10) {
+      setRevokeError(language === "vi" ? "Vui lòng nhập lý do thu hồi tối thiểu 10 ký tự." : "Enter a revocation reason of at least 10 characters.");
+      return;
+    }
+    try {
+      await revoke.mutateAsync({
+        requestId: request.id,
+        input: { reason: revokeReason.trim(), ...(revokeNote.trim() ? { note: revokeNote.trim() } : {}) },
+      });
+      setRevokeOpen(false);
+      setRevokeReason("");
+      setRevokeNote("");
+      onDone();
+    } catch (failure) {
+      const msg = (failure as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message;
+      setRevokeError(msg ?? (language === "vi" ? "Không thể thu hồi chứng thực." : "Could not revoke verification."));
+    }
+  }
 
   const approvalReady =
     !lecturer ||
@@ -1730,7 +1846,32 @@ function ReviewDetail({
                 </p>
               </div>
 
-              {lecturer && adaptive && (
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5 text-xs dark:border-slate-800 dark:bg-slate-900/40">
+                    <p className="font-bold text-slate-800 dark:text-slate-200">
+                      {language === "vi" ? "Kiểm tra kỹ thuật tự động (chỉ đọc)" : "Automated Technical Checks (Read-only)"}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                      {language === "vi"
+                        ? "Chỉ phản ánh tính hợp lệ kỹ thuật của tài khoản/tệp; KHÔNG tự chứng minh tính xác thực hay chức danh giảng viên."
+                        : "Reflects technical integrity checks only; does NOT prove document authenticity or employment."}
+                    </p>
+                    <ul className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                      {automatedTechnicalChecks.map((chk) => (
+                        <li key={chk.label} className="flex items-center gap-1.5">
+                          {chk.ok ? (
+                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                          ) : (
+                            <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                          )}
+                          <span className={chk.ok ? "text-slate-700 dark:text-slate-300" : "font-semibold text-amber-800 dark:text-amber-300"}>
+                            {chk.label}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {lecturer && adaptive && (
                 <fieldset className="space-y-3 rounded-2xl border border-indigo-200/80 bg-indigo-50/20 p-5 text-xs dark:border-indigo-900/50 dark:bg-indigo-950/20">
                   <legend className="px-2 font-black text-indigo-950 uppercase tracking-wider dark:text-indigo-300">
                     {t("Verification Checklist")}
@@ -1871,6 +2012,21 @@ function ReviewDetail({
                     </fieldset>
                   )}
 
+                  {mode === "approve" && approvalBlockers.length > 0 && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-xs text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                      <p className="font-bold">
+                        {language === "vi"
+                          ? `Còn ${approvalBlockers.length} điều kiện chưa đạt để phê duyệt:`
+                          : `${approvalBlockers.length} remaining requirement(s) before approval:`}
+                      </p>
+                      <ul className="mt-1.5 list-disc space-y-1 pl-4">
+                        {approvalBlockers.map((blocker) => (
+                          <li key={blocker}>{blocker}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {error && <p role="alert" className="text-xs font-bold text-red-600">{error}</p>}
 
                   <Button
@@ -1921,7 +2077,34 @@ function ReviewDetail({
 
                   {request.rejectionReason && (
                     <div className="rounded-xl border border-rose-200 bg-rose-50/80 p-3 text-xs text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
-                      <span className="font-bold">Lý do từ chối:</span> {request.rejectionReason}
+                      <span className="font-bold">{language === "vi" ? "Lý do:" : "Reason:"}</span> {request.rejectionReason}
+                    </div>
+                  )}
+
+                  {request.status === "VERIFIED" && !request.invalidatedAt && request.type === "POSITION" && (
+                    <div className="flex flex-col gap-3 rounded-xl border border-rose-200/80 bg-rose-50/40 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-rose-900/50 dark:bg-rose-950/20">
+                      <div className="text-xs">
+                        <p className="font-bold text-rose-900 dark:text-rose-200">
+                          {language === "vi" ? "Thu hồi xác minh vị trí giảng viên" : "Revoke verified Lecturer credential"}
+                        </p>
+                        <p className="mt-0.5 text-rose-800/80 dark:text-rose-300/80">
+                          {language === "vi"
+                            ? "Thu hồi ngay quyền truy cập Không gian giảng viên và khả năng nhận hướng dẫn mới, đồng thời bảo toàn toàn bộ lịch sử đóng góp và phản biện."
+                            : "Immediately removes Lecturer Workspace access and mentoring eligibility while preserving all historical reviews and contributions."}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        className="shrink-0 text-xs"
+                        onClick={() => {
+                          setRevokeError("");
+                          setRevokeOpen(true);
+                        }}
+                      >
+                        {language === "vi" ? "Thu hồi xác minh" : "Revoke verification"}
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -1973,6 +2156,54 @@ function ReviewDetail({
           </span>
         )}
       </footer>
+
+      <Dialog open={revokeOpen} onOpenChange={(next) => !revoke.isPending && setRevokeOpen(next)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{language === "vi" ? "Xác nhận thu hồi xác minh giảng viên" : "Confirm Lecturer verification revocation"}</DialogTitle>
+            <DialogDescription>
+              {language === "vi"
+                ? "Hành động này thu hồi trạng thái giảng viên đã xác minh, ẩn Không gian giảng viên và cập nhật quyền ngay lập tức. Lịch sử phản biện, hướng dẫn và đóng góp khoa học trước đó vẫn được giữ nguyên."
+                : "This revokes verified Lecturer status, removes Lecturer Workspace access, and re-evaluates capabilities immediately. Historical reviews, mentorships, and contributions remain preserved."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold">
+                {language === "vi" ? "Lý do thu hồi gửi tới người dùng (tối thiểu 10 ký tự) *" : "Applicant-facing revocation reason (min 10 chars) *"}
+              </span>
+              <textarea
+                id="revoke-reason-input"
+                value={revokeReason}
+                onChange={(e) => setRevokeReason(e.target.value)}
+                maxLength={1000}
+                className="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-xs"
+                placeholder={language === "vi" ? "Nêu rõ lý do cần thu hồi hoặc xác minh lại…" : "Explain why the credential is being revoked or requires reverification…"}
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold">
+                {language === "vi" ? "Ghi chú nội bộ quản trị (tùy chọn)" : "Internal admin note (optional)"}
+              </span>
+              <Input
+                value={revokeNote}
+                onChange={(e) => setRevokeNote(e.target.value)}
+                maxLength={1000}
+                className="text-xs"
+              />
+            </label>
+            {revokeError && <p role="alert" className="text-xs font-semibold text-destructive">{revokeError}</p>}
+            <div className="flex justify-end gap-2 border-t pt-3">
+              <Button type="button" variant="outline" size="sm" disabled={revoke.isPending} onClick={() => setRevokeOpen(false)}>
+                {language === "vi" ? "Hủy" : "Cancel"}
+              </Button>
+              <Button type="button" variant="destructive" size="sm" disabled={revoke.isPending || revokeReason.trim().length < 10} onClick={() => void submitRevoke()}>
+                {revoke.isPending ? (language === "vi" ? "Đang thu hồi…" : "Revoking…") : language === "vi" ? "Xác nhận thu hồi" : "Confirm Revoke"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(preview)} onOpenChange={(open) => !open && setPreview(undefined)}>
         <DialogContent

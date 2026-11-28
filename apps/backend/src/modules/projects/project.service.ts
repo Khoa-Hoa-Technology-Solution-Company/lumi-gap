@@ -69,6 +69,37 @@ function normalizeRole(role: string): ProjectRole {
   return role.toUpperCase() === "OWNER" ? "OWNER" : "MEMBER";
 }
 
+function normalizeProjectKeywords(items: readonly string[] | undefined): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of items ?? []) {
+    const cleaned = raw.trim().replace(/\s+/g, " ");
+    if (!cleaned) continue;
+    const key = cleaned.toLocaleLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(cleaned);
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
+function normalizeProjectAreas(researchAreas: readonly string[] | undefined, researchField: string | null | undefined): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (raw?: string | null) => {
+    const cleaned = raw?.trim().replace(/\s+/g, " ");
+    if (!cleaned) return;
+    const key = cleaned.toLocaleLowerCase();
+    if (seen.has(key) || out.length >= 3) return;
+    seen.add(key);
+    out.push(cleaned);
+  };
+  if (researchField?.trim()) push(researchField);
+  for (const area of researchAreas ?? []) push(area);
+  return out;
+}
+
 async function access(projectId: string, actorIdInput: string) {
   const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(actorIdInput)]);
   await assertResearchWorkflowAccess(actor.id);
@@ -215,7 +246,7 @@ async function hydrate(row: Awaited<ReturnType<typeof resolveProject>>, viewerId
     title: row.title,
     description: row.description ?? undefined,
     researchField: row.researchField ?? undefined,
-    researchClassification: readResearchClassification(row.researchClassification), researchAreas: row.researchAreas, researchApproach: (plan?.approach ?? "UNDECIDED") as import("@trend/shared-types").ResearchApproach,
+    researchClassification: readResearchClassification(row.researchClassification), researchAreas: row.researchAreas, keywords: row.researchKeywords, researchApproach: (plan?.approach ?? "UNDECIDED") as import("@trend/shared-types").ResearchApproach,
     publicSummary: row.publicSummary ?? undefined, mentorshipDiscovery: row.mentorshipDiscovery,
     version: row.version,
     screeningMode: publicSummary ? undefined : row.screeningMode as "EXPLORATORY" | "INDEPENDENT",
@@ -288,10 +319,11 @@ async function hydrate(row: Awaited<ReturnType<typeof resolveProject>>, viewerId
 export class ProjectService {
   async createProject(data: CreateProjectRequest, ownerIdInput: string) {
     const owner = await resolveUser(ownerIdInput);
-    const keywords = [...new Set((data.keywords ?? []).map((item) => item.trim()).filter(Boolean))];
+    const keywords = normalizeProjectKeywords(data.keywords);
+    const researchAreas = normalizeProjectAreas(data.researchAreas, data.researchField);
     const normalized = {
       title: data.title.trim(), description: data.description?.trim() || null,
-      researchAreas: data.researchAreas ?? (data.researchField?.trim() ? [data.researchField.trim()] : []),
+      researchAreas,
       approach: data.researchApproach ?? "UNDECIDED", status: data.status ?? "PLANNING",
       visibility: "PRIVATE",
       ...(keywords.length ? { keywords } : {}),
@@ -314,11 +346,14 @@ export class ProjectService {
       const created = await tx.project.create({ data: {
         title: normalized.title, description: normalized.description,
         ...(classification ? { researchClassification: classification as never } : {}),
-        researchAreas: normalized.researchAreas, researchField: data.researchField?.trim() || normalized.researchAreas[0],
+        researchAreas: normalized.researchAreas,
+        researchField: normalized.researchAreas[0] ?? null,
+        researchKeywords: keywords,
         status: normalized.status, visibility: normalized.visibility, mentorshipDiscovery: "CLOSED", researchStage: "DISCOVERY",
         ownerId: owner.id, createdById: owner.id, creationKey: data.idempotencyKey, creationRequestHash: requestHash,
       } });
-      await tx.researchPlan.create({ data: { projectId: created.id, approach: normalized.approach, problem: normalized.description ?? "", searchStrategy: keywords.join(", "), updatedById: owner.id } });
+      // Keep research keywords separate from the literature search strategy in ResearchPlan.
+      await tx.researchPlan.create({ data: { projectId: created.id, approach: normalized.approach, problem: normalized.description ?? "", searchStrategy: "", updatedById: owner.id } });
       await tx.projectMember.create({ data: { projectId: created.id, userId: owner.id, role: "OWNER", status: ACTIVE } });
       await tx.projectActivity.create({ data: { projectId: created.id, actorId: owner.id, type: "PROJECT_CREATED", metadata: {} } });
       return created;
@@ -361,7 +396,7 @@ export class ProjectService {
     }
     const items = rows.map(row => ({
       _id: publicDatabaseId(row), title: row.title, description: row.description ?? undefined,
-      researchField: row.researchField ?? undefined, researchAreas: row.researchAreas,
+      researchField: row.researchField ?? undefined, researchAreas: row.researchAreas, keywords: row.researchKeywords,
       researchApproach: approaches.get(row.id) ?? "UNDECIDED", visibility: row.visibility,
       status: row.status, ownerId: ownerMap.has(row.ownerId) ? publicDatabaseId(ownerMap.get(row.ownerId)!) : row.ownerId,
       owner: ownerMap.has(row.ownerId) ? userSummary(ownerMap.get(row.ownerId)!) : undefined,
@@ -407,13 +442,17 @@ export class ProjectService {
       if (publicVisibility && (data.visibility !== undefined || data.publicSummary !== undefined) && !(data.publicSummary ?? project.publicSummary)?.trim()) {
         throw AppError.badRequest("Write a public description before publishing");
       }
-      const areas = data.researchAreas ?? (data.researchField !== undefined ? data.researchField ? [data.researchField] : [] : undefined);
+      const areas = data.researchAreas !== undefined || data.researchField !== undefined
+        ? normalizeProjectAreas(data.researchAreas, data.researchField)
+        : undefined;
+      const keywords = data.keywords !== undefined ? normalizeProjectKeywords(data.keywords) : undefined;
       const changesPlan = data.researchApproach !== undefined || data.inclusionCriteria !== undefined || data.exclusionCriteria !== undefined;
       const next = await tx.project.update({ where: { id: row.id }, data: {
         ...(data.researchClassification ? { researchClassification: await resolveResearchClassification(data.researchClassification, tx) as never } : {}),
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.description !== undefined ? { description: data.description } : {}),
         ...(areas !== undefined ? { researchAreas: areas, researchField: areas[0] ?? null } : {}),
+        ...(keywords !== undefined ? { researchKeywords: keywords } : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
         ...(data.visibility !== undefined ? { visibility: ["PUBLIC", "PUBLIC_SUMMARY"].includes(data.visibility) ? "PUBLIC" : "PRIVATE" } : {}),
         ...(data.publicSummary !== undefined ? { publicSummary: data.publicSummary || null } : {}),

@@ -255,6 +255,43 @@ export function MentorOverview({ data, fetching, refresh, openWork }: {
         </div>
       </header>
 
+      {/* First-Time Verified Lecturer Setup Strip */}
+      {summary.projects === 0 && (
+        <section
+          aria-label={language === "vi" ? "Thiết lập Không gian giảng viên" : "Lecturer Workspace setup"}
+          className="rounded-xl border border-blue-200/80 bg-blue-50/40 p-4 dark:border-blue-900/50 dark:bg-blue-950/20"
+        >
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold text-foreground">
+                {language === "vi"
+                  ? "Chào mừng đến Không gian giảng viên"
+                  : "Welcome to Lecturer Workspace"}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {language === "vi"
+                  ? "Vị trí giảng viên của bạn đã được xác minh. Trạng thái nhận hướng dẫn mới được bật tách biệt theo ý muốn của bạn — hoàn thiện các thiết lập bên dưới để bắt đầu."
+                  : "Your Lecturer position is verified. Accepting new mentorship groups is controlled separately — configure your academic preferences below when ready."}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" asChild>
+                <Link to="/profile">{language === "vi" ? "Hoàn thiện hồ sơ học thuật" : "Complete Academic Profile"}</Link>
+              </Button>
+              <Button size="sm" variant="outline" asChild>
+                <Link to="/academic-support#mentoring-settings">{language === "vi" ? "Thiết lập nhận hướng dẫn" : "Mentoring availability"}</Link>
+              </Button>
+              <Button size="sm" variant="outline" asChild>
+                <Link to="/mentor-workspace?view=reviews">{language === "vi" ? "Thiết lập phản biện" : "Review preferences"}</Link>
+              </Button>
+              <Button size="sm" asChild>
+                <Link to="/mentor-workspace?view=discover">{language === "vi" ? "Khám phá nhóm nghiên cứu" : "Discover teams"}</Link>
+              </Button>
+            </div>
+          </div>
+        </section>
+      )}
+
       <nav className="mentor-overview-statistics" aria-label={t("mentorWorkspace.overview")}>
         {statistics.map(({ key, icon: Icon, value, hint, href, query, highlight }) => {
           const content = (

@@ -53,7 +53,7 @@ const mocks = vi.hoisted(() => {
       return { count: found.length };
     }),
   };
-  for (const model of ["academicExternalIdentity", "academicIdentityLink", "academicFeaturedWork", "academicVerificationEvidence", "auditLog"]) {
+  for (const model of ["academicExternalIdentity", "academicIdentityLink", "academicFeaturedWork", "academicVerificationEvidence", "auditLog", "project", "projectMember", "mentorRelationship", "projectContributionProposal", "submission"]) {
     prisma[model] = { findMany: vi.fn(async () => []), findFirst: vi.fn(async () => null) };
   }
   prisma.userDisplayNameChange = {
@@ -76,7 +76,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => mocks.prisma }));
 vi.mock("../../audit/audit.service.js", () => ({ auditService: { log: mocks.auditLog } }));
-vi.mock("../../authorization/capability.service.js", () => ({ capabilityService: { evaluate: mocks.evaluateCapabilities } }));
+vi.mock("../../authorization/capability.service.js", () => ({ capabilityService: { evaluate: mocks.evaluateCapabilities, evaluateWithRetry: mocks.evaluateCapabilities } }));
 vi.mock("../../notifications/notification.service.js", () => ({ notificationService: { create: mocks.notify } }));
 vi.mock("../institutional-email-verification.service.js", () => ({ institutionalEmailVerificationService: { invalidate: vi.fn() } }));
 

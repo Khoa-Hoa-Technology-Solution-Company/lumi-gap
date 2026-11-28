@@ -197,6 +197,11 @@ it("retains creation details on failure and opens the newly created project afte
   mocks.create.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ _id: "new-project" });
   await render("/projects?create=1&sort=NAME");
   await fill("#project-create-title", "  Education study  ");
+  await act(async () => {
+    const field = document.querySelector<HTMLSelectElement>("#project-create-field")!;
+    field.value = "Education";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+  });
   await fill("#project-create-description", "  Compare the evidence  ");
   await fill("#project-create-keywords", "Education, Evidence");
   await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
@@ -207,8 +212,8 @@ it("retains creation details on failure and opens the newly created project afte
   expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({
     title: "Education study",
     description: "Compare the evidence",
-    researchField: "Artificial Intelligence",
-    researchAreas: ["Artificial Intelligence", "Education", "Evidence"],
+    researchField: "Education",
+    researchAreas: ["Education"],
     keywords: ["Education", "Evidence"],
     researchApproach: "EXPLORATORY",
     visibility: "PRIVATE",

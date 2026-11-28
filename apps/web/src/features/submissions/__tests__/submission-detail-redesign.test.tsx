@@ -381,13 +381,22 @@ it("renders structured mentor feedback, required revisions, rubric scores and re
 
   expect(container.textContent).toContain("Bản chụp LaTeX");
   expect(container.textContent).toContain("Cần chỉnh sửa");
-  expect(container.textContent).toContain("Bản thảo có cấu trúc tốt nhưng cần bổ sung số liệu ablation.");
+  // Defaults to the Revisions tab when open mandatory revisions exist
   expect(container.textContent).toContain("Bổ sung bảng so sánh baseline trên tập test.");
-  expect(container.textContent).toContain("Phương pháp luận");
-  expect(container.textContent).toContain("4.2");
-  expect(container.textContent).not.toContain("/ 5.0"); // The history contract does not provide a scale maximum.
-  expect(container.textContent).toContain("Gửi phiên bản mới để góp ý");
+  expect(container.textContent).toContain("Chuẩn bị bản mới");
   expect(container.textContent).toContain("Tiếp tục chỉnh sửa");
+
+  // Switch to Overview tab -> shows overall comment and score summary
+  const overviewTab = Array.from(container.querySelectorAll('[role="tab"]')).find((el) => el.textContent?.trim() === "Tổng quan") as HTMLButtonElement;
+  await act(async () => overviewTab.click());
+  expect(container.textContent).toContain("Bản thảo có cấu trúc tốt nhưng cần bổ sung số liệu ablation.");
+  expect(container.textContent).toContain("4.2");
+  expect(container.textContent).not.toContain("/ 5.0");
+
+  // Switch to Assessment tab -> shows read-only criterion breakdown
+  const assessmentTab = Array.from(container.querySelectorAll('[role="tab"]')).find((el) => el.textContent?.trim() === "Đánh giá") as HTMLButtonElement;
+  await act(async () => assessmentTab.click());
+  expect(container.textContent).toContain("Phương pháp luận");
 });
 
 it("supports version switching between v1 and v2 without auto-jumping back and unlocks version comparison", async () => {
@@ -645,7 +654,9 @@ it("selects AI feedback for the current revision when another revision appears f
 it("does not display another revision's AI feedback as the current revision's analysis", async () => {
   mocks.preReviews.mockReturnValue({ data: [{ id: "old-ai", status: "COMPLETED", sourceRevisionId: "rev-old", summary: "Stale feedback" }], refetch: vi.fn() });
   await renderPage(<SubmissionDetailPage submissionId="sub-1" projectId="proj-1" />);
-  expect(container.querySelector('[data-testid="ai-prereview-panel"]')).toBeNull();
+  const panel = container.querySelector<HTMLDetailsElement>('[data-testid="ai-prereview-panel"]');
+  expect(panel).not.toBeNull();
+  expect(panel?.textContent).toContain("chưa có đánh giá sơ bộ bằng AI");
   expect(container.textContent).not.toContain("Stale feedback");
 });
 

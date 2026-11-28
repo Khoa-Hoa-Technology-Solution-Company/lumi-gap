@@ -9,9 +9,16 @@ export class ProjectChatController {
   async sendMessage(req: Request, res: Response) {
     const projectId = req.params.id as string;
     const userId = req.user!.sub;
-    const { message, scope = "private" } = req.body as { message: string; scope?: "private" | "team" };
-    const result = await projectChatService.sendMessage(projectId, userId, message, scope);
+    const { message, scope = "private", clientKey } = req.body as { message: string; scope?: "private" | "team"; clientKey?: string };
+    const result = await projectChatService.sendMessage(projectId, userId, message, scope, clientKey);
     res.json({ success: true, data: result, meta: null });
+  }
+
+  async getSources(req: Request, res: Response) {
+    const projectId = req.params.id as string;
+    const userId = req.user!.sub;
+    const sources = await projectChatService.getSourcesOverview(projectId, userId);
+    res.json({ success: true, data: sources, meta: null });
   }
 
   async listHistory(req: Request, res: Response) {

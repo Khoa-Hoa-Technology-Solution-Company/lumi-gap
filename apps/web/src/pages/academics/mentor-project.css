@@ -50,30 +50,38 @@
 .mentor-project-unavailable h1 { font-size: 24px; font-weight: 600; }
 .mentor-project-unavailable > p { max-width: 65ch; margin-block: 12px 24px; font-size: 14px; line-height: 1.8; color: hsl(var(--muted-foreground)); }
 .mentor-project-page :is(button, a, summary, select):focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
-.mentor-project-context { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-.mentor-project-context > div { min-width: 0; }
-.mentor-project-context-label { font-size: 12px; font-weight: 600; color: hsl(var(--muted-foreground)); }
-.mentor-project-context h1 { margin-top: 4px; font-size: 28px; font-weight: 650; line-height: 1.3; letter-spacing: -.025em; overflow-wrap: anywhere; }
-.mentor-project-field { margin-top: 6px; font-size: 14px; color: hsl(var(--muted-foreground)); }
-.mentor-project-stage { flex-shrink: 0; margin-top: 6px; padding: 5px 10px; border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--muted) / .5); font-size: 12px; font-weight: 500; }
-.mentor-project-overview-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); gap: 40px; align-items: start; }
+.mentor-project-shell-inner { padding-block: 4px 28px; display: flex; flex-direction: column; gap: 0; }
+.mentor-project-tab-body { padding-top: 16px; min-width: 0; }
+.mentor-project-context { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding-bottom: 14px; }
+.mentor-project-context > div { min-width: 0; flex: 1; }
+.mentor-project-context-label { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--primary)); }
+.mentor-project-context h1 { margin-top: 4px; font-size: 24px; font-weight: 700; line-height: 1.3; letter-spacing: -.025em; overflow-wrap: anywhere; color: hsl(var(--foreground)); }
+.mentor-project-field { margin-top: 4px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+.mentor-project-stage { flex-shrink: 0; padding: 2px 10px; border: 1px solid hsl(var(--border)); border-radius: 9999px; background: hsl(var(--muted) / .55); font-size: 11px; font-weight: 600; color: hsl(var(--foreground)); }
+.mentor-project-overview-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 32px; align-items: start; margin-top: 4px; }
 .mentor-project-overview-main { display: flex; flex-direction: column; align-items: stretch; min-width: 0; gap: 24px; }
-.mentor-project-summary h2, .mentor-project-collaboration h3 { font-size: 16px; font-weight: 600; line-height: 1.5; }
-.mentor-project-summary > p { max-width: 72ch; margin-top: 10px; font-size: 14px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
-.mentor-project-collaboration { padding-top: 24px; border-top: 1px solid hsl(var(--border)); }
-.mentor-project-collaboration > p { margin-top: 5px; font-size: 14px; color: hsl(var(--muted-foreground)); }
+.mentor-project-summary { padding: 20px 22px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card)); }
+.mentor-project-summary h2, .mentor-project-collaboration h3 { font-size: 16px; font-weight: 650; line-height: 1.45; color: hsl(var(--foreground)); }
+.mentor-project-summary > p { max-width: 72ch; margin-top: 10px; font-size: 14px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; color: hsl(var(--foreground) / .9); }
+.mentor-project-collaboration { padding: 20px 22px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card)); }
+.mentor-project-collaboration > p { margin-top: 6px; font-size: 14px; line-height: 1.6; color: hsl(var(--muted-foreground)); }
 .mentor-project-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .mentor-project-actions a, .mentor-project-resource-action { gap: 8px; min-height: 40px; }
 .mentor-project-resource-action { align-self: flex-start; max-width: 100%; height: auto; white-space: normal; text-align: left; }
-.mentor-project-roster { min-width: 0; padding: 18px 20px; border: 1px solid hsl(var(--border)); border-radius: 10px; background: hsl(var(--card)); }
-.mentor-project-roster h2 { font-size: 14px; }
-.mentor-project-roster h2 svg { width: 16px; height: 16px; color: hsl(var(--muted-foreground)); }
-.mentor-project-roster ul { margin-top: 12px; }
-.mentor-project-roster li { display: flex; align-items: center; gap: 12px; padding-block: 12px; border-top: 1px solid hsl(var(--border)); }
-.mentor-project-person-avatar { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); font-size: 11px; font-weight: 600; }
-.mentor-project-person-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.mentor-project-person-copy strong { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
-.mentor-project-person-copy small { font-size: 12px; color: hsl(var(--muted-foreground)); }
+.mentor-project-roster { min-width: 0; padding: 20px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card)); }
+.mentor-project-roster h2 { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 650; color: hsl(var(--foreground)); }
+.mentor-project-roster h2 svg { width: 16px; height: 16px; color: hsl(var(--muted-foreground)); flex-shrink: 0; }
+.mentor-project-roster ul { margin-top: 12px; list-style: none; padding: 0; }
+.mentor-project-roster li { display: flex; align-items: center; gap: 12px; padding-block: 8px; border-top: 1px solid hsl(var(--border)); }
+.mentor-project-roster li:first-child { border-top: 0; padding-top: 4px; }
+.mentor-project-roster li:last-child { padding-bottom: 0; }
+.mentor-project-member-trigger { display: flex; align-items: center; gap: 12px; width: 100%; padding: 6px 8px; margin-inline: -8px; border-radius: 10px; text-align: left; background: transparent; border: 0; cursor: pointer; transition: background 140ms ease; }
+.mentor-project-member-trigger:hover { background: hsl(var(--muted) / 0.55); }
+.mentor-project-member-trigger:hover .mentor-project-member-name { color: hsl(var(--primary)); text-decoration: underline; text-underline-offset: 2px; }
+.mentor-project-person-avatar { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 9999px; border: 1px solid hsl(var(--primary) / .2); background: hsl(var(--primary) / .1); color: hsl(var(--primary)); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
+.mentor-project-person-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.mentor-project-person-copy strong { font-size: 13.5px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; color: hsl(var(--foreground)); }
+.mentor-project-person-copy small { font-size: 12px; line-height: 1.35; color: hsl(var(--muted-foreground)); }
 .mentor-project-contributions { padding-block: 20px; border-top: 1px solid hsl(var(--border)); }
 .mentor-project-contributions > summary { width: fit-content; cursor: pointer; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); }
 @media (max-width: 900px) {

@@ -11,6 +11,8 @@ import {
   Inbox,
   LayoutDashboard,
   ListTodo,
+  Shapes,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 import { useI18n } from "@/i18n";
@@ -74,7 +76,8 @@ export interface AppSingleSidebarProps {
     | "review"
     | "review-request"
     | "review-entry"
-    | "resources";
+    | "resources"
+    | "contributions";
   onSelectMentorView?: (view: "overview" | "work" | "projects") => void;
   mentorMetrics?: {
     projects: number;
@@ -114,7 +117,7 @@ export function AppSingleSidebar({
   researchProjects,
   children,
 }: AppSingleSidebarProps) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [searchParams] = useSearchParams();
   const user = useAuthStore(s => s.user);
 
@@ -136,9 +139,8 @@ export function AppSingleSidebar({
     "review",
     "review-request",
     "review-entry",
-    "templates",
-    "template-builder",
   ].includes(activeMentorView);
+  const isTemplatesActive = ["templates", "template-builder"].includes(activeMentorView);
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -154,7 +156,7 @@ export function AppSingleSidebar({
             <Link to="/home" className="flex items-center gap-2 group min-w-0" title="LumiGap">
               <img src={logoImage} alt="LumiGap" className="sidebar-brand-logo" />
               <span className="rounded-md bg-blue-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-xs">
-                Mentor
+                {language === "vi" ? "Giảng viên" : "Lecturer"}
               </span>
             </Link>
           </div>
@@ -254,6 +256,38 @@ export function AppSingleSidebar({
               t("mentorWorkspace.reviewCenterTitle"),
               undefined,
               "reviews",
+            )}
+
+            {wrapTooltip(
+              <Link
+                to="/mentor-workspace?view=templates"
+                className="sidebar-nav-item"
+                data-active={isTemplatesActive ? "true" : undefined}
+                aria-current={isTemplatesActive ? "page" : undefined}
+                aria-label={t("mentorWorkspace.templatesTitle")}
+              >
+                <Shapes size={17} aria-hidden="true" className="sidebar-nav-icon" />
+                {!collapsed && <span className="truncate">{t("mentorWorkspace.templatesTitle")}</span>}
+              </Link>,
+              t("mentorWorkspace.templatesTitle"),
+              undefined,
+              "templates",
+            )}
+
+            {wrapTooltip(
+              <Link
+                to="/mentor-workspace?view=contributions"
+                className="sidebar-nav-item"
+                data-active={activeMentorView === "contributions" ? "true" : undefined}
+                aria-current={activeMentorView === "contributions" ? "page" : undefined}
+                aria-label={t("mentorWorkspace.myContributions")}
+              >
+                <ShieldCheck size={17} aria-hidden="true" className="sidebar-nav-icon" />
+                {!collapsed && <span className="truncate">{t("mentorWorkspace.myContributions")}</span>}
+              </Link>,
+              t("mentorWorkspace.myContributions"),
+              undefined,
+              "contributions",
             )}
 
             {wrapTooltip(

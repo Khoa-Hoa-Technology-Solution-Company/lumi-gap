@@ -2,7 +2,7 @@ import { createReviewNotification, dispatchReviewNotifications, reviewTeamRecipi
 import crypto from "node:crypto";
 import { assertAcademicRelationshipManager } from "../projects/academic-relationship-access.js";
 import { env } from "../../config/env.js";
-import type { CreateReviewRequestInput, ResubmitReviewRequestInput } from "@trend/shared-types";
+import type { AcademicReviewMode, ChangeReviewTemplateInput, CreateReviewRequestInput, ResubmitReviewRequestInput } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
@@ -10,11 +10,21 @@ import { auditService } from "../audit/audit.service.js";
 import { defaultPeerReviewTemplate, assertPeerReviewer, assertReviewerInTransaction, assertReviewAdmission, lockReviewerAndSubmission, refreshSubmissionReviewStatus } from "./peer-review-access.js";
 import { normalizeEmail } from "../identity/identity-foundation.rules.js";
 import { createOpaqueToken, hashOpaqueToken } from "../auth/token.service.js";
-import { hydrateReviewTemplateVersion } from "./review-template.service.js";
+import { hydrateReviewTemplateSummary, hydrateReviewTemplateVersion } from "./review-template.service.js";
 import { ACTIVE_REVIEW_REQUEST_STATUSES } from "./review.constants.js";
 import { assertMentorReviewAccess, acceptedMentorReviewPolicy, visibleMentorReviewAssignments } from "./mentor-review-access.js";
 import type { Prisma } from "../../generated/prisma/client.js";
-import { canCancelReviewRequest, canResubmitReviewRequest, canReviewerDeclineRequest, decodeFeedbackItem, eligiblePeerReviewer, isSuggestionRevisionItem, reviewDeadline } from "./academic-review.rules.js";
+import {
+  canCancelReviewRequest,
+  canResubmitReviewRequest,
+  canReviewerDeclineRequest,
+  decodeFeedbackItem,
+  eligiblePeerReviewer,
+  isArtifactTypeCompatible,
+  isSuggestionRevisionItem,
+  planDraftResponseMigration,
+  reviewDeadline,
+} from "./academic-review.rules.js";
 
 const ACTIVE_REQUEST_STATUSES = ACTIVE_REVIEW_REQUEST_STATUSES;
 
@@ -470,7 +480,7 @@ export const reviewRequestService = {
   async detail(requestInput: string, actorInput: string) {
     const actor = await resolveUser(actorInput);
     const request = await requestRecord(requestInput);
-    const project = await getPrisma().project.findUnique({ where: { id: request.projectId }, select: { deletedAt: true } });
+    const project = await getPrisma().project.findUnique({ where: { id: request.projectId }, select: { deletedAt: true, status: true, ownerId: true } });
     if (!project || project.deletedAt) throw AppError.notFound("Project not found");
     const assignment = await assignmentForRequest(request.id);
     if (actor.id !== assignment.reviewerId) await assertRevisionAuthor(request.projectId, request.submissionId, actor.id, getPrisma(), true);
@@ -479,7 +489,8 @@ export const reviewRequestService = {
     if (actor.id === assignment.reviewerId && request.origin === "MENTOR_GUIDANCE") await assertMentorReviewAccess(getPrisma(), request.projectId, actor.id, request.submissionId, assignment.id);
     const prisma = getPrisma();
     const reviewerProfile = actor.id === assignment.reviewerId ? await prisma.academicProfile.findUnique({ where: { userId: actor.id } }) : null;
-    const canWork = ["accepted", "completed"].includes(assignment.status) && actor.id === assignment.reviewerId && actor.accountStatus === "ACTIVE" && Boolean(actor.emailVerifiedAt) && reviewerProfile?.positionStatus === "VERIFIED" && eligiblePeerReviewer(reviewerProfile?.academicRole, reviewerProfile?.roleVerificationStatus) && !["cancelled", "declined"].includes(assignment.status);
+    const isVerifiedAssignedLecturer = actor.id === assignment.reviewerId && actor.accountStatus === "ACTIVE" && Boolean(actor.emailVerifiedAt) && reviewerProfile?.positionStatus === "VERIFIED" && eligiblePeerReviewer(reviewerProfile?.academicRole, reviewerProfile?.roleVerificationStatus);
+    const canWork = ["accepted", "completed"].includes(assignment.status) && isVerifiedAssignedLecturer && !["cancelled", "declined"].includes(assignment.status);
     const [base, revision, templateVersion, reviews] = await Promise.all([
       summary(request, canWork ? actor.id : undefined), prisma.submissionRevision.findUniqueOrThrow({ where: { id: request.artifactRevisionId } }),
       hydrateReviewTemplateVersion(request.templateVersionId),
@@ -493,8 +504,29 @@ export const reviewRequestService = {
       responses: await prisma.reviewResponse.findMany({ where: { reviewId: review.id } }),
       requiredRevisions: await Promise.all((await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } })).map(async (item) => ({ ...decodeFeedbackItem(item), responses: await prisma.reviewRevisionResponse.findMany({ where: { revisionItemId: item.id, ...(actor.id === assignment.reviewerId ? { status: { not: "DRAFT" } } : {}) }, orderBy: { createdAt: "asc" } }) }))),
     })));
+    const activeDraft = reviewDetails.find(r => r.status === "DRAFT" && r.revisionId === request.artifactRevisionId);
+    const draftResponseCount = activeDraft?.responses.length ?? 0;
+    const submittedRoundCount = reviewDetails.filter(r => r.status === "SUBMITTED").length;
+    const mandatoryProjectTemplate = templateVersion?.templateSource === "PROJECT";
+    const canChangeTemplate = Boolean(
+      isVerifiedAssignedLecturer &&
+      ["assigned", "accepted"].includes(assignment.status) &&
+      ["REQUESTED", "ACCEPTED", "IN_REVIEW", "RESUBMITTED"].includes(request.status) &&
+      !["ARCHIVED", "COMPLETED"].includes(project.status) &&
+      (!mandatoryProjectTemplate || project.ownerId === actor.id),
+    );
     return {
-      ...base, canRespond, templateVersion, artifactContent: actor.id === assignment.reviewerId && !canWork ? undefined : revision.contentSnapshot ?? undefined,
+      ...base,
+      canRespond,
+      templateVersion,
+      templateSelection: {
+        canChangeTemplate,
+        mandatoryProjectTemplate,
+        hasDraftResponses: draftResponseCount > 0,
+        draftResponseCount,
+        submittedRoundCount,
+      },
+      artifactContent: actor.id === assignment.reviewerId && !canWork ? undefined : revision.contentSnapshot ?? undefined,
       reviews: reviewDetails,
     };
   },
@@ -788,5 +820,303 @@ export const reviewRequestService = {
     if (!changed) return;
     for (const userId of await reviewTeamRecipients(request.projectId, request.submissionId)) await createReviewNotification({ userId, title: status === "ACCEPTED" ? "Revision change accepted" : "Revision issue reopened", message: "Your mentor has verified a response. Open the review history to see the decision.", type: "REVIEW_REVISION_VERIFIED", targetKind: "review_request", targetId: request.id });
     await auditService.log("REVIEW_REVISION_VERIFIED", { userId: user.id, targetTableName: "review_revision_items", targetRecordId: itemInput, details: { status, requestId: request.id } });
+  },
+
+  async eligibleTemplates(requestInput: string, actorInput: string) {
+    const { user } = await assertPeerReviewer(actorInput);
+    const request = await requestRecord(requestInput);
+    const assignment = await assignmentForRequest(request.id);
+    if (assignment.reviewerId !== user.id) {
+      throw AppError.forbidden("Only the assigned reviewer can view eligible templates for this review");
+    }
+    const prisma = getPrisma();
+    if (request.origin === "MENTOR_GUIDANCE") {
+      await assertMentorReviewAccess(prisma, request.projectId, user.id, request.submissionId, assignment.id);
+    }
+    const [project, submission, currentVersion, reviews] = await Promise.all([
+      prisma.project.findUnique({ where: { id: request.projectId }, select: { id: true, ownerId: true, status: true, deletedAt: true } }),
+      prisma.submission.findUniqueOrThrow({ where: { id: request.submissionId }, select: { id: true, submissionType: true } }),
+      prisma.reviewTemplateVersion.findUnique({ where: { id: request.templateVersionId }, select: { id: true, templateId: true } }),
+      prisma.humanReview.findMany({ where: { assignmentId: assignment.id }, select: { id: true, status: true, revisionId: true } }),
+    ]);
+    if (!project || project.deletedAt) throw AppError.notFound("Project not found");
+
+    const currentTemplate = currentVersion
+      ? await prisma.reviewTemplate.findUnique({ where: { id: currentVersion.templateId }, select: { source: true } })
+      : null;
+    const mandatoryProjectTemplate = currentTemplate?.source === "PROJECT";
+    const activeDraft = reviews.find(r => r.status === "DRAFT" && r.revisionId === request.artifactRevisionId);
+    const draftResponseCount = activeDraft
+      ? await prisma.reviewResponse.count({ where: { reviewId: activeDraft.id } })
+      : 0;
+    const submittedRoundCount = reviews.filter(r => r.status === "SUBMITTED").length;
+    const canChangeTemplate = Boolean(
+      ["assigned", "accepted"].includes(assignment.status) &&
+      ["REQUESTED", "ACCEPTED", "IN_REVIEW", "RESUBMITTED"].includes(request.status) &&
+      !["ARCHIVED", "COMPLETED"].includes(project.status) &&
+      (!mandatoryProjectTemplate || project.ownerId === user.id),
+    );
+
+    let suggestedTemplateVersionId: string | undefined;
+    try {
+      const suggested = await defaultPeerReviewTemplate(prisma, submission.submissionType);
+      suggestedTemplateVersionId = publicDatabaseId(suggested);
+    } catch {
+      suggestedTemplateVersionId = undefined;
+    }
+
+    const candidateRows = await prisma.reviewTemplate.findMany({
+      where: {
+        active: true,
+        status: "PUBLISHED",
+        activeVersionId: { not: null },
+        OR: [
+          { source: "SYSTEM" },
+          { source: "PERSONAL", ownerId: user.id },
+          { source: "PROJECT", projectId: request.projectId },
+        ],
+      },
+      orderBy: [{ source: "asc" }, { name: "asc" }],
+    });
+
+    const compatibleRows = candidateRows.filter(
+      row =>
+        row.activeVersionId === request.templateVersionId ||
+        isArtifactTypeCompatible(row.artifactType ?? row.submissionType, submission.submissionType),
+    );
+    const hydrated = await Promise.all(
+      compatibleRows.map(row => hydrateReviewTemplateSummary(row, { actorId: user.id })),
+    );
+
+    return {
+      requestId: publicDatabaseId(request),
+      currentTemplateVersionId: request.templateVersionId,
+      suggestedTemplateVersionId,
+      artifactType: submission.submissionType ?? undefined,
+      canChangeTemplate,
+      mandatoryProjectTemplate,
+      hasDraftResponses: draftResponseCount > 0,
+      draftResponseCount,
+      submittedRoundCount,
+      templates: hydrated.filter(item => item.activeVersion?.status === "PUBLISHED"),
+    };
+  },
+
+  async changeTemplate(requestInput: string, input: ChangeReviewTemplateInput, actorInput: string) {
+    const { user } = await assertPeerReviewer(actorInput);
+    const request = await requestRecord(requestInput);
+    const assignment = await assignmentForRequest(request.id);
+    if (assignment.reviewerId !== user.id) {
+      throw AppError.forbidden("Only the assigned reviewer can select the evaluation template");
+    }
+    if (!["assigned", "accepted"].includes(assignment.status) || !["REQUESTED", "ACCEPTED", "IN_REVIEW", "RESUBMITTED"].includes(request.status)) {
+      throw AppError.conflict("The evaluation template cannot be changed after this review request has finished or closed");
+    }
+    const prisma = getPrisma();
+    if (request.origin === "MENTOR_GUIDANCE") {
+      await assertMentorReviewAccess(prisma, request.projectId, user.id, request.submissionId, assignment.id);
+    }
+
+    const targetVersion = await prisma.reviewTemplateVersion.findFirst({
+      where: { ...whereId(input.templateVersionId), status: "PUBLISHED" },
+    });
+    if (!targetVersion) {
+      throw AppError.badRequest("Select a published review template version");
+    }
+    const targetTemplate = await prisma.reviewTemplate.findUnique({ where: { id: targetVersion.templateId } });
+    if (!targetTemplate || !targetTemplate.active || targetTemplate.status !== "PUBLISHED") {
+      throw AppError.forbidden("This review template is archived or unpublished and cannot be selected");
+    }
+    if (targetTemplate.source === "PERSONAL" && targetTemplate.ownerId !== user.id) {
+      throw AppError.forbidden("You do not have access to another lecturer's private template");
+    }
+    if (targetTemplate.source === "PROJECT" && targetTemplate.projectId !== request.projectId) {
+      throw AppError.forbidden("Project templates can only be used within their own project");
+    }
+
+    const reason = input.reason?.trim() || undefined;
+    const pendingNotifications: Awaited<ReturnType<typeof createReviewNotification>>[] = [];
+
+    const result = await prisma.$transaction(async (tx) => {
+      await lockReviewerAndSubmission(tx, user.id, request.submissionId);
+      await tx.$queryRaw`SELECT id FROM projects WHERE id = ${request.projectId}::uuid FOR UPDATE`;
+      await assertReviewerInTransaction(tx, user.id);
+
+      const [liveRequest, liveAssignment, liveProject, liveSubmission] = await Promise.all([
+        tx.reviewRequest.findUniqueOrThrow({ where: { id: request.id } }),
+        tx.reviewerAssignment.findUniqueOrThrow({ where: { id: assignment.id } }),
+        tx.project.findUniqueOrThrow({ where: { id: request.projectId } }),
+        tx.submission.findUniqueOrThrow({ where: { id: request.submissionId } }),
+      ]);
+      if (liveProject.deletedAt || ["ARCHIVED", "COMPLETED"].includes(liveProject.status)) {
+        throw AppError.conflict("Archived or completed projects are read-only");
+      }
+      if (!["assigned", "accepted"].includes(liveAssignment.status) || !["REQUESTED", "ACCEPTED", "IN_REVIEW", "RESUBMITTED"].includes(liveRequest.status)) {
+        throw AppError.conflict("The review request status changed; refresh before switching templates");
+      }
+      if (liveRequest.origin === "MENTOR_GUIDANCE") {
+        await assertMentorReviewAccess(tx, liveRequest.projectId, user.id, liveRequest.submissionId, liveAssignment.id);
+      }
+
+      // Mandatory project template guard: project owner's chosen project template cannot be replaced by reviewer
+      const currentVersion = await tx.reviewTemplateVersion.findUnique({
+        where: { id: liveRequest.templateVersionId },
+        select: { id: true, templateId: true },
+      });
+      const currentTemplate = currentVersion
+        ? await tx.reviewTemplate.findUnique({ where: { id: currentVersion.templateId }, select: { id: true, source: true } })
+        : null;
+      if (currentTemplate?.source === "PROJECT" && liveProject.ownerId !== user.id) {
+        throw AppError.forbidden("This project requires its configured project template, which cannot be replaced");
+      }
+
+      if (!isArtifactTypeCompatible(targetTemplate.artifactType ?? targetTemplate.submissionType, liveSubmission.submissionType)) {
+        throw AppError.badRequest("Choose a template compatible with this manuscript document type");
+      }
+
+      // No-op when selecting the already active template version
+      if (liveRequest.templateVersionId === targetVersion.id) {
+        return { changed: false, previousTemplateVersionId: liveRequest.templateVersionId, resetResponseCount: 0, submittedRoundCount: 0 };
+      }
+
+      const reviews = await tx.humanReview.findMany({
+        where: { assignmentId: liveAssignment.id },
+        orderBy: { roundNumber: "asc" },
+      });
+      const submittedRoundCount = reviews.filter(r => r.status === "SUBMITTED").length;
+      if (submittedRoundCount > 0 && (!reason || reason.length < 5)) {
+        throw AppError.badRequest("Provide a brief academic reason (at least 5 characters) when changing templates for a subsequent review round");
+      }
+
+      const activeDraft = reviews.find(r => r.status === "DRAFT" && r.revisionId === liveRequest.artifactRevisionId);
+      const targetCriteria = await tx.reviewCriterion.findMany({
+        where: { versionId: targetVersion.id },
+        orderBy: { order: "asc" },
+      });
+      const targetLevels = targetVersion.reviewMode === "RUBRIC_ASSESSMENT"
+        ? await tx.reviewCriterionLevel.findMany({
+            where: { criterionId: { in: targetCriteria.map(c => c.id) } },
+            select: { id: true, criterionId: true, score: true },
+          })
+        : [];
+      const levelsByCrit = new Map<string, Array<{ id: string; score: number }>>();
+      for (const lv of targetLevels) {
+        levelsByCrit.set(lv.criterionId, [...(levelsByCrit.get(lv.criterionId) ?? []), { id: lv.id, score: lv.score }]);
+      }
+      const targetCriteriaMeta = targetCriteria.map(c => ({
+        key: c.key,
+        allowNotApplicable: c.allowNotApplicable,
+        levels: levelsByCrit.get(c.id) ?? [],
+      }));
+      const targetKeySet = new Set(targetCriteria.map(c => c.key));
+
+      let resetResponseCount = 0;
+      if (activeDraft) {
+        const draftResponses = await tx.reviewResponse.findMany({ where: { reviewId: activeDraft.id } });
+        if (draftResponses.length > 0) {
+          const plan = planDraftResponseMigration(
+            draftResponses,
+            targetCriteriaMeta,
+            targetVersion.reviewMode as AcademicReviewMode,
+          );
+          if (!input.confirmDraftReset) {
+            throw AppError.conflict(
+              "This review already has saved draft criterion responses. Confirm replacement to migrate compatible notes and reset incompatible fields.",
+              {
+                code: "DRAFT_CONFIRMATION_REQUIRED",
+                affectedResponseCount: draftResponses.length,
+                incompatibleResponseCount: plan.incompatibleCount,
+              },
+            );
+          }
+          if (plan.deleteIds.length > 0) {
+            await tx.reviewResponse.deleteMany({ where: { id: { in: plan.deleteIds } } });
+          }
+          for (const patch of plan.updates) {
+            await tx.reviewResponse.update({
+              where: { id: patch.id },
+              data: {
+                performanceLevelId: patch.performanceLevelId,
+                score: patch.score,
+                assessment: patch.assessment,
+                notApplicable: patch.notApplicable,
+              },
+            });
+          }
+          resetResponseCount = plan.deleteIds.length + plan.updates.length;
+        }
+        // Preserve all draft revision requests; only unlink criterionKey if it no longer exists in the new template
+        const draftRevisions = await tx.reviewRevisionItem.findMany({ where: { reviewId: activeDraft.id } });
+        for (const revItem of draftRevisions) {
+          const decoded = decodeFeedbackItem(revItem);
+          if (decoded.criterionKey && !targetKeySet.has(decoded.criterionKey)) {
+            await tx.reviewRevisionItem.update({
+              where: { id: revItem.id },
+              data: { criterionKey: decoded.priority === "SUGGESTION" ? "__suggestion__" : null },
+            });
+          }
+        }
+        await tx.humanReview.update({
+          where: { id: activeDraft.id },
+          data: {
+            templateId: targetTemplate.id,
+            templateVersionId: targetVersion.id,
+            weightedScore: null,
+          },
+        });
+      }
+
+      await tx.reviewRequest.update({
+        where: { id: liveRequest.id },
+        data: { templateVersionId: targetVersion.id },
+      });
+
+      if (submittedRoundCount > 0) {
+        for (const recipientId of await reviewTeamRecipients(liveRequest.projectId, liveRequest.submissionId, tx)) {
+          pendingNotifications.push(
+            await createReviewNotification(
+              {
+                userId: recipientId,
+                title: "Evaluation template updated for next round",
+                message: `Your reviewer updated the evaluation template for “${liveSubmission.title}” to “${targetTemplate.name}”.`,
+                type: "REVIEW_TEMPLATE_CHANGED",
+                targetKind: "review_request",
+                targetId: liveRequest.id,
+              },
+              tx,
+            ),
+          );
+        }
+      }
+
+      return {
+        changed: true,
+        previousTemplateVersionId: liveRequest.templateVersionId,
+        resetResponseCount,
+        submittedRoundCount,
+      };
+    });
+
+    if (result.changed) {
+      await Promise.all([
+        auditService.log("REVIEW_TEMPLATE_CHANGED", {
+          userId: user.id,
+          targetTableName: "review_requests",
+          targetRecordId: request.id,
+          details: {
+            previousTemplateVersionId: result.previousTemplateVersionId,
+            newTemplateVersionId: targetVersion.id,
+            newTemplateId: targetTemplate.id,
+            newReviewMode: targetVersion.reviewMode,
+            submittedRoundCount: result.submittedRoundCount,
+            resetResponseCount: result.resetResponseCount,
+            ...(reason ? { reason } : {}),
+          },
+        }),
+        dispatchReviewNotifications(pendingNotifications),
+      ]);
+    }
+
+    return this.detail(request.id, actorInput);
   },
 };

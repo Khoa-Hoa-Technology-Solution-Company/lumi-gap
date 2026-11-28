@@ -17,6 +17,6 @@
 .mentor-send-preview summary { cursor: pointer; padding-block: 8px; font-weight: 600; }
 .mentor-send-preview .writing-pdf-viewport { max-height: 360px; overflow: auto; }
 .mentor-send-form pre { max-height: 160px; overflow: auto; font-size: 11px; white-space: pre-wrap; }
-.mentor-send-form footer { display: flex; justify-content: flex-end; gap: 10px; position: sticky; bottom: -24px; margin-bottom: -24px; background: hsl(var(--background)); border-top: 1px solid hsl(var(--border)); padding: 16px 0 24px; z-index: 2; }
+.mentor-send-form footer { display: flex; flex-direction: column; gap: 10px; position: sticky; bottom: -24px; margin-bottom: -24px; background: hsl(var(--background)); border-top: 1px solid hsl(var(--border)); padding: 14px 0 24px; z-index: 2; }
 .mentor-send-form [role="alert"] { font-size: 13px; overflow-wrap: anywhere; }
 @media(max-width:600px) { .mentor-manuscript-dialog { padding: 18px; } .mentor-send-form footer { bottom: -18px; margin-bottom: -18px; padding-bottom: 18px; } .mentor-send-form footer button { font-size: 12px; padding-inline: 12px; } }

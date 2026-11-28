@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   history: vi.fn(),
   reopenUnresolved: vi.fn(),
   assign: vi.fn(),
+  claim: vi.fn(),
   analytics: vi.fn(),
   action: vi.fn(),
   ai: vi.fn(),
@@ -282,7 +283,7 @@ describe("Re-screening & Decision Revision UI", () => {
     expect(document.body.textContent).toContain("Đang đánh giá lại · Vòng 2");
     expect(document.body.textContent).toContain("Kết quả trước đó (Vòng 1): Đã chọn");
     expect(document.body.textContent).toContain("Bổ sung bản PDF toàn văn mới từ tác giả");
-    expect([...document.querySelectorAll("button")].some(b => b.textContent?.trim() === "Gửi và khóa phiếu")).toBe(true);
+    expect([...document.querySelectorAll("button")].some(b => b.textContent?.trim() === "Gửi phiếu đánh giá")).toBe(true);
     expect(document.body.textContent).toContain("Lịch sử đánh giá (2 vòng)");
     expect(document.body.textContent).toContain("Phiếu của vòng này đang được ẩn theo chế độ đánh giá độc lập");
   });
@@ -303,13 +304,15 @@ describe("Re-screening & Decision Revision UI", () => {
       canReview: false,
       canReopenUnresolved: false,
       canAssignReviewers: true,
+      canClaim: true,
       rescreening: true,
       publishedResult: { roundId: "round-1", number: 1, status: "INCLUDED", phase: "TITLE_ABSTRACT" },
       assignments: [
-        { id: "asg-a2", reviewerId: "rev-a", name: "Trần Reviewer A", revision: 1, completed: false, active: true, dueAt: null, overdue: false },
+        { id: "asg-b2", reviewerId: "rev-b", name: "Lê Reviewer B", revision: 1, completed: false, active: true, dueAt: null, overdue: false },
       ],
       myAssignmentId: null,
     });
+    mocks.claim.mockResolvedValue({ roundId: "round-2" });
     mocks.detail.mockResolvedValue(round2);
     mocks.rounds.mockResolvedValue({ items: [round2], page: 1, pageSize: 10, total: 1, hasNext: false, legacy: null });
 
@@ -318,6 +321,12 @@ describe("Re-screening & Decision Revision UI", () => {
     expect(document.body.textContent).not.toContain("Phân công thay thế");
     expect(mocks.assign).not.toHaveBeenCalled();
     expect(document.querySelector('select[aria-label="Chọn reviewer thay thế"]')).toBeNull();
+    const claim = document.querySelector<HTMLButtonElement>('[data-screening-section="claim-slot"] button');
+    expect(claim?.textContent).toContain("Nhận lượt đánh giá");
+    await act(async () => claim!.click());
+    await settle();
+    expect(mocks.claim).toHaveBeenCalledWith("proj-1", "round-2", { clientKey: expect.any(String) });
+    expect(mocks.assign).not.toHaveBeenCalled();
   });
 
   it("renders PRISMA summary with active re-screening warning and separates Closed Without Consensus from Excluded", async () => {

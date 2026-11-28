@@ -8,7 +8,7 @@ import { ProjectDiscussionPanel } from "../components/project-discussion-panel";
 import { useChatScroll } from "../hooks/use-chat-scroll";
 
 const api = vi.hoisted(() => ({ listMessages: vi.fn(), sendMessage: vi.fn(), markRead: vi.fn(), deleteMessage: vi.fn(), streamEvents: vi.fn(), references: vi.fn(), reference: vi.fn() }));
-const ai = vi.hoisted(() => ({ listHistory: vi.fn(), sendMessage: vi.fn(), streamEvents: vi.fn() }));
+const ai = vi.hoisted(() => ({ listHistory: vi.fn(), sendMessage: vi.fn(), streamEvents: vi.fn(), getSources: vi.fn(), pinMessage: vi.fn() }));
 vi.mock("../api/project-team-chat.api", () => ({ projectTeamChatApi: api }));
 vi.mock("../api/project-chat.api", () => ({ projectChatApi: ai }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: "me", fullName: "Researcher", systemRole: "USER" } }) }));
@@ -41,6 +41,16 @@ beforeEach(() => {
   api.listMessages.mockResolvedValue([]); api.sendMessage.mockResolvedValue(sent);
   api.streamEvents.mockImplementation(() => new Promise(() => {}));
   ai.listHistory.mockResolvedValue([]); ai.streamEvents.mockImplementation(() => new Promise(() => {}));
+  ai.getSources.mockResolvedValue({
+    totalLibraryCount: 5,
+    eligibleCount: 3,
+    includedCount: 2,
+    excludedCount: 2,
+    pendingCount: 1,
+    coverage: { fullTextIndexed: 1, abstractAvailable: 2, metadataOnly: 0, withEmbeddings: 3 },
+    aiDataPolicy: "ALLOW_PERSONAL_AI",
+    externalLookupPolicy: "ALLOW_PUBLIC_INDEX",
+  });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
@@ -87,14 +97,14 @@ it.each([false, true])("keeps rapid AI turns in server order when serialized tim
     { id: "q2", role: "user", content: "Second question", createdAt: timestamp(2), citedPaperIds: [] },
     { id: "a2", role: "assistant", content: "Second answer", createdAt: timestamp(3), citedPaperIds: [] },
   ]);
-  await render(<ProjectDiscussionPanel projectId="p" paperCount={2} />); await channel("My AI");
+  await render(<ProjectDiscussionPanel projectId="p" paperCount={2} />); await channel("Research AI Assistant");
   const text = container.textContent!;
   expect(text.indexOf("First answer")).toBeLessThan(text.indexOf("Second question"));
-  expect([...container.querySelectorAll<HTMLAnchorElement>("a")].find(item => item.textContent?.includes("Open manuscripts"))?.getAttribute("href")).toBe("/projects/p?tab=manuscripts");
-  expect([...container.querySelectorAll<HTMLAnchorElement>("a")].find(item => item.textContent?.includes("Explore gaps"))?.getAttribute("href")).toBe("/projects/p?tab=gaps");
+  expect([...container.querySelectorAll<HTMLAnchorElement>("a")].find(item => item.textContent?.includes("Open Manuscript"))?.getAttribute("href")).toBe("/projects/p?tab=manuscripts");
+  expect([...container.querySelectorAll<HTMLAnchorElement>("a")].find(item => item.textContent?.includes("Explore Research Gaps"))?.getAttribute("href")).toBe("/projects/p?tab=gaps");
 });
-it("loads over 50 My AI messages with tied prompt-answer times without duplicates", async () => {
-  const label = "My AI";
+it("loads over 50 Research AI Assistant messages with tied prompt-answer times without duplicates", async () => {
+  const label = "Research AI Assistant";
   const scope = "private";
   const turn = (index: number) => {
     const createdAt = new Date(Date.UTC(2026, 9, 17, 12, 0, index)).toISOString();
@@ -134,24 +144,24 @@ it("loads over 50 My AI messages with tied prompt-answer times without duplicate
 });
 it("keeps separate drafts in team chat and private AI and removes Team AI Room", async () => {
   await render(<ProjectDiscussionPanel projectId="p" paperCount={2} />, "/projects/p?tab=chat&channel=team-ai");
-  expect([...container.querySelectorAll('[role="tab"]')].map(item => item.textContent)).toEqual(["Team Chat", "My AI", "With mentors"]);
-  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("Team Chat");
+  expect([...container.querySelectorAll('[role="tab"]')].map(item => item.textContent)).toEqual(["Research Team Chat", "Research AI Assistant", "Mentor Conversations"]);
+  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("Research Team Chat");
   await fill("Team update");
-  await channel("My AI"); expect(container.querySelector("textarea")!.value).toBe(""); await fill("Private question");
-  await channel("Team Chat"); expect(container.querySelector("textarea")!.value).toBe("Team update");
-  await channel("My AI"); expect(container.querySelector("textarea")!.value).toBe("Private question");
+  await channel("Research AI Assistant"); expect(container.querySelector("textarea")!.value).toBe(""); await fill("Private question");
+  await channel("Research Team Chat"); expect(container.querySelector("textarea")!.value).toBe("Team update");
+  await channel("Research AI Assistant"); expect(container.querySelector("textarea")!.value).toBe("Private question");
   await render(<ProjectDiscussionPanel projectId="other" paperCount={2} />); expect(container.querySelector("textarea")!.value).toBe("");
 });
-it.each(["Team Chat", "My AI"])("retains a revised %s draft when an earlier send finishes after switching channels", async label => {
+it.each(["Research Team Chat", "Research AI Assistant"])("retains a revised %s draft when an earlier send finishes after switching channels", async label => {
   let finish!: (result: unknown) => void;
-  const send = label === "Team Chat" ? api.sendMessage : ai.sendMessage;
+  const send = label === "Research Team Chat" ? api.sendMessage : ai.sendMessage;
   send.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
   await render(<ProjectDiscussionPanel projectId="p" paperCount={2} />);
-  if (label === "My AI") await channel(label);
+  if (label === "Research AI Assistant") await channel(label);
   await fill("Earlier question"); await key("Enter");
-  await channel(label === "Team Chat" ? "My AI" : "Team Chat"); await channel(label);
+  await channel(label === "Research Team Chat" ? "Research AI Assistant" : "Research Team Chat"); await channel(label);
   await fill("Revised unsent question");
-  await act(async () => finish(label === "Team Chat" ? sent : { answer: "Saved answer" }));
+  await act(async () => finish(label === "Research Team Chat" ? sent : { answer: "Saved answer" }));
   expect(container.querySelector("textarea")?.value).toBe("Revised unsent question");
 });
 it("uses the Send button for touch devices, preserving Enter for new lines", async () => {
@@ -190,8 +200,8 @@ it("preselects a paper from Library without sending and sends the original refer
 });
 it("removes a selected research reference and never shares it into personal AI", async () => {
   await render(<ProjectDiscussionPanel projectId="p" paperCount={2} />, "/projects/p?tab=chat&shareKind=PAPER&shareId=00000000-0000-4000-8000-000000000001");
-  await channel("My AI"); expect(container.textContent).not.toContain("Shared paper");
-  await channel("Team Chat"); expect(container.textContent).toContain("Shared paper");
+  await channel("Research AI Assistant"); expect(container.textContent).not.toContain("Shared paper");
+  await channel("Research Team Chat"); expect(container.textContent).toContain("Shared paper");
   await button("chat.removeReference"); expect(container.textContent).not.toContain("Shared paper");
 });
 it("hides cached reference metadata after access revocation", async () => {
@@ -267,4 +277,56 @@ it("keeps following resized content only while the reader stays at the bottom", 
   Object.defineProperties(feed, { scrollHeight: { value: 1000 }, clientHeight: { value: 200 } });
   await act(async () => notify()); expect(feed.scrollTop).toBe(1000);
   await act(async () => { feed.scrollTop = 100; feed.dispatchEvent(new Event("scroll", { bubbles: true })); notify(); }); expect(feed.scrollTop).toBe(100);
+});
+
+it("maps inline citation [3] to exact bibliographic source, shows honest Research Sources dialog, and hides research links on capability answers", async () => {
+  ai.listHistory.mockResolvedValue([
+    {
+      id: "a-grounded",
+      projectId: "p",
+      userId: "me",
+      scope: "private",
+      role: "assistant",
+      content: "Paper C notes a limitation [3], while Paper A adds evidence [1].",
+      citedPaperIds: ["paper-c", "paper-a"],
+      citations: [
+        { citationNumber: 3, paperId: "paper-c", title: "Clinical Evaluation of LLMs", authors: ["Nguyen Van An"], publicationYear: 2025, journalName: "Nature Medicine", doi: "10.1000/c", sourceKind: "FULLTEXT", excerpt: "Verified full-text limitation excerpt.", pageNumber: 7, available: true },
+        { citationNumber: 1, paperId: "paper-a", title: "Systematic Review Automation", authors: ["Tran Binh"], publicationYear: 2024, sourceKind: "ABSTRACT", excerpt: "Abstract summary.", available: true },
+      ],
+      retrievalMeta: { intent: "grounded", retrievalMode: "hybrid", totalLibraryCount: 5, eligibleCount: 3, retrievedCount: 3, admittedCount: 2, coverage: { fullText: 1, abstract: 1, metadataOnly: 0 }, truncatedAbstracts: 0, droppedPapers: 0, hasReliableCitations: true },
+      creditCost: 1,
+      createdAt: "2026-11-26T12:00:00Z",
+    },
+    {
+      id: "a-cap",
+      projectId: "p",
+      userId: "me",
+      scope: "private",
+      role: "assistant",
+      content: "I am LumiGap AI.",
+      citedPaperIds: [],
+      citations: [],
+      retrievalMeta: { intent: "capability", retrievalMode: "none", totalLibraryCount: 5, eligibleCount: 3, retrievedCount: 0, admittedCount: 0, coverage: { fullText: 0, abstract: 0, metadataOnly: 0 }, truncatedAbstracts: 0, droppedPapers: 0, hasReliableCitations: true },
+      creditCost: 0,
+      createdAt: "2026-11-26T12:01:00Z",
+    },
+  ]);
+
+  await render(<ProjectDiscussionPanel projectId="p" paperCount={5} />, "/projects/p?tab=chat&channel=private-ai");
+  expect(container.textContent).not.toContain("papers grounded");
+  expect(container.textContent).not.toContain("Paper paper-");
+  expect(container.textContent).toContain("Clinical Evaluation of LLMs");
+
+  // Click inline [3] button and verify Source Preview opens exact paper #3 with verified page 7 and excerpt
+  const cite3 = container.querySelector<HTMLButtonElement>('button[aria-label="[3] Clinical Evaluation of LLMs"]')!;
+  expect(cite3).not.toBeNull();
+  await act(async () => cite3.click());
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.textContent).toContain("Clinical Evaluation of LLMs");
+  expect(dialog.textContent).toContain("Verified full-text limitation excerpt.");
+  expect(dialog.textContent).toContain("Page {{page}}");
+
+  // Capability answer should NOT render Explore Research Gaps link inside its article
+  const capArticle = container.querySelector("#ai-message-a-cap")!;
+  expect(capArticle.textContent).not.toContain("Explore Research Gaps");
 });

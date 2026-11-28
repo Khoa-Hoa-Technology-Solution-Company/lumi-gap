@@ -132,7 +132,48 @@ export function ProjectMembersTab({ projectId, projectTitle, members, pendingInv
     </ul>}
 
     <Dialog open={canManage && Boolean(cancelId)} onOpenChange={next => { if (!next && !cancel.isPending) setCancelId(null); }}><DialogContent closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("Cancel this invitation?")}</DialogTitle><DialogDescription>{t("The recipient will no longer be able to join with this invitation.")}</DialogDescription></DialogHeader><DialogFooter><Button type="button" variant="outline" disabled={cancel.isPending} onClick={() => setCancelId(null)}>{t("Keep invitation")}</Button><Button type="button" variant="destructive" disabled={cancel.isPending} onClick={() => { if (cancelId) void cancel.mutateAsync(cancelId).then(() => { setCancelId(null); toast.success(t("Invitation cancelled")); }).catch(() => toast.error(t("Could not cancel invitation"))); }}>{t("Cancel invitation")}</Button></DialogFooter></DialogContent></Dialog>
-    <Dialog open={canManage && Boolean(removeId)} onOpenChange={next => { if (!next && !remove.isPending) { setRemoveId(null); setRemoveReason(""); } }}><DialogContent closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("Remove Member")}</DialogTitle><DialogDescription>{t("Current project access and realtime sessions will be revoked immediately. Historical contributions, verified evidence, and attribution eligibility remain permanently recorded.")}</DialogDescription></DialogHeader><div className="space-y-1.5 py-2"><Label htmlFor="remove-member-reason" className="text-xs font-semibold">{t("Reason for removal (optional)")}</Label><Input id="remove-member-reason" placeholder={t("Reason recorded in project audit log")} value={removeReason} onChange={e => setRemoveReason(e.target.value)} maxLength={500} /></div><DialogFooter><Button type="button" variant="outline" disabled={remove.isPending} onClick={() => { setRemoveId(null); setRemoveReason(""); }}>{t("Cancel")}</Button><Button type="button" variant="destructive" disabled={remove.isPending} onClick={async () => { if (!removeId) return; try { await remove.mutateAsync({ memberId: removeId, reason: removeReason.trim() || undefined }); toast.success(t("Member removed")); setRemoveId(null); setRemoveReason(""); } catch { toast.error(t("Failed to remove member")); } }}>{t(remove.isPending ? "Removing..." : "Remove")}</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={canManage && Boolean(removeId)} onOpenChange={next => { if (!next && !remove.isPending) { setRemoveId(null); setRemoveReason(""); } }}>
+      <DialogContent closeLabel={t("Close")} data-no-i18n>
+        <DialogHeader>
+          <DialogTitle>
+            {language === "vi"
+              ? "Kết thúc cộng tác với thành viên này?"
+              : "End collaboration with this member?"}
+          </DialogTitle>
+          <DialogDescription>
+            {language === "vi"
+              ? "Hành động này chỉ điều chỉnh quyền truy cập dự án và không làm mất lịch sử công lao."
+              : "This adjusts project workspace access and preserves the contributor's recorded history."}
+          </DialogDescription>
+        </DialogHeader>
+        <ul className="space-y-1.5 rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground list-disc pl-6">
+          <li>{language === "vi" ? "Quyền truy cập không gian dự án và tài liệu nội bộ sẽ bị thu hồi ngay." : "Project workspace access and internal files will be revoked immediately."}</li>
+          <li>{language === "vi" ? "Những công việc đã thực hiện và minh chứng ghi nhận vẫn được bảo toàn vĩnh viễn." : "Previously recorded work and evidence remain permanently preserved."}</li>
+          <li>{language === "vi" ? "Việc kết thúc cộng tác không tự động thay đổi quyền tác giả của bản thảo." : "Ending collaboration does not automatically change manuscript authorship."}</li>
+          <li>{language === "vi" ? "Thành viên sẽ được thông báo kèm kênh xem hồ sơ đóng góp cá nhân và gửi phản hồi nếu cần." : "The member will be notified with access to their personal contribution record and review channel."}</li>
+        </ul>
+        <div className="space-y-1.5 py-1">
+          <Label htmlFor="remove-member-reason" className="text-xs font-semibold">
+            {language === "vi" ? "Lý do kết thúc cộng tác (ghi nhận trong lịch sử dự án)" : "Reason for ending collaboration (recorded in project history)"}
+          </Label>
+          <Input
+            id="remove-member-reason"
+            placeholder={language === "vi" ? "VD: Thay đổi phân công nhóm hoặc thành viên chuyển hướng đề tài" : "e.g., Team scope change or member moved to another topic"}
+            value={removeReason}
+            onChange={e => setRemoveReason(e.target.value)}
+            maxLength={500}
+          />
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={remove.isPending} onClick={() => { setRemoveId(null); setRemoveReason(""); }}>
+            {t("Cancel")}
+          </Button>
+          <Button type="button" variant="destructive" disabled={remove.isPending} onClick={async () => { if (!removeId) return; try { await remove.mutateAsync({ memberId: removeId, reason: removeReason.trim() || undefined }); toast.success(language === "vi" ? "Đã kết thúc cộng tác và bảo toàn lịch sử đóng góp" : "Collaboration ended; contribution history preserved"); setRemoveId(null); setRemoveReason(""); } catch { toast.error(t("Failed to remove member")); } }}>
+            {remove.isPending ? t("Removing...") : language === "vi" ? "Xác nhận kết thúc cộng tác" : "End collaboration"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     <Dialog open={canManage && Boolean(transfer)} onOpenChange={next => { if (!next && !transferOwnership.isPending) setTransfer(null); }}><DialogContent closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("Transfer project ownership?")}</DialogTitle><DialogDescription>{transfer ? t("{{name}} will become the project owner. You will become a regular member and lose owner-only controls.", { name: transfer.name }) : null}</DialogDescription></DialogHeader><DialogFooter><Button type="button" variant="outline" disabled={transferOwnership.isPending} onClick={() => setTransfer(null)}>{t("Cancel")}</Button><Button type="button" disabled={transferOwnership.isPending} onClick={async () => { if (!transfer) return; try { await transferOwnership.mutateAsync(transfer.id); toast.success(t("Ownership transferred")); setTransfer(null); } catch { toast.error(t("Could not transfer ownership")); } }}>{t(transferOwnership.isPending ? "Transferring…" : "Transfer ownership")}</Button></DialogFooter></DialogContent></Dialog>
   </div>;
 }

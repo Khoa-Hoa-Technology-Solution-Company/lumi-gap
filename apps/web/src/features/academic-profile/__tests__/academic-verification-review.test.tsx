@@ -22,6 +22,7 @@ vi.mock("@/features/academic-profile", () => {
     useAcademicVerificationDetails: () => ({ data: item() }),
     useAcademicVerificationEvidenceFile: () => ({ mutateAsync: mocks.download }),
     useDecideAcademicVerification: () => ({ mutateAsync: mocks.decide }),
+    useRevokeAcademicVerification: () => ({ mutateAsync: vi.fn(), isPending: false }),
   };
 });
 

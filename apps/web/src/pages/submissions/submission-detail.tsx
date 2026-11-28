@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { ResearchVersion } from "@trend/shared-types";
+import { MANUSCRIPT_PDF_MAX_BYTES, MANUSCRIPT_PDF_MAX_MB } from "@trend/shared-types";
 import {
   ArrowLeft,
   Award,
   Bot,
   ChevronDown,
   FileText,
+  GitCompare,
+  History,
   Info,
   MoreHorizontal,
   Pencil,
@@ -17,6 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { FormRequiredLegend, RequiredMark } from "@/components/ui/required-mark";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,8 +34,12 @@ import { SubmissionDocumentViewer } from "@/features/submissions/components/subm
 import {
   ReviewStatusBadge,
   SubmissionFeedbackPanel,
+  type PreviousRoundRevisionGroup,
 } from "@/features/submissions/components/submission-feedback-panel";
-import { SubmissionVersionPanel } from "@/features/submissions/components/submission-version-panel";
+import {
+  hasComparableVersions,
+  SubmissionVersionPanel,
+} from "@/features/submissions/components/submission-version-panel";
 import { SubmissionAiPreReview } from "@/features/submissions/components/submission-ai-prereview";
 import { SubmitReviewDialog } from "@/features/reviews/components/submit-review-dialog";
 import {
@@ -78,16 +86,32 @@ export function SubmissionDetailPage({
   const preReviews = useAiPreReviews(id, scopedAccess);
   const runPreReview = useRunAiPreReview(id);
 
-  // Selected version & mentor tab state (never auto-jumps away when user selects an older version)
-  const [selectedVersionId, setSelectedVersionId] = useState<string>(
-    () => new URLSearchParams(window.location.search).get("revision") ?? "",
+  // Selected version & mentor tab state (persisted in ?revision= so refresh keeps exact version)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedVersionId, setSelectedVersionIdState] = useState<string>(
+    () => searchParams.get("revision") ?? new URLSearchParams(window.location.search).get("revision") ?? "",
   );
+  const setSelectedVersionId = (nextId: string) => {
+    setSelectedVersionIdState(nextId);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (nextId) next.set("revision", nextId);
+        else next.delete("revision");
+        return next;
+      },
+      { replace: true },
+    );
+  };
   const [selectedMentorKey, setSelectedMentorKey] = useState<string>("");
   const [mobileTab, setMobileTab] = useState<"document" | "feedback">("document");
-  const [pdfExpanded, setPdfExpanded] = useState(false);
+  const [layoutMode, setLayoutMode] = useState<"split" | "pdf" | "feedback">("split");
+  const [compareOpen, setCompareOpen] = useState(false);
 
   // Modal / drawer state
   const [mentorSendOpen, setMentorSendOpen] = useState(false);
+  const [mentorSendTargetId, setMentorSendTargetId] = useState<string | undefined>(undefined);
+  const lastSentMetaRef = useRef<{ mentorName?: string; responseCount: number } | null>(null);
   const [showRevision, setShowRevision] = useState(false);
   const [revisionFile, setRevisionFile] = useState<File>();
   const [revisionResponse, setRevisionResponse] = useState("");
@@ -139,9 +163,31 @@ export function SubmissionDetailPage({
         version: currentVersion,
         isCurrentVersion: isLatestVersion,
         selectedMentorKey,
+        translate: t,
       }),
-    [data?.status, visibleHistory, currentVersion, isLatestVersion, selectedMentorKey],
+    [data?.status, visibleHistory, currentVersion, isLatestVersion, selectedMentorKey, t],
   );
+
+  const previousRoundRevisions = useMemo<PreviousRoundRevisionGroup[]>(() => {
+    if (!versions.length) return [];
+    const groups: PreviousRoundRevisionGroup[] = [];
+    for (const ver of versions) {
+      if (ver.revisionNumber >= currentVersion.revisionNumber) continue;
+      for (const rev of ver.reviews ?? []) {
+        if (!rev.requiredRevisions?.length) continue;
+        groups.push({
+          roundNumber: rev.roundNumber,
+          versionNumber: ver.revisionNumber,
+          reviewerId: rev.reviewerId,
+          reviewerName: rev.reviewerName,
+          items: rev.requiredRevisions,
+        });
+      }
+    }
+    return groups;
+  }, [versions, currentVersion.revisionNumber]);
+
+  const canCompare = useMemo(() => hasComparableVersions(versions), [versions]);
 
   if (submission.isLoading) {
     return (
@@ -228,8 +274,9 @@ export function SubmissionDetailPage({
     { title: "Phạm vi nghiên cứu", value: data.scope },
   ].filter((item) => Boolean(item.value?.trim()));
 
-  const latestPreReview = preReviews.data?.find(review => review.sourceRevisionId === currentVersion.id);
-  const preReviewRunning = latestPreReview?.status === "QUEUED" || latestPreReview?.status === "PROCESSING";
+  const allPreReviews = preReviews.data ?? [];
+  const versionPreReview = allPreReviews.find((item) => item.sourceRevisionId === currentVersion.id);
+  const preReviewRunning = allPreReviews.some((item) => item.status === "QUEUED" || item.status === "PROCESSING");
   const revisionPending = addRevision.isPending || createVersion.isPending;
 
   async function handleOpenMentorWorkspace() {
@@ -242,36 +289,40 @@ export function SubmissionDetailPage({
     }
   }
 
-  function handleOpenSendOrRevision() {
+  function handleOpenSendOrRevision(targetMentorId?: string) {
     if (visibleHistory?.assignedMentor || (projectId && hasMentorFlow)) {
+      setMentorSendTargetId(targetMentorId ?? reviewContext.activeThread?.reviewerId);
       setMentorSendOpen(true);
     } else {
       setShowRevision((v) => !v);
     }
   }
 
-  async function handleRunPreReview() {
+  async function handleRunPreReview(targetRevisionId?: string) {
     try {
-      await runPreReview.mutateAsync();
-      toast.success("Đã gửi yêu cầu phân tích sơ bộ bằng AI");
+      await runPreReview.mutateAsync(targetRevisionId ?? (currentVersion.id || undefined));
+      toast.success(t("Đã gửi yêu cầu phân tích sơ bộ bằng AI"));
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
-      toast.error(msg ?? "Không thể chạy phân tích AI lúc này");
+      toast.error(msg ?? t("Không thể chạy phân tích AI lúc này"));
     }
   }
 
   async function uploadRevision() {
     if (uploading.current) return;
     if (revisionMode === "PDF" && !revisionFile) {
-      toast.error("Vui lòng chọn tệp PDF phiên bản mới");
+      toast.error(t("Vui lòng chọn tệp PDF phiên bản mới"));
       return;
     }
     if (
       revisionMode === "PDF" &&
       revisionFile &&
-      (revisionFile.type !== "application/pdf" || revisionFile.size === 0 || revisionFile.size > 10 * 1024 * 1024)
+      ((revisionFile.type && revisionFile.type !== "application/pdf" && revisionFile.type !== "application/octet-stream") ||
+        !revisionFile.name.toLowerCase().endsWith(".pdf") ||
+        revisionFile.size === 0 ||
+        revisionFile.size > MANUSCRIPT_PDF_MAX_BYTES)
     ) {
-      toast.error("Vui lòng dùng tệp PDF không vượt quá 10 MB");
+      toast.error(t("Vui lòng dùng tệp PDF không vượt quá {{max}} MB", { max: MANUSCRIPT_PDF_MAX_MB }));
       return;
     }
     if (revisionMode === "TEXT" && (!revisionContent.trim() || revisionResponse.trim().length < 3)) {
@@ -321,55 +372,68 @@ export function SubmissionDetailPage({
   const showOverflowSendOption =
     canRevise &&
     actionPlan.kind === "CONTINUE_EDITING";
-  const showOverflowAiOption = canRunPreReview && !latestPreReview;
+  const showOverflowAiOption = canRunPreReview && !versionPreReview;
   const showOverflowPeerReviewOption = !projectId && canRequestReview;
   const hasOverflowMenu = showOverflowSendOption || showOverflowAiOption || showOverflowPeerReviewOption;
 
   const contributions = visibleHistory?.contributions ?? [];
+  const activeRoundNumber =
+    reviewContext.activeThread?.latestReview?.roundNumber ??
+    (currentVersion.reviews.length > 0
+      ? Math.max(...currentVersion.reviews.map((r) => r.roundNumber))
+      : undefined);
 
   return (
     <div className={`submission-detail-shell min-w-0 ${projectId ? "py-2" : "mx-auto max-w-7xl px-4 py-6 sm:px-6"}`}>
       {effectiveProjectId && (
         <MentorManuscriptDialog
           open={mentorSendOpen}
-          onOpenChange={setMentorSendOpen}
+          onOpenChange={(next) => {
+            setMentorSendOpen(next);
+            if (!next) setMentorSendTargetId(undefined);
+          }}
           projectId={effectiveProjectId}
           submissionId={id}
           manuscriptId={data.sourceManuscriptId ?? undefined}
-          onSent={() => {
+          initialMentorId={mentorSendTargetId}
+          onSentMeta={(meta) => {
+            lastSentMetaRef.current = meta;
+          }}
+          onSent={(result) => {
+            const meta = lastSentMetaRef.current;
+            lastSentMetaRef.current = null;
             setMentorSendOpen(false);
+            setMentorSendTargetId(undefined);
             setSelectedVersionId("");
             void history.refetch();
             void submission.refetch();
-            toast.success("Đã gửi bản thảo cho giảng viên góp ý.");
+            if (meta?.responseCount && meta.responseCount > 0) {
+              toast.success(
+                t("Bản v{{version}} đã được gửi cùng phản hồi cho {{count}} yêu cầu chỉnh sửa. Nhóm đang chờ giảng viên rà soát.", {
+                  version: result.revisionNumber,
+                  count: meta.responseCount,
+                }),
+              );
+            } else {
+              toast.success(
+                t("Đã gửi bản v{{version}} cho giảng viên góp ý.", {
+                  version: result.revisionNumber,
+                }),
+              );
+            }
           }}
         />
       )}
 
       {/* Top Navigation Row (standalone route only; project workspace uses WorkspaceBreadcrumb) */}
-      {(!projectId || (!isLatestVersion && Boolean(visibleHistory?.currentRevisionId))) && (
+      {!projectId && (
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          {!projectId ? (
-            <Link
-              to={backPath}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {t("Quay lại danh sách bản thảo")}
-            </Link>
-          ) : (
-            <span />
-          )}
-
-          {!isLatestVersion && visibleHistory?.currentRevisionId && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs text-primary"
-              onClick={() => setSelectedVersionId(visibleHistory!.currentRevisionId!)}
-            > {t("Quay về bản mới nhất (v")}{visibleHistory.currentRevisionNumber})
-            </Button>
-          )}
+          <Link
+            to={backPath}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {t("Quay lại danh sách bản thảo")}
+          </Link>
         </div>
       )}
 
@@ -381,15 +445,21 @@ export function SubmissionDetailPage({
               <Heading className="text-lg font-bold tracking-tight break-words text-foreground sm:text-xl leading-snug">
                 {data.title}
               </Heading>
-              <ReviewStatusBadge status={reviewContext.versionStatus} />
+              <ReviewStatusBadge status={reviewContext.overallVersionStatus} />
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               <span className="font-medium text-foreground/80">
-                {formatSubmissionTypeLabel(data.submissionType)}
+                {t(formatSubmissionTypeLabel(data.submissionType))}
               </span>
               <span aria-hidden="true">·</span>
-              <span>Phiên bản v{currentVersion.revisionNumber}</span>
-              {data.researchField && (
+              <span>{t("Phiên bản v")}{currentVersion.revisionNumber}</span>
+              {activeRoundNumber != null && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>{t("Vòng phản biện")} {activeRoundNumber}</span>
+                </>
+              )}
+              {data.researchField?.trim() && (
                 <>
                   <span className="hidden sm:inline" aria-hidden="true">·</span>
                   <span className="hidden sm:inline">{data.researchField}</span>
@@ -404,7 +474,7 @@ export function SubmissionDetailPage({
               <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
                 <Link to={editManuscriptUrl}>
                   <Pencil className="h-3.5 w-3.5" />
-                  Tiếp tục chỉnh sửa
+                  {t("Tiếp tục chỉnh sửa")}
                 </Link>
               </Button>
             )}
@@ -412,7 +482,7 @@ export function SubmissionDetailPage({
             {actionPlan.kind === "OPEN_MENTOR_REVIEW" && (
               <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => void handleOpenMentorWorkspace()}>
                 <FileText className="h-3.5 w-3.5" />
-                {actionPlan.label}
+                {t(actionPlan.label)}
               </Button>
             )}
 
@@ -420,7 +490,7 @@ export function SubmissionDetailPage({
               <Button asChild size="sm" className="h-8 gap-1.5 text-xs">
                 <Link to={editManuscriptUrl}>
                   <Pencil className="h-3.5 w-3.5" />
-                  {actionPlan.label}
+                  {t(actionPlan.label)}
                 </Link>
               </Button>
             )}
@@ -433,10 +503,10 @@ export function SubmissionDetailPage({
                   variant={actionPlan.kind === "PREPARE_UPDATE" ? "outline" : "default"}
                   className="h-8 gap-1.5 text-xs"
                   disabled={revisionPending}
-                  onClick={handleOpenSendOrRevision}
+                  onClick={() => handleOpenSendOrRevision()}
                 >
                   <Upload className="h-3.5 w-3.5" />
-                  {actionPlan.label}
+                  {t(actionPlan.label)}
                 </Button>
               )}
 
@@ -447,8 +517,8 @@ export function SubmissionDetailPage({
               className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
               disabled={history.isFetching || submission.isFetching}
               onClick={() => void refreshAll()}
-              aria-label="Làm mới trạng thái"
-              title="Làm mới trạng thái"
+              aria-label={t("Làm mới trạng thái")}
+              title={t("Làm mới trạng thái")}
             >
               <RefreshCw className={`h-3.5 w-3.5 ${history.isFetching || submission.isFetching ? "animate-spin" : ""}`} />
             </Button>
@@ -456,15 +526,15 @@ export function SubmissionDetailPage({
             {hasOverflowMenu && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Tùy chọn bổ sung">
+                  <Button variant="outline" size="icon" className="h-8 w-8" aria-label={t("Tùy chọn bổ sung")}>
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   {showOverflowSendOption && (
-                    <DropdownMenuItem onSelect={handleOpenSendOrRevision}>
+                    <DropdownMenuItem onSelect={() => handleOpenSendOrRevision()}>
                       <Upload className="mr-2 h-4 w-4" />
-                      Gửi phiên bản mới để góp ý
+                      {t("Gửi phiên bản mới để góp ý")}
                     </DropdownMenuItem>
                   )}
                   {showOverflowAiOption && (
@@ -503,8 +573,8 @@ export function SubmissionDetailPage({
 
         {/* Integrated Compact Status Sub-Bar */}
         <div
-          aria-label="Tóm tắt trạng thái góp ý"
-          className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border/70 bg-muted/25 px-4 py-2 text-xs sm:px-5"
+          aria-label={t("Tóm tắt trạng thái góp ý")}
+          className="flex flex-col gap-1 border-t border-border/70 bg-muted/25 px-4 py-2 text-xs sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4 sm:px-5"
         >
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <User className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
@@ -514,9 +584,9 @@ export function SubmissionDetailPage({
           </div>
           {(formattedSentAt || reviewContext.activeThread?.request?.dueAt) && (
             <p className="shrink-0 text-[11.5px] tabular-nums text-muted-foreground">
-              {formattedSentAt ? `Gửi lúc ${formattedSentAt}` : ""}
+              {formattedSentAt ? `${t("Gửi lúc")} ${formattedSentAt}` : ""}
               {reviewContext.activeThread?.request?.dueAt
-                ? `${formattedSentAt ? " · " : ""}Hạn dự kiến: ${new Date(reviewContext.activeThread.request.dueAt).toLocaleDateString(locale)}`
+                ? `${formattedSentAt ? " · " : ""}${t("Hạn dự kiến:")} ${new Date(reviewContext.activeThread.request.dueAt).toLocaleDateString(locale)}`
                 : ""}
             </p>
           )}
@@ -527,6 +597,7 @@ export function SubmissionDetailPage({
       {showRevision && canRevise && (
         <section className="mt-4 rounded-xl border border-primary/30 bg-card p-5 shadow-xs">
           <h3 className="text-sm font-semibold">{t("Upload a new PDF version")}</h3>
+          <FormRequiredLegend className="mt-1" />
           <fieldset disabled={revisionPending}>
             <div className="mt-3 flex w-fit rounded-lg border bg-muted/40 p-0.5 text-xs">
               <button
@@ -535,7 +606,7 @@ export function SubmissionDetailPage({
                   }`}
                 onClick={() => setRevisionMode("PDF")}
               >
-                Tải PDF mới
+                {t("Tải PDF mới")}
               </button>
               <button
                 type="button"
@@ -543,17 +614,19 @@ export function SubmissionDetailPage({
                   }`}
                 onClick={() => setRevisionMode("TEXT")}
               >
-                Cập nhật văn bản
+                {t("Cập nhật văn bản")}
               </button>
             </div>
 
             <label className="mt-3 block text-sm font-medium">
               {t("Revision summary")}
+              {revisionMode === "TEXT" ? <RequiredMark /> : <span className="ml-1 text-xs font-normal text-muted-foreground">({t("Không bắt buộc")})</span>}
               <textarea
                 className="mt-1.5 min-h-20 w-full rounded-md border border-input bg-background p-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                placeholder="Tóm tắt ngắn gọn các điểm nhóm đã tiếp thu và sửa đổi theo góp ý của Mentor..."
+                placeholder={t("Tóm tắt ngắn gọn các điểm nhóm đã tiếp thu và sửa đổi theo góp ý của Mentor...")}
                 value={revisionResponse}
                 maxLength={20000}
+                required={revisionMode === "TEXT"}
                 onChange={(e) => setRevisionResponse(e.target.value)}
               />
             </label>
@@ -561,30 +634,46 @@ export function SubmissionDetailPage({
             {revisionMode === "PDF" ? (
               <label className="mt-3 block text-sm font-medium">
                 {t("PDF file")}
+                <RequiredMark />
                 <input
                   type="file"
                   accept="application/pdf,.pdf"
+                  required
                   className="mt-1.5 block w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-primary-foreground hover:file:bg-primary/90"
                   onChange={(e) => setRevisionFile(e.target.files?.[0])}
                 />
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                  {t("PDF · tối đa {{max}} MB (khuyến nghị dưới {{rec}} MB)", { max: MANUSCRIPT_PDF_MAX_MB, rec: 10 })}
+                </span>
               </label>
             ) : (
               <label className="mt-3 block text-sm font-medium">
-                Nội dung bản thảo mới
+                {t("Nội dung bản thảo mới")}
+                <RequiredMark />
                 <textarea
                   className="mt-1.5 min-h-40 w-full rounded-md border border-input bg-background p-3 font-mono text-xs leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="Dán nội dung bản thảo đã chỉnh sửa..."
+                  placeholder={t("Dán nội dung bản thảo đã chỉnh sửa...")}
                   value={revisionContent}
                   maxLength={500000}
+                  required
                   onChange={(e) => setRevisionContent(e.target.value)}
                   rows={8}
                 />
               </label>
             )}
 
+            {((revisionMode === "PDF" && !revisionFile) ||
+              (revisionMode === "TEXT" && (!revisionContent.trim() || revisionResponse.trim().length < 3))) && (
+              <p className="mt-2.5 text-xs text-muted-foreground" role="status">
+                {revisionMode === "PDF"
+                  ? t("Chọn tệp PDF hợp lệ để tải lên phiên bản mới.")
+                  : t("Nhập nội dung bản thảo mới và tóm tắt chỉnh sửa tối thiểu 3 ký tự.")}
+              </p>
+            )}
+
             <div className="flex justify-end gap-2 pt-3">
               <Button variant="ghost" size="sm" onClick={() => setShowRevision(false)}>
-                Hủy
+                {t("Hủy")}
               </Button>
               <Button
                 size="sm"
@@ -627,11 +716,76 @@ export function SubmissionDetailPage({
         </div>
       )}
 
+      {/* Accessible Version Selector Bar (when history loaded with >= 1 version) */}
+      {!history.error && versions.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-xs shadow-2xs">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <label className="inline-flex items-center gap-2 text-muted-foreground">
+              <History className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+              <span className="font-medium text-foreground/80">{t("Phiên bản đang xem:")}</span>
+              <select
+                aria-label={t("Chọn phiên bản bản thảo")}
+                value={currentVersion.id}
+                onChange={(event) => setSelectedVersionId(event.target.value)}
+                className="h-7 rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {versions.map((v) => {
+                  const latest = v.id === visibleHistory?.currentRevisionId;
+                  const dateText = new Date(v.createdAt).toLocaleDateString(locale, {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                  });
+                  return (
+                    <option key={v.id} value={v.id}>
+                      v{v.revisionNumber}
+                      {latest ? ` · ${t("Mới nhất")}` : ""} ({dateText})
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+
+            {!isLatestVersion && visibleHistory?.currentRevisionId && (
+              <span className="inline-flex flex-wrap items-center gap-2 text-amber-800 dark:text-amber-300">
+                <span>
+                  {t("Bạn đang xem phiên bản v{{version}} đã được lưu trước đó.", {
+                    version: currentVersion.revisionNumber,
+                  })}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedVersionId(visibleHistory.currentRevisionId!)}
+                  className="font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {t("Quay về bản mới nhất (v")}{visibleHistory.currentRevisionNumber})
+                </button>
+              </span>
+            )}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1.5">
+            {canCompare && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 px-2.5 text-xs"
+                onClick={() => setCompareOpen(true)}
+              >
+                <GitCompare className="h-3.5 w-3.5" aria-hidden="true" />
+                {t("So sánh")}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Mobile & Narrow Tablet Tab Switcher (Bản thảo | Góp ý) */}
       <div
-        className={`mt-4 flex rounded-lg border border-border bg-muted/40 p-1 ${projectId ? "xl:hidden" : "lg:hidden"}`}
+        className={`mt-3 flex rounded-lg border border-border bg-muted/40 p-1 ${projectId ? "xl:hidden" : "lg:hidden"}`}
         role="tablist"
-        aria-label="Chuyển khu vực xem"
+        aria-label={t("Chuyển khu vực xem")}
       >
         <button
           type="button"
@@ -643,7 +797,7 @@ export function SubmissionDetailPage({
             : "text-muted-foreground hover:text-foreground"
             }`}
         >
-          Bản thảo (v{currentVersion.revisionNumber})
+          {t("Bản thảo (v")}{currentVersion.revisionNumber})
         </button>
         <button
           type="button"
@@ -655,20 +809,20 @@ export function SubmissionDetailPage({
             : "text-muted-foreground hover:text-foreground"
             }`}
         >
-          Góp ý
-          {reviewContext.versionStatus.hasFeedback && (
+          {t("Góp ý")}
+          {reviewContext.overallVersionStatus.hasFeedback && (
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
           )}
         </button>
       </div>
 
-      {/* C. Main Content — Two-Column Workspace (Desktop: ~67% PDF Left / ~33% Unified Feedback & History Right) */}
+      {/* C. Main Content — Balanced Two-Column Workspace (Desktop: ~58% PDF Left / ~42% Feedback & History Right) */}
       <div className={`mt-3 grid grid-cols-1 gap-4 ${projectId ? "xl:grid-cols-12" : "lg:grid-cols-12"}`}>
         {/* Left Column: In-App PDF / Document Viewer + Secondary Collapsible Panels */}
         <div
           className={`min-w-0 space-y-4 ${projectId
-            ? `${pdfExpanded ? "xl:col-span-12" : "xl:col-span-8"} ${mobileTab === "feedback" ? "hidden xl:block" : "block"}`
-            : `${pdfExpanded ? "lg:col-span-12" : "lg:col-span-8"} ${mobileTab === "feedback" ? "hidden lg:block" : "block"}`
+            ? `${layoutMode === "pdf" ? "xl:col-span-12" : layoutMode === "feedback" ? "xl:hidden" : "xl:col-span-7"} ${mobileTab === "feedback" ? "hidden xl:block" : "block"}`
+            : `${layoutMode === "pdf" ? "lg:col-span-12" : layoutMode === "feedback" ? "lg:hidden" : "lg:col-span-7"} ${mobileTab === "feedback" ? "hidden lg:block" : "block"}`
             }`}
         >
           {!history.error && <SubmissionDocumentViewer
@@ -677,17 +831,20 @@ export function SubmissionDetailPage({
             version={currentVersion}
             historyLoading={history.isLoading}
             isLatestVersion={isLatestVersion}
-            expanded={pdfExpanded}
-            onToggleExpand={() => setPdfExpanded((prev) => !prev)}
+            expanded={layoutMode === "pdf"}
+            onToggleExpand={() => setLayoutMode((prev) => (prev === "pdf" ? "split" : "pdf"))}
           />}
 
-          {/* AI Pre-review (only shown when an AI result exists; clearly marked AI-only) */}
+          {/* AI Pre-review (strictly synced to selected revision; clearly marked AI-only) */}
           <SubmissionAiPreReview
-            preReview={latestPreReview}
+            preReviews={allPreReviews}
+            selectedRevisionId={currentVersion.id}
+            selectedRevisionNumber={currentVersion.revisionNumber}
             currentRevisionId={data.currentRevisionId}
             canRunPreReview={canRunPreReview}
             isRunning={runPreReview.isPending}
-            onRun={() => void handleRunPreReview()}
+            onRun={(revId) => void handleRunPreReview(revId)}
+            onSelectVersion={setSelectedVersionId}
           />
 
           {/* Shared Research Context (collapsed progressive disclosure; only shown when non-empty) */}
@@ -724,18 +881,25 @@ export function SubmissionDetailPage({
         {/* Right Column: Unified Inspector (Mentor Feedback + Compact Version History) */}
         <aside
           className={`min-w-0 space-y-3 ${projectId
-            ? `${pdfExpanded ? "xl:hidden" : "xl:col-span-4 xl:sticky xl:top-20 xl:self-start"} ${mobileTab === "document" ? "hidden xl:block" : "block"}`
-            : `${pdfExpanded ? "lg:hidden" : "lg:col-span-4 lg:sticky lg:top-20 lg:self-start"} ${mobileTab === "document" ? "hidden lg:block" : "block"}`
+            ? `${layoutMode === "pdf" ? "xl:hidden" : layoutMode === "feedback" ? "xl:col-span-12" : "xl:col-span-5 xl:sticky xl:top-20 xl:self-start"} ${mobileTab === "document" ? "hidden xl:block" : "block"}`
+            : `${layoutMode === "pdf" ? "lg:hidden" : layoutMode === "feedback" ? "lg:col-span-12" : "lg:col-span-5 lg:sticky lg:top-20 lg:self-start"} ${mobileTab === "document" ? "hidden lg:block" : "block"}`
             }`}
         >
           <div className="rounded-xl border border-border bg-card shadow-xs divide-y divide-border/75 overflow-hidden">
             <SubmissionFeedbackPanel
               embedded
+              submissionId={id}
+              projectId={effectiveProjectId}
               versionNumber={currentVersion.revisionNumber}
               threads={reviewContext.threads}
               activeThread={reviewContext.activeThread}
               onSelectMentor={setSelectedMentorKey}
               language={language}
+              canPrepareRevision={canRevise}
+              onOpenPrepareResubmission={(mentorId) => handleOpenSendOrRevision(mentorId)}
+              previousRoundRevisions={previousRoundRevisions}
+              expanded={layoutMode === "feedback"}
+              onToggleExpand={() => setLayoutMode((prev) => (prev === "feedback" ? "split" : "feedback"))}
             />
 
             {visibleHistory && (
@@ -747,6 +911,8 @@ export function SubmissionDetailPage({
                 selectedVersionId={currentVersion.id}
                 onSelectVersion={setSelectedVersionId}
                 language={language}
+                compareOpen={compareOpen}
+                onCompareOpenChange={setCompareOpen}
               />
             )}
           </div>

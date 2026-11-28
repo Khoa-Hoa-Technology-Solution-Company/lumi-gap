@@ -50,9 +50,16 @@ export function formatEvidence(
   return { text, idByNumber };
 }
 
+function stripMarkdownCode(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`[^`\n]+`/g, " ");
+}
+
 export function parseCitationNumbers(text: string): number[] {
   const out: number[] = [];
-  for (const match of text.matchAll(/\[(\d+(?:\s*,\s*\d+)*)\]/g)) {
+  const prose = stripMarkdownCode(text);
+  for (const match of prose.matchAll(/\[(\d+(?:\s*,\s*\d+)*)\]/g)) {
     for (const raw of match[1]!.split(",")) {
       const n = Number(raw.trim());
       if (Number.isInteger(n)) out.push(n);

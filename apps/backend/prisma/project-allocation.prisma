@@ -11,6 +11,7 @@ model ProjectMembershipPeriod {
 }
 
 model ContributionParticipant {
+  participation Json @default("{}")
   proposalId String @map("proposal_id") @db.Uuid
   userId String @map("user_id") @db.Uuid
   roles String[] @default([])

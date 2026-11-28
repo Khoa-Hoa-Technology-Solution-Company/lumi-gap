@@ -5,6 +5,7 @@ model Project {
   description       String?
   researchField     String?   @map("research_field") @db.VarChar(200)
   researchAreas     String[]  @default([]) @map("research_areas")
+  researchKeywords  String[]  @default([]) @map("research_keywords")
   researchClassification Json @default("{}") @map("research_classification")
   publicSummary     String?   @map("public_summary") @db.VarChar(2000)
   createdById       String?   @map("created_by_id") @db.Uuid
@@ -31,6 +32,7 @@ model Project {
   mentorshipNeeds String @default("") @map("mentorship_needs") @db.VarChar(2000)
   mentorshipSupportTypes String[] @default([]) @map("mentorship_support_types")
   mentorshipMethodologies String[] @default([]) @map("mentorship_methodologies")
+  mentorshipProfile Json @default("{}") @map("mentorship_profile")
   ownerId           String    @map("owner_id") @db.Uuid
   archivedAt        DateTime? @map("archived_at") @db.Timestamptz(6)
   deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
@@ -68,14 +70,17 @@ model ResearchPlan {
 }
 
 model ProjectMember {
-  id        String   @id @default(uuid()) @db.Uuid
-  projectId String   @map("project_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  role      String   @default("MEMBER") @db.VarChar(24)
-  status    String   @default("ACTIVE") @db.VarChar(24)
-  joinedAt  DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                         String    @id @default(uuid()) @db.Uuid
+  projectId                  String    @map("project_id") @db.Uuid
+  userId                     String    @map("user_id") @db.Uuid
+  role                       String    @default("MEMBER") @db.VarChar(24)
+  status                     String    @default("ACTIVE") @db.VarChar(24)
+  mentorshipProfileShared    Boolean   @default(false) @map("mentorship_profile_shared")
+  mentorshipRoleNote         String?   @map("mentorship_role_note") @db.VarChar(200)
+  mentorshipConsentUpdatedAt DateTime? @map("mentorship_consent_updated_at") @db.Timestamptz(6)
+  joinedAt                   DateTime  @default(now()) @map("joined_at") @db.Timestamptz(6)
+  createdAt                  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([projectId, userId])
   @@index([userId, status])
@@ -166,6 +171,9 @@ model MentorshipRequest {
   closeReason  String?   @map("close_reason") @db.VarChar(48)
   idempotencyKey String? @map("idempotency_key") @db.VarChar(80)
   invitationSnapshot Json? @map("invitation_snapshot")
+  proposalVersion Int @default(1) @map("proposal_version")
+  previousRequestId String? @map("previous_request_id") @db.Uuid
+  termsSnapshot Json? @map("terms_snapshot")
   reservationEnforced Boolean @default(true) @map("reservation_enforced")
   candidateId String? @unique @map("candidate_id") @db.Uuid
   applicationId String? @map("application_id") @db.Uuid
@@ -177,7 +185,24 @@ model MentorshipRequest {
   @@index([requestedBy, createdAt])
   @@unique([requestedBy, idempotencyKey])
   @@index([applicationId, createdAt])
+  @@index([previousRequestId])
   @@map("mentorship_requests")
+}
+
+// Private clarification thread between project owner and candidate mentor; never grants project access.
+model MentorshipRequestMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  requestId String   @map("request_id") @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid
+  body      String   @db.VarChar(2000)
+  clientKey String   @map("client_key") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([requestId, authorId, clientKey])
+  @@index([requestId, createdAt])
+  @@index([projectId, requestId])
+  @@map("mentorship_request_messages")
 }
 
 model MentorInvitationPlan {
@@ -252,6 +277,8 @@ model ProjectChatMessage {
   scope               String    @default("private") @db.VarChar(16)
   role                String    @db.VarChar(16)
   content             String
+  clientKey           String?   @map("client_key") @db.Uuid
+  retrievalMeta       Json?     @map("retrieval_meta")
   creditTransactionId String?   @map("credit_transaction_id") @db.Uuid
   creditCost          Int?      @map("credit_cost")
   isPinned            Boolean   @default(false) @map("is_pinned")
@@ -259,15 +286,21 @@ model ProjectChatMessage {
   pinnedById          String?   @map("pinned_by_id") @db.Uuid
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
+  @@unique([projectId, userId, scope, role, clientKey])
   @@index([projectId, userId, createdAt])
   @@index([projectId, scope, createdAt])
   @@map("project_chat_messages")
 }
 
 model ProjectChatCitation {
-  messageId String @map("message_id") @db.Uuid
-  paperId   String @map("paper_id") @db.Uuid
-  position  Int
+  messageId      String  @map("message_id") @db.Uuid
+  paperId        String  @map("paper_id") @db.Uuid
+  position       Int
+  citationNumber Int?    @map("citation_number")
+  sourceKind     String? @map("source_kind") @db.VarChar(24)
+  excerpt        String?
+  pageNumber     Int?    @map("page_number")
+  chunkId        String? @map("chunk_id") @db.Uuid
 
   @@id([messageId, paperId])
   @@index([paperId])
@@ -308,6 +341,9 @@ model ProjectTeamMessageRead {
 }
 
 model ProjectContributionProposal {
+  outcome                  String @default("")
+  milestoneId              String? @map("milestone_id") @db.Uuid
+  externalEvidence         Json @default("[]") @map("external_evidence")
   id                       String    @id @default(uuid()) @db.Uuid
   legacyMongoId            String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
   projectId                String    @map("project_id") @db.Uuid

@@ -275,4 +275,36 @@ describe("ProjectSecurityPanel & ProjectAuditHistoryDialog", () => {
     await act(async () => confirmResolve.click());
     expect(mocks.resolveIntegrityCase).toHaveBeenCalledWith("proj-1", "case-1", "Confirmed false positive after audit review", "RESOLVED");
   });
+
+  it("renders open Security & AI section without lifecycle status and distinct audit error/zero states in section mode", async () => {
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <ProjectSecurityPanel project={baseProject} section="security" />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+    expect(container.querySelector("details")).toBeNull();
+    expect(container.querySelector("#sec-ai-policy")).not.toBeNull();
+    expect(container.querySelector("#project-lifecycle-status")).toBeNull();
+    expect(mocks.securityOverview).not.toHaveBeenCalled();
+
+    mocks.securityOverview.mockRejectedValueOnce({ response: { status: 403 } });
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <ProjectSecurityPanel project={baseProject} section="audit" />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+    expect(container.textContent).toContain("You do not have permission to view this audit log.");
+    expect(container.querySelector('a[href="/projects/proj-1?tab=contributions"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/projects/proj-1?tab=support"]')).toBeNull();
+  });
 });

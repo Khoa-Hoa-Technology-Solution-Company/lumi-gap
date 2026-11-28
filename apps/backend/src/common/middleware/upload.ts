@@ -1,4 +1,5 @@
 import multer from "multer";
+import { MANUSCRIPT_PDF_MAX_BYTES } from "@trend/shared-types";
 import { AppError } from "../exceptions/app-error.js";
 
 // Use memory storage so we can decide whether to save locally or upload to cloud (S3/etc.) in the controller
@@ -7,12 +8,14 @@ const storage = (multer as any).memoryStorage();
 export const uploadSinglePdf = (multer as any)({
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: MANUSCRIPT_PDF_MAX_BYTES,
     files: 1, fields: 20, parts: 22, fieldSize: 512 * 1024,
   },
   fileFilter: (_req: any, file: any, cb: any) => {
-    if (file.mimetype !== "application/pdf") {
-      return cb(AppError.badRequest("Only PDF files are allowed"));
+    const isPdfMime = file.mimetype === "application/pdf";
+    const isPdfExt = typeof file.originalname === "string" && file.originalname.toLowerCase().endsWith(".pdf");
+    if (!isPdfMime && !isPdfExt) {
+      return cb(new AppError(400, "PDF_INVALID_FORMAT", "Tệp được chọn không phải tài liệu PDF hợp lệ."));
     }
     cb(null, true);
   },

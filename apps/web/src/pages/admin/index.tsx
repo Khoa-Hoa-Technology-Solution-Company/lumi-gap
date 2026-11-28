@@ -1,319 +1,640 @@
-import { PageHeader } from "@/components/page-header";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useAdminStats, useQualityAgreement } from "@/features/admin";
-import { useCurrentUser } from "@/features/auth";
-import { isAdminSystemRole, type AgreementBucket } from "@trend/shared-types";
-import {
-  Users, FileText, Lightbulb, BookOpen, Scale,
-  RefreshCw, Activity, CheckCircle2, XCircle, ChevronRight,
-  UserCheck, Cpu, ShieldCheck, FolderGit2, AlertTriangle,
-  Clock, ArrowUpRight, ArrowRight, Zap, Database, Server, MessageSquare, Settings
-} from "lucide-react";
-import { useSyncRuns, useEmbedStatus } from "@/features/admin/hooks/use-admin-sync";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "@/services/api-client";
 import { Link } from "react-router-dom";
+import {
+  Activity,
+  AlertTriangle,
+  BookOpen,
+  ChevronRight,
+  Clock,
+  Cpu,
+  Database,
+  FileText,
+  FolderGit2,
+  GraduationCap,
+  MessageSquare,
+  RefreshCw,
+  Scale,
+  Server,
+  ShieldAlert,
+  UserCheck,
+  Users,
+  Zap,
+} from "lucide-react";
+import { isAdminSystemRole, type AgreementBucket } from "@trend/shared-types";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AdminErrorPanel,
+  AdminStatusBadge,
+  useAdminStats,
+  useQualityAgreement,
+} from "@/features/admin";
+import { useCurrentUser } from "@/features/auth";
+import { useI18n } from "@/i18n";
+import { cn } from "@/utils/cn";
 import { formatNumber } from "@/utils";
 
+function fmtCount(value: number | null | undefined, isVi: boolean): string {
+  if (value === null || value === undefined) return isVi ? "Không rõ" : "Unavailable";
+  return formatNumber(value);
+}
+
 export function AdminHomePage() {
+  const { language } = useI18n();
+  const isVi = language === "vi";
   const { data: me } = useCurrentUser();
   const isAdmin = isAdminSystemRole(me?.user?.systemRole);
-  const { data, isLoading } = useAdminStats(isAdmin);
-  const { data: agreement } = useQualityAgreement(isAdmin);
-
-  // Hook 1: Fetch Sync Runs
-  const { data: runs, isLoading: isRunsLoading } = useSyncRuns(isAdmin);
-
-  // Hook 2: Fetch Embedding Status
-  const { data: embedStatus, isLoading: isEmbedLoading } = useEmbedStatus(isAdmin);
-
-  // Hook 3: Custom query for pending paper requests count
-  const { data: pendingPapersCount, isLoading: isPendingPapersLoading } = useQuery({
-    queryKey: ["admin", "pendingPapersCount"],
-    queryFn: async () => {
-      const res = await api.get("/papers", { params: { adminView: "1", status: "pending", pageSize: 1 } });
-      return res.data.meta?.total as number;
-    },
-    enabled: isAdmin,
-    staleTime: 30_000,
-  });
+  const { data, isLoading, isError, isFetching, refetch } = useAdminStats(isAdmin, 60_000);
+  const { data: agreement, isError: agreementError } = useQualityAgreement(isAdmin);
 
   const agreementRows: { label: string; b: AgreementBucket }[] = agreement
     ? [
-        { label: "Total", b: agreement },
-        { label: "Report", b: agreement.byKind.report },
-        { label: "Gap", b: agreement.byKind.gap },
-        { label: "Paper", b: agreement.byKind.paper },
-      ]
+      { label: isVi ? "Tổng hợp" : "Total", b: agreement },
+      { label: isVi ? "Báo cáo tổng hợp" : "Report", b: agreement.byKind.report },
+      { label: isVi ? "Khoảng trống NC" : "Gap", b: agreement.byKind.gap },
+      { label: isVi ? "Bài báo" : "Paper", b: agreement.byKind.paper },
+    ]
     : [];
 
-  // Operations stats calculations
-  const totalSyncRuns = runs?.length ?? 0;
-  const isPipelineRunning = runs?.some((r) => r.runStatus === "running") ?? false;
-  const latestRun = runs?.[0] ?? null;
-  const failedRunsCount = runs?.filter(r => r.runStatus === "failed").length ?? 0;
+  if (isError && !data) {
+    return (
+      <div className="space-y-5">
+        <header>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            {isVi ? "Tổng quan vận hành quản trị" : "Admin Operations Overview"}
+          </h1>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {isVi
+              ? "Giám sát trạng thái hệ thống, hàng đợi xử lý và chỉ số vận hành thực tế."
+              : "Operational overview of real platform metrics, work queues, and dependency health."}
+          </p>
+        </header>
+        <AdminErrorPanel
+          title={isVi ? "Không thể tải thống kê tổng quan" : "Unable to load admin overview"}
+          message={isVi
+            ? "Yêu cầu đến /admin/stats thất bại. Hệ thống không hiển thị số liệu giả định."
+            : "The request to /admin/stats failed. No placeholder numbers are displayed."}
+          onRetry={() => void refetch()}
+          retrying={isFetching}
+        />
+      </div>
+    );
+  }
 
-  const embeddingProgress = embedStatus?.totalPapers
-    ? Math.round((embedStatus.embeddedPapers / embedStatus.totalPapers) * 1000) / 10
-    : 0;
-
-  // 6 Primary Architectural KPI Cards
-  const kpiCards = [
+  const attentionItems = [
     {
-      title: "Total Users",
-      value: data?.users.total,
-      subtext: `${data?.users.byRole.USER ?? 0} researchers, ${data?.users.byRole.ADMIN ?? 0} admins`,
-      icon: Users,
-      trend: "+12.5% this month",
-      link: "/admin/users",
-      color: "text-blue-600 dark:text-blue-400",
-      bg: "bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/30",
-    },
-    {
-      title: "Active Research Projects",
-      value: data?.activeProjects ?? 4,
-      subtext: "Collaborative workspaces active",
-      icon: FolderGit2,
-      trend: "High engagement",
-      link: "/admin/ai-jobs",
-      color: "text-indigo-600 dark:text-indigo-400",
-      bg: "bg-indigo-50 dark:bg-indigo-950/30 border-indigo-100 dark:border-indigo-900/30",
-    },
-    {
-      title: "Papers in Corpus",
-      value: data?.papers,
-      subtext: `${embeddingProgress}% indexed with embeddings`,
-      icon: BookOpen,
-      trend: "+200 recently ingested",
-      link: "/admin/papers",
-      color: "text-emerald-600 dark:text-emerald-400",
-      bg: "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-100 dark:border-emerald-900/30",
-    },
-    {
-      title: "Pending Verifications",
-      value: data?.pendingVerifications ?? 0,
-      subtext: "Academic position review requests",
+      key: "verifications",
+      label: isVi ? "Xác minh học thuật chờ duyệt" : "Pending verifications",
+      count: data?.attention.pendingVerifications,
+      to: "/admin/academic-verifications",
       icon: UserCheck,
-      badge: (data?.pendingVerifications ?? 0) > 0 ? "Action Required" : "All Clear",
-      badgeColor: (data?.pendingVerifications ?? 0) > 0 ? "bg-amber-500/10 text-amber-600 border-amber-500/20" : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
-      link: "/admin/academic-verifications",
-      color: "text-amber-600 dark:text-amber-400",
-      bg: "bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/30",
     },
     {
-      title: "AI Operations & Jobs",
-      value: data?.aiJobs ?? (data?.reports ?? 0) + (data?.gaps ?? 0),
-      subtext: `${data?.reports ?? 0} reports, ${data?.gaps ?? 0} gaps validated`,
+      key: "papers",
+      label: isVi ? "Yêu cầu bài báo chờ duyệt" : "Pending paper requests",
+      count: data?.attention.pendingPaperRequests,
+      to: "/admin/papers",
+      icon: FileText,
+    },
+    {
+      key: "reports",
+      label: isVi ? "Báo cáo vi phạm đang mở" : "Open moderation reports",
+      count: data?.attention.openModerationReports,
+      to: "/admin/trust-safety?tab=reports&status=open",
+      icon: ShieldAlert,
+    },
+    {
+      key: "appeals",
+      label: isVi ? "Khiếu nại chưa giải quyết" : "Pending appeals",
+      count: data?.attention.pendingAppeals,
+      to: "/admin/trust-safety?tab=appeals",
+      icon: MessageSquare,
+    },
+    {
+      key: "failedAi",
+      label: isVi ? "Tác vụ AI thất bại" : "Failed AI runs",
+      count: data?.attention.failedAiRuns,
+      to: "/admin/ai-jobs?status=failed",
       icon: Cpu,
-      trend: "Gemini 2.5 active",
-      link: "/admin/ai-jobs",
-      color: "text-purple-600 dark:text-purple-400",
-      bg: "bg-purple-50 dark:bg-purple-950/30 border-purple-100 dark:border-purple-900/30",
     },
     {
-      title: "System Health",
-      value: "100%",
-      subtext: "Postgres, Redis & BullMQ online",
-      icon: ShieldCheck,
-      badge: "Operational",
-      badgeColor: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
-      link: "/admin/workers",
-      color: "text-teal-600 dark:text-teal-400",
-      bg: "bg-teal-50 dark:bg-teal-950/30 border-teal-100 dark:border-teal-900/30",
+      key: "staleAi",
+      label: isVi ? "Tác vụ AI bị treo / quá hạn" : "Stale AI jobs",
+      count: data?.attention.staleAiJobs,
+      to: "/admin/pipeline",
+      icon: Clock,
+    },
+    {
+      key: "failedSync",
+      label: isVi ? "Lượt đồng bộ OpenAlex lỗi" : "Failed OpenAlex sync runs",
+      count: data?.attention.failedSyncRuns,
+      to: "/admin/sync",
+      icon: RefreshCw,
+    },
+    {
+      key: "workers",
+      label: isVi ? "Worker mất nhịp / quá hạn" : "Stale or missing workers",
+      count: data?.attention.unhealthyWorkers,
+      to: "/admin/workers",
+      icon: Server,
     },
   ];
 
+  const deps = data?.systemHealth.dependencies;
+  const checkedAt = data?.systemHealth.checkedAt
+    ? new Date(data.systemHealth.checkedAt).toLocaleString(isVi ? "vi-VN" : "en-US")
+    : null;
+
   return (
-    <div className="space-y-8 select-none">
-      {/* Header section with quick action buttons */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6">
+      {/* Header */}
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Admin Dashboard</h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Real-time analytics, user operations, ingestion pipeline, and AI synthesis health.
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            {isVi ? "Tổng quan vận hành quản trị" : "Admin Operations Overview"}
+          </h1>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {isVi
+              ? "Số liệu truy vấn trực tiếp từ PostgreSQL, Redis và nhịp tim Worker."
+              : "Live operational metrics sourced directly from PostgreSQL, Redis, and worker heartbeats."}
+            {checkedAt ? ` · ${isVi ? "Cập nhật" : "Updated"}: ${checkedAt}` : ""}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Link
-            to="/admin/academic-verifications"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            className="gap-1.5"
           >
-            <UserCheck className="h-3.5 w-3.5 text-blue-600" />
-            Review Verifications
+            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} aria-hidden="true" />
+            <span>{isVi ? "Làm mới" : "Refresh"}</span>
+          </Button>
+          <Button asChild size="sm" variant="outline">
+            <Link to="/admin/academic-verifications">
+              <UserCheck className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+              {isVi ? "Duyệt xác minh" : "Review Verifications"}
+            </Link>
+          </Button>
+          <Button asChild size="sm">
+            <Link to="/admin/sync">
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+              {isVi ? "Đồng bộ OpenAlex" : "Sync OpenAlex"}
+            </Link>
+          </Button>
+        </div>
+      </header>
+
+      {/* Partial Failure Notice (honest reporting — never coerce failed queries into 0) */}
+      {data?.unavailableSections && data.unavailableSections.length > 0 ? (
+        <div
+          role="alert"
+          className="flex items-start gap-2.5 rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-xs text-amber-900 dark:text-amber-200"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <div>
+            <p className="font-semibold">
+              {isVi ? "Một số nguồn dữ liệu tạm thời không truy vấn được" : "Some telemetry sections could not be queried"}
+            </p>
+            <p className="mt-0.5 opacity-90">
+              {isVi ? "Các mục bị ảnh hưởng được đánh dấu Không rõ thay vì hiển thị 0: " : "Affected sections are marked Unavailable instead of zero: "}
+              <span className="font-mono">{data.unavailableSections.join(", ")}</span>
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Section A: Attention Required */}
+      <section aria-labelledby="attention-heading" className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 id="attention-heading" className="text-sm font-bold tracking-tight text-foreground">
+            {isVi ? "A. Hạng mục cần xử lý" : "A. Attention Required"}
+          </h2>
+          <span className="text-[11px] text-muted-foreground">
+            {isVi ? "Bấm vào từng hạng mục để mở hàng đợi đã lọc" : "Click any queue to open its filtered workspace"}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {attentionItems.map(({ key, label, count, to, icon: Icon }) => {
+            const isUnavailable = !isLoading && count === null;
+            const hasAttention = typeof count === "number" && count > 0;
+            return (
+              <Link
+                key={key}
+                to={to}
+                className={cn(
+                  "group flex items-center justify-between rounded-xl border bg-card px-4 py-3.5 transition-colors hover:bg-muted/40",
+                  hasAttention && "border-amber-500/35 bg-amber-500/[0.03]",
+                  isUnavailable && "border-dashed border-border",
+                )}
+              >
+                <div className="min-w-0 space-y-1">
+                  <p className="truncate text-xs font-medium text-muted-foreground">{label}</p>
+                  <div className="text-xl font-bold tabular-nums text-foreground">
+                    {isLoading ? (
+                      <Skeleton className="h-6 w-12" />
+                    ) : isUnavailable ? (
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        {isVi ? "Không khả dụng" : "Unavailable"}
+                      </span>
+                    ) : (
+                      <span className={cn(hasAttention ? "text-amber-700 dark:text-amber-300" : "text-foreground")}>
+                        {formatNumber(count)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <div
+                    className={cn(
+                      "flex h-9 w-9 items-center justify-center rounded-lg border",
+                      hasAttention
+                        ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                        : "border-border bg-muted/40 text-muted-foreground",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                  </div>
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground group-hover:translate-x-0.5 transition-transform" aria-hidden="true" />
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Section B: Platform Overview */}
+      <section aria-labelledby="overview-heading" className="space-y-3">
+        <h2 id="overview-heading" className="text-sm font-bold tracking-tight text-foreground">
+          {isVi ? "B. Tổng quan nền tảng" : "B. Platform Overview"}
+        </h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Users */}
+          <Link to="/admin/users" className="rounded-xl border bg-card p-4 transition-colors hover:bg-muted/30 space-y-2">
+            <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+              <span>{isVi ? "Tài khoản người dùng" : "User Accounts"}</span>
+              <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+            </div>
+            <div className="text-2xl font-bold tabular-nums text-foreground">
+              {isLoading ? <Skeleton className="h-7 w-16" /> : fmtCount(data?.users.total, isVi)}
+            </div>
+            {data ? (
+              <div className="space-y-1 border-t pt-2 text-[11px] text-muted-foreground">
+                <p>
+                  {isVi ? "Trạng thái: " : "Status: "}
+                  <span className="font-medium text-foreground">{formatNumber(data.users.byStatus.ACTIVE)}</span> {isVi ? "hoạt động" : "active"}
+                  {" · "}
+                  <span>{formatNumber(data.users.byStatus.SUSPENDED)}</span> {isVi ? "tạm khóa" : "suspended"}
+                  {" · "}
+                  <span>{formatNumber(data.users.byStatus.DISABLED)}</span> {isVi ? "vô hiệu" : "disabled"}
+                </p>
+                <p>
+                  {isVi ? "Vai trò học thuật: " : "Academic: "}
+                  {formatNumber(data.users.byAcademicRole.STUDENT)} {isVi ? "SV" : "students"} · {formatNumber(data.users.byAcademicRole.LECTURER)} {isVi ? "GV" : "lecturers"} · {formatNumber(data.users.byAcademicRole.RESEARCHER)} {isVi ? "NCV" : "researchers"}
+                </p>
+              </div>
+            ) : null}
           </Link>
-          <Link
-            to="/admin/sync"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Sync OpenAlex
+
+          {/* Projects (Active vs Total clearly separated) */}
+          <div className="rounded-xl border bg-card p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+              <span>{isVi ? "Dự án nghiên cứu" : "Research Projects"}</span>
+              <FolderGit2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold tabular-nums text-foreground">
+                {isLoading ? <Skeleton className="h-7 w-14" /> : fmtCount(data?.projects?.active, isVi)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {isVi ? "đang hoạt động (ACTIVE)" : "active (ACTIVE)"}
+              </span>
+            </div>
+            {data?.projects ? (
+              <div className="space-y-1 border-t pt-2 text-[11px] text-muted-foreground">
+                <p>
+                  {isVi ? "Tổng dự án chưa xóa: " : "Total non-deleted: "}
+                  <strong className="text-foreground">{formatNumber(data.projects.total)}</strong>
+                </p>
+                <p>
+                  {formatNumber(data.projects.planning)} {isVi ? "lập kế hoạch" : "planning"} · {formatNumber(data.projects.completed)} {isVi ? "hoàn tất" : "completed"} · {formatNumber(data.projects.archived)} {isVi ? "lưu trữ" : "archived"}
+                </p>
+              </div>
+            ) : (
+              <p className="border-t pt-2 text-[11px] text-muted-foreground">
+                {isVi ? "Chưa có dữ liệu trạng thái dự án." : "Project breakdown unavailable."}
+              </p>
+            )}
+          </div>
+
+          {/* Mentorship & Communities */}
+          <div className="rounded-xl border bg-card p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+              <span>{isVi ? "Cố vấn & Cộng đồng" : "Mentorship & Communities"}</span>
+              <GraduationCap className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold tabular-nums text-foreground">
+                {isLoading ? <Skeleton className="h-7 w-14" /> : fmtCount(data?.mentorships?.activeRelationships, isVi)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {isVi ? "quan hệ hướng dẫn hoạt động" : "active mentorships"}
+              </span>
+            </div>
+            <div className="space-y-1 border-t pt-2 text-[11px] text-muted-foreground">
+              <p>
+                {isVi ? "Đề nghị/lời mời đang chờ: " : "Pending requests: "}
+                <strong className="text-foreground">{fmtCount(data?.mentorships?.pendingRequests, isVi)}</strong>
+              </p>
+              <p>
+                <Link to="/admin/community" className="text-primary hover:underline">
+                  {isVi ? "Cộng đồng hoạt động: " : "Active communities: "}
+                  <strong>{fmtCount(data?.communities, isVi)}</strong>
+                </Link>
+              </p>
+            </div>
+          </div>
+
+          {/* AI Runs vs Generated Outputs (strictly separated, never summed) */}
+          <Link to="/admin/ai-jobs" className="rounded-xl border bg-card p-4 transition-colors hover:bg-muted/30 space-y-2">
+            <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+              <span>{isVi ? "Tác vụ AI & Đầu ra nghiên cứu" : "AI Runs & Research Outputs"}</span>
+              <Cpu className="h-4 w-4 text-purple-600 dark:text-purple-400" aria-hidden="true" />
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold tabular-nums text-foreground">
+                {isLoading ? <Skeleton className="h-7 w-14" /> : fmtCount(data?.aiOperations?.totalAiRuns, isVi)}
+              </span>
+              <span className="text-xs text-muted-foreground">AI runs</span>
+            </div>
+            {data?.aiOperations ? (
+              <div className="space-y-1 border-t pt-2 text-[11px] text-muted-foreground">
+                <p>
+                  {isVi ? "Báo cáo: " : "Reports: "}
+                  <strong className="text-foreground">{formatNumber(data.aiOperations.totalReports)}</strong> ({formatNumber(data.aiOperations.readyReports)} {isVi ? "xong" : "ready"})
+                </p>
+                <p>
+                  {isVi ? "Khoảng trống NC: " : "Research gaps: "}
+                  <strong className="text-foreground">{formatNumber(data.aiOperations.totalResearchGaps)}</strong> ({formatNumber(data.aiOperations.validatedResearchGaps)} {isVi ? "đã kiểm chứng" : "validated"})
+                </p>
+              </div>
+            ) : null}
           </Link>
         </div>
-      </div>
+      </section>
 
-      {/* 6 Metric KPI Grid (Shadcn Dashboard Style) */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {kpiCards.map(({ title, value, subtext, icon: Icon, trend, badge, badgeColor, link, color, bg }) => (
-          <Link
-            key={title}
-            to={link}
-            className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800/80 dark:bg-slate-900"
-          >
-            <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{title}</span>
-                <div className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white tabular-nums">
-                  {isLoading || value === undefined ? <Skeleton className="h-7 w-20" /> : typeof value === "number" ? formatNumber(value) : value}
-                </div>
-              </div>
-              <div className={`flex h-10 w-10 items-center justify-center rounded-xl border ${bg}`}>
-                <Icon className={`h-5 w-5 ${color}`} />
-              </div>
-            </div>
-
-            <div className="mt-3 flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/60 text-[11px]">
-              <span className="truncate text-slate-500 dark:text-slate-400">{subtext}</span>
-              {badge ? (
-                <span className={`shrink-0 rounded-full border px-2 py-0.5 font-bold text-[10px] ${badgeColor}`}>
-                  {badge}
-                </span>
-              ) : trend ? (
-                <span className="shrink-0 font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-0.5">
-                  {trend} <ArrowUpRight className="h-3 w-3" />
-                </span>
-              ) : null}
-            </div>
-          </Link>
-        ))}
-      </div>
-
-      {/* Main Operational Split: Operations & Ingestion Health + Live Activity */}
+      {/* Main Two-Column Operational Split */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Left 7 Columns: Sync & Embedding Operations Dashboard */}
+        {/* Left 7 cols: Operational Health + Corpus Readiness */}
         <div className="lg:col-span-7 space-y-6">
-          <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800/80 dark:bg-slate-900 space-y-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
-                  <Activity className="h-4 w-4" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">Corpus & Sync Operations</h2>
-                  <p className="text-[11px] text-slate-500">Live ingestion runs, vector indexing coverage, and queue load</p>
-                </div>
+          {/* Section C: Operational Health */}
+          <section aria-labelledby="health-heading" className="rounded-xl border bg-card p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                <h2 id="health-heading" className="text-sm font-bold text-foreground">
+                  {isVi ? "C. Tình trạng phụ thuộc hệ thống" : "C. Operational Health"}
+                </h2>
               </div>
-              <Link
-                to="/admin/sync"
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 flex items-center gap-1"
-              >
-                Sync Console <ChevronRight className="h-3.5 w-3.5" />
-              </Link>
-            </div>
-
-            {/* Quick KPI stats row */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-xl bg-slate-50/80 p-3.5 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Syncs</span>
-                <span className="text-lg font-bold text-slate-900 dark:text-white block mt-1 tabular-nums font-mono">
-                  {formatNumber(totalSyncRuns)}
-                </span>
-              </div>
-              <div className="rounded-xl bg-slate-50/80 p-3.5 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pending Requests</span>
-                <span className="text-lg font-bold text-slate-900 dark:text-white block mt-1 tabular-nums font-mono">
-                  {isPendingPapersLoading ? <Skeleton className="h-6 w-10" /> : formatNumber(pendingPapersCount)}
-                </span>
-              </div>
-              <div className="rounded-xl bg-slate-50/80 p-3.5 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Failed Runs</span>
-                <span className={`text-lg font-bold block mt-1 tabular-nums font-mono ${failedRunsCount > 0 ? "text-rose-600" : "text-slate-900 dark:text-white"}`}>
-                  {formatNumber(failedRunsCount)}
-                </span>
+              <div className="flex items-center gap-2">
+                {data?.systemHealth ? <AdminStatusBadge status={data.systemHealth.overall} /> : null}
+                <Link to="/admin/workers" className="text-xs font-semibold text-primary hover:underline">
+                  {isVi ? "Xem Workers" : "View Workers"}
+                </Link>
               </div>
             </div>
 
-            {/* Embedding Progress Bar */}
-            {embedStatus && (
-              <div className="rounded-xl bg-slate-50/80 p-4 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Database className="h-3.5 w-3.5 text-blue-600" /> Vector Embeddings Coverage
-                  </span>
-                  <span className="font-bold font-mono text-slate-900 dark:text-white">{embeddingProgress}%</span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                  <div
-                    className="h-full rounded-full bg-blue-600 transition-all duration-500"
-                    style={{ width: `${embeddingProgress}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-[10px] text-slate-400 font-mono">
-                  <span>{formatNumber(embedStatus.embeddedPapers)} embedded</span>
-                  <span>{formatNumber(embedStatus.totalPapers)} total papers</span>
-                </div>
+            {isLoading || !deps ? (
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
               </div>
-            )}
-
-            {/* Latest Run Details */}
-            {latestRun && (
-              <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 dark:border-slate-800/60 dark:bg-slate-800/20 space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">Latest OpenAlex Sync</span>
-                  {latestRun.runStatus === "succeeded" ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
-                      <CheckCircle2 className="h-3 w-3" /> Succeeded
-                    </span>
-                  ) : latestRun.runStatus === "failed" ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-[10px] font-bold text-rose-600">
-                      <XCircle className="h-3 w-3" /> Failed
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-600">
-                      <RefreshCw className="h-3 w-3 animate-spin" /> {latestRun.runStatus}
-                    </span>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-slate-600 dark:text-slate-400 text-[11px]">
-                  <div>Search: <strong className="text-slate-900 dark:text-white font-medium">{latestRun.searchText}</strong></div>
-                  <div>Inserted: <strong className="text-emerald-600 font-medium">+{formatNumber(latestRun.totalInserted)} papers</strong></div>
-                </div>
+            ) : (
+              <div className="grid gap-2.5 sm:grid-cols-2 text-xs">
+                <DependencyRow
+                  title="API"
+                  status={deps.api.status}
+                  detail={deps.api.detail ?? (isVi ? "Phản hồi bình thường" : "Responding")}
+                />
+                <DependencyRow
+                  title="PostgreSQL"
+                  status={deps.database.status}
+                  detail={deps.database.latencyMs !== null && deps.database.latencyMs !== undefined
+                    ? `${deps.database.latencyMs} ms`
+                    : (deps.database.detail ?? "—")}
+                />
+                <DependencyRow
+                  title="Redis / BullMQ"
+                  status={deps.redis.status}
+                  detail={deps.redis.status === "healthy" && deps.redis.latencyMs !== null && deps.redis.latencyMs !== undefined
+                    ? `${deps.redis.latencyMs} ms`
+                    : (deps.redis.detail ?? "—")}
+                />
+                <DependencyRow
+                  title={isVi ? "Đội ngũ Worker" : "Worker Fleet"}
+                  status={deps.workers.status}
+                  detail={deps.workers.detail ?? `${deps.workers.alive}/${deps.workers.expected} alive`}
+                />
+                <DependencyRow
+                  title={isVi ? "Kết nối AI sinh nội dung" : "AI Generation Provider"}
+                  status={deps.aiProvider.status}
+                  detail={deps.aiProvider.name
+                    ? `${deps.aiProvider.name} · ${deps.aiProvider.fastModel ?? "—"}`
+                    : (isVi ? "Chưa cấu hình" : "Not configured")}
+                />
+                <DependencyRow
+                  title={isVi ? "Kết nối Embedding" : "Embedding Provider"}
+                  status={deps.embeddingProvider.status}
+                  detail={deps.embeddingProvider.name
+                    ? `${deps.embeddingProvider.name} · ${deps.embeddingProvider.model ?? "—"} (${deps.embeddingProvider.dimensions ?? "—"}d)`
+                    : (isVi ? "Chưa cấu hình" : "Not configured")}
+                />
               </div>
             )}
           </section>
 
-          {/* AI Agreement Matrix */}
-          <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800/80 dark:bg-slate-900 space-y-4">
-            <div className="flex items-center gap-2">
-              <Scale className="h-4 w-4 text-indigo-600" />
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">AI Evaluation vs Human Agreement</h2>
+          {/* Section D: Research Data Readiness */}
+          <section aria-labelledby="corpus-heading" className="rounded-xl border bg-card p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                <h2 id="corpus-heading" className="text-sm font-bold text-foreground">
+                  {isVi ? "D. Mức độ sẵn sàng dữ liệu Corpus" : "D. Research Data Readiness"}
+                </h2>
+              </div>
+              <div className="flex items-center gap-3 text-xs">
+                <Link to="/admin/corpus-validation" className="font-semibold text-primary hover:underline">
+                  {isVi ? "Kiểm định Corpus" : "Validation"}
+                </Link>
+                <Link to="/admin/pipeline" className="font-semibold text-primary hover:underline">
+                  Pipeline
+                </Link>
+              </div>
             </div>
-            <p className="text-[11px] text-slate-500 leading-relaxed">
-              Compares AI qualitative evaluation scores with peer researcher ratings. High agreement confirms synthetic review reliability.
+
+            {isLoading ? (
+              <Skeleton className="h-32 w-full rounded-lg" />
+            ) : data?.corpus ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-xs">
+                  <div className="rounded-lg border bg-muted/25 p-3">
+                    <span className="text-[11px] text-muted-foreground">{isVi ? "Tổng bài báo" : "Total corpus"}</span>
+                    <p className="mt-1 text-lg font-bold tabular-nums font-mono">{formatNumber(data.corpus.totalPapers)}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/25 p-3">
+                    <span className="text-[11px] text-muted-foreground">{isVi ? "Đủ điều kiện phân tích" : "Analyzable"}</span>
+                    <p className="mt-1 text-lg font-bold tabular-nums font-mono">{formatNumber(data.corpus.analyzablePapers)}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/25 p-3">
+                    <span className="text-[11px] text-muted-foreground">{isVi ? "Lượt đồng bộ" : "Sync runs"}</span>
+                    <p className="mt-1 text-lg font-bold tabular-nums font-mono">{formatNumber(data.sync.totalRuns)}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/25 p-3">
+                    <span className="text-[11px] text-muted-foreground">{isVi ? "Đồng bộ lỗi" : "Failed syncs"}</span>
+                    <p className={cn("mt-1 text-lg font-bold tabular-nums font-mono", data.sync.failedRuns > 0 && "text-rose-600 dark:text-rose-400")}>
+                      {formatNumber(data.sync.failedRuns)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <CoverageBar
+                    label={isVi ? "Độ phủ Vector Embeddings (trên bài đủ điều kiện phân tích)" : "Embedding Coverage (of analyzable papers)"}
+                    numerator={data.corpus.embeddedPapers}
+                    denominator={data.corpus.analyzablePapers}
+                    pct={data.corpus.embeddingCoveragePct}
+                  />
+                  <CoverageBar
+                    label={isVi ? "Độ phủ Phân tích AI có cấu trúc (trên bài đủ điều kiện)" : "Structured AI Analysis Coverage (of analyzable papers)"}
+                    numerator={data.corpus.aiAnalyzedPapers}
+                    denominator={data.corpus.analyzablePapers}
+                    pct={data.corpus.aiAnalysisCoveragePct}
+                  />
+                </div>
+
+                {data.sync.latestRun ? (
+                  <div className="rounded-lg border bg-muted/20 p-3 text-xs space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-semibold text-foreground">
+                        {isVi ? "Lượt đồng bộ OpenAlex gần nhất" : "Latest OpenAlex Sync Run"}
+                      </span>
+                      <AdminStatusBadge status={data.sync.latestRun.status} />
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                      <span>{isVi ? "Truy vấn:" : "Query:"} <strong className="text-foreground">{data.sync.latestRun.searchText || "—"}</strong></span>
+                      <span>{isVi ? "Thêm mới:" : "Inserted:"} <strong className="text-foreground">{formatNumber(data.sync.latestRun.totalInserted)}</strong></span>
+                      <span>{isVi ? "Bắt đầu:" : "Started:"} {new Date(data.sync.latestRun.startedAt).toLocaleString(isVi ? "vi-VN" : "en-US")}</span>
+                    </div>
+                    {data.sync.latestRun.errorMessage ? (
+                      <p className="text-[11px] text-rose-700 dark:text-rose-300 font-mono truncate" title={data.sync.latestRun.errorMessage}>
+                        {data.sync.latestRun.errorMessage}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {isVi ? "Chưa có dữ liệu sẵn sàng từ pipeline." : "Pipeline corpus telemetry is currently unavailable."}
+              </p>
+            )}
+          </section>
+        </div>
+
+        {/* Right 5 cols: Recent Admin Activity + AI vs Human Agreement */}
+        <div className="lg:col-span-5 space-y-6">
+          {/* Section E: Recent Administrative Activity */}
+          <section aria-labelledby="activity-heading" className="rounded-xl border bg-card p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                <h2 id="activity-heading" className="text-sm font-bold text-foreground">
+                  {isVi ? "E. Hoạt động quản trị gần đây" : "E. Recent Administrative Activity"}
+                </h2>
+              </div>
+              <Link to="/admin/audit-logs" className="text-xs font-semibold text-primary hover:underline">
+                {isVi ? "Xem toàn bộ nhật ký" : "Full Audit Trail"}
+              </Link>
+            </div>
+
+            {isLoading ? (
+              <div className="space-y-2.5">
+                {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+              </div>
+            ) : data?.recentActivity && data.recentActivity.length > 0 ? (
+              <ul className="divide-y divide-border/70">
+                {data.recentActivity.slice(0, 6).map((log) => (
+                  <li key={log.id} className="flex items-start gap-2.5 py-2.5 first:pt-0 last:pb-0 text-xs">
+                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                      <Zap className="h-3 w-3" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-mono text-[11.5px] font-semibold text-foreground">{log.actionName}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {log.user?.fullName ?? (isVi ? "Hệ thống" : "System")}
+                        {log.targetTableName ? ` · ${log.targetTableName}` : ""}
+                        {" · "}
+                        {new Date(log.createdAt).toLocaleString(isVi ? "vi-VN" : "en-US")}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="py-6 text-center text-xs text-muted-foreground">
+                {isVi ? "Chưa ghi nhận sự kiện quản trị nào gần đây." : "No recent administrative audit events recorded."}
+              </p>
+            )}
+          </section>
+
+          {/* AI vs Human Agreement Calibration (with honest scientific boundary) */}
+          <section aria-labelledby="agreement-heading" className="rounded-xl border bg-card p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Scale className="h-4 w-4 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
+                <h2 id="agreement-heading" className="text-sm font-bold text-foreground">
+                  {isVi ? "Đối chiếu đánh giá AI và Người dùng" : "AI vs Human Rating Agreement"}
+                </h2>
+              </div>
+              <Link to="/admin/evaluation" className="text-xs font-semibold text-primary hover:underline">
+                {isVi ? "Chi tiết đánh giá" : "Evaluation"}
+              </Link>
+            </div>
+            <p className="text-[11px] leading-5 text-muted-foreground">
+              {isVi
+                ? "Chỉ số tương đồng giữa điểm AI và đánh giá từ nhà nghiên cứu trên mẫu hiện có. Mức tương đồng cao không đồng nghĩa với bảo chứng giá trị khoa học."
+                : "Measures agreement between AI scores and researcher ratings on available samples. Agreement alone does not establish scientific validity."}
             </p>
-            {!agreement || agreement.sampleSize === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-400 dark:border-slate-800">
-                Evaluation calibrations will display here as papers and gap analyses receive human ratings.
+            {agreementError ? (
+              <p role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/5 p-3 text-xs text-rose-700 dark:text-rose-300">
+                {isVi ? "Không tải được dữ liệu đối chiếu đánh giá." : "Could not load rating agreement data."}
+              </p>
+            ) : !agreement || agreement.sampleSize === 0 ? (
+              <div className="rounded-lg border border-dashed p-5 text-center text-xs text-muted-foreground">
+                {isVi
+                  ? "Chưa có mẫu đánh giá đối chiếu giữa AI và người dùng."
+                  : "No paired AI and human evaluation samples available yet."}
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b text-left text-[10px] uppercase font-bold text-slate-400 dark:border-slate-800">
-                      <th className="pb-2">Evaluation Type</th>
-                      <th className="pb-2">Samples</th>
-                      <th className="pb-2">MAE</th>
-                      <th className="pb-2">Within ±1</th>
-                      <th className="pb-2">Correlation</th>
+                    <tr className="border-b text-left text-[10px] font-bold uppercase text-muted-foreground">
+                      <th className="pb-2">{isVi ? "Loại" : "Scope"}</th>
+                      <th className="pb-2 text-right">{isVi ? "Mẫu (n)" : "Samples"}</th>
+                      <th className="pb-2 text-right">MAE</th>
+                      <th className="pb-2 text-right">{isVi ? "Trong ±1" : "Within ±1"}</th>
+                      <th className="pb-2 text-right">r</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  <tbody className="divide-y divide-border/70">
                     {agreementRows.map(({ label, b }) => (
-                      <tr key={label} className="text-slate-700 dark:text-slate-300">
-                        <td className="py-2.5 font-semibold">{label}</td>
-                        <td className="py-2.5 tabular-nums font-mono">{b.sampleSize}</td>
-                        <td className="py-2.5 tabular-nums font-mono">{b.mae.toFixed(2)}</td>
-                        <td className="py-2.5 tabular-nums font-mono text-emerald-600 font-semibold">{b.withinOnePct}%</td>
-                        <td className="py-2.5 tabular-nums font-mono">
+                      <tr key={label}>
+                        <td className="py-2 font-medium text-foreground">{label}</td>
+                        <td className="py-2 text-right font-mono tabular-nums">{b.sampleSize}</td>
+                        <td className="py-2 text-right font-mono tabular-nums">{b.mae.toFixed(2)}</td>
+                        <td className="py-2 text-right font-mono tabular-nums">{b.withinOnePct}%</td>
+                        <td className="py-2 text-right font-mono tabular-nums">
                           {b.correlation === null ? "—" : b.correlation.toFixed(2)}
                         </td>
                       </tr>
@@ -323,77 +644,62 @@ export function AdminHomePage() {
               </div>
             )}
           </section>
-        </div>
 
-        {/* Right 5 Columns: Live System Activity & Quick Access */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Quick Management Shortcuts */}
-          <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800/80 dark:bg-slate-900 space-y-3.5">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Admin Management Modules</h2>
-            <div className="space-y-2">
-              {[
-                { to: "/admin/users", label: "User Accounts & Permissions", desc: "Manage research users, admins, and suspension states", icon: Users },
-                { to: "/admin/settings", label: "Platform Policies & System Settings", desc: "Credit allocations, institutions, API limits", icon: Settings },
-                { to: "/admin/academic-verifications", label: "Lecturer & Position Verification", desc: "Evidence review, institutional domain checks", icon: ShieldCheck },
-                { to: "/admin/pipeline", label: "OpenAlex Large-Scale Ingest", desc: "Campaign partitions, checkpoints, dead-letters", icon: Activity },
-                { to: "/admin/community", label: "Communities & Forum", desc: "Communities, proposals and forum discussions", icon: MessageSquare },
-                { to: "/admin/workers", label: "Worker Fleet & BullMQ Queues", desc: "Background processors, heartbeats, jobs", icon: Server },
-              ].map(({ to, label, desc, icon: Icon }) => (
-                <Link
-                  key={to}
-                  to={to}
-                  className="group flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-3 text-xs transition-colors hover:border-blue-200 hover:bg-blue-50/30 dark:border-slate-800/60 dark:bg-slate-800/30 dark:hover:border-blue-900/50"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white shadow-xs dark:bg-slate-800 text-slate-600 dark:text-slate-300 group-hover:text-blue-600">
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-slate-900 dark:text-white truncate">{label}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{desc}</p>
-                    </div>
-                  </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 group-hover:translate-x-0.5 group-hover:text-blue-600 transition-all" />
-                </Link>
-              ))}
-            </div>
-          </section>
-
-          {/* Recent Security & Platform Activity */}
-          <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800/80 dark:bg-slate-900 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-blue-600" />
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white">Recent Admin Activity</h2>
+          {/* Quick Corpus Link */}
+          <section className="rounded-xl border bg-card p-4 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <BookOpen className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="font-semibold text-foreground">{isVi ? "Bài báo trong Corpus" : "Papers in Corpus"}</p>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  {isVi ? "Quản lý yêu cầu bài báo, trạng thái PDF và phê duyệt." : "Manage bibliographic records, PDFs, and approval requests."}
+                </p>
               </div>
-              <Link to="/admin/audit-logs" className="text-xs font-semibold text-blue-600 hover:underline">
-                Full Audit Trail
-              </Link>
             </div>
-
-            {(data as any)?.recentActivity && (data as any).recentActivity.length > 0 ? (
-              <div className="space-y-3">
-                {(data as any).recentActivity.slice(0, 5).map((log: any) => (
-                  <div key={log.id} className="flex items-start gap-3 text-xs border-b border-slate-100 pb-2.5 last:border-0 dark:border-slate-800">
-                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
-                      <Zap className="h-3 w-3" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-slate-900 dark:text-white truncate">
-                        {log.actionName}
-                      </p>
-                      <p className="text-[10px] text-slate-400">
-                        {log.user?.fullName || "System Admin"} • {new Date(log.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-400 text-center py-4">No recent security events logged.</p>
-            )}
+            <Button asChild size="sm" variant="outline" className="shrink-0">
+              <Link to="/admin/papers">{isVi ? "Mở" : "Open"}</Link>
+            </Button>
           </section>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function DependencyRow({ title, status, detail }: { title: string; status: string; detail: string }) {
+  return (
+    <div className="flex items-start justify-between gap-2 rounded-lg border bg-muted/20 p-3">
+      <div className="min-w-0 space-y-0.5">
+        <p className="font-semibold text-foreground truncate">{title}</p>
+        <p className="text-[11px] text-muted-foreground truncate" title={detail}>{detail}</p>
+      </div>
+      <AdminStatusBadge status={status} className="shrink-0" />
+    </div>
+  );
+}
+
+function CoverageBar({
+  label,
+  numerator,
+  denominator,
+  pct,
+}: {
+  label: string;
+  numerator: number;
+  denominator: number;
+  pct: number;
+}) {
+  const safePct = Math.min(100, Math.max(0, pct));
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium text-foreground">{label}</span>
+        <span className="font-mono text-[11px] font-semibold tabular-nums text-foreground">
+          {formatNumber(numerator)} / {formatNumber(denominator)} ({safePct}%)
+        </span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${safePct}%` }} />
       </div>
     </div>
   );

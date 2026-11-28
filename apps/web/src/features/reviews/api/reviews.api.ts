@@ -1,5 +1,7 @@
 import type {
   AcademicReviewInput,
+  ChangeReviewTemplateInput,
+  EligibleReviewTemplatesPayload,
   ManuscriptSourceVersionLink,
   CreateReviewRequestInput,
   CreateReviewTemplateInput,
@@ -8,6 +10,7 @@ import type {
   ReviewOpportunity,
   ReviewRequestStatus,
   ResubmitReviewRequestInput,
+  ReviewTemplateSelectionState,
   ReviewTemplateSummary,
   ReviewTemplateVersionDetail,
   ReviewTemplateVersionInput,
@@ -61,6 +64,71 @@ export interface ReviewerCandidate {
   availableForReview: boolean;
 }
 
+export interface PreviousReviewResponseItem {
+  criterionKey: string;
+  criterionTitle?: string;
+  maxScore?: number;
+  levelLabel?: string;
+  comment: string;
+  evidence?: string;
+  assessment?: string;
+  performanceLevelId?: string;
+  score?: number;
+  notApplicable: boolean;
+}
+
+export interface PreviousReviewRevisionItem {
+  id: string;
+  reviewId?: string;
+  roundNumber?: number;
+  revisionId?: string;
+  revisionNumber?: number;
+  priority?: "MAJOR" | "MINOR" | "SUGGESTION";
+  criterionKey?: string;
+  locator?: string;
+  quotation?: string;
+  description: string;
+  status: string;
+  createdAt?: string;
+  responses: Array<{
+    submissionRevisionId: string;
+    submissionRevisionNumber?: number;
+    responseText: string;
+    status: string;
+    createdAt?: string;
+  }>;
+}
+
+export interface PreviousReviewRound {
+  id: string;
+  roundNumber: number;
+  revisionId: string;
+  revisionNumber?: number;
+  reviewerName?: string;
+  templateVersionId?: string;
+  templateVersionNumber?: number;
+  reviewMode?: string;
+  guidelines?: string[];
+  keyStrengths?: string;
+  keyConcerns?: string;
+  overallComment?: string;
+  overallAssessment?: string;
+  recommendation?: string;
+  weightedScore?: number;
+  integrityChecks?: AcademicReviewInput["integrityChecks"];
+  responses?: PreviousReviewResponseItem[];
+  revisionItems?: PreviousReviewRevisionItem[];
+  submittedAt?: string;
+}
+
+export interface PreviousFeedbackPayload {
+  assignmentId: string;
+  submissionId: string;
+  currentRoundNumber: number;
+  currentRevisionId: string;
+  rounds: PreviousReviewRound[];
+}
+
 export interface ReviewWorkspace {
   projectTitle?: string;
   delivery?: { sentAt: string; authors: string[] };
@@ -74,53 +142,23 @@ export interface ReviewWorkspace {
     overallComment?: string; overallAssessment?: AcademicReviewInput["overallAssessment"]; weightedScore?: number;
   };
   responses: Array<{ criterionKey: string; comment: string; evidence?: string; assessment?: string; performanceLevelId?: string; score?: number; notApplicable: boolean }>;
-  requiredRevisions: Array<{ id: string; priority: "MAJOR" | "MINOR"; description: string; locator?: string; criterionKey?: string; quotation?: string; status: string; responses?: Array<{ submissionRevisionId: string; responseText: string; status: string }> }>;
+  requiredRevisions: Array<{ id: string; priority: "MAJOR" | "MINOR" | "SUGGESTION"; description: string; locator?: string; criterionKey?: string; quotation?: string; status: string; responses?: Array<{ submissionRevisionId: string; responseText: string; status: string }> }>;
   templateVersion?: ReviewTemplateVersionDetail;
+  templateSelection?: ReviewTemplateSelectionState;
   criteria: ReviewTemplateVersionDetail["criteria"];
   artifactContent?: string;
   artifactRevision?: { id: string; revisionNumber: number; contentType: string };
   manuscriptSource?: ManuscriptSourceVersionLink;
   integrityEvidence?: ReviewIntegrityEvidenceMap;
-  previousReviews?: Array<{
-    id: string;
-    roundNumber: number;
-    revisionId: string;
-    revisionNumber?: number;
-    templateVersionId?: string;
-    overallComment?: string;
-    overallAssessment?: string;
-    recommendation?: string;
-    weightedScore?: number;
-    integrityChecks?: AcademicReviewInput["integrityChecks"];
-    responses?: Array<{
-      criterionKey: string;
-      comment: string;
-      evidence?: string;
-      assessment?: string;
-      performanceLevelId?: string;
-      score?: number;
-      notApplicable: boolean;
-    }>;
-    submittedAt?: string;
-  }>;
-  previousRevisionItems: Array<{
-    id: string;
-    reviewId?: string;
-    roundNumber?: number;
-    revisionId?: string;
-    revisionNumber?: number;
-    priority?: "MAJOR" | "MINOR" | "SUGGESTION";
-    locator?: string;
-    description: string;
-    status: string;
-    responses: Array<{ submissionRevisionId: string; responseText: string; status: string; createdAt?: string }>;
-  }>;
+  previousReviews?: PreviousReviewRound[];
+  previousRevisionItems: PreviousReviewRevisionItem[];
   roundNumber: number;
 }
 
 export interface ReviewRequestDetail extends ReviewCenterItem {
   canRespond?: boolean;
   templateVersion: ReviewTemplateVersionDetail;
+  templateSelection?: ReviewTemplateSelectionState;
   artifactContent?: string;
   reviews: Array<{
     assignmentId?: string; templateVersionId?: string;
@@ -135,8 +173,8 @@ export interface ReviewRequestDetail extends ReviewCenterItem {
 }
 
 export const reviewsApi = {
-  async saveResponseDrafts(requestId: string, input: ResubmitReviewRequestInput): Promise<void> { await api.put(`/review-requests/${encodeURIComponent(requestId)}/responses`,input); },
-  async verifyRevision(requestId: string, itemId: string, status: "ACCEPTED" | "REOPENED", expectedRevisionId?:string): Promise<void> { await api.patch(API_ROUTES.reviewRequests.revisionItem(requestId, itemId), { status, expectedRevisionId }); },
+  async saveResponseDrafts(requestId: string, input: ResubmitReviewRequestInput): Promise<void> { await api.put(`/review-requests/${encodeURIComponent(requestId)}/responses`, input); },
+  async verifyRevision(requestId: string, itemId: string, status: "ACCEPTED" | "REOPENED", expectedRevisionId?: string): Promise<void> { await api.patch(API_ROUTES.reviewRequests.revisionItem(requestId, itemId), { status, expectedRevisionId }); },
   async availability(): Promise<ReviewAvailabilitySettings> { const response = await api.get(API_ROUTES.reviewAvailability.mine); return response.data.data; },
   async updateAvailability(input: Omit<ReviewAvailabilitySettings, "activeReviewCount">): Promise<ReviewAvailabilitySettings> { const response = await api.put(API_ROUTES.reviewAvailability.mine, input); return response.data.data; },
   async opportunities(params: Record<string, string | undefined> = {}): Promise<{ availability: ReviewAvailabilitySettings; opportunities: ReviewOpportunity[] }> { const response = await api.get(API_ROUTES.reviewOpportunities.list, { params }); return response.data.data; },
@@ -144,9 +182,15 @@ export const reviewsApi = {
   async declareConflict(submissionId: string, reason: string): Promise<void> { await api.post(API_ROUTES.reviewOpportunities.conflict(submissionId), { reason }); },
   async listAssignments(): Promise<ReviewAssignmentSummary[]> { const response = await api.get(API_ROUTES.reviews.list); return response.data.data; },
   async detail(assignmentId: string): Promise<ReviewWorkspace> { const response = await api.get(API_ROUTES.reviews.detail(assignmentId)); return response.data.data; },
+  async previousFeedback(assignmentId: string, signal?: AbortSignal): Promise<PreviousFeedbackPayload> { const response = await api.get(API_ROUTES.reviews.previousFeedback(assignmentId), { signal }); return response.data.data; },
   async save(assignmentId: string, input: AcademicReviewInput): Promise<ReviewWorkspace> { const response = await api.put(API_ROUTES.reviews.save(assignmentId), input); return response.data.data; },
   async submit(assignmentId: string, input: AcademicReviewInput): Promise<ReviewWorkspace> { const response = await api.post(API_ROUTES.reviews.submit(assignmentId), input); return response.data.data; },
-  async templates(): Promise<ReviewTemplateSummary[]> { const response = await api.get(API_ROUTES.reviewTemplates.list); return response.data.data; },
+  async templates(options: { includeArchived?: boolean } = {}): Promise<ReviewTemplateSummary[]> {
+    const response = await api.get(API_ROUTES.reviewTemplates.list, {
+      params: options.includeArchived ? { includeArchived: "true" } : undefined,
+    });
+    return response.data.data;
+  },
   async template(templateId: string): Promise<ReviewTemplateSummary & { versions: ReviewTemplateVersionDetail[] }> { const response = await api.get(API_ROUTES.reviewTemplates.detail(templateId)); return response.data.data; },
   async createTemplate(input: CreateReviewTemplateInput): Promise<ReviewTemplateSummary> { const response = await api.post(API_ROUTES.reviewTemplates.list, input); return response.data.data; },
   async saveTemplateVersion(templateId: string, input: ReviewTemplateVersionInput): Promise<ReviewTemplateVersionDetail> { const response = await api.put(API_ROUTES.reviewTemplates.versions(templateId), input); return response.data.data; },
@@ -155,6 +199,8 @@ export const reviewsApi = {
   async archiveTemplate(templateId: string): Promise<void> { await api.post(API_ROUTES.reviewTemplates.archive(templateId), {}); },
   async center(): Promise<{ incoming: ReviewCenterItem[]; sent: ReviewCenterItem[] }> { const response = await api.get(API_ROUTES.reviewRequests.list); return response.data.data; },
   async requestDetail(requestId: string): Promise<ReviewRequestDetail> { const response = await api.get(API_ROUTES.reviewRequests.detail(requestId)); return response.data.data; },
+  async eligibleTemplates(requestId: string): Promise<EligibleReviewTemplatesPayload> { const response = await api.get(API_ROUTES.reviewRequests.eligibleTemplates(requestId)); return response.data.data; },
+  async changeRequestTemplate(requestId: string, input: ChangeReviewTemplateInput): Promise<ReviewRequestDetail> { const response = await api.patch(API_ROUTES.reviewRequests.changeTemplate(requestId), input); return response.data.data; },
   async reviewerCandidates(q?: string, scope: { reportId?: string; submissionId?: string } = {}): Promise<ReviewerCandidate[]> { const response = await api.get(API_ROUTES.reviewRequests.reviewers, { params: { ...(q ? { q } : {}), ...(scope.reportId ? { reportId: scope.reportId } : {}), ...(scope.submissionId ? { submissionId: scope.submissionId } : {}) } }); return response.data.data; },
   async createRequest(input: CreateReviewRequestInput): Promise<ReviewCenterItem> { const response = await api.post(API_ROUTES.reviewRequests.list, input); return response.data.data; },
   async acceptRequest(requestId: string): Promise<void> { await api.post(API_ROUTES.reviewRequests.accept(requestId), {}); },

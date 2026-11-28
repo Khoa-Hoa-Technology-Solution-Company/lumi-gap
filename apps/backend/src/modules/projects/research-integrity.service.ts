@@ -111,26 +111,43 @@ export const researchIntegrityService = {
       db.project.findUnique({ where: workspaceId(projectInput) }),
       db.user.findUnique({ where: workspaceId(actorInput) }),
     ]);
-    if (!projectRow || Boolean(projectRow.deletedAt) || !actorRow) throw AppError.notFound("Project not found");
+    if (!projectRow || !actorRow) throw AppError.notFound("Project not found");
 
     return db.$transaction(async tx => {
       await lockProjectAccounts(tx, [actorRow.id], projectRow.id);
-      await assertActiveProjectAccount(tx, actorRow.id);
       const project = await tx.project.findUniqueOrThrow({ where: { id: projectRow.id } });
       const membership = await tx.projectMember.findUnique({
         where: { projectId_userId: { projectId: project.id, userId: actorRow.id } },
       });
       const isOwner = project.ownerId === actorRow.id;
-      const isActiveMember = isOwner || membership?.status === "ACTIVE";
+      const isActiveMember = !project.deletedAt && (isOwner || membership?.status === "ACTIVE");
       const isAdmin = systemRole === "ADMIN";
+      const isProjectDeleted = Boolean(project.deletedAt);
 
-      const where =
-        isActiveMember || isAdmin
-          ? { projectId: project.id }
-          : {
+      // Soft-deleted projects retain case visibility for involved parties and admins;
+      // private contribution/attribution disputes are scoped to involved parties, owner, or admin (never unrelated members).
+      const where = isAdmin
+        ? { projectId: project.id }
+        : isProjectDeleted
+          ? {
               projectId: project.id,
               OR: [{ reporterId: actorRow.id }, { respondentUserId: actorRow.id }],
-            };
+            }
+          : isOwner
+            ? { projectId: project.id }
+            : isActiveMember
+              ? {
+                  projectId: project.id,
+                  OR: [
+                    { kind: "DATA_LEAK_INCIDENT" as const },
+                    { reporterId: actorRow.id },
+                    { respondentUserId: actorRow.id },
+                  ],
+                }
+              : {
+                  projectId: project.id,
+                  OR: [{ reporterId: actorRow.id }, { respondentUserId: actorRow.id }],
+                };
 
       const rows = await tx.researchIntegrityCase.findMany({
         where,
@@ -163,11 +180,10 @@ export const researchIntegrityService = {
       db.project.findUnique({ where: workspaceId(projectInput) }),
       db.user.findUnique({ where: workspaceId(actorInput) }),
     ]);
-    if (!projectRow || Boolean(projectRow.deletedAt) || !actorRow) throw AppError.notFound("Case not found");
+    if (!projectRow || !actorRow) throw AppError.notFound("Case not found");
 
     return db.$transaction(async tx => {
       await lockProjectAccounts(tx, [actorRow.id], projectRow.id);
-      await assertActiveProjectAccount(tx, actorRow.id);
       const project = await tx.project.findUniqueOrThrow({ where: { id: projectRow.id } });
       const row = await tx.researchIntegrityCase.findFirst({
         where: { id: caseId, projectId: project.id },
@@ -177,12 +193,17 @@ export const researchIntegrityService = {
       const membership = await tx.projectMember.findUnique({
         where: { projectId_userId: { projectId: project.id, userId: actorRow.id } },
       });
-      const isOwner = project.ownerId === actorRow.id;
-      const isActiveMember = isOwner || membership?.status === "ACTIVE";
+      const isOwner = !project.deletedAt && project.ownerId === actorRow.id;
+      const isActiveMember = !project.deletedAt && (isOwner || membership?.status === "ACTIVE");
       const isAdmin = systemRole === "ADMIN";
       const isInvolved = row.reporterId === actorRow.id || row.respondentUserId === actorRow.id;
+      const canSeeCase =
+        isAdmin ||
+        isInvolved ||
+        isOwner ||
+        (isActiveMember && row.kind === "DATA_LEAK_INCIDENT");
 
-      if (!isActiveMember && !isAdmin && !isInvolved) {
+      if (!canSeeCase) {
         throw AppError.notFound("Case not found");
       }
 
@@ -201,7 +222,10 @@ export const researchIntegrityService = {
       db.project.findUnique({ where: workspaceId(projectInput) }),
       db.user.findUnique({ where: workspaceId(actorInput) }),
     ]);
-    if (!projectRow || Boolean(projectRow.deletedAt) || !actorRow) throw AppError.notFound("Project not found");
+    if (!projectRow || !actorRow) throw AppError.notFound("Project not found");
+    if (projectRow.deletedAt && input.kind === "DATA_LEAK_INCIDENT") {
+      throw AppError.notFound("Project not found");
+    }
 
     return db.$transaction(async tx => {
       await lockProjectAccounts(tx, [actorRow.id], projectRow.id);
@@ -320,7 +344,7 @@ export const researchIntegrityService = {
       db.project.findUnique({ where: workspaceId(projectInput) }),
       db.user.findUnique({ where: workspaceId(actorInput) }),
     ]);
-    if (!projectRow || Boolean(projectRow.deletedAt) || !actorRow) throw AppError.notFound("Case not found");
+    if (!projectRow || !actorRow) throw AppError.notFound("Case not found");
 
     return db.$transaction(async tx => {
       await lockProjectAccounts(tx, [actorRow.id], projectRow.id);
@@ -331,15 +355,11 @@ export const researchIntegrityService = {
       });
       if (!row) throw AppError.notFound("Case not found");
 
-      const membership = await tx.projectMember.findUnique({
-        where: { projectId_userId: { projectId: project.id, userId: actorRow.id } },
-      });
-      const isOwner = project.ownerId === actorRow.id;
-      const isActiveMember = isOwner || membership?.status === "ACTIVE";
+      const isOwner = !project.deletedAt && project.ownerId === actorRow.id;
       const isAdmin = systemRole === "ADMIN";
       const isInvolved = row.reporterId === actorRow.id || row.respondentUserId === actorRow.id;
 
-      if (!isActiveMember && !isAdmin && !isInvolved) {
+      if (!isOwner && !isAdmin && !isInvolved) {
         throw AppError.notFound("Case not found");
       }
 
@@ -491,7 +511,7 @@ export const researchIntegrityService = {
       db.project.findUnique({ where: workspaceId(projectInput) }),
       db.user.findUnique({ where: workspaceId(actorInput) }),
     ]);
-    if (!projectRow || Boolean(projectRow.deletedAt) || !actorRow) throw AppError.notFound("Case not found");
+    if (!projectRow || !actorRow) throw AppError.notFound("Case not found");
 
     return db.$transaction(async tx => {
       await lockProjectAccounts(tx, [actorRow.id], projectRow.id);
@@ -502,15 +522,11 @@ export const researchIntegrityService = {
       });
       if (!row) throw AppError.notFound("Case not found");
 
-      const membership = await tx.projectMember.findUnique({
-        where: { projectId_userId: { projectId: project.id, userId: actorRow.id } },
-      });
-      const isOwner = project.ownerId === actorRow.id;
-      const isActiveMember = isOwner || membership?.status === "ACTIVE";
+      const isOwner = !project.deletedAt && project.ownerId === actorRow.id;
       const isAdmin = systemRole === "ADMIN";
       const isInvolved = row.reporterId === actorRow.id || row.respondentUserId === actorRow.id;
 
-      if (!isActiveMember && !isAdmin && !isInvolved) {
+      if (!isOwner && !isAdmin && !isInvolved) {
         throw AppError.notFound("Case not found");
       }
 
@@ -562,7 +578,7 @@ export const researchIntegrityService = {
       db.project.findUnique({ where: workspaceId(projectInput) }),
       db.user.findUnique({ where: workspaceId(actorInput) }),
     ]);
-    if (!projectRow || Boolean(projectRow.deletedAt) || !actorRow) throw AppError.notFound("Case not found");
+    if (!projectRow || !actorRow) throw AppError.notFound("Case not found");
 
     return db.$transaction(async tx => {
       await lockProjectAccounts(tx, [actorRow.id], projectRow.id);
@@ -574,7 +590,7 @@ export const researchIntegrityService = {
       if (!row) throw AppError.notFound("Case not found");
 
       const isAdmin = systemRole === "ADMIN";
-      const isOwner = project.ownerId === actorRow.id;
+      const isOwner = !project.deletedAt && project.ownerId === actorRow.id;
       const isAccused = row.respondentUserId === actorRow.id;
       const isEscalated = row.status === "ESCALATED";
 

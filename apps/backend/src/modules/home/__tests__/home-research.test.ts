@@ -108,7 +108,11 @@ describe.sequential("Research Home real data and access boundaries", () => {
     expect(result.continueResearch).toEqual([]);
     expect(result.attention.map((i) => i.type)).toEqual(["review", "mentorship"]);
     await db.userCapability.updateMany({ where: { userId: lecturer }, data: { status: "REVOKED" } });
+    // Live verified identity guarantees the baseline even if stored policy grants are stale.
+    expect((await researchWorkspace(lecturer, "LECTURER")).attention.map((i) => i.type)).toEqual(["review", "mentorship"]);
+    await db.academicProfile.update({ where: { userId: lecturer }, data: { positionStatus: "INVALIDATED" } });
     expect((await researchWorkspace(lecturer, "LECTURER")).attention).toEqual([]);
+    await db.academicProfile.update({ where: { userId: lecturer }, data: { positionStatus: "VERIFIED" } });
     await db.userCapability.updateMany({ where: { userId: lecturer }, data: { status: "ACTIVE" } });
   });
   it("matches interests honestly, excludes saved/project/restricted papers and hides forum content", async () => {

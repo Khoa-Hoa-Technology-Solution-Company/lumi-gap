@@ -76,8 +76,8 @@ it("opens the mentor channel directly without rendering internal team or AI chat
   expect(host.textContent).toContain("Giảng viên An");
   expect(host.textContent).not.toContain("Internal team chat");
   expect(host.textContent).not.toContain("Internal AI chat");
-  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("With mentors");
-  expect(host.querySelector('button')?.textContent).toBe("Team Chat");
+  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("Mentor Conversations");
+  expect(host.querySelector('button')?.textContent).toBe("Research Team Chat");
 });
 it("shows only accepted relationships in conversation selection", async () => {
   await mount(<MentorAccessWorkspace projectId="p" mode="conversation" />);
@@ -134,7 +134,7 @@ it("preserves a failed message so it can be retried", async () => {
 });
 it("blocks leaving a drafted mentor conversation when the user cancels", async () => {
   await mount(<ProjectDiscussionPanel projectId="p" paperCount={3} />); await fill("Chưa gửi");
-  await act(async () => button("Team Chat").click());
+  await act(async () => button("Research Team Chat").click());
   expect(confirmLeave).toHaveBeenCalled();
   expect(host.querySelector<HTMLTextAreaElement>(".mentor-collab-composer textarea")?.value).toBe("Chưa gửi");
   expect(host.textContent).not.toContain("Internal team chat");

@@ -39,6 +39,12 @@ projectChatRouter.post(
 );
 
 projectChatRouter.get(
+  "/sources",
+  validate(ProjectChatParamsSchema, "params"),
+  projectChatController.getSources,
+);
+
+projectChatRouter.get(
   "/events",
   validate(ProjectChatParamsSchema, "params"),
   validate(StreamProjectChatQuerySchema, "query"),

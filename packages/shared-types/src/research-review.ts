@@ -137,6 +137,8 @@ export interface ReviewTemplateCriterionInput {
 }
 
 export interface ReviewTemplateVersionInput {
+  name?: string;
+  artifactType?: string | null;
   reviewMode: AcademicReviewMode;
   description?: string;
   guidelines: string[];
@@ -154,17 +156,24 @@ export interface CreateReviewTemplateInput extends ReviewTemplateVersionInput {
 export interface ReviewTemplateSummary {
   id: string;
   name: string;
+  description?: string;
   source: ReviewTemplateSource;
   artifactType?: string;
   status: ReviewTemplateStatus;
   ownerId?: string;
   projectId?: string;
+  canManage?: boolean;
+  hasDraftVersion?: boolean;
+  draftVersionNumber?: number;
   activeVersion?: ReviewTemplateVersionDetail;
   updatedAt: ISODateString;
 }
 
 export interface ReviewTemplateVersionDetail {
   id: string;
+  templateId?: string;
+  templateName?: string;
+  templateSource?: ReviewTemplateSource;
   versionNumber: number;
   reviewMode: AcademicReviewMode;
   description?: string;
@@ -177,6 +186,28 @@ export interface ReviewTemplateVersionDetail {
     order: number;
     levels: Array<ReviewCriterionLevelInput & { id: string; position: number }>;
   }>;
+}
+
+export interface ChangeReviewTemplateInput {
+  templateVersionId: string;
+  confirmDraftReset?: boolean;
+  reason?: string;
+}
+
+export interface ReviewTemplateSelectionState {
+  canChangeTemplate: boolean;
+  mandatoryProjectTemplate: boolean;
+  hasDraftResponses: boolean;
+  draftResponseCount: number;
+  submittedRoundCount: number;
+}
+
+export interface EligibleReviewTemplatesPayload extends ReviewTemplateSelectionState {
+  requestId: string;
+  currentTemplateVersionId: string;
+  suggestedTemplateVersionId?: string;
+  artifactType?: string;
+  templates: ReviewTemplateSummary[];
 }
 
 export interface CreateReviewRequestInput {

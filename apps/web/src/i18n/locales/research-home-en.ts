@@ -415,5 +415,11 @@ const researchHomeKeys = [
   "Could not fetch papers. Please try again later.",
   "The daily limit for fetching papers has been reached. Please try again tomorrow.",
   "Too many fetch requests. Please wait a while and try again.",
+  "Start automatic scrolling",
+  "Semantic search: finds papers by meaning, question, or concept.",
+  "Keyword search: matches exact terms, names, or phrases.",
+  "AI Rerank active: re-orders semantic results for higher relevance.",
+  "On",
+  "Use Left and Right arrow keys to browse papers.",
 ] as const;
 export const researchHomeEn = Object.fromEntries(researchHomeKeys.map((key) => [key, key])) as Record<(typeof researchHomeKeys)[number], string>;

@@ -3,6 +3,7 @@ import {
   contributionCategories,
   creditRoles,
   type ContributionOverview,
+  type ContributionSummary,
   inferContributionCategoryFromRoles,
   type ContributionArtifactLink,
   type ContributionCategoryKey,
@@ -19,7 +20,6 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { assertActiveProjectAccount, lockProjectAccounts } from "./project-transaction.js";
 import { workspaceId, expectWorkspaceVersion, assertWorkspaceLink, jsonSnapshot, workspacePeople, workspacePerson, type WorkspaceContext } from "./workspace-access.js";
 import { contributionsNotify } from "./contributions-notification.js";
-import { canAccessProjectAsMentor } from "./academic-relationship-access.js";
 import { contributionEvidenceManifest, contributionEvidenceChanged } from "./contribution-evidence.js";
 import type { contributionsPageSchema, contributionReviewSchema } from "./dto/project-contributions.schema.js";
 import { withResearchContributions } from "./research-contribution-projection.js";
@@ -133,7 +133,10 @@ export async function withWorkRecord<T>(projectId: string, actorId: string, id: 
     return run({ tx, project: live, actorId: actor.id, role });
   }, { maxWait: 10000, timeout: 20000 });
 }
-type WorkListData = { participants: ContributionParticipant[]; reviews: ContributionReview[]; people: Map<string, WorkspacePerson>; mentorAllowed?: boolean };
+export type WorkListData = { participants: ContributionParticipant[]; reviews: ContributionReview[]; people: Map<string, WorkspacePerson>; mentorAllowed?: boolean };
+export async function presentWorkContribution(context: WorkspaceContext, row: ProjectContributionProposal, detail = true, listData?: WorkListData): Promise<WorkContribution> {
+  return present(context, row, detail, listData);
+}
 async function present(context: WorkspaceContext, row: ProjectContributionProposal, detail = true, listData?: WorkListData): Promise<WorkContribution> {
   let ownMentorRecord = Boolean(listData?.mentorAllowed && row.proposedById===context.actorId);
   if (!context.role && row.proposedById===context.actorId && !listData) {
@@ -148,16 +151,25 @@ async function present(context: WorkspaceContext, row: ProjectContributionPropos
   const people = listData?.people ?? await workspacePeople(context.tx, [row.proposedById, ...participants.map(p => p.userId), ...reviews.map(r => r.userId)]);
   const reviewActions: WorkContribution["reviewActions"] = [];
   const priorChallenge = reviews.some(review => review.userId === context.actorId && review.version < row.version && ["DISPUTE", "NEEDS_CHANGES"].includes(review.decision));
-  if (context.project.status !== "ARCHIVED" && row.source !== "LEGACY" && row.proposedById !== context.actorId && ["SUBMITTED", "ACCEPTED", "SELF_RECORDED"].includes(row.status)) {
+  if (context.project.status !== "ARCHIVED" && row.source !== "LEGACY" && ["SUBMITTED", "ACCEPTED", "SELF_RECORDED"].includes(row.status)) {
     if (participants.some(p => p.userId === context.actorId) || priorChallenge) reviewActions.push("ACKNOWLEDGE");
-    else if (context.role) reviewActions.push("ACCEPT");
-    reviewActions.push("NEEDS_CHANGES", "DISPUTE");
+    else if (context.role && row.proposedById !== context.actorId) reviewActions.push("ACCEPT");
+    if (row.proposedById !== context.actorId) reviewActions.push("NEEDS_CHANGES", "DISPUTE", "INSUFFICIENT_INFORMATION");
   }
   const visibleEvidenceRefs = context.role || ownMentorRecord ? (row.evidenceRefs as unknown as ContributionInput["evidenceRefs"]) : [];
   const evidenceRefDetails = (context.role || ownMentorRecord) && Array.isArray(visibleEvidenceRefs)
     ? await resolveContributionArtifactRefs(context, visibleEvidenceRefs)
     : [];
-  return { id: row.id, projectId: row.projectId, title: row.title, description: row.description, category: resolveRowCategory(row), source: row.source as ContributionInput["source"], workDate: row.workDate.toISOString(), version: row.version, status: row.status, createdBy: workspacePerson(people, row.proposedById), participants: participants.map(p => ({ ...p, name: workspacePerson(people, p.userId).name, roles: p.roles as CreditRole[] })), evidence: row.evidence ?? "", evidenceRefs: visibleEvidenceRefs, evidenceRefDetails, reviews: reviews.map(r => ({ ...r, name: workspacePerson(people, r.userId).name, createdAt: r.createdAt.toISOString() })), history: history.map(h => ({ ...h, snapshot: context.role ? h.snapshot : { title: (h.snapshot as { title?: string }).title, description: (h.snapshot as { description?: string }).description, participants: (h.snapshot as { participants?: unknown }).participants, status: (h.snapshot as { status?: string }).status }, createdAt: h.createdAt.toISOString() })), viewerId: context.actorId, reviewActions, canManage: Boolean(context.role || ownMentorRecord) && row.proposedById === context.actorId && row.source !== "LEGACY" && row.status !== "SUBMITTED" && context.project.status !== "ARCHIVED", readOnly: context.project.status === "ARCHIVED", createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  const reviewScope = (review: ContributionReview): NonNullable<WorkContribution["reviews"][number]["scope"]> => {
+    if (review.decision === "ACCEPT") return "INDEPENDENT_PEER";
+    if (review.decision !== "ACKNOWLEDGE") return "UNDETERMINED";
+    const snapshot = history.find(h => h.version === review.version)?.snapshot as { participants?: { userId: string }[] } | undefined;
+    const named = review.version === row.version ? participants : snapshot?.participants;
+    return named ? named.some(p => p.userId === review.userId) ? "SELF" : "AFFECTED_CONTRIBUTOR" : "UNDETERMINED";
+  };
+  const independent = reviews.find(r => r.version === row.version && r.decision === "ACCEPT" && r.userId !== row.proposedById && !participants.some(p => p.userId === r.userId));
+  const reconciliationStatus: WorkContribution["reconciliationStatus"] = row.status === "ACCEPTED" && independent ? "CONFIRMED" : row.status === "DISPUTED" ? "DISPUTED" : row.status === "NEEDS_CHANGES" ? "NEEDS_CLARIFICATION" : row.status === "SUBMITTED" ? "PENDING" : "NOT_REVIEWED";
+  return { outcome: row.outcome, milestoneId: row.milestoneId, externalEvidence: context.role || ownMentorRecord ? row.externalEvidence as unknown as ContributionInput["externalEvidence"] : [], recognitionSource: row.source === "LEGACY" ? "IMPORTED" : participants.some(p => p.userId === row.proposedById) ? "SELF_DECLARED" : "MEMBER_DECLARED", reconciliationStatus, confirmation: reconciliationStatus === "CONFIRMED" && independent ? { userId: independent.userId, name: workspacePerson(people, independent.userId).name, version: row.version, confirmedAt: independent.createdAt.toISOString(), scope: "REPORTED_WORK_ONLY" } : null, id: row.id, projectId: row.projectId, title: row.title, description: row.description, category: resolveRowCategory(row), source: row.source as ContributionInput["source"], workDate: row.workDate.toISOString(), version: row.version, status: row.status, createdBy: workspacePerson(people, row.proposedById), participants: participants.map(p => ({ ...p, name: workspacePerson(people, p.userId).name, roles: p.roles as CreditRole[], participation: p.participation as unknown as ContributionInput["participants"][number]["participation"] })), evidence: row.evidence ?? "", evidenceRefs: visibleEvidenceRefs, evidenceRefDetails, reviews: reviews.map(r => ({ ...r, scope: reviewScope(r), name: workspacePerson(people, r.userId).name, createdAt: r.createdAt.toISOString() })), history: history.map(h => ({ ...h, snapshot: context.role ? h.snapshot : { title: (h.snapshot as { title?: string }).title, description: (h.snapshot as { description?: string }).description, participants: (h.snapshot as { participants?: unknown }).participants, status: (h.snapshot as { status?: string }).status }, createdAt: h.createdAt.toISOString() })), viewerId: context.actorId, reviewActions, canManage: Boolean(context.role || ownMentorRecord) && row.proposedById === context.actorId && row.source !== "LEGACY" && row.status !== "SUBMITTED" && context.project.status !== "ARCHIVED", readOnly: context.project.status === "ARCHIVED", createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 async function history(context: WorkspaceContext, row: ProjectContributionProposal, action: string, note?: string, input?: unknown) {
   const participants = await context.tx.contributionParticipant.findMany({ where: { proposalId: row.id } });
@@ -165,7 +177,7 @@ async function history(context: WorkspaceContext, row: ProjectContributionPropos
   await context.tx.projectContributionHistory.create({ data: { proposalId: row.id, actorId: context.actorId, action, version: row.version, note, snapshot: jsonSnapshot({ ...row, participants, ...(evidenceManifest ? { evidenceManifest } : {}), ...(input ? { creationInput: input } : {}) }), createdAt: new Date() } });
 }
 async function validateWork(context: WorkspaceContext, input: ContributionInput) {
-  if (!input.participants.some(p => p.userId === context.actorId) && context.role !== "OWNER") throw AppError.forbidden("Only the owner may propose work for another contributor");
+  if (input.milestoneId && !await context.tx.projectMilestone.count({ where: { id: input.milestoneId, projectId: context.project.id } })) throw AppError.badRequest("Milestone must belong to this project");
   if (!context.role && input.participants.some(p => p.userId !== context.actorId)) throw AppError.forbidden("Mentors can record only their own work");
   for (const person of input.participants) {
     const membership = await context.tx.projectMembershipPeriod.findFirst({ where: { projectId: context.project.id, userId: person.userId } });
@@ -197,14 +209,84 @@ const fields = (input: ContributionInput) => {
     roles: allRoles,
     evidence: input.evidence,
     evidenceRefs: jsonSnapshot(deduplicateEvidenceRefs(input.evidenceRefs)),
+    outcome: input.outcome ?? "",
+    milestoneId: input.milestoneId ?? null,
+    externalEvidence: jsonSnapshot(input.externalEvidence ?? []),
   };
 };
 export const workContributionsService = {
+  async summary(projectId: string, actorId: string): Promise<ContributionSummary> {
+    return withResearchContributions(projectId, actorId, async context => {
+      const ownIds = !context.role
+        ? (await context.tx.contributionParticipant.findMany({ where: { userId: context.actorId }, select: { proposalId: true } })).map(p => p.proposalId)
+        : null;
+      const rows = await context.tx.projectContributionProposal.findMany({
+        where: {
+          projectId: context.project.id,
+          ...(ownIds ? { OR: [{ proposedById: context.actorId }, { id: { in: ownIds } }] } : {}),
+        },
+        select: { id: true, status: true, version: true, source: true, proposedById: true },
+      });
+      if (!rows.length) {
+        return { totalRecords: 0, independentlyAcknowledged: 0, pendingForViewer: 0 };
+      }
+      const rowIds = rows.map(r => r.id);
+      const [participants, reviews] = await Promise.all([
+        context.tx.contributionParticipant.findMany({ where: { proposalId: { in: rowIds } }, select: { proposalId: true, userId: true } }),
+        context.tx.contributionReview.findMany({
+          where: { OR: rows.map(r => ({ proposalId: r.id, version: r.version })) },
+          select: { proposalId: true, version: true, userId: true, decision: true },
+        }),
+      ]);
+      const partsByProposal = new Map<string, Set<string>>();
+      for (const p of participants) {
+        let set = partsByProposal.get(p.proposalId);
+        if (!set) { set = new Set(); partsByProposal.set(p.proposalId, set); }
+        set.add(p.userId);
+      }
+      let independentlyAcknowledged = 0;
+      let pendingForViewer = 0;
+      const archived = context.project.status === "ARCHIVED";
+
+      for (const row of rows) {
+        const named = partsByProposal.get(row.id) ?? new Set<string>();
+        const currentReviews = reviews.filter(r => r.proposalId === row.id && r.version === row.version);
+
+        if (
+          row.status === "ACCEPTED" &&
+          currentReviews.some(r => r.decision === "ACCEPT" && r.userId !== row.proposedById && !named.has(r.userId))
+        ) {
+          independentlyAcknowledged += 1;
+        }
+
+        if (
+          !archived &&
+          row.status === "SUBMITTED" &&
+          row.source !== "LEGACY" &&
+          row.proposedById !== context.actorId &&
+          !currentReviews.some(r => r.userId === context.actorId)
+        ) {
+          const isNamed = named.has(context.actorId);
+          const needsIndependentPeer = Boolean(context.role) && !currentReviews.some(r => r.decision === "ACCEPT");
+          if (isNamed || needsIndependentPeer) {
+            pendingForViewer += 1;
+          }
+        }
+      }
+
+      return {
+        totalRecords: rows.length,
+        independentlyAcknowledged,
+        pendingForViewer,
+      };
+    });
+  },
   async overview(projectId: string, actorId: string): Promise<ContributionOverview> {
     return withResearchContributions(projectId, actorId, async context => {
       const own = context.role ? undefined : await context.tx.contributionParticipant.findMany({ where: { userId: context.actorId }, select: { proposalId: true } });
-      const rows = await context.tx.projectContributionProposal.findMany({ where: { projectId: context.project.id, status: { not: "DRAFT" }, ...(own ? { id: { in: own.map(p => p.proposalId) } } : {}) }, select: { id: true, status: true, contributorId: true, roles: true, evidenceRefs: true } });
+      const rows = await context.tx.projectContributionProposal.findMany({ where: { projectId: context.project.id, status: { not: "DRAFT" }, ...(own ? { id: { in: own.map(p => p.proposalId) } } : {}) }, select: { id: true, status: true, version: true, proposedById: true, contributorId: true, roles: true, evidenceRefs: true } });
       const participants = await context.tx.contributionParticipant.findMany({ where: { proposalId: { in: rows.map(r => r.id) } } });
+      const reviews = await context.tx.contributionReview.findMany({ where: { proposalId: { in: rows.map(r => r.id) }, decision: "ACCEPT" } });
       const people = await workspacePeople(context.tx, [...participants.map(p => p.userId), ...rows.map(r => r.contributorId)]);
       const result = new Map<string, ContributionOverview["people"][number]>(), artifacts = new Set<string>();
       for (const row of rows) {
@@ -212,7 +294,7 @@ export const workContributionsService = {
         for (const part of parts.length ? parts : [{ userId: row.contributorId, roles: row.roles }]) {
           const item = result.get(part.userId) ?? { userId: part.userId, name: workspacePerson(people, part.userId).name, declaredRoles: [], independentlyAcknowledgedRoles: [] };
           item.declaredRoles = creditRoles.filter(role => item.declaredRoles.includes(role) || part.roles.includes(role));
-          if (["ACCEPTED", "CONFIRMED"].includes(row.status)) item.independentlyAcknowledgedRoles = creditRoles.filter(role => item.independentlyAcknowledgedRoles.includes(role) || part.roles.includes(role));
+          if (row.status === "ACCEPTED" && reviews.some(r => r.proposalId === row.id && r.version === row.version && r.userId !== row.proposedById && !parts.some(p => p.userId === r.userId))) item.independentlyAcknowledgedRoles = creditRoles.filter(role => item.independentlyAcknowledgedRoles.includes(role) || part.roles.includes(role));
           result.set(part.userId, item);
         }
         if (context.role && Array.isArray(row.evidenceRefs)) for (const ref of row.evidenceRefs as unknown as ContributionArtifactLink[]) artifacts.add(`${ref.kind}:${ref.id}`);
@@ -222,10 +304,10 @@ export const workContributionsService = {
   },
   async people(projectId: string, actorId: string) {
     return withResearchContributions(projectId, actorId, async context => {
-      const members = context.role ? await context.tx.projectMember.findMany({ where: { projectId: context.project.id, status: "ACTIVE" }, select: { userId: true } }) : [];
+      const members = context.role ? await context.tx.projectMember.findMany({ where: { projectId: context.project.id }, select: { userId: true } }) : [];
       const mentors = context.role ? await context.tx.mentorRelationship.findMany({ where: { projectId: context.project.id, status: "ACTIVE" }, select: { mentorUserId: true } }) : [];
       const feedback = !context.role ? await context.tx.mentorFeedback.findMany({ where: { projectId: context.project.id, authorId: context.actorId }, orderBy: { createdAt: "desc" }, take: 50, select: { id: true, body: true } }) : [];
-      return { items: [...(await workspacePeople(context.tx, [context.actorId, ...members.map(m => m.userId), ...mentors.map(m => m.mentorUserId)])).values()], feedbackReferences: feedback.map(item => ({ kind: "MENTOR_FEEDBACK" as const, id: item.id, label: item.body.slice(0, 120) })) };
+      return { items: [...(await workspacePeople(context.tx, [context.actorId, context.project.ownerId, ...members.map(m => m.userId), ...mentors.map(m => m.mentorUserId)])).values()], feedbackReferences: feedback.map(item => ({ kind: "MENTOR_FEEDBACK" as const, id: item.id, label: item.body.slice(0, 120) })) };
     });
   },
   async list(projectId: string, actorId: string, query: z.infer<typeof contributionsPageSchema>) {
@@ -242,7 +324,8 @@ export const workContributionsService = {
             OR NOT EXISTS (SELECT 1 FROM contribution_reviews r
                 WHERE r.proposal_id=c.id AND r.version=c.version AND r.decision='ACCEPT'))
       `).map(row => row.id).filter(id => !own || own.includes(id)) : undefined;
-      const where = { projectId: context.project.id, ...((pending ?? own) ? { id: { in: context.project.status === "ARCHIVED" && pending ? [] : (pending ?? own)! } } : {}), ...(query.filter === "PENDING" ? { status: "SUBMITTED" } : query.filter === "DISPUTED" ? { status: "DISPUTED" } : {}), ...(query.q ? { OR: [{ title: { contains: query.q, mode: "insensitive" as const } }, { description: { contains: query.q, mode: "insensitive" as const } }] } : {}) };
+      const filteredParticipants = query.memberId || query.role ? await context.tx.contributionParticipant.findMany({ where: { ...(query.memberId ? { userId: query.memberId } : {}), ...(query.role ? { roles: { has: query.role } } : {}) }, select: { proposalId: true } }) : null;
+      const where = { projectId: context.project.id, AND: [...(filteredParticipants ? [{ id: { in: filteredParticipants.map(p => p.proposalId) } }] : []), ...(query.milestoneId ? [{ milestoneId: query.milestoneId }] : []), ...(query.status ? [{ status: query.status }] : [])], ...((pending ?? own) ? { id: { in: context.project.status === "ARCHIVED" && pending ? [] : (pending ?? own)! } } : {}), ...(query.filter === "PENDING" ? { status: "SUBMITTED" } : query.filter === "DISPUTED" ? { status: "DISPUTED" } : {}), ...(query.q ? { OR: [{ title: { contains: query.q, mode: "insensitive" as const } }, { description: { contains: query.q, mode: "insensitive" as const } }] } : {}) };
       const [rows, total] = await Promise.all([context.tx.projectContributionProposal.findMany({ where, skip: (query.page - 1) * query.pageSize, take: query.pageSize, orderBy: [{ createdAt: "desc" }, { id: "desc" }] }), context.tx.projectContributionProposal.count({ where })]);
       const [participants, reviews] = await Promise.all([
         context.tx.contributionParticipant.findMany({ where: { proposalId: { in: rows.map(row => row.id) } } }),
@@ -271,9 +354,15 @@ export const workContributionsService = {
       }
       await validateWork(context, input);
       const previousParticipants = previous ? await context.tx.contributionParticipant.findMany({ where: { proposalId: previous.id }, select: { userId: true } }) : [];
-      const row = previous ? await context.tx.projectContributionProposal.update({ where: { id: previous.id }, data: { ...fields(input), status: "DRAFT", version: { increment: 1 }, confirmedById: null, confirmedAt: null } }) : await context.tx.projectContributionProposal.create({ data: { ...fields(input), projectId: context.project.id, proposedById: context.actorId, contributorId: context.actorId, status: "DRAFT", visibility: "PRIVATE", confirmationRequiredFrom: "CONTRIBUTOR", clientKey: input.clientKey } });
+      if (previous) {
+        const parts = await context.tx.contributionParticipant.findMany({ where: { proposalId: previous.id } });
+        const canonical = (people: { userId: string; roles: readonly string[]; participation?: unknown }[]) => people.map(p => ({ userId: p.userId, roles: [...p.roles].sort(), participation: p.participation ?? {} })).sort((a,b) => a.userId.localeCompare(b.userId));
+        const before = fields({ ...input, title: previous.title, description: previous.description, category: resolveRowCategory(previous), source: previous.source as ContributionInput["source"], workDate: previous.workDate.toISOString(), evidence: previous.evidence ?? "", evidenceRefs: previous.evidenceRefs as unknown as ContributionArtifactLink[], outcome: previous.outcome, milestoneId: previous.milestoneId, externalEvidence: previous.externalEvidence as unknown as NonNullable<ContributionInput["externalEvidence"]> });
+        if (isDeepStrictEqual(before, fields(input)) && isDeepStrictEqual(canonical(parts), canonical(input.participants))) return present(context, previous);
+      }
+      const row = previous ? await context.tx.projectContributionProposal.update({ where: { id: previous.id }, data: { ...fields(input), status: "DRAFT", version: { increment: 1 }, confirmedById: null, confirmedAt: null } }) : await context.tx.projectContributionProposal.create({ data: { ...fields(input), projectId: context.project.id, proposedById: context.actorId, contributorId: input.participants[0]!.userId, status: "DRAFT", visibility: "PRIVATE", confirmationRequiredFrom: "CONTRIBUTOR", clientKey: input.clientKey } });
       if (previous) await context.tx.contributionParticipant.deleteMany({ where: { proposalId: row.id } });
-      await context.tx.contributionParticipant.createMany({ data: input.participants.map(p => ({ proposalId: row.id, userId: p.userId, roles: p.roles })) });
+      await context.tx.contributionParticipant.createMany({ data: input.participants.map(p => ({ proposalId: row.id, userId: p.userId, roles: p.roles, participation: jsonSnapshot(p.participation ?? {}) })) });
       await history(context, row, previous ? "CORRECTED" : "CREATED", input.correctionReason, previous ? undefined : input);
       await contributionsNotify(context, [...input.participants.map(p => p.userId), ...previousParticipants.map(p => p.userId)], previous ? "CORRECTED" : "ATTRIBUTED", row.id, row.version);
       return present(context, row);
@@ -310,14 +399,16 @@ export const workContributionsService = {
       const correctingChallenge = Boolean(await context.tx.contributionReview.findFirst({ where: { proposalId: id, userId: context.actorId, version: { lt: row.version }, decision: { in: ["DISPUTE", "NEEDS_CHANGES"] } } }));
       if (input.decision === "ACCEPT" && (!context.role || named || row.proposedById === context.actorId)) throw AppError.forbidden("Independent reviewers must be current peers outside the named contributors");
       if (input.decision === "ACKNOWLEDGE" && !named && !correctingChallenge) throw AppError.forbidden("Only named participants or affected correction reviewers can acknowledge");
-      if (context.actorId === row.proposedById) throw AppError.forbidden("Record creators cannot review their own work");
+      if (context.actorId === row.proposedById && input.decision !== "ACKNOWLEDGE") throw AppError.forbidden("Record creators cannot independently verify their own work");
+      if (input.decision === "ACCEPT" && !(row.evidence?.trim() || (row.evidenceRefs as unknown[]).length || (row.externalEvidence as unknown[]).length)) throw AppError.conflict("Add evidence before independent verification");
       await context.tx.contributionReview.create({ data: { proposalId: id, version: row.version, userId: context.actorId, decision: input.decision, note: input.note } });
       const reviews = await context.tx.contributionReview.findMany({ where: { proposalId: id, version: row.version } });
       const acknowledged = participants.every(p => p.userId === row.proposedById || reviews.some(r => r.userId === p.userId && r.decision === "ACKNOWLEDGE"));
       const team = await context.tx.projectMember.findMany({ where: { projectId: context.project.id, status: "ACTIVE" }, select: { userId: true } });
-      const selfRecorded = acknowledged && team.every(p => p.userId === row.proposedById || participants.some(named => named.userId === p.userId));
+      const selfRecorded = acknowledged && [context.project.ownerId, ...team.map(p => p.userId)].every(userId => userId === row.proposedById || participants.some(named => named.userId === userId));
       const status = input.decision === "DISPUTE" ? "DISPUTED" : input.decision === "NEEDS_CHANGES" ? "NEEDS_CHANGES" : acknowledged && reviews.some(r => r.decision === "ACCEPT") ? "ACCEPTED" : selfRecorded ? "SELF_RECORDED" : row.status;
-      const next = await context.tx.projectContributionProposal.update({ where: { id }, data: { status } });
+      const independent = reviews.find(r => r.decision === "ACCEPT");
+      const next = await context.tx.projectContributionProposal.update({ where: { id }, data: { status, ...(status === "ACCEPTED" && independent ? { confirmedById: independent.userId, confirmedAt: independent.createdAt } : {}) } });
       await history(context, next, input.decision, input.note);
       await contributionsNotify(context, [row.proposedById, ...participants.map(p => p.userId)], input.decision, id, row.version);
       return present(context, next);

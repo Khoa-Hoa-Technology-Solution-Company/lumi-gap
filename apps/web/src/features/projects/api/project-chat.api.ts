@@ -4,6 +4,7 @@ import type {
   ProjectChatHistoryResponse,
   ProjectChatMessage,
   ProjectChatScope,
+  ProjectChatSourcesOverview,
   SendProjectChatMessageResponse,
 } from "@trend/shared-types";
 import { API_ROUTES } from "@/constants";
@@ -27,16 +28,26 @@ export const projectChatApi = {
     return res.data.data.messages;
   },
 
+  async getSources(projectId: string): Promise<ProjectChatSourcesOverview> {
+    const res = await api.get<{
+      success: boolean;
+      data: ProjectChatSourcesOverview;
+      meta: null;
+    }>(API_ROUTES.projects.chat.sources(projectId));
+    return res.data.data;
+  },
+
   async sendMessage(
     projectId: string,
     message: string,
     scope: ProjectChatScope = "private",
+    clientKey?: string,
   ): Promise<SendProjectChatMessageResponse> {
     const res = await api.post<{
       success: boolean;
       data: SendProjectChatMessageResponse;
       meta: null;
-    }>(API_ROUTES.projects.chat.send(projectId), { message, scope });
+    }>(API_ROUTES.projects.chat.send(projectId), { message, scope, ...(clientKey ? { clientKey } : {}) });
     return res.data.data;
   },
 

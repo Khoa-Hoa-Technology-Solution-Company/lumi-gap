@@ -2,10 +2,12 @@ export const mentorWorkKinds = ["TASK", "MANUSCRIPT_REVIEW", "PROPOSAL_REVIEW", 
 export type MentorWorkKind = typeof mentorWorkKinds[number];
 export type MentorWorkStatus = "TODO" | "IN_PROGRESS" | "BLOCKED" | "WAITING" | "DONE";
 export type MentorWorkPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+export type MentorProjectFilter = "ALL" | "ATTENTION" | "NO_PENDING";
+export type MentorProjectSort = "attention" | "updated" | "name";
 export interface MentorWorkQuery {
   page?: number; pageSize?: number; q?: string; projectId?: string; kind?: MentorWorkKind | "REVIEW";
   status?: MentorWorkStatus | "ACTIONABLE" | "OVERDUE" | "ALL"; sort?: "priority" | "deadline";
-  projectPage?: number; projectSearch?: string; item?: string;
+  projectPage?: number; projectSearch?: string; projectFilter?: MentorProjectFilter; projectSort?: MentorProjectSort; item?: string;
 }
 export interface MentorWorkItem {
   id: string; sourceId: string; kind: MentorWorkKind; title: string; description: string;
@@ -22,6 +24,7 @@ export interface MentorWorkItem {
 export interface MentorProjectSummary {
   id: string; title: string; researchField: string | null; status: string;
   teamLead: string; teamSize: number; researchStage: string | null; pendingCount: number; updatedAt: string;
+  overdueCount?: number; waitingCount?: number;
   mentorRole?: string; startedAt?: string; sharedCount?: number; completedCount?: number; canChat?: boolean;
 }
 export interface MentorWorkspaceData {
@@ -30,6 +33,8 @@ export interface MentorWorkspaceData {
   facets?: Record<NonNullable<MentorWorkQuery["status"]>, number>;
   meta: { page: number; pageSize: number; total: number; totalPages: number };
   projects: MentorProjectSummary[];
+  /** Counts across all authorized projects matching projectSearch, excluding projectFilter and pagination. */
+  projectFacets?: Record<MentorProjectFilter, number>;
   projectMeta: { page: number; pageSize: number; total: number; totalPages: number };
   projectOptions: { id: string; title: string }[];
   recentActivity?: MentorWorkItem[];

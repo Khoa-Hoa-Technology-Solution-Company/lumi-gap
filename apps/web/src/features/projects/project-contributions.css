@@ -1,5 +1,7 @@
 .contributions-workspace { min-width: 0; font-size: 1rem; line-height: 1.6; --contribution-accent: #2563c5; --heat-size: 24px; --heat-gap: 5px; }
-.contributions-workspace > .coord-heading { display: block; margin-bottom: 1.25rem; }
+.contributions-workspace > .coord-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem; }
+.contributions-workspace > .coord-heading h2 { font-size: 1.5rem; line-height: 1.35; font-weight: 650; letter-spacing: -.02em; }
+.contributions-workspace > .coord-heading p { margin-top: .4rem; color: hsl(var(--muted-foreground)); max-width: 65ch; }
 .contributions-workspace > .coord-heading p { font-size: 1rem; line-height: 1.5; }
 .dark .contributions-workspace { --contribution-accent: #79aaff; }
 .contribution-tabs { display: flex; gap: .25rem; border-bottom: 1px solid hsl(var(--border)); margin-bottom: 1.25rem; flex-wrap: wrap; }
@@ -116,6 +118,12 @@
 }
 
 .contribution-editor > .contribution-editor-fields { display: grid; gap: 1rem; min-width: 0; border: 0; border-radius: 0; padding: 0; }
+.contribution-editor .coord-form-pair { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; }
+.contribution-editor .coord-form-pair > label, .contribution-external-evidence > label { display: grid; gap: .4rem; min-width: 0; font-size: .9375rem; }
+.contribution-external-evidence summary { cursor: pointer; font-weight: 600; padding-block: .5rem; }
+.contribution-external-evidence li { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; overflow-wrap: anywhere; }
+.contribution-external-evidence a { color: hsl(var(--primary)); text-decoration: underline; }
+@media(max-width:640px) { .contribution-editor .coord-form-pair { grid-template-columns: minmax(0,1fr); } }
 
 .matrix-table-wrap { overflow-x: auto; min-width: 0; border: 1px solid hsl(var(--border)); border-radius: .625rem; }
 .contribution-matrix-table { width: 100%; border-collapse: collapse; text-align: left; font-variant-numeric: tabular-nums; min-width: 580px; }

@@ -39,14 +39,16 @@ export const academicProfileController = {
     res.status(204).send();
   },
   async publicProfile(req: Request, res: Response) {
-    res.json({ success: true, data: await academicProfileService.getPublic(req.params.userId as string, req.user?.sub) });
+    const preview = req.query.preview === "public" ? "public" : undefined;
+    res.json({ success: true, data: await academicProfileService.getPublic(req.params.userId as string, req.user?.sub, { preview }) });
   },
   async forumActivity(req: Request, res: Response) {
     const { filter, page } = PublicForumActivityQuerySchema.parse(req.query);
     res.json({ success: true, data: await publicForumActivity(req.params.userId as string, filter, page, req.user?.sub, req.user?.role) });
   },
   async publicProfileByHandle(req: Request, res: Response) {
-    res.json({ success: true, data: await academicProfileService.getPublicByHandle(req.params.handle as string, req.user?.sub) });
+    const preview = req.query.preview === "public" ? "public" : undefined;
+    res.json({ success: true, data: await academicProfileService.getPublicByHandle(req.params.handle as string, req.user?.sub, { preview }) });
   },
   async setPublicHandle(req: Request, res: Response) {
     res.json({ success: true, data: await academicProfileService.setPublicHandle(req.user!.sub, req.body.handle) });
@@ -130,11 +132,23 @@ export const academicProfileController = {
   },
   async listVerificationRequests(req: Request, res: Response) {
     const query = VerificationListQuerySchema.parse(req.query);
-    const result = await academicProfileService.listVerificationRequests(query.status, query.page, query.pageSize);
+    const result = await academicProfileService.listVerificationRequests(
+      query.status,
+      query.page,
+      query.pageSize,
+      {
+        search: query.search,
+        verificationType: query.verificationType,
+        sortOrder: query.sortOrder,
+      },
+    );
     res.json({ success: true, ...result });
   },
   async decideVerification(req: Request, res: Response) {
     res.json({ success: true, data: await academicProfileService.decideVerification(req.params.requestId as string, req.body, req.user!.sub) });
+  },
+  async revokeVerification(req: Request, res: Response) {
+    res.json({ success: true, data: await academicProfileService.revokeVerification(req.params.requestId as string, req.body, req.user!.sub) });
   },
   async verificationDetails(req: Request, res: Response) {
     res.json({ success: true, data: await academicProfileService.getVerificationDetails(req.params.requestId as string) });

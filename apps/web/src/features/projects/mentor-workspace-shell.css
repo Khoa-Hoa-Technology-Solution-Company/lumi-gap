@@ -13,8 +13,11 @@
   color: hsl(var(--foreground));
 }
 .mentor-workspace-shell.mentor-shell-collapsed { grid-template-columns: 72px minmax(0, 1fr); }
+.mentor-workspace-shell.mentor-shell-focus { grid-template-columns: minmax(0, 1fr); }
+.mentor-workspace-shell.mentor-shell-focus .mentor-shell-sidebar { display: none; }
+.mentor-shell-toolbar.mentor-shell-toolbar-review { min-height: 48px; padding: 6px 18px; }
 .mentor-shell-sidebar { min-width: 0; min-height: 0; height: 100%; background: var(--mentor-nav-surface); }
-.mentor-shell-main { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+.mentor-shell-main { min-width: 0; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior-y: contain; }
 .mentor-shell-toolbar {
   position: sticky;
   top: 0;
@@ -155,6 +158,8 @@
   .mentor-shell-content .mentor-project-page .project-content-tabs { gap: 0; }
   .mentor-shell-content .mentor-project-page .project-content-tab { flex: 1 0 auto; justify-content: center; gap: 5px; padding-inline: 7px; font-size: 12px; }
   .mentor-shell-toolbar { gap: 4px; padding: 8px 10px; }
+  .mentor-shell-toolbar.mentor-shell-toolbar-review .mentor-shell-breadcrumb,
+  .mentor-shell-toolbar.mentor-shell-toolbar-review .mentor-main-site-link { display: none; }
   .mentor-toolbar-location, .mentor-toolbar-actions { gap: 4px; }
   .mentor-shell-breadcrumb li:first-child { display: none; }
   .mentor-shell-breadcrumb li:last-child > svg { display: none; }

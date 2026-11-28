@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CreateReportRequest, PreviewReportEvidenceRequest, ResearchArtifactStatus } from "@trend/shared-types";
 import { reportsApi } from "../api/reports.api";
+import { useAuthStore } from "@/stores/auth-store";
 
 export function useReports(projectId?: string, paperId?: string) {
+  const actorId = useAuthStore((s) => s.user?.id ?? "guest");
   return useQuery({
-    queryKey: ["reports", { projectId, paperId }],
+    queryKey: ["reports", actorId, { projectId, paperId }],
     queryFn: () => reportsApi.list({ projectId, paperId }),
     refetchInterval: (query) => {
       const hasPending = query.state?.data?.some(
@@ -16,8 +18,9 @@ export function useReports(projectId?: string, paperId?: string) {
 }
 
 export function useReport(id: string) {
+  const actorId = useAuthStore((s) => s.user?.id ?? "guest");
   return useQuery({
-    queryKey: ["report", id],
+    queryKey: ["report", actorId, id],
     queryFn: () => reportsApi.detail(id),
     enabled: !!id,
     refetchInterval: (query) => {

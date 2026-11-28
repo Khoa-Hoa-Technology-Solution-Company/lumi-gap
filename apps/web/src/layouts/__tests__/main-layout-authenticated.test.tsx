@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MainLayout } from "../MainLayout";
 
 const auth = vi.hoisted(() => ({
-  user: undefined as { id: string; fullName: string; email: string; academicRole: string; systemRole: string } | undefined,
+  user: undefined as { id: string; fullName: string; email: string; academicRole: string; systemRole: string; accountStatus?: string; emailVerifiedAt?: string; lecturerWorkspaceEligible?: boolean } | undefined,
 }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key, language: "en" }), LanguageSwitcher: () => null }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ tokens: { accessToken: "isolated-test-token" }, user: auth.user }) }));
@@ -25,7 +25,7 @@ async function render(path = "/") {
   await act(async () => root.render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Routes><Route element={<MainLayout />}><Route path="/" element={<h1>Home content</h1>} /><Route path="/projects" element={<h1>Original projects</h1>} /><Route path="/projects/:id" element={<h1>Full team project</h1>} /><Route path="/reviews/:assignmentId" element={<h1>Original review</h1>} /><Route path="/review-requests/:requestId" element={<h1>Original request</h1>} /><Route path="/review-templates/:templateId/edit" element={<h1>Original template</h1>} /></Route><Route path="/mentor-workspace" element={<MentorDestination />} /></Routes></MemoryRouter>));
 }
 it.each(["", "?view=trash", "?view=invitations", "?scope=OWNED&status=ACTIVE&sort=NAME&q=study&create=1#list"])("keeps a lecturer's personal projects outside the mentor shell: %s", async suffix => {
-  auth.user = { id: "lecturer", email: "lecturer@example.test", fullName: "Lecturer", academicRole: "LECTURER", systemRole: "USER" };
+  auth.user = { id: "lecturer", email: "lecturer@example.test", fullName: "Lecturer", academicRole: "LECTURER", systemRole: "USER", accountStatus: "ACTIVE", emailVerifiedAt: "2026-11-01T00:00:00Z", lecturerWorkspaceEligible: true };
   await render(`/projects${suffix}`);
   expect(host.textContent).toContain("Original projects");
   expect(host.querySelector("[data-destination]")).toBeNull();
@@ -37,7 +37,7 @@ it.each(["STUDENT", "RESEARCHER"])("keeps the existing project directory for %s"
   expect(host.querySelector("[data-destination]")).toBeNull();
 });
 it("preserves full project access for a lecturer who is an owner or member", async () => {
-  auth.user = { id: "lecturer", email: "lecturer@example.test", fullName: "Lecturer", academicRole: "LECTURER", systemRole: "USER" };
+  auth.user = { id: "lecturer", email: "lecturer@example.test", fullName: "Lecturer", academicRole: "LECTURER", systemRole: "USER", accountStatus: "ACTIVE", emailVerifiedAt: "2026-11-01T00:00:00Z", lecturerWorkspaceEligible: true };
   await render("/projects/owned?tab=members");
   expect(host.textContent).toContain("Full team project");
   expect(host.querySelector("[data-destination]")).toBeNull();
@@ -47,7 +47,7 @@ it.each([
   ["/review-requests/request", "review-request", "requestId", "request"],
   ["/review-templates/template/edit", "template-builder", "templateId", "template"],
 ])("opens a lecturer's saved %s URL inside the mentor shell with the original selector", async (path, view, key, id) => {
-  auth.user = { id: "lecturer", email: "lecturer@example.test", fullName: "Lecturer", academicRole: "LECTURER", systemRole: "USER" };
+  auth.user = { id: "lecturer", email: "lecturer@example.test", fullName: "Lecturer", academicRole: "LECTURER", systemRole: "USER", accountStatus: "ACTIVE", emailVerifiedAt: "2026-11-01T00:00:00Z", lecturerWorkspaceEligible: true };
   await render(`${path}?view=wrong&${key}=wrong&section=feedback#evidence`);
   const destination = new URL(host.querySelector('[data-destination]')!.getAttribute('data-destination')!, 'http://localhost');
   expect(destination.pathname).toBe('/mentor-workspace');
@@ -63,8 +63,8 @@ it.each(['STUDENT', 'RESEARCHER'])("preserves the original review page for %s ac
   expect(host.textContent).toContain('Original review');
   expect(host.querySelector('[data-destination]')).toBeNull();
 });
-it.each([["STUDENT", "USER", false], ["LECTURER", "USER", true], ["STUDENT", "ADMIN", true]] as const)("renders the signed-in %s/%s home and its correct mentor action", async (academicRole, systemRole, mentorAccess) => {
-  auth.user = { id: "actor", email: "actor@example.test", fullName: "Signed-in user", academicRole, systemRole };
+it.each([["STUDENT", "USER", false], ["LECTURER", "USER", true], ["STUDENT", "ADMIN", false]] as const)("renders the signed-in %s/%s home and its correct mentor action", async (academicRole, systemRole, mentorAccess) => {
+  auth.user = { id: "actor", email: "actor@example.test", fullName: "Signed-in user", academicRole, systemRole, accountStatus: "ACTIVE", emailVerifiedAt: "2026-11-01T00:00:00Z", lecturerWorkspaceEligible: academicRole === "LECTURER" };
   await render();
   expect(host.textContent).toContain("Home content");
   const account = host.querySelector<HTMLButtonElement>('button[aria-label="Account"]')!;
@@ -76,7 +76,7 @@ it.each([["STUDENT", "USER", false], ["LECTURER", "USER", true], ["STUDENT", "AD
   expect([...document.querySelectorAll('[role="menuitem"]')].filter(item => item.textContent === "mentorWorkspace.title")).toHaveLength(mentorAccess ? 1 : 0);
 });
 it("places the lecturer workspace only in the avatar menu and opens it", async () => {
-  auth.user = { id: "lecturer", email: "lecturer@example.test", fullName: "Lecturer", academicRole: "LECTURER", systemRole: "USER" };
+  auth.user = { id: "lecturer", email: "lecturer@example.test", fullName: "Lecturer", academicRole: "LECTURER", systemRole: "USER", accountStatus: "ACTIVE", emailVerifiedAt: "2026-11-01T00:00:00Z", lecturerWorkspaceEligible: true };
   await render();
   const workspace = [...host.querySelectorAll<HTMLButtonElement>('nav[aria-label="Primary navigation"] button')].find(button => button.textContent === "Workspace")!;
   await act(async () => { workspace.focus(); workspace.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });

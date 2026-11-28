@@ -57,7 +57,7 @@ describe("profile access before onboarding", () => {
     mocks.me.mockReturnValue(new Promise(resolve => { resolveMe = resolve; }));
     useAuthStore.getState().setAuth({ user: { ...member, onboarding: { completed: true } }, tokens });
     await renderProfile();
-    expect(container.textContent).toBe("Loading page...");
+    expect(container.textContent).toBe("Preparing your LumiGap workspace…");
     expect(container.textContent).not.toContain("Profile reached");
     await act(async () => {
       resolveMe({ user: member });

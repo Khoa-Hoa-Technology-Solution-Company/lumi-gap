@@ -17,6 +17,7 @@ model MentorAccess {
   @@map("mentor_access")
 }
 model MentorResourceShare {
+  message String? @db.VarChar(2000)
   sourceFileId String? @map("source_file_id") @db.Uuid
   accessMode String? @map("access_mode") @db.VarChar(16)
   id String @id @default(uuid()) @db.Uuid

@@ -1,12 +1,95 @@
 import type { WorkspacePage, WorkspacePerson } from "./project-workspace.js";
 import type { ProjectScreeningStatus } from "./project.js";
-import type { PaperAiAnalysis } from "./paper.js";
+import type { PaperAiAnalysis, PaperTopic } from "./paper.js";
 import type { PaperKnowledge } from "./knowledge.js";
 import type { FeasibilitySummary } from "./project-literature.js";
+
+export type PaperReadingSourceKind =
+  | "PROJECT_PDF"
+  | "CORPUS_PDF"
+  | "EXTERNAL_FULLTEXT_PDF"
+  | "EXTERNAL_FULLTEXT_HTML"
+  | "EXTERNAL_LANDING_PAGE"
+  | "DOI_RESOLVER"
+  | "ABSTRACT_ONLY"
+  | "METADATA_ONLY";
+
+export type PaperReadingSourceAvailability =
+  | "METADATA_ONLY"
+  | "ABSTRACT_AVAILABLE"
+  | "EXTERNAL_LANDING_PAGE"
+  | "FULLTEXT_LINK_UNVERIFIED"
+  | "EXTERNAL_FULLTEXT_AVAILABLE"
+  | "AUTHORIZED_CORPUS_PDF"
+  | "AUTHORIZED_PROJECT_PDF"
+  | "ACCESS_RESTRICTED"
+  | "SOURCE_UNAVAILABLE";
+
+export type FullTextStatus =
+  | "AUTHORIZED_PROJECT_PDF"
+  | "AUTHORIZED_CORPUS_PDF"
+  | "EXTERNAL_PDF_LINK"
+  | "LANDING_PAGE_ONLY"
+  | "UNAVAILABLE";
+
+export interface PaperReadingSource {
+  id: string;
+  kind: PaperReadingSourceKind;
+  label: string;
+  provider?: string;
+  version?: string;
+  mediaType?: string;
+  availability: PaperReadingSourceAvailability;
+  accessState: "AUTHORIZED" | "EXTERNAL_OPEN" | "REQUIRES_ENTITLEMENT" | "RESTRICTED" | "UNAVAILABLE";
+  verificationState: "VERIFIED_STORAGE" | "URL_PATTERN_PDF" | "UNVERIFIED_EXTERNAL" | "NOT_APPLICABLE";
+  license?: string | null;
+  verifiedAt?: string;
+  documentVersion?: string;
+  contentHash?: string;
+  byteSize?: number;
+  url?: string;
+  fileId?: string;
+  readableInWorkspace: boolean;
+  usableForFullTextScreening: boolean;
+}
+
+export interface ProjectPaperCachedTranslation {
+  targetLanguage: string;
+  sourceLanguage: string;
+  translatedTitle: string;
+  translatedAbstract: string;
+  provider: string;
+  updatedAt: string;
+}
+
 export interface ProjectPaperAnalysis {
   paperId: string; title: string; screeningStatus: ProjectScreeningStatus; analysis: PaperAiAnalysis | null; knowledge: PaperKnowledge;
   authors?: string[]; publicationYear?: number | null; journalName?: string | null; doi?: string | null;
   abstractText?: string | null; paperLink?: string | null; fullTextAvailable?: boolean;
+  fullTextStatus?: FullTextStatus;
+  sources?: PaperReadingSource[];
+  projectFiles?: Array<{ id: string; sha256: string; byteSize: number; createdAt: string; uploadedByName?: string }>;
+  corpusPdf?: { available: boolean; paperStatus: string; requiresEntitlement: boolean; downloadCost?: number | null };
+  bibliographic?: {
+    openalexId?: string | null;
+    arxivId?: string | null;
+    pubmedId?: string | null;
+    language?: string | null;
+    paperKind?: string | null;
+    primaryProvider?: string | null;
+    openAccessStatus?: string | null;
+    openAccessUrl?: string | null;
+    licenseName?: string | null;
+    citationCount?: number;
+    fwci?: number | null;
+    referencedWorksCount?: number;
+    relatedWorksCount?: number;
+    keywords?: string[];
+    topics?: PaperTopic[];
+    dataQualityScore?: number;
+    metadataUpdatedAt?: string;
+  };
+  cachedTranslations?: ProjectPaperCachedTranslation[];
 }
 
 export type ScreeningPhase = "TITLE_ABSTRACT" | "FULL_TEXT";

@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
 import type { MentorWorkspaceData } from "@trend/shared-types";
 import { MentorWorkQueue, MentorWorkRows } from "../components/mentor-work-queue";
 import { MentorProjectTasks } from "../components/mentor-project-tasks";
@@ -12,6 +13,9 @@ import { mentorWorkspaceEn } from "@/i18n/locales/mentor-workspace";
 import { mentorLifecycleEn } from "@/i18n/locales/mentor-lifecycle";
 import { vi as vietnameseDictionary } from "@/i18n/locales/vi";
 import { mentorWorkspaceDestination } from "../utils/mentor-workspace-navigation";
+
+// These cases render several complete dashboards; allow for loaded CI and developer machines.
+vi.setConfig({ testTimeout: 15_000 });
 
 const mocks = vi.hoisted(() => ({ actor: "mentor", read: vi.fn(), profile: { data: { academicRole: "LECTURER", academicRoleVerificationStatus: "VERIFIED", verificationStatuses: { position: "VERIFIED" } }, isLoading: false, isError: false, refetch: vi.fn() } }));
 vi.mock("../api/mentor-workspace.api", () => ({ mentorWorkspaceApi: { read: mocks.read } }));
@@ -53,7 +57,7 @@ async function mount(node: ReactNode, url = "/mentor-workspace") {
 const queue = (change = vi.fn(), extra = {}) => <MentorWorkQueue data={data} query={{ page: 1, status: "ACTIONABLE" }} onChange={change} loading={false} fetching={false} error={null} retry={vi.fn()} {...extra} />;
 
 it("keeps Vietnamese workspace translations after the English dictionary fallback", () => {
-  expect(vietnameseDictionary["mentorWorkspace.title"]).toBe("Không gian cố vấn");
+  expect(vietnameseDictionary["mentorWorkspace.title"]).toBe("Không gian giảng viên");
   expect(vietnameseDictionary["mentorWorkspace.action.RESPOND"]).toBe("Phản hồi");
   for (const key of Object.keys(mentorWorkspaceEn) as (keyof typeof mentorWorkspaceEn)[]) {
     expect(vietnameseDictionary[key]).toBeTruthy();
@@ -143,7 +147,7 @@ it("shows honest empty states and a route to earlier work when nothing needs act
   await mount(<MentorWorkspacePage />);
   expect(host.querySelector(".mentor-overview-alerts")).toBeNull();
   expect(host.textContent).toContain("No requests waiting for you");
-  expect(host.textContent).toContain("No mentored projects found");
+  expect(host.textContent).toContain("You are not mentoring any research teams yet.");
   const history = [...host.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "View all statuses")!;
   await act(async () => history.click());
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
@@ -168,7 +172,7 @@ it("loads the first recent-project page when returning from a later project page
   await act(async () => host.querySelector<HTMLButtonElement>('.mentor-shell-sidebar button[aria-label="Overview"]')!.click());
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
   expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining({ projectPage: 1 }));
-});
+}, 15_000);
 it("does not present a previous filtered queue as the overview while its own request is loading", async () => {
   await mount(<MentorWorkspacePage />, "/mentor-workspace?view=work");
   expect(host.querySelector(".mentor-shell-content")?.textContent).toContain("Actual pinned manuscript");
@@ -325,26 +329,52 @@ it("does not offer a conversation when the mentor has no chat permission", async
   expect(host.querySelector('a[href*="tab=chat"]')).toBeNull();
   expect(host.querySelector('a[href^="/submissions/"]')).toBeNull();
 });
-it("renders interactive project cards, quick attention filters, KPI jumps, and team chat/overview shortcuts", async () => {
+it("uses server-side project filters, accurate facets, sort, canChat guard, read-only actions, and simplified primary CTAs", async () => {
   data.projects = [
-    { id: "project", title: "Actual research team", researchField: "Education", status: "ACTIVE", teamLead: "Team owner", teamSize: 3, researchStage: "DESIGN", pendingCount: 1, updatedAt: "2026-11-09T12:00:00Z" },
-    { id: "project-2", title: "Calm finished team", researchField: "Cybersecurity", status: "PLANNING", teamLead: "Student B", teamSize: 2, researchStage: null, pendingCount: 0, updatedAt: "2026-10-18T12:00:00Z" },
+    { id: "project", title: "Actual research team", researchField: "Education", status: "PLANNING", teamLead: "Team owner", teamSize: 3, researchStage: "DESIGN", pendingCount: 1, overdueCount: 1, updatedAt: "2026-11-09T12:00:00Z", canChat: true },
+    { id: "project-2", title: "Calm active team", researchField: "Cybersecurity", status: "ACTIVE", teamLead: "Student B", teamSize: 2, researchStage: "WRITING", pendingCount: 0, waitingCount: 0, updatedAt: "2026-10-18T12:00:00Z", canChat: false },
+    { id: "project-3", title: "Archived research team", researchField: null, status: "ARCHIVED", teamLead: "Student C", teamSize: 2, researchStage: null, pendingCount: 0, updatedAt: "2026-09-01T12:00:00Z", canChat: true },
   ];
+  data.projectMeta = { page: 1, pageSize: 20, total: 25, totalPages: 2 };
+  data.projectFacets = { ALL: 25, ATTENTION: 7, NO_PENDING: 18 };
   await mount(<MentorWorkspacePage />, "/mentor-workspace?view=projects");
-  expect(host.textContent).toContain("Actual research team");
-  expect(host.textContent).toContain("Calm finished team");
-  expect(host.textContent).toContain("1 waiting for you");
-  expect(host.textContent).toContain("All caught up");
-  expect([...host.querySelectorAll('a')].some(link => link.getAttribute('href') === mentorWorkspaceDestination('/projects/project?tab=chat&channel=mentors'))).toBe(true);
 
-  const needsAttentionBtn = [...host.querySelectorAll<HTMLButtonElement>("button.mentor-filter-chip")].find(b => b.textContent?.includes("Needs response"))!;
-  await act(async () => needsAttentionBtn.click());
-  const filteredListText = host.querySelector(".mentor-project-list")?.textContent ?? "";
-  expect(filteredListText).toContain("Actual research team");
-  expect(filteredListText).not.toContain("Calm finished team");
+  // Accurate pre-pagination range & server counts (25 total, not page length 3!)
+  expect(host.textContent).toContain("Showing 1–3 of 25 teams");
+  expect(host.textContent).toContain("1 work item needs your action");
+  expect(host.textContent).toContain("1 overdue");
+  expect(host.textContent).toContain("No pending work");
+  expect(host.textContent).not.toContain("All caught up");
+  expect(host.textContent).toContain("View team");
 
-  const handleRequestsBtn = [...host.querySelectorAll("button")].find(b => b.textContent?.includes("Handle requests (1)"))!;
-  await act(async () => handleRequestsBtn.click());
+  // Chat link appears ONLY for projects with canChat !== false and not read-only
+  const chatLinks = [...host.querySelectorAll<HTMLAnchorElement>("a")].filter(a => a.getAttribute("href")?.includes("tab=chat"));
+  expect(chatLinks).toHaveLength(1);
+  expect(chatLinks[0]!.getAttribute("href")).toContain("projectId=project");
+
+  // Clicking "Needs action" triggers server-side projectFilter=ATTENTION and resets page to 1
+  const needsActionTab = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(b => b.textContent?.includes("Needs action"))!;
+  expect(needsActionTab.textContent).toContain("7");
+  await act(async () => needsActionTab.click());
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
-  expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: "project", status: "ACTIONABLE" }));
+  expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining({ projectFilter: "ATTENTION", projectPage: 1 }));
+
+  // Changing sort triggers server-side projectSort=name
+  const sortSelect = host.querySelector<HTMLSelectElement>('select[aria-label="Sort teams"]')!;
+  await act(async () => { sortSelect.value = "name"; sortSelect.dispatchEvent(new Event("change", { bubbles: true })); });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining({ projectSort: "name", projectFilter: "ATTENTION", projectPage: 1 }));
+
+  // Primary CTA "Handle work (1)" opens Work Queue scoped to that project
+  const handleWorkBtn = [...host.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.includes("Handle work (1)"))!;
+  await act(async () => handleWorkBtn.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  expect(mocks.read).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: "project", status: "ACTIONABLE", sort: "priority" }));
+});
+
+it("shows honest API error without fake counts on mentored projects failure", async () => {
+  mocks.read.mockRejectedValue(new Error("server unavailable"));
+  await mount(<MentorWorkspacePage />, "/mentor-workspace?view=projects");
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("Could not load your mentored teams.");
+  expect(host.querySelector('[role="tablist"]')).toBeNull();
 });

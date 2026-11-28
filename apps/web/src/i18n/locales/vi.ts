@@ -1,3 +1,4 @@
+import { mentorRecommendationVi } from "./mentor-recommendation";
 import { workflowSourceVi } from "./workflow-source";
 import { mentorSharingVi } from "./mentor-sharing";
 import { submissionDetailVi } from "./submission-detail";
@@ -50,11 +51,16 @@ import { trendPeriodsViStrings } from "./trend-periods";
 import { qualityEvaluationVi } from "./quality-evaluation";
 import { adminCatalogVi } from "./admin-catalog";
 import { personalizationViStrings } from "./personalization";
+import { loadingUxVi } from "./loading-ux";
+import { settingsRedesignVi } from "./settings-redesign";
 
 export const vi: Record<keyof typeof en, string> = {
   ...workflowSourceVi,
+  ...mentorRecommendationVi,
   ...registrationVi,
   ...en,
+  ...loadingUxVi,
+  ...settingsRedesignVi,
   ...mentorWorkspaceVi,
   ...mentorLifecycleVi,
   ...personalizationViStrings,
@@ -749,7 +755,6 @@ export const vi: Record<keyof typeof en, string> = {
   "3. Act on findings (papers, compare, report, AI)": "3. Hành động dựa trên các phát hiện (bài viết, so sánh, báo cáo, AI)",
   "30 Days": "30 ngày",
   "7 Days": "7 ngày",
-  "Abstract": "Tóm tắt",
   "Academic Intel Pipeline": "Quy trình Intel học thuật",
   "Academic Value:": "Giá trị học thuật:",
   "Accept PDF": "Chấp nhận PDF",
@@ -1063,7 +1068,6 @@ export const vi: Record<keyof typeof en, string> = {
   "Contribute Paper": "Đóng góp giấy",
   "Contribution Points": "Điểm đóng góp",
   "Contributions": "Đóng góp",
-  "Copy": "Sao chép",
   "Copy explanation": "Sao chép lời giải thích",
   "Copy this ID to query logs / retry via backend shell": "Sao chép ID này vào nhật ký truy vấn/thử lại qua shell phụ trợ",
   "core source": "nguồn cốt lõi",
@@ -1099,7 +1103,6 @@ export const vi: Record<keyof typeof en, string> = {
   "Credit History": "Lịch sử tín dụng",
   "Credit history could not be loaded. Please try again.": "Không thể tải lịch sử tín dụng. Vui lòng thử lại.",
   "credits": "tín dụng",
-  "Credits": "Tín dụng",
   "Credits used": "Tín dụng đã sử dụng",
   "Critical": "Quan trọng",
   "Cross-comparing": "So sánh chéo",
@@ -1504,7 +1507,6 @@ export const vi: Record<keyof typeof en, string> = {
   "Members": "Thành viên",
   "Metadata": "Siêu dữ liệu",
   "Metadata normalization, content-structure quality gate filtering, and 768-D dense vector embedding.": "Chuẩn hóa siêu dữ liệu, lọc cổng chất lượng cấu trúc nội dung và nhúng vectơ dày đặc 768-D.",
-  "Metadata only": "Chỉ siêu dữ liệu",
   "Metadata Readiness": "Sẵn sàng siêu dữ liệu",
   "Methods": "phương pháp",
   "Metric toggle": "Chuyển đổi số liệu",
@@ -1773,7 +1775,6 @@ export const vi: Record<keyof typeof en, string> = {
   "Preview evidence papers from this scope before AI generation.": "Xem trước các tài liệu bằng chứng từ phạm vi này trước khi tạo AI.",
   "Previous": "Trước",
   "Previous page": "Trang trước",
-  "Primary": "Chính",
   "Primary Topic": "Chủ đề chính",
   "Privacy Policy": "Chính sách bảo mật",
   "Private AI": "AI riêng tư",

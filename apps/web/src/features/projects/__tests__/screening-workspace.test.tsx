@@ -54,7 +54,7 @@ it.each([false, true])("does not offer an extra independent ballot to an unassig
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
   expect(document.body.textContent).toContain("Bạn chưa giữ suất đánh giá.");
   expect(document.querySelector('.screening-decision-choices input[type="radio"]')).toBeNull();
-  expect([...document.querySelectorAll("button")].some(b => b.textContent === "Gửi và khóa phiếu")).toBe(false);
+  expect([...document.querySelectorAll("button")].some(b => b.textContent === "Gửi phiếu đánh giá")).toBe(false);
   expect(mocks.action).not.toHaveBeenCalled();
 });
 it("hides empty frozen criteria without changing the saved research rules", async () => {
@@ -69,13 +69,13 @@ it("hides empty frozen criteria without changing the saved research rules", asyn
 it("requires confirmation, keeps a failed review draft, and reuses its idempotency key", async () => {
   mocks.action.mockRejectedValue(new Error("Network unavailable"));
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
-  const send = [...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Gửi và khóa phiếu")!; expect(send.disabled).toBe(true);
+  const send = [...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Gửi phiếu đánh giá")!; expect(send.disabled).toBe(true);
   await act(async () => document.querySelector<HTMLInputElement>('input[type="radio"][value="EXCLUDE"]')!.click()); await fill("Lý do loại", "Không đúng đối tượng nghiên cứu");
   const confirmed = [...document.querySelectorAll("label")].find(l => l.textContent?.startsWith("Tôi xác nhận gửi phiếu"))?.querySelector<HTMLInputElement>("input");
   if (confirmed) await act(async () => confirmed.click());
-  await click("Gửi và khóa phiếu");
+  await click("Gửi phiếu đánh giá");
   expect(document.querySelector('[role="alert"]')).not.toBeNull(); expect([...document.querySelectorAll("textarea")].some(t => t.value === "Không đúng đối tượng nghiên cứu")).toBe(true);
-  await click("Gửi và khóa phiếu"); expect(mocks.action).toHaveBeenCalledTimes(2); expect(mocks.action.mock.calls[0]![3].clientKey).toBe(mocks.action.mock.calls[1]![3].clientKey);
+  await click("Gửi phiếu đánh giá"); expect(mocks.action).toHaveBeenCalledTimes(2); expect(mocks.action.mock.calls[0]![3].clientKey).toBe(mocks.action.mock.calls[1]![3].clientKey);
   expect(mocks.action).toHaveBeenLastCalledWith("p", "round", "reviews", expect.objectContaining({ assignmentId: "mine", expectedRevision: 1, decision: "EXCLUDE", confirmed: true }));
 });
 it.each([
@@ -85,7 +85,7 @@ it.each([
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
   await act(async () => document.querySelector<HTMLInputElement>(`input[type="radio"][value="${decision}"]`)!.click());
   const area = [...document.querySelectorAll("label")].find(l => l.textContent?.startsWith(label))!.querySelector("textarea")!;
-  const send = [...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Gửi và khóa phiếu")!;
+  const send = [...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Gửi phiếu đánh giá")!;
   expect(area.required).toBe(true);
   expect(send.disabled).toBe(true);
   for (const value of ["   ", " a "]) {
@@ -96,7 +96,7 @@ it.each([
   }
   await fill(label, "  Căn cứ đã đối chiếu với tiêu chí nghiên cứu  ");
   expect(send.disabled).toBe(false);
-  await click("Gửi và khóa phiếu");
+  await click("Gửi phiếu đánh giá");
   expect(mocks.action).toHaveBeenCalledWith("p", "round", "reviews", expect.objectContaining({ decision, [field]: "Căn cứ đã đối chiếu với tiêu chí nghiên cứu" }));
 });
 it.each([false, true])("allows fulltext evidence and RQ input with fixed stage, retaining saved context on edit=%s", async editing => {
@@ -121,7 +121,7 @@ it.each([false, true])("allows fulltext evidence and RQ input with fixed stage, 
     await fill("Lý do / Căn cứ phù hợp", "Evidence supports the registered population");
   }
   await fill("Nguồn toàn văn đã đọc", "PDF p. 5, updated population criteria");
-  await click(editing ? "Cập nhật phiếu" : "Gửi và khóa phiếu");
+  await click(editing ? "Cập nhật phiếu" : "Gửi phiếu đánh giá");
   expect(mocks.action).toHaveBeenCalledWith("p", "round", "reviews", expect.objectContaining({ scope: "FULL_TEXT", fullTextReference: "PDF p. 5, updated population criteria", researchQuestionIds: [question.id] }));
 });
 it("preserves the include rationale while editing and blocks clearing it", async () => {
@@ -176,7 +176,7 @@ it("protects an unfinished review when changing filters or closing its details",
 it("keeps submitted decisions locked and renders independent human provenance", async () => {
   const locked = { ...round, canReview: false, myReview: { id: "r", assignmentId: "mine", reviewerId: "actor", revision: 1, decision: "INCLUDE" as const, exclusionReason: "", comment: "Phiếu đã gửi", submittedAt: new Date().toISOString() } }; mocks.detail.mockResolvedValue(locked);
   mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0], round: locked }] });
-  await render(<CollaborativeLibrary projectId="p" readOnly={false} />); expect(document.body.textContent).toContain("Phù hợp · đã khóa"); expect(document.body.textContent).not.toContain("Gửi và khóa phiếu"); expect(mocks.action).not.toHaveBeenCalled();
+  await render(<CollaborativeLibrary projectId="p" readOnly={false} />); expect(document.body.textContent).toContain("Phù hợp · đã khóa"); expect(document.body.textContent).not.toContain("Gửi phiếu đánh giá"); expect(mocks.action).not.toHaveBeenCalled();
 });
 it("keeps the edit action when my first ballot is visible but the other reviewer has not submitted", async () => {
   const mine = { id: "mine-review", assignmentId: "mine", reviewerId: "actor", revision: 1, decision: "INCLUDE" as const, exclusionReason: "", comment: "Căn cứ đang chờ reviewer còn lại", submittedAt: "2026-11-05T01:34:00.000Z" };
@@ -200,7 +200,7 @@ it.each(["INCLUDED", "EXCLUDED", "AWAITING_FINALIZATION"] as const)("shows each 
   mocks.detail.mockResolvedValue(published);
   mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: published }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
-  expect([...document.querySelectorAll("h4")].some(heading => heading.textContent === "Phiếu của tôi")).toBe(false);
+  expect([...document.querySelectorAll("h4")].some(heading => heading.textContent === "Đánh giá của bạn")).toBe(false);
   const ballots = [...document.querySelectorAll(".screening-team-reviews li")];
   expect(ballots).toHaveLength(2);
   expect(document.querySelector('[aria-label="Phiếu của bạn"]')?.textContent).toContain("TôiBạn · Phù hợp");
@@ -275,7 +275,7 @@ it("keeps an in-progress draft visible but blocks sending when a round becomes l
   await fill("Lý do loại", "Căn cứ đang viết cần được giữ");
   await act(async () => client.setQueryData(["project-research", "actor", "p", "screening-round", "round"], { ...round, legacyNeedsAudit: true, canReview: false })); await settle();
   expect([...document.querySelectorAll("textarea")].some(t => t.value === "Căn cứ đang viết cần được giữ")).toBe(true);
-  expect([...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Gửi và khóa phiếu")!.disabled).toBe(true);
+  expect([...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Gửi phiếu đánh giá")!.disabled).toBe(true);
   expect(mocks.action).not.toHaveBeenCalled();
 });
 it("retains a review draft when a refreshed assignment removes submission access", async () => {
@@ -285,7 +285,7 @@ it("retains a review draft when a refreshed assignment removes submission access
   await act(async () => client.setQueryData(["project-research", "actor", "p", "screening-round", "round"], { ...round, canReview: false, myAssignmentId: null, assignments: round.assignments.filter(a => a.id !== "mine") })); await settle();
   expect(document.body.textContent).toContain("Quyền gửi phiếu đã thay đổi");
   expect([...document.querySelectorAll("textarea")].some(t => t.value === "Nhận xét chưa gửi của tôi")).toBe(true);
-  expect([...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Gửi và khóa phiếu")!.disabled).toBe(true);
+  expect([...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Gửi phiếu đánh giá")!.disabled).toBe(true);
   expect(mocks.action).not.toHaveBeenCalled();
 });
 it("keeps the cached workspace and review draft when a background board refresh fails", async () => {
@@ -296,7 +296,7 @@ it("keeps the cached workspace and review draft when a background board refresh 
   await act(async () => { await client.refetchQueries({ queryKey: ["project-research", "actor", "p", "library"] }); }); await settle();
   expect(document.querySelector('[role="alert"]')).not.toBeNull();
   expect([...document.querySelectorAll("textarea")].some(t => t.value === "Bản nháp trong lúc mất mạng")).toBe(true);
-  expect(document.body.textContent).toContain("Phiếu của tôi");
+  expect(document.body.textContent).toContain("Đánh giá của bạn");
 });
 it("preserves settings drafts across collaborator changes until explicitly reloaded", async () => {
   await render(<ScreeningSettingsForm projectId="p" settings={settings} />);
@@ -350,6 +350,7 @@ it("requires the assigned finalizer to confirm and explain a final decision", as
   await fill("Lý do (ít nhất 10 ký tự)", "Đã đối chiếu phạm vi và đối tượng theo tiêu chí");
   await act(async () => [...document.querySelectorAll("label")].find(l => l.textContent?.startsWith("Tôi hiểu tác động"))!.querySelector<HTMLInputElement>("input")!.click());
   await click("Xác nhận và lưu lịch sử");
+  await act(async () => { await vi.waitFor(() => expect(client.isMutating()).toBe(0)); });
   expect(mocks.action).toHaveBeenCalledWith("p", "round", "finalize", expect.objectContaining({ decision: "INCLUDED", expectedVersion: 2, confirmed: true }));
   await act(async () => client.setQueryData(["project-research", "actor", "p", "screening-round", "round"], { ...ready, status: "INCLUDED", canFinalize: false, finalDecision: { id: "final", version: 3, decision: "INCLUDED", source: "MANUAL", reason: "Đã đối chiếu phạm vi và đối tượng theo tiêu chí", resolverId: "actor", createdAt: "2026-10-29T02:00:00Z" } })); await settle();
   expect(document.body.textContent).toContain("Kết quả của vòng: Đã chấp nhận");
@@ -396,9 +397,11 @@ it("uses the saved proposal timestamp for the next edit without reporting a fals
   mocks.proposal.mockResolvedValue({ id: "link", updatedAt: savedAt });
   mocks.board.mockResolvedValue({ ...board, items: [{ ...own, proposalReason: reason, updatedAt: savedAt }] });
   await click("Lưu lý do đề xuất");
+  await act(async () => { await vi.waitFor(() => expect(client.isMutating()).toBe(0)); });
   expect(document.body.textContent).not.toContain("Tôi đã kiểm tra thay đổi, dùng phiên bản hiện tại");
   await fill("Bài này liên quan câu hỏi nghiên cứu nào?", `${reason}, đã đọc toàn văn`);
   await click("Lưu lý do đề xuất");
+  await act(async () => { await vi.waitFor(() => expect(client.isMutating()).toBe(0)); });
   expect(mocks.proposal).toHaveBeenLastCalledWith("p", "paper", expect.objectContaining({ expectedUpdatedAt: savedAt }));
 });
 it("retains a review draft when access was granted after the detail first opened", async () => {
@@ -411,7 +414,7 @@ it("retains a review draft when access was granted after the detail first opened
   await fill("Lý do loại", "Bản nháp sau khi tôi được phân công thêm");
   await act(async () => client.setQueryData(key, unassigned)); await settle();
   expect([...document.querySelectorAll("textarea")].some(t => t.value === "Bản nháp sau khi tôi được phân công thêm")).toBe(true);
-  expect([...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Gửi và khóa phiếu")!.disabled).toBe(true);
+  expect([...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Gửi phiếu đánh giá")!.disabled).toBe(true);
 });
 
 it("separates legacy labels from current decisions and flags journal-like metadata without rewriting it", async () => {

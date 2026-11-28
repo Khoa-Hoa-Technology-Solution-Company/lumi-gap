@@ -107,10 +107,196 @@ export interface PersonalAdvisorContributionItem {
   createdAt: string;
 }
 
+export interface PersonalAcademicReviewItem {
+  id: string;
+  assignmentId: string;
+  submissionId: string;
+  submissionTitle: string;
+  roundNumber: number;
+  status: string;
+  overallAssessment: string | null;
+  submittedAt: string | null;
+}
+
+export interface PersonalManuscriptAttributionItem {
+  checkId: string;
+  manuscriptId: string;
+  manuscriptTitle: string;
+  snapshotId: string;
+  snapshotLabel: string;
+  version: number;
+  attributionStatus: ManuscriptAttributionStatus;
+  myClassification: "AUTHOR" | "ACKNOWLEDGED" | "OMITTED" | "UNREVIEWED";
+  myRoles: CreditRole[];
+  myDecision: "CONFIRM" | "CLARIFY" | "DISPUTE" | "PENDING";
+  omissionJustification: string | null;
+  needsMyConfirmation: boolean;
+  updatedAt: string;
+}
+
+export interface PersonalIntegrityCaseSummary {
+  id: string;
+  projectId: string;
+  projectTitle: string;
+  kind: IntegrityCaseKind;
+  status: IntegrityCaseStatus;
+  title: string;
+  myRole: "REPORTER" | "RESPONDENT";
+  targetKind: IntegrityTargetKind;
+  targetId: string | null;
+  resolutionSummary: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PersonalPublicationOutcomeItem {
+  submissionId: string;
+  title: string;
+  status: string;
+  revisionCount: number;
+  updatedAt: string;
+}
+
+export interface PersonalSystemActivityItem {
+  id: string;
+  type: string;
+  category: ContributionCategoryKey;
+  title: string;
+  sourceKind: string;
+  sourceId: string;
+  occurredAt: string;
+  evidenceCount: number;
+}
+
+export type PersonalContributionRecordKind =
+  | "WORK_CONTRIBUTION"
+  | "ADVISOR_FEEDBACK"
+  | "ADVISOR_AGREEMENT"
+  | "ACADEMIC_REVIEW"
+  | "MANUSCRIPT_ATTRIBUTION"
+  | "SYSTEM_ACTIVITY";
+
+export type PersonalReconciliationState =
+  | "RECORDED"
+  | "SELF_DECLARED"
+  | "PENDING_RESPONSE"
+  | "CLARIFICATION_REQUESTED"
+  | "ACKNOWLEDGED"
+  | "DISPUTED"
+  | "HISTORICAL";
+
+export interface PersonalContributionRecord {
+  id: string;
+  sourceRecordId: string;
+  projectId: string;
+  projectTitle: string;
+  projectStatus: string;
+  projectDeleted: boolean;
+  membershipStatus: "OWNER" | "ACTIVE" | "REMOVED" | "LEFT" | "ADVISOR" | "HISTORICAL";
+  recordKind: PersonalContributionRecordKind;
+  title: string;
+  summary: string;
+  category: ContributionCategoryKey;
+  workDate: string;
+  roles: CreditRole[];
+  suggestedRoles?: CreditRole[];
+  sourceKind: "SYSTEM_RECORDED" | "SELF_DECLARED" | "TEAM_DECLARED" | "MENTOR_RECORDED" | "IMPORTED";
+  reconciliationState: PersonalReconciliationState;
+  version: number;
+  evidenceCount: number;
+  evidenceSources: Array<{
+    kind: string;
+    id: string;
+    label: string;
+    accessible: boolean;
+    versionLabel?: string;
+    href?: string;
+  }>;
+  evidenceAccessRestricted: boolean;
+  acknowledgements: Array<{
+    userId: string;
+    name: string;
+    decision: string;
+    note?: string;
+    createdAt: string;
+  }>;
+  manuscriptContext?: {
+    manuscriptId?: string;
+    snapshotId?: string;
+    title: string;
+    classification?: "AUTHOR" | "ACKNOWLEDGED" | "OMITTED" | "UNREVIEWED";
+    attributionStatus?: string;
+    publicationStatus?: string;
+  };
+  reviewContext?: {
+    assignmentId: string;
+    reviewRequestId?: string | null;
+    submissionId: string;
+    revisionId?: string | null;
+    revisionNumber?: number | null;
+    roundNumber: number;
+    overallAssessment?: string | null;
+    reviewStatus?: string | null;
+    commentExcerpt?: string | null;
+    submittedAt: string;
+  };
+  waitingOnOthers?: boolean;
+  needsMyAction: boolean;
+  actionKind?: "ACKNOWLEDGE_CONTRIBUTION" | "CONFIRM_ATTRIBUTION" | "RESPOND_CASE";
+  canViewWorkspace: boolean;
+  canRequestEdit: boolean;
+  canOpenReviewRequest: boolean;
+  privacyRedacted: boolean;
+}
+
+export interface GlobalPersonalContributionProjectSummary {
+  projectId: string;
+  title: string;
+  membershipStatus: "OWNER" | "ACTIVE" | "REMOVED" | "LEFT" | "ADVISOR" | "HISTORICAL";
+  projectStatus: string;
+  projectDeleted: boolean;
+  canViewWorkspace: boolean;
+  canDeclareContribution: boolean;
+  recordCount: number;
+  pendingCount: number;
+  publicationStatus: string | null;
+}
+
+export interface GlobalPersonalContributionsView {
+  userId: string;
+  userName: string;
+  accountRestricted: boolean;
+  summary: {
+    recordedWorkCount: number;
+    acknowledgedCount: number;
+    needsMyResponseCount: number;
+    projectCount: number;
+  };
+  projects: GlobalPersonalContributionProjectSummary[];
+  items: PersonalContributionRecord[];
+  cases: PersonalIntegrityCaseSummary[];
+  attributionLimitations: string[];
+  meta: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+  };
+  generatedAt: string;
+  integrityDigestSha256?: string;
+}
+
 export interface PersonalContributionHistoryExport {
   schemaVersion: "LUMIGAP_CONTRIBUTION_EVIDENCE_V1";
   projectId: string;
   projectTitle: string;
+  projectStatus?: string;
+  projectDeleted?: boolean;
+  accountRestricted?: boolean;
+  canViewWorkspace?: boolean;
+  canDeclareInProject?: boolean;
+  canFileReviewRequest?: boolean;
   userId: string;
   userName: string;
   membershipStatus: "OWNER" | "ACTIVE" | "REMOVED" | "LEFT" | "ADVISOR" | "HISTORICAL";
@@ -118,6 +304,13 @@ export interface PersonalContributionHistoryExport {
   workContributions: PersonalContributionHistoryItem[];
   allocations: PersonalAllocationHistoryItem[];
   advisorContributions: PersonalAdvisorContributionItem[];
+  academicReviews?: PersonalAcademicReviewItem[];
+  manuscriptAttributions?: PersonalManuscriptAttributionItem[];
+  integrityCases?: PersonalIntegrityCaseSummary[];
+  publicationOutcomes?: PersonalPublicationOutcomeItem[];
+  systemActivities?: PersonalSystemActivityItem[];
+  unifiedRecords?: PersonalContributionRecord[];
+  attributionLimitations?: string[];
   privacyRedacted: boolean;
   generatedAt: string;
   integrityDigestSha256: string;
@@ -385,6 +578,7 @@ export type CitationIssueKind =
   | "SERVICE_UNAVAILABLE";
 
 export type CitationDoiStatus =
+  | "UNCHECKED"
   | "VALID"
   | "INVALID_FORMAT"
   | "NOT_FOUND"

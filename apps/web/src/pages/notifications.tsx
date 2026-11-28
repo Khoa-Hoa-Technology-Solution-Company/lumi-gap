@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Settings, FileText, Bell, Loader2, CheckCircle2, AlertCircle, Sparkles } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Settings, FileText, Bell, CheckCircle2, AlertCircle, Sparkles } from "lucide-react";
 import { useNotifications, useMarkNotificationRead, useMarkAllNotificationsRead } from "@/features/notifications";
 import { getNotificationDestination } from "@/features/notifications/utils/notification-destination";
 import type { NotificationItem } from "@trend/shared-types";
@@ -9,6 +10,8 @@ import { toast } from "sonner";
 import { isAdminSystemRole } from "@trend/shared-types";
 import { mentorWorkspaceDestination } from "@/features/projects/utils/mentor-workspace-navigation";
 import { useI18n } from "@/i18n";
+import { InlineLoader, SectionErrorState, SkeletonList } from "@/components/loading";
+import { Button } from "@/components/ui/button";
 
 function formatTime(dateStr: string, language: string) {
   try {
@@ -33,10 +36,11 @@ export function NotificationsPage({ embedded = false }: { embedded?: boolean }) 
   const Container = embedded ? "section" : "main";
   const { t, language } = useI18n();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminSystemRole(user?.systemRole);
 
-  const { data: notifications, isLoading } = useNotifications();
+  const { data: notifications, isLoading, isFetching, isError, error, refetch } = useNotifications();
   const markReadMutation = useMarkNotificationRead();
   const markAllReadMutation = useMarkAllNotificationsRead();
 
@@ -53,17 +57,14 @@ export function NotificationsPage({ embedded = false }: { embedded?: boolean }) 
 
   const handleNotificationClick = (notification: NotificationItem) => {
     if (!notification.isRead && notification.type !== "SCREENING_DISCUSSION_MESSAGE") markReadMutation.mutate(notification.id);
+    if (notification.type.startsWith("LECTURER_VERIFICATION_")) {
+      void queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      void queryClient.invalidateQueries({ queryKey: ["academic-profile", "me"] });
+      void queryClient.invalidateQueries({ queryKey: ["academic-profile", "verification-status"] });
+    }
     const destination = getNotificationDestination(notification, isAdmin);
     if (destination) navigate(embedded ? mentorWorkspaceDestination(destination) : destination);
   };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
-      </div>
-    );
-  }
 
   // Filter notifications
   const allItems = notifications || [];
@@ -165,19 +166,32 @@ export function NotificationsPage({ embedded = false }: { embedded?: boolean }) 
         {/* Main Content */}
         <div className="flex-1 min-w-0">
           
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t("Recent Activity")}</h2>
+          <div className="flex items-center justify-between gap-3 mb-6">
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t("Recent Activity")}</h2>
+              {isFetching && !isLoading ? <InlineLoader label={t("loading.refreshing")} /> : null}
+            </div>
             {unreadCount > 0 && (
-              <button
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                loading={markAllReadMutation.isPending}
                 onClick={handleMarkAllRead}
-                className="text-xs font-bold text-blue-700 dark:text-blue-500 hover:underline"
+                className="h-8 text-xs font-semibold text-blue-700 dark:text-blue-400"
               >
-                Mark all as read
-              </button>
+                {t("Mark all as read")}
+              </Button>
             )}
           </div>
 
-          {filteredItems.length === 0 ? (
+          {isLoading ? (
+            <div role="status" aria-busy="true" aria-label={t("loading.notifications")}>
+              <SkeletonList items={5} showAvatar />
+            </div>
+          ) : isError ? (
+            <SectionErrorState error={error} onRetry={() => void refetch()} retrying={isFetching} />
+          ) : filteredItems.length === 0 ? (
             <div className="text-center py-16 bg-white dark:bg-[#121212] border border-slate-200 dark:border-slate-800 rounded-xl">
               <Bell className="w-12 h-12 text-slate-300 dark:text-zinc-700 mx-auto mb-4" />
               <p className="text-slate-500 dark:text-slate-400 font-medium">No notifications found.</p>

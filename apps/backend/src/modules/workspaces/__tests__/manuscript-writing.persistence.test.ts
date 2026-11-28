@@ -104,7 +104,7 @@ describe.skipIf(!enabled).sequential("retained writing in isolated PostgreSQL", 
     await edit(f, member, text => text.insert(text.toString().indexOf("\\end{document}"), "delta epsilon "));
     const report = await calculate(f);
     const contribution = await reports.contributionDraft(f.project, owner, f.id, report.id);
-    expect(contribution.status).toBe("DRAFT"); expect(contribution.evidenceRefs).toEqual([{ kind: "MANUSCRIPT_SNAPSHOT", id: report.snapshotId }]);
+    expect(contribution.status).toBe("DRAFT"); expect(contribution.evidenceRefs).toEqual([{ kind: "MANUSCRIPT", id: f.id }, { kind: "MANUSCRIPT_SNAPSHOT", id: report.snapshotId }]);
     expect((await reports.contributionDraft(f.project, owner, f.id, report.id)).id).toBe(contribution.id);
     expect(await db.contributionOutcomeEvaluation.count({ where: { projectId: f.project } })).toBe(0);
     await work.submit(f.project, owner, contribution.id, 1);

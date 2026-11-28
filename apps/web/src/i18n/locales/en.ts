@@ -1,3 +1,4 @@
+import { mentorRecommendationEn } from "./mentor-recommendation";
 import { workflowSourceEn } from "./workflow-source";
 import { uiCoverageBackfillEn } from "./ui-coverage-backfill";
 import { mentorSharingEn } from "./mentor-sharing";
@@ -44,11 +45,15 @@ import { trendPeriodsStrings } from "./trend-periods";
 import { qualityEvaluationEn } from "./quality-evaluation";
 import { adminCatalogEn } from "./admin-catalog";
 import { personalizationStrings } from "./personalization";
+import { loadingUxEn } from "./loading-ux";
+import { settingsRedesignEn } from "./settings-redesign";
 
 export const en = {
-  // Real English translations override source-language fallbacks; feature dictionaries take precedence.
   ...workflowSourceEn,
+  ...loadingUxEn,
+  ...settingsRedesignEn,
   ...uiCoverageBackfillEn,
+  ...mentorRecommendationEn,
   ...mentorWorkspaceEn,
   ...mentorLifecycleEn,
   ...registrationEn,

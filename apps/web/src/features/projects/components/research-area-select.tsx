@@ -4,8 +4,20 @@ import { Input } from "@/components/ui/input";
 import { useI18n } from "@/i18n";
 
 /** Uses onboarding taxonomy values verbatim; custom labels remain project metadata. */
-export function ResearchAreaSelect({ values, onChange, options = [], max = 3, label = "Research areas" }: {
-  values: string[]; onChange: (values: string[]) => void; options?: string[]; max?: number; label?: string;
+export function ResearchAreaSelect({
+  values,
+  onChange,
+  options = [],
+  max = 3,
+  label = "Research areas",
+  showPrimaryBadge = false,
+}: {
+  values: string[];
+  onChange: (values: string[]) => void;
+  options?: string[];
+  max?: number;
+  label?: string;
+  showPrimaryBadge?: boolean;
 }) {
   const { t } = useI18n(), id = useId();
   const [query, setQuery] = useState(""), [open, setOpen] = useState(false), [active, setActive] = useState(0);
@@ -23,8 +35,8 @@ export function ResearchAreaSelect({ values, onChange, options = [], max = 3, la
     onChange([...values, value]); setQuery(""); setActive(0);
   }
   return <div className="min-w-0 space-y-2" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
-    <div className="flex items-center justify-between gap-2"><label htmlFor={id} className="text-sm font-medium">{t(label)}</label><span id={`${id}-count`} className="text-xs text-muted-foreground" aria-live="polite">{values.length}/{max}</span></div>
-    {values.length > 0 && <div className="flex min-w-0 flex-wrap gap-2">{values.map(value => <button key={value} type="button" aria-label={`${t("Remove")} ${t(value)}`} onClick={() => onChange(values.filter(item => item !== value))} className="inline-flex max-w-full items-center gap-2 rounded-md bg-muted px-2.5 py-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="min-w-0 break-words text-left [overflow-wrap:anywhere]">{t(value)}</span><X size={14} className="shrink-0" aria-hidden="true" /></button>)}</div>}
+    <div className="flex items-center justify-between gap-2"><label htmlFor={id} className="text-sm font-medium">{t(label)}</label><span id={`${id}-count`} className="text-xs text-muted-foreground tabular-nums" aria-live="polite">{values.length}/{max}</span></div>
+    {values.length > 0 && <div className="flex min-w-0 flex-wrap gap-2">{values.map((value, idx) => <button key={value} type="button" aria-label={`${t("Remove")} ${t(value)}`} onClick={() => onChange(values.filter(item => item !== value))} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/80 bg-muted/60 px-3 py-1 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{showPrimaryBadge && idx === 0 ? <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{t("Primary")}</span> : null}<span className="min-w-0 break-words text-left [overflow-wrap:anywhere]">{t(value)}</span><X size={13} className="shrink-0 text-muted-foreground" aria-hidden="true" /></button>)}</div>}
     <div className="relative">
       <Input id={id} role="combobox" autoComplete="off" aria-autocomplete="list" aria-expanded={open} aria-controls={`${id}-options`} aria-describedby={`${id}-count`} aria-activedescendant={open && !full && choices.length ? `${id}-option-${index}` : undefined}
         value={query} maxLength={120} placeholder={t("Search research areas…")} onFocus={() => setOpen(true)} onChange={event => { setQuery(event.target.value); setOpen(true); setActive(0); }}

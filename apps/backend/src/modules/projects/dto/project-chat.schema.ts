@@ -16,6 +16,7 @@ export const ProjectChatScopeSchema = z.enum(["private", "team"]).default("priva
 export const SendProjectChatMessageSchema = z.object({
   message: z.string().trim().min(1).max(2000),
   scope: ProjectChatScopeSchema,
+  clientKey: z.string().uuid().optional(),
 });
 
 export const ListProjectChatQuerySchema = z.object({

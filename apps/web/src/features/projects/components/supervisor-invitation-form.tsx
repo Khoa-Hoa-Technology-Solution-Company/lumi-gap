@@ -41,8 +41,24 @@ function SupervisorInvitationFormInner({ project, mentor, onClose, onSent, plann
   useEffect(() => {
     if (!settings.data || seeded.current) return;
     seeded.current = true;
-    setDraft(current => ({ ...current, summary: current.summary || settings.data!.invitationDefaults?.summary || settings.data!.summary || "" }));
-  }, [settings.data]);
+    const rec = mentor.recommendation;
+    const coveredTitles = rec?.needs
+      .filter(n => n.relationship === "RELATED_EVIDENCE" || n.relationship === "DECLARED_SUPPORT" || n.relationship === "LECTURER_CONFIRMED")
+      .slice(0, 2)
+      .map(n => n.needTitle) ?? [];
+    const discussTitles = rec?.needs
+      .filter(n => n.relationship === "NEEDS_DISCUSSION")
+      .slice(0, 1)
+      .map(n => n.needTitle) ?? [];
+    const suggestedDraftMessage = coveredTitles.length > 0
+      ? `Nhóm mong muốn mời thầy/cô hướng dẫn cho dự án, đặc biệt ở nội dung: ${coveredTitles.join(", ")}.${discussTitles.length ? ` Nhóm cũng rất mong được trao đổi thêm về ${discussTitles[0]}.` : ""}`
+      : "";
+    setDraft(current => ({
+      ...current,
+      summary: current.summary || settings.data!.invitationDefaults?.summary || settings.data!.summary || "",
+      message: current.message || suggestedDraftMessage,
+    }));
+  }, [settings.data, mentor.recommendation]);
   useEffect(() => { if (!saved) { try { sessionStorage.setItem(storageKey, JSON.stringify({ ...draft, ...receipt.current })); } catch { /* In-memory recovery remains available. */ } } }, [draft, saved, storageKey]);
   useUnsavedWorkspace(!saved && Boolean(draft.message.trim() || draft.summary !== settings.data?.invitationDefaults?.summary));
   const update = <K extends keyof Draft>(field: K, value: Draft[K]) => { setDraft(current => ({ ...current, [field]: value })); };

@@ -1,4 +1,4 @@
-import type { StructuredSubmissionInput, SubmissionStatus, SubmissionType, SubmissionHistory, MentorManuscriptContext, MentorManuscriptSendInput, MentorManuscriptSendResult } from "@trend/shared-types";
+import type { StructuredSubmissionInput, SubmissionType, SubmissionHistory, MentorManuscriptContext, MentorManuscriptSendInput, MentorManuscriptSendResult } from "@trend/shared-types";
 import { API_ROUTES } from "@/constants";
 import { api } from "@/services/api-client";
 
@@ -22,6 +22,22 @@ export interface MentorFeedbackPayload {
   rubricScores?: Array<{ criterionKey: string; score?: number; assessment?: string; comment?: string }>;
   requestedInformation?: string;
 }
+export interface SubmissionListReviewSummary {
+  state: string;
+  hasReviewRequest: boolean;
+  activeReviewerNames: string[];
+  openMandatoryRevisionCount: number;
+  openSuggestionCount: number;
+  totalReviewRequestCount: number;
+  latestReviewRound?: number | null;
+  latestAssessment?: string | null;
+  hasFeedback: boolean;
+  hasCompletedInternalApproval: boolean;
+  hasMultipleMentors: boolean;
+  waitingCount: number;
+  revisionRequestedCount: number;
+}
+
 export interface SubmissionSummary {
   _id: string;
   sourceManuscriptId?: string | null;
@@ -41,11 +57,16 @@ export interface SubmissionSummary {
   status: string;
   currentRevisionNumber: number;
   currentRevisionId?: string;
+  latestFileName?: string | null;
+  latestContentType?: string | null;
+  hasPdf?: boolean;
+  reviewSummary?: SubmissionListReviewSummary;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface SubmissionRevision {
+  id?: string;
   _id: string;
   contentType?: string;
   contentSnapshot?: string;
@@ -79,11 +100,27 @@ export interface AiPreReview {
 
 export const submissionsApi = {
   async mentorFeedbackContext(input: { projectId: string; manuscriptId?: string; submissionId?: string }): Promise<MentorManuscriptContext> { return (await api.get("/submissions/mentor-feedback/context", { params: input, timeout: 20000 })).data.data; },
-  async sendMentorFeedback(input: MentorManuscriptSendInput, file?: File): Promise<MentorManuscriptSendResult> {
+  async sendMentorFeedback(
+    input: MentorManuscriptSendInput,
+    file?: File,
+    options?: { onUploadProgress?: (percent: number) => void },
+  ): Promise<MentorManuscriptSendResult> {
     const body = new FormData();
     for (const [key, value] of Object.entries(input)) if (value !== undefined) body.append(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
     if (file) body.append("pdf", file);
-    return (await api.post("/submissions/mentor-feedback", body, { timeout: 60000 })).data.data;
+    return (
+      await api.post("/submissions/mentor-feedback", body, {
+        timeout: 120_000,
+        onUploadProgress: options?.onUploadProgress
+          ? (event) => {
+              if (event.total && event.total > 0) {
+                const pct = Math.min(100, Math.max(0, Math.round((event.loaded / event.total) * 100)));
+                options.onUploadProgress!(pct);
+              }
+            }
+          : undefined,
+      })
+    ).data.data;
   },
   async prepareMentorReview(id: string): Promise<{ assignmentId: string; requestId: string }> { return (await api.post(`/submissions/${encodeURIComponent(id)}/mentor-review`, {})).data.data; },
   async history(id: string, signal?: AbortSignal): Promise<SubmissionHistory> { return (await api.get(API_ROUTES.submissions.history(id), readOptions(signal))).data.data; },
@@ -124,12 +161,15 @@ export const submissionsApi = {
     if (responseToReview) body.append("responseToReview", responseToReview);
     await api.post(API_ROUTES.submissions.revisions(id), body);
   },
-  async aiPreReviews(id: string, signal?: AbortSignal): Promise<AiPreReview[]> {
-    const response = await api.get(API_ROUTES.submissions.aiPreReviews(id), readOptions(signal));
+  async aiPreReviews(id: string, signal?: AbortSignal, revisionId?: string): Promise<AiPreReview[]> {
+    const response = await api.get(API_ROUTES.submissions.aiPreReviews(id), {
+      ...readOptions(signal),
+      params: revisionId ? { revisionId } : undefined,
+    });
     return response.data.data;
   },
-  async runAiPreReview(id: string): Promise<AiPreReview> {
-    const response = await api.post(API_ROUTES.submissions.runAiPreReview(id), {});
+  async runAiPreReview(id: string, revisionId?: string): Promise<AiPreReview> {
+    const response = await api.post(API_ROUTES.submissions.runAiPreReview(id), revisionId ? { revisionId } : {});
     return response.data.data;
   },
   async revisionBlob(id: string, revisionId: string, signal?: AbortSignal): Promise<Blob> {

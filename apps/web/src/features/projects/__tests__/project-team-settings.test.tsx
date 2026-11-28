@@ -20,7 +20,14 @@ vi.mock("../hooks/use-projects", () => ({
   useDeleteProject: () => ({ isPending: false }), useLeaveProject: () => ({ isPending: false }),
 }));
 vi.mock("../components/project-mentor-summary", () => ({ ProjectMentorSummary: () => <p>Academic mentorship is separate</p> }));
-vi.mock("../components/project-members-tab", () => ({ ProjectMembersTab: () => <p>Current project members</p> }));
+vi.mock("../components/project-members-tab", () => ({
+  ProjectMembersTab: ({ showInviteAction, readOnly, ownerId, currentUserId }: { showInviteAction?: boolean; readOnly?: boolean; ownerId: string; currentUserId?: string }) => (
+    <div>
+      <p>Current project members</p>
+      {showInviteAction && !readOnly && currentUserId === ownerId ? <button type="button">Invite member</button> : null}
+    </div>
+  ),
+}));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const project: IProject = { _id: "project", title: "Research idea", visibility: "PRIVATE", status: "PLANNING", ownerId: "owner", accessRole: "OWNER", version: 3, memberCount: 1, paperCount: 0, members: [], papers: [], updatedAt: "2026-10-14T10:00:00Z", createdAt: "2026-10-14T10:00:00Z" };
 let root: Root, container: HTMLDivElement, client: QueryClient;
@@ -53,13 +60,18 @@ it("makes project settings read-only for members and hides discovery management"
   expect(container.textContent).not.toContain("Save discovery settings");
 });
 
-it("preserves archive read access while preventing settings and discovery writes", async () => {
-  await render({ ...project, status: "ARCHIVED" });
+it("preserves archive read access while preventing settings writes and shows neutral Project management section", async () => {
+  await render({ ...project, status: "ARCHIVED" }, "/projects/project?tab=members&team=settings");
   expect(container.querySelector<HTMLFieldSetElement>("form fieldset")?.disabled).toBe(true);
   expect(container.textContent).not.toContain("Save project settings");
   expect(container.textContent).not.toContain("Save discovery settings");
+
+  const lifecycleBtn = [...container.querySelectorAll<HTMLButtonElement>('nav[aria-label="Project settings sections"] button')].find(b => b.textContent?.includes("Project management"))!;
+  await act(async () => lifecycleBtn.click());
   expect(container.textContent).toContain("Archiving preserves research and history");
-  expect(container.textContent).toContain("Danger Zone");
+  expect(container.textContent).toContain("Project management");
+  expect(container.textContent).toContain("Move to Trash");
+  expect(container.textContent).not.toContain("Danger Zone");
 });
 
 it("supports keyboard section switching and recovers a failed team load", async () => {
@@ -74,19 +86,29 @@ it("supports keyboard section switching and recovers a failed team load", async 
   expect(mocks.retry).toHaveBeenCalledOnce();
 });
 
-it.each(["/projects/project?tab=members", "/projects/project?tab=members&team=settings"])("exposes the invitation action at the top of %s even when the team request fails", async path => {
-  await render(project, path);
-  const action = container.querySelector<HTMLButtonElement>("header button");
-  expect(action?.textContent).toBe("Invite member");
-  await act(async () => action!.click());
-  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Recipient email");
+it("keeps Invite member scoped to the People tab and out of the shared settings header", async () => {
+  mocks.team.mockReturnValue({
+    isLoading: false,
+    isError: false,
+    data: { members: [], invitations: [], memberMeta: { page: 1, totalPages: 1, total: 1 }, invitationMeta: { page: 1, totalPages: 1, total: 0 } },
+  });
+  await render(project, "/projects/project?tab=members&team=settings");
+  expect([...container.querySelectorAll("button")].some(button => button.textContent === "Invite member")).toBe(false);
+
+  await act(async () => container.querySelector<HTMLButtonElement>("#project-people-tab")!.click());
+  expect([...container.querySelectorAll("button")].some(button => button.textContent === "Invite member")).toBe(true);
 });
 
 it.each([
   { ...project, accessRole: "MEMBER" as const, ownerId: "other" },
   { ...project, status: "ARCHIVED" as const },
 ])("does not offer invitations for $accessRole in $status", async value => {
-  await render(value);
+  mocks.team.mockReturnValue({
+    isLoading: false,
+    isError: false,
+    data: { members: [], invitations: [], memberMeta: { page: 1, totalPages: 1, total: 1 }, invitationMeta: { page: 1, totalPages: 1, total: 0 } },
+  });
+  await render(value, "/projects/project?tab=members");
   expect([...container.querySelectorAll("button")].some(button => button.textContent === "Invite member")).toBe(false);
 });
 
@@ -105,6 +127,11 @@ it.each(["Member pages", "Invitation pages"])("returns to an available page when
 });
 
 it("does not trust a cached OWNER role when the authenticated account is not the project owner", async () => {
-  await render({ ...project, accessRole: "OWNER", ownerId: "new-owner" });
+  mocks.team.mockReturnValue({
+    isLoading: false,
+    isError: false,
+    data: { members: [], invitations: [], memberMeta: { page: 1, totalPages: 1, total: 1 }, invitationMeta: { page: 1, totalPages: 1, total: 0 } },
+  });
+  await render({ ...project, accessRole: "OWNER", ownerId: "new-owner" }, "/projects/project?tab=members");
   expect([...container.querySelectorAll("button")].some(button => button.textContent === "Invite member")).toBe(false);
 });

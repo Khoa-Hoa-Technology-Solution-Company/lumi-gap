@@ -422,4 +422,10 @@ export const researchHomeVi = {
   "Could not fetch papers. Please try again later.": "Không thể lấy bài báo. Vui lòng thử lại sau.",
   "The daily limit for fetching papers has been reached. Please try again tomorrow.": "Đã đạt giới hạn lấy bài báo trong ngày. Vui lòng thử lại vào ngày mai.",
   "Too many fetch requests. Please wait a while and try again.": "Bạn gửi quá nhiều yêu cầu lấy bài báo. Vui lòng đợi một lúc rồi thử lại.",
+  "Start automatic scrolling": "Bật cuộn tự động",
+  "Semantic search: finds papers by meaning, question, or concept.": "Tìm theo ngữ nghĩa: hiểu câu hỏi, ý tưởng hoặc khái niệm nghiên cứu.",
+  "Keyword search: matches exact terms, names, or phrases.": "Tìm theo từ khóa: khớp chính xác thuật ngữ, tên tác giả hoặc cụm từ.",
+  "AI Rerank active: re-orders semantic results for higher relevance.": "Đang bật AI sắp xếp lại: ưu tiên các kết quả ngữ nghĩa liên quan nhất.",
+  "On": "Bật",
+  "Use Left and Right arrow keys to browse papers.": "Dùng phím mũi tên Trái/Phải để xem các bài báo.",
 } as const;

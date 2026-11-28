@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { legacyAcademicSupportDestination, mentorWorkspaceDestination, researchProjectDirectoryDestination, safeMentorWorkReturn, withMentorWorkReturn } from "../utils/mentor-workspace-navigation";
+import { legacyAcademicSupportDestination, mentorWorkspaceDestination, researchProjectDirectoryDestination, resolveManuscriptDestination, safeMentorWorkReturn, withMentorWorkReturn } from "../utils/mentor-workspace-navigation";
 
 it.each([
   ["/projects", ""],
@@ -55,6 +55,78 @@ it("preserves reader, historical review and safe work context without accepting 
   for (const unsafe of ["https://evil.example/mentor-workspace?view=work", "//evil.example/mentor-workspace?view=work", "/mentor-workspace?view=review&assignmentId=other", "/mentor-workspace?view=project&projectId=../private", "/mentor-workspace?view=work#unexpected"]) expect(safeMentorWorkReturn(unsafe)).toBeUndefined();
 });
 
+it("resolves manuscript destination by actor role without leaking project workspace URLs to reviewers", () => {
+  const workReturn = "/mentor-workspace?view=work&workPage=1&workStatus=ACTIONABLE&workSort=priority";
+  const mentorUrl = resolveManuscriptDestination({
+    actorRole: "REVIEWER",
+    requestId: "req-1",
+    projectId: "proj-1",
+    submissionId: "sub-1",
+    revisionId: "rev-2",
+    returnTo: workReturn,
+  });
+  expect(mentorUrl).not.toBeNull();
+  const parsed = new URL(mentorUrl!, "http://localhost");
+  expect(parsed.pathname).toBe("/mentor-workspace");
+  expect(parsed.searchParams.get("view")).toBe("manuscript");
+  expect(parsed.searchParams.get("requestId")).toBe("req-1");
+  expect(parsed.searchParams.get("revisionId")).toBe("rev-2");
+  expect(parsed.searchParams.get("reader")).toBe("1");
+  expect(parsed.searchParams.get("returnTo")).toBe(safeMentorWorkReturn(workReturn));
+  expect(mentorUrl).not.toContain("/projects/");
+
+  const requesterUrl = resolveManuscriptDestination({
+    actorRole: "REQUESTER",
+    requestId: "req-1",
+    projectId: "proj-1",
+    submissionId: "sub-1",
+    revisionId: "rev-2",
+    returnTo: workReturn,
+  });
+  expect(requesterUrl).toBe("/projects/proj-1?tab=submissions&submission=sub-1");
+});
+
+it("strips unsafe or nested returnTo parameters while allowing reviews, overview and resources returns with sanitized filters", () => {
+  expect(safeMentorWorkReturn("/mentor-workspace?view=reviews")).toBe("/mentor-workspace?view=reviews");
+  expect(safeMentorWorkReturn("/mentor-workspace?view=overview")).toBe("/mentor-workspace?view=overview");
+  expect(safeMentorWorkReturn("/mentor-workspace?view=work&returnTo=%2Fmentor-workspace%3Fview%3Dwork")).not.toContain("returnTo=");
+  expect(safeMentorWorkReturn("javascript:alert(1)")).toBeUndefined();
+  expect(safeMentorWorkReturn("/projects/proj-1?tab=submissions")).toBeUndefined();
+
+  const resBack = safeMentorWorkReturn(
+    "/mentor-workspace?view=resources&q=clinical&projectId=11111111-1111-4111-8111-111111111111&category=MANUSCRIPT_REPORT&sort=title&page=2&returnTo=evil&unknown=1",
+  );
+  expect(resBack).toBeDefined();
+  const parsed = new URL(resBack!, "http://localhost");
+  expect(Object.fromEntries(parsed.searchParams)).toEqual({
+    view: "resources",
+    q: "clinical",
+    projectId: "11111111-1111-4111-8111-111111111111",
+    category: "MANUSCRIPT_REPORT",
+    sort: "title",
+    page: "2",
+  });
+  // Drops invalid projectId/category/sort safely
+  const sanitized = safeMentorWorkReturn("/mentor-workspace?view=resources&projectId=../etc&category=INVALID&sort=hack&page=0");
+  expect(sanitized).toBe("/mentor-workspace?view=resources");
+
+  // Preserves sanitized projects directory filters & page in returnTo
+  const projBack = safeMentorWorkReturn(
+    "/mentor-workspace?view=projects&projectSearch=clinical&projectFilter=ATTENTION&projectSort=name&projectPage=2&returnTo=evil&extra=1",
+  );
+  expect(projBack).toBeDefined();
+  const parsedProj = new URL(projBack!, "http://localhost");
+  expect(Object.fromEntries(parsedProj.searchParams)).toEqual({
+    view: "projects",
+    projectPage: "2",
+    projectSearch: "clinical",
+    projectFilter: "ATTENTION",
+    projectSort: "name",
+  });
+  expect(safeMentorWorkReturn("/mentor-workspace?view=projects&projectFilter=INVALID&projectSort=bad&projectPage=0")).toBe(
+    "/mentor-workspace?view=projects",
+  );
+});
 it.each([
   ["view=history", true, "/mentor-workspace?view=history"],
   ["view=active", true, "/mentor-workspace?view=projects"],

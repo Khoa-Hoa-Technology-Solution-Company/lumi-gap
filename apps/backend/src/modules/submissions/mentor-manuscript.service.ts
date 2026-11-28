@@ -11,6 +11,7 @@ import { acceptedMentorReviewPolicy } from "../reviews/mentor-review-access.js";
 import { createAssignedMentorReview } from "../reviews/mentor-review-request.js";
 import { dispatchReviewNotifications } from "../reviews/review-notifications.js";
 import { reviewRequestService } from "../reviews/review-request.service.js";
+import { decodeFeedbackItem } from "../reviews/academic-review.rules.js";
 import { researchLedgerService } from "../audit/research-ledger.service.js";
 import { mentorManuscriptSendSchema } from "./dto/mentor-manuscript.schema.js";
 import { validateMentorPdf } from "./mentor-pdf-validation.js";
@@ -49,7 +50,17 @@ async function contextFor(db: Db, submission: Submission | null): Promise<Mentor
     const assignment = assignments.find(item => item.reviewRequestId === request.id); if (!assignment) return [];
     const ids = new Set(reviews.filter(item => item.assignmentId === assignment.id).map(item => item.id));
     return [{ id: request.id, mentorId: assignment.reviewerId, status: request.status === "REQUESTED" && request.expiresAt && request.expiresAt <= new Date() ? "EXPIRED" : request.status, revisionId: request.artifactRevisionId,
-      items: items.filter(item => ids.has(item.reviewId)).map(item => ({ id: item.id, description: item.description, priority: item.priority })) }];
+      items: items.filter(item => ids.has(item.reviewId)).map(item => {
+        const decoded = decodeFeedbackItem(item);
+        return {
+          id: item.id,
+          description: item.description,
+          priority: decoded.priority,
+          optional: decoded.priority === "SUGGESTION",
+          locator: item.locator ?? null,
+          criterionKey: decoded.criterionKey ?? null,
+        };
+      }) }];
   }) };
 }
 
@@ -64,6 +75,7 @@ export const mentorManuscriptService = {
   },
 
   async send(raw: MentorManuscriptSendInput, file: Pdf | undefined, actorInput: string, role: UserRole, access: MentorSubmissionAccess): Promise<MentorManuscriptSendResult> {
+    const startedAt = performance.now();
     const input = mentorManuscriptSendSchema.parse(raw);
     const actor = await access.user(actorInput), project = await access.project(input.projectId, actor.id, role), mentor = await access.user(input.mentorId);
     if (project.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
@@ -71,6 +83,7 @@ export const mentorManuscriptService = {
     const db = getPrisma();
     let manuscriptId: string | undefined, title = input.title, sourceText: string | undefined, snapshotDigest: string | undefined;
     let pdf: Pdf;
+    const validateStart = performance.now();
     if (input.source === "SNAPSHOT") {
       if (file) throw AppError.badRequest("Choose one manuscript source only");
       const snapshot = await db.manuscriptSnapshot.findFirst({ where: { id: input.manuscriptSnapshotId, projectId: project.id } });
@@ -91,9 +104,26 @@ export const mentorManuscriptService = {
       title ??= pdf.originalname.replace(/\.pdf$/i, "").trim().length >= 2 ? pdf.originalname.replace(/\.pdf$/i, "").slice(0, 300) : pdf.originalname;
       if (title.trim().length < 2) throw AppError.badRequest("Enter a manuscript title");
     }
+    const validateMs = Math.round(performance.now() - validateStart);
     const checksum = hash(pdf.buffer), fingerprint = hash(JSON.stringify({ input, checksum }));
     const receiptKey = `mentor-send:${actor.id}:${input.clientKey}`;
+    // Fast-path idempotency check BEFORE writing to PDF storage so network retries never upload duplicate blobs.
+    const existingReceipt = await db.projectActivity.findUnique({ where: { projectId_idempotencyKey: { projectId: project.id, idempotencyKey: receiptKey } } });
+    if (existingReceipt) {
+      const saved = existingReceipt.metadata as unknown as { fingerprint: string; result: MentorManuscriptSendResult; resume?: string };
+      if (saved.fingerprint !== fingerprint) throw AppError.conflict("This send request was already used for different content");
+      if (saved.resume) {
+        const request = await db.reviewRequest.findUniqueOrThrow({ where: { id: saved.resume } });
+        if (!(request.artifactRevisionId === saved.result.revisionId && ["RESUBMITTED", "IN_REVIEW", "COMPLETED"].includes(request.status))) {
+          const nonEmptyResponses = (input.responses ?? []).filter(item => item.responseText.trim().length > 0);
+          await reviewRequestService.resubmit(saved.resume, actor.id, { revisionId: saved.result.revisionId, responses: nonEmptyResponses });
+        }
+      }
+      return { ...saved.result, reused: true };
+    }
+    const storageStart = performance.now();
     const stored = await pdfStorageService.savePdf(pdf.buffer, pdf.originalname);
+    const storageMs = Math.round(performance.now() - storageStart);
     let retained = false;
     try {
       const staged = await db.$transaction(async tx => {
@@ -138,7 +168,7 @@ export const mentorManuscriptService = {
         if (request?.status === "REVISION_REQUESTED") {
           const responses = new Map((input.responses ?? []).map(item => [item.revisionItemId, item.responseText.trim()]));
           if (same && current?.id === request.revisionId) throw AppError.badRequest("The revised manuscript must differ from the reviewed version");
-          if (request.items.some(item => !responses.get(item.id)) || [...responses.keys()].some(id => !request.items.some(item => item.id === id))) throw AppError.badRequest("Respond to each requested change before sending the next version");
+          if (request.items.some(item => !item.optional && !responses.get(item.id)) || [...responses.keys()].some(id => !request.items.some(item => item.id === id))) throw AppError.badRequest("Respond to each requested change before sending the next version");
           resume = request.id;
         }
         if (!revision) {
@@ -166,9 +196,30 @@ export const mentorManuscriptService = {
       retained = staged.retained;
       if (staged.resume) {
         const request = await db.reviewRequest.findUniqueOrThrow({ where: { id: staged.resume } });
-        if (!(request.artifactRevisionId === staged.result.revisionId && ["RESUBMITTED", "IN_REVIEW", "COMPLETED"].includes(request.status))) await reviewRequestService.resubmit(staged.resume, actor.id, { revisionId: staged.result.revisionId, responses: input.responses ?? [] });
+        if (!(request.artifactRevisionId === staged.result.revisionId && ["RESUBMITTED", "IN_REVIEW", "COMPLETED"].includes(request.status))) {
+          const nonEmptyResponses = (input.responses ?? []).filter(item => item.responseText.trim().length > 0);
+          await reviewRequestService.resubmit(staged.resume, actor.id, { revisionId: staged.result.revisionId, responses: nonEmptyResponses });
+        }
       }
-      if (staged.notification) await dispatchReviewNotifications([staged.notification]);
+      if (staged.notification) {
+        // Notification row is already durably persisted inside the transaction; dispatch asynchronously so slow transport never stalls HTTP response.
+        void dispatchReviewNotifications([staged.notification]).catch((err) => {
+          logger.warn({ err, submissionId: staged.result.submissionId }, "Deferred mentor notification dispatch failed; recoverable via background sweep");
+        });
+      }
+      logger.info(
+        {
+          submissionId: staged.result.submissionId,
+          revisionNumber: staged.result.revisionNumber,
+          source: input.source,
+          pdfBytes: pdf.size,
+          validateMs,
+          storageMs,
+          totalMs: Math.round(performance.now() - startedAt),
+          reused: staged.result.reused,
+        },
+        "mentor manuscript sent",
+      );
       return staged.result;
     } finally {
       if (!retained) {

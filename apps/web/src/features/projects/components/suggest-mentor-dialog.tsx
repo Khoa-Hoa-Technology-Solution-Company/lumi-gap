@@ -7,6 +7,7 @@ import { mentorshipError } from "./mentoring-preferences";
 import { LecturerInvitationCard } from "./lecturer-invitation-card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FormRequiredLegend, RequiredMark } from "@/components/ui/required-mark";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 import "../supervisor-invitation.css";
@@ -54,15 +55,22 @@ function SuggestMentorForm({ project, mentor, onClose, onSubmitted }: SuggestMen
     <DialogContent className="max-h-[88dvh] overflow-y-auto sm:max-w-lg" data-no-i18n showClose={!mutation.isPending} closeLabel={t("Close")} onInteractOutside={event => event.preventDefault()}>
       <DialogHeader><DialogTitle>{t("supervisor.propose")}</DialogTitle><DialogDescription>{project.title}</DialogDescription></DialogHeader>
       <LecturerInvitationCard mentor={mentor} onChooseAgain={onClose} disabled={mutation.isPending} />
+      <FormRequiredLegend className="-mt-1" />
       <form className="space-y-4" onSubmit={async event => {
         event.preventDefault(); if (submitLock.current || mutation.isPending) return;
         if (!message.trim() || message.trim().length > 1000) { setValidationError(t("supervisor.proposalError")); return; }
         setValidationError(""); submitLock.current = true;
         try { await mutation.mutateAsync(); } catch { /* Keep the reason for retry. */ } finally { submitLock.current = false; }
       }}>
-        <label className="block space-y-2 text-sm font-medium" htmlFor="mentor-proposal-reason"><span>{t("supervisor.proposalReason")} *</span><textarea id="mentor-proposal-reason" autoFocus rows={4} maxLength={1000} disabled={mutation.isPending} value={message} onChange={event => { setMessage(event.target.value); setValidationError(""); mutation.reset(); }} placeholder={t("supervisor.proposalPlaceholder")} aria-invalid={Boolean(validationError)} aria-describedby="mentor-proposal-disclosure" className="w-full resize-y rounded-md border bg-background p-3 font-normal leading-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
+        <label className="block space-y-2 text-sm font-medium" htmlFor="mentor-proposal-reason"><span>{t("supervisor.proposalReason")}<RequiredMark /></span><textarea id="mentor-proposal-reason" required aria-required="true" autoFocus rows={4} maxLength={1000} disabled={mutation.isPending} value={message} onChange={event => { setMessage(event.target.value); setValidationError(""); mutation.reset(); }} placeholder={t("supervisor.proposalPlaceholder")} aria-invalid={Boolean(validationError)} aria-describedby="mentor-proposal-disclosure" className="w-full resize-y rounded-md border bg-background p-3 font-normal leading-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
         <p id="mentor-proposal-disclosure" className="text-xs leading-5 text-muted-foreground">{t("supervisor.proposalDisclosure")}</p>
         {(validationError || mutation.error) && <p role="alert" className="text-sm text-destructive">{validationError || t(mentorshipError(mutation.error))}</p>}
+        {!mutation.isPending && !message.trim() && (
+          <p className="rounded-lg border border-border/80 bg-muted/25 px-3 py-2 text-xs text-muted-foreground" role="status">
+            <span className="font-medium text-foreground">{t("Chưa thể gửi:")} </span>
+            {t("Vui lòng nhập lý do đề xuất giảng viên hướng dẫn.")}
+          </p>
+        )}
         <footer className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={mutation.isPending} onClick={onClose}>{t("Cancel")}</Button><Button type="submit" disabled={mutation.isPending || !message.trim()}>{t(mutation.isPending ? "Sending…" : "Send suggestion")}</Button></footer>
       </form>
     </DialogContent>

@@ -1,4 +1,6 @@
-import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, ChevronDown, ChevronUp, Eye, GitCompare, Info } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { submissionsApi } from "@/features/submissions";
 import { useI18n } from "@/i18n";
@@ -6,23 +8,173 @@ import { Link } from "react-router-dom";
 import type { PdfFitMode, PdfViewState } from "./pdf-manuscript-viewer";
 import "@/pages/reviews/review-workspace.css";
 
+export interface ReadOnlyRevisionOption {
+  id: string;
+  revisionNumber: number;
+  label?: string;
+}
+
 /** A read-only presentation over the same authenticated immutable revision reader. */
-export function ReadOnlyReviewManuscript({ title, submissionId, revision, roundNumber, text, backHref }: {
-  title: string; submissionId: string; revision: { id: string; revisionNumber: number; contentType?: string };
-  roundNumber?: number; text?: string; backHref: string;
+export function ReadOnlyReviewManuscript({
+  title,
+  submissionId,
+  revision,
+  roundNumber,
+  artifactTypeLabel,
+  projectTitle,
+  statusLabel,
+  statusClassName,
+  text,
+  backHref,
+  backLabel,
+  primaryAction,
+  compareHref,
+  compareLabel,
+  availableVersions,
+  onSelectVersion,
+  historicalBanner,
+  contextPanel,
+}: {
+  title: string;
+  submissionId: string;
+  revision: { id: string; revisionNumber: number; contentType?: string };
+  roundNumber?: number;
+  artifactTypeLabel?: string;
+  projectTitle?: string;
+  statusLabel?: string;
+  statusClassName?: string;
+  text?: string;
+  backHref: string;
+  backLabel?: string;
+  primaryAction?: ReactNode;
+  compareHref?: string;
+  compareLabel?: string;
+  availableVersions?: ReadOnlyRevisionOption[];
+  onSelectVersion?: (revisionId: string) => void;
+  historicalBanner?: string;
+  contextPanel?: ReactNode;
 }) {
   const { t } = useI18n();
-  return <section className="mx-auto w-full max-w-6xl space-y-4 p-4" data-no-i18n>
-    <header className="space-y-3 border-b pb-4">
-      <Button asChild variant="ghost" size="sm"><Link to={backHref}>{t("mentorLifecycle.backRequest")}</Link></Button>
-      <h1 className="break-words text-xl font-semibold">{title}</h1>
-      <p className="text-sm text-muted-foreground">{t("mentorWorkspace.version", { version: revision.revisionNumber })}{roundNumber ? ` · ${t("mentorWorkspace.round", { round: roundNumber })}` : ""} · {t("mentorLifecycle.readOnly")}</p>
-    </header>
-    <div className={revision.contentType === "PDF" ? "flex h-[78dvh] min-h-80 flex-col overflow-hidden rounded-lg border" : undefined}>
-      <AssignedRevisionReader key={revision.id} submissionId={submissionId} revisionId={revision.id} contentType={revision.contentType} text={text} compact={revision.contentType === "PDF"}
-        onDownload={revision.contentType === "PDF" ? () => void submissionsApi.downloadRevision(submissionId, revision.id, revision.revisionNumber) : undefined} />
-    </div>
-  </section>;
+  const [contextOpen, setContextOpen] = useState(false);
+
+  return (
+    <section className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-4 sm:px-6" data-no-i18n>
+      <header className="rounded-xl border border-border bg-card shadow-xs">
+        <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button asChild variant="ghost" size="sm" className="-ml-2 h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground">
+                <Link to={backHref}>
+                  <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{backLabel ?? t("mentorLifecycle.backRequest")}</span>
+                </Link>
+              </Button>
+              <Badge variant="outline" className="h-5 gap-1 border-slate-300/80 bg-slate-100/80 px-2 text-[11px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200">
+                <Eye className="h-3 w-3" aria-hidden="true" />
+                {t("mentorLifecycle.readOnly")}
+              </Badge>
+              {statusLabel ? (
+                <Badge variant="outline" className={`h-5 px-2 text-[11px] font-medium ${statusClassName ?? "border-border bg-muted/60 text-muted-foreground"}`}>
+                  {statusLabel}
+                </Badge>
+              ) : null}
+            </div>
+
+            <h1 className="break-words text-lg font-semibold leading-snug tracking-tight text-foreground sm:text-xl">
+              {title}
+            </h1>
+
+            <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+              {projectTitle ? <span className="font-medium text-foreground/80">{projectTitle}</span> : null}
+              {projectTitle && artifactTypeLabel ? <span aria-hidden="true">·</span> : null}
+              {artifactTypeLabel ? <span>{artifactTypeLabel}</span> : null}
+              {(projectTitle || artifactTypeLabel) ? <span aria-hidden="true">·</span> : null}
+              <span className="font-medium text-foreground">
+                {t("mentorWorkspace.version", { version: revision.revisionNumber })}
+              </span>
+              {roundNumber ? (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>{t("mentorWorkspace.round", { round: roundNumber })}</span>
+                </>
+              ) : null}
+            </p>
+          </div>
+
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {availableVersions && availableVersions.length > 1 && onSelectVersion ? (
+              <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="sr-only">{t("mentorLifecycle.switchVersion")}</span>
+                <select
+                  aria-label={t("mentorLifecycle.switchVersion")}
+                  value={revision.id}
+                  onChange={event => onSelectVersion(event.target.value)}
+                  className="h-8 rounded-md border border-input bg-background px-2.5 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {availableVersions.map(option => (
+                    <option key={option.id} value={option.id}>
+                      {option.label ?? t("mentorWorkspace.version", { version: option.revisionNumber })}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            {compareHref ? (
+              <Button asChild size="sm" variant="outline" className="h-8 gap-1.5 text-xs">
+                <Link to={compareHref}>
+                  <GitCompare className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{compareLabel ?? t("mentorLifecycle.compareVersions", { prev: Math.max(1, revision.revisionNumber - 1), curr: revision.revisionNumber })}</span>
+                </Link>
+              </Button>
+            ) : null}
+
+            {contextPanel ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 text-xs"
+                aria-expanded={contextOpen}
+                onClick={() => setContextOpen(open => !open)}
+              >
+                <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{contextOpen ? t("mentorLifecycle.hideDetails") : t("mentorLifecycle.requestDetails")}</span>
+                {contextOpen ? <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />}
+              </Button>
+            ) : null}
+
+            {primaryAction}
+          </div>
+        </div>
+
+        {historicalBanner ? (
+          <div className="border-t border-amber-500/25 bg-amber-500/[0.06] px-4 py-2 text-xs text-amber-900 dark:text-amber-200" role="status">
+            {historicalBanner}
+          </div>
+        ) : null}
+
+        {contextPanel && contextOpen ? (
+          <div className="border-t border-border/75 bg-muted/20 px-4 py-3 text-xs">
+            {contextPanel}
+          </div>
+        ) : null}
+      </header>
+
+      <div className={revision.contentType === "PDF" ? "flex h-[78dvh] min-h-[460px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xs" : "rounded-xl border border-border bg-card p-4 shadow-xs"}>
+        <AssignedRevisionReader
+          key={revision.id}
+          submissionId={submissionId}
+          revisionId={revision.id}
+          contentType={revision.contentType}
+          text={text}
+          compact={revision.contentType === "PDF"}
+          ariaLabel={`${title} — ${t("mentorWorkspace.version", { version: revision.revisionNumber })}`}
+          onDownload={revision.contentType === "PDF" ? () => void submissionsApi.downloadRevision(submissionId, revision.id, revision.revisionNumber) : undefined}
+        />
+      </div>
+    </section>
+  );
 }
 
 const PdfManuscriptViewer = lazy(() => import("./pdf-manuscript-viewer"));

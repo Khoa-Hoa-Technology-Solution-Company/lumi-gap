@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeDoiSearchQuery } from "../paper.service.js";
+import { normalizeDoiSearchQuery, tokenizeAuthorSearchQuery } from "../paper.service.js";
 
 describe("paper keyword/DOI search", () => {
   it.each([
@@ -13,5 +13,13 @@ describe("paper keyword/DOI search", () => {
 
   it("leaves ordinary title and keyword queries on the text-search path", () => {
     expect(normalizeDoiSearchQuery("federated learning medical imaging")).toBeUndefined();
+  });
+
+  it("tokenizes Vietnamese, hyphenated, and dotted author queries cleanly", () => {
+    expect(tokenizeAuthorSearchQuery("Trần Minh Triết")).toEqual(["tran", "minh", "triet"]);
+    expect(tokenizeAuthorSearchQuery("Minh–Triet Tran")).toEqual(["minh", "triet", "tran"]);
+    expect(tokenizeAuthorSearchQuery("Phong X. Nguyen")).toEqual(["phong", "x", "nguyen"]);
+    expect(tokenizeAuthorSearchQuery("Huỳnh Thị Thanh Bình")).toEqual(["huynh", "thi", "thanh", "binh"]);
+    expect(tokenizeAuthorSearchQuery("   ")).toEqual([]);
   });
 });

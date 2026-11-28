@@ -5,6 +5,8 @@ import type { LecturerTrackingRequest } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useI18n } from "@/i18n";
+import { useAuthStore } from "@/stores/auth-store";
+import { isLecturerWorkspaceEligible } from "@/features/auth/utils/lecturer-eligibility";
 import { cn } from "@/utils/cn";
 import { academicProfileApi } from "../api/academic-profile.api";
 import { useAcademicProfile, useInstitutionalEmailStatus, useLecturerVerificationTracking } from "../hooks/use-academic-profile";
@@ -28,7 +30,10 @@ const method = (value?: string) => value === "INSTITUTIONAL_EMAIL_AND_PROFILE" ?
 
 export function LecturerVerificationStatusPage() {
   const { t, language } = useI18n(), navigate = useNavigate(), [params, setParams] = useSearchParams();
+  const isVi = language === "vi";
+  const authUser = useAuthStore((state) => state.user);
   const requestId = params.get("requestId") ?? undefined, page = Math.max(1, Number(params.get("page")) || 1);
+  const accessRequiredRedirect = params.get("access") === "required";
   const tracking = useLecturerVerificationTracking(requestId, page), profile = useAcademicProfile(), identity = useInstitutionalEmailStatus();
   const delivery = useLecturerDelivery(profile.data?.userId);
   const [open, setOpen] = useState(false), [preview, setPreview] = useState<{ requestId: string; sourceId?: string; name: string }>();
@@ -36,6 +41,9 @@ export function LecturerVerificationStatusPage() {
   const panel = useRef<HTMLDivElement>(null);
   const tabsId = useId();
   const data = tracking.data?.lecturer;
+  const userEligible = authUser
+    ? isLecturerWorkspaceEligible(authUser)
+    : Boolean(data?.status === "VERIFIED" && data.allowedActions.includes("WORKSPACE"));
   const date = (value: string) => new Date(value).toLocaleString(language);
   if (tracking.isPending) return <main className="lecturer-verification" role="status" aria-label={t("Checking verification status…")}><div className="lv-sheet lv-skeleton"><div className="h-8 w-48 animate-pulse rounded bg-muted motion-reduce:animate-none" /><div className="mt-6 h-24 animate-pulse rounded bg-muted motion-reduce:animate-none" /><div className="mt-10 h-48 animate-pulse rounded bg-muted motion-reduce:animate-none" /></div></main>;
   if (tracking.isError || !data) return <main className="lecturer-verification" data-no-i18n><section className="lv-sheet lv-skeleton"><ShieldQuestion className="mb-4 h-7 w-7 text-muted-foreground" aria-hidden="true" /><h1 className="text-2xl font-semibold">{t("Lecturer verification")}</h1><p role="alert" className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{t("Could not load verification tracking. Your verification status has not changed.")}</p><div className="mt-5 flex flex-wrap gap-2"><Button onClick={() => void tracking.refetch()}>{t("Retry")}</Button><Button asChild variant="outline"><Link to="/settings/verification/lecturer">{t("View current verification")}</Link></Button></div></section></main>;
@@ -68,13 +76,40 @@ export function LecturerVerificationStatusPage() {
         <div className="lv-status-row">
           <div className="lv-status-copy"><span className="lv-status-icon" data-tone={tone}><Icon size={24} aria-hidden="true" /></span><h1 id="lecturer-verification-title">{t(copy[0])}</h1></div>
           <div className="lv-actions">
-            {action && <Button disabled={action !== "MENTORING_SETTINGS" && (!profile.data || profile.isError || Boolean(delivery && delivery.state !== "SENT"))} onClick={() => action === "MENTORING_SETTINGS" ? navigate("/academic-support#mentoring-settings") : setOpen(true)}>{t(action === "SUPPLEMENT" ? "Supplement evidence" : action === "NEW_REQUEST" ? "Submit new verification" : action === "MENTORING_SETTINGS" ? "Configure mentoring availability" : "Start verification")}</Button>}
+            {data.allowedActions.includes("WORKSPACE") && !historical && userEligible && (
+              <Button asChild>
+                <Link to="/mentor-workspace">{isVi ? "Mở Không gian giảng viên" : "Open Lecturer Workspace"}</Link>
+              </Button>
+            )}
+            {action && (
+              <Button
+                variant={data.allowedActions.includes("WORKSPACE") && userEligible ? "outline" : "default"}
+                disabled={action !== "MENTORING_SETTINGS" && (!profile.data || profile.isError || Boolean(delivery && delivery.state !== "SENT"))}
+                onClick={() => (action === "MENTORING_SETTINGS" ? navigate("/academic-support#mentoring-settings") : setOpen(true))}
+              >
+                {t(
+                  action === "SUPPLEMENT"
+                    ? "Supplement evidence"
+                    : action === "NEW_REQUEST"
+                      ? "Submit new verification"
+                      : action === "MENTORING_SETTINGS"
+                        ? "Configure mentoring availability"
+                        : "Start verification",
+                )}
+              </Button>
+            )}
             {displayedStatus === "PENDING" && <Button variant="outline" onClick={() => changeSection("information", true)}>{t("View request details")}</Button>}
-            {data.allowedActions.includes("WORKSPACE") && !historical && <Button asChild variant="outline"><Link to="/academic-support">{t("Open Lecturer workspace")}</Link></Button>}
             {historical && <Button asChild variant="outline"><Link to="/settings/verification/lecturer">{t("View current verification")}</Link></Button>}
           </div>
         </div>
         <p className="lv-status-description">{t(copy[1])}</p>
+        {accessRequiredRedirect && !userEligible && (
+          <div role="status" className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3.5 py-2.5 text-xs text-amber-900 dark:text-amber-200">
+            {isVi
+              ? "Không gian giảng viên chỉ mở khi vị trí giảng viên hiện tại của bạn đã được xác minh hợp lệ. Bạn vẫn có thể sử dụng đầy đủ các tính năng nghiên cứu cá nhân trên LumiGap trong thời gian chờ."
+              : "Lecturer Workspace is available only after your current Lecturer position is verified. You retain full access to your ordinary LumiGap research tools in the meantime."}
+          </div>
+        )}
         {params.get("submitted") === "1" && request && <p role="status" className="lv-submitted"><Check size={16} aria-hidden="true" />{t("Verification request submitted")} · {date(request.submittedAt)}</p>}
         {request?.invalidatedAt && <p className="lv-status-description">{t("This historical decision does not verify your current academic claim.")}</p>}
         {data.academicRole !== "LECTURER" && <p className="lv-status-description">{t("Your current academic role is not Lecturer. Previous requests remain available in history.")}</p>}
@@ -106,8 +141,19 @@ export function LecturerVerificationStatusPage() {
           <dl className="lv-information-grid">
             <Info label={t("Account email ownership")} value={t(data.accountEmailVerified ? "Verified" : "Not verified")} verified={data.accountEmailVerified} />
             <Info label={t("Institutional email ownership")} value={identity.isError ? t("Could not check institutional identity.") : identity.isPending ? t("Checking…") : identity.data?.verified ? `${identity.data.email} · ${t("Verified")}` : t("Not verified")} verified={!identity.isError && !identity.isPending && identity.data?.verified} />
-            {request && <><Info label={t("Verification method")} value={t(method(request.verificationMethod))} /><Info label={t("Submitted on")} value={date(request.submittedAt)} />{request.reviewedAt && <Info label={t("Decision date")} value={date(request.reviewedAt)} />}<Info label={t("Request ID")} value={request.id} mono /></>}
+            {request && <><Info label={t("Verification method")} value={t(method(request.verificationMethod))} /><Info label={t("Submitted on")} value={date(request.submittedAt)} />{request.reviewedAt && <Info label={t("Decision date")} value={date(request.reviewedAt)} />}</>}
           </dl>
+          {request && (
+            <details className="mt-3 rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+              <summary className="cursor-pointer font-medium text-muted-foreground">
+                {isVi ? "Thông tin kỹ thuật hồ sơ" : "Technical request details"}
+              </summary>
+              <dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Info label={t("Request ID")} value={request.id} mono />
+                <Info label={t("Revision")} value={String(request.revision)} mono />
+              </dl>
+            </details>
+          )}
           {displayedStatus === "VERIFIED" && !historical && <section className="lv-eligibility"><h2>{t("Lecturer eligibility")}</h2><p>{t("You may configure mentorship availability, offer mentorship and receive Formal Academic Review requests. Mentoring requires mutual consent; formal review requires an accepted assignment for a specific artifact. Verification does not grant project access.")}</p></section>}
         </section>
         <section id={`${tabsId}-history-panel`} role="tabpanel" aria-labelledby={`${tabsId}-history`} hidden={activeSection !== "history"}>

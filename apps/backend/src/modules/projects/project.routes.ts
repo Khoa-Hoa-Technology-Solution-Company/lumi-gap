@@ -1,5 +1,5 @@
-import { mentorAccessService } from "./mentor-access.service.js";
-import { mentorAccessPageSchema } from "./dto/mentor-access.schema.js";
+import { mentorResourceInboxSchema } from "./dto/mentor-access.schema.js";
+import { mentorAccessController } from "./mentor-access.controller.js";
 import { researchClassificationSchema } from "../taxonomy/research-classification.schema.js";
 import { mentorshipApplicationsRouter } from "./mentorship-applications.routes.js";
 import { mentorshipApplicationsService } from "./mentorship-applications.service.js";
@@ -55,8 +55,17 @@ import {
   projectMentorshipController,
   previewDossierSchema,
   requestMentorshipInfoSchema, requestMentorshipSchema,
-  respondMentorshipSchema,
+  respondMentorshipSchema, explainMentorSchema,
 } from "./project-mentorship.controller.js";
+import { analyzeResearchNeedsInputSchema, saveResearchNeedsInputSchema } from "./research-needs-analysis.service.js";
+import {
+  clarificationMessageSchema,
+  counterProposalSchema,
+  formalMentorshipProposalSchema,
+  memberMentorshipConsentSchema,
+  mentorRecruitmentProfileInputSchema,
+  RESEARCH_SUPPORT_TYPE_VALUES,
+} from "./mentorship-two-way.js";
 
 import {
   researchIntegrityService,
@@ -66,6 +75,7 @@ import {
   escalateIntegrityCaseSchema,
   resolveIntegrityCaseSchema,
 } from "./research-integrity.service.js";
+import { contributionProtectionService } from "./contribution-protection.service.js";
 
 export const projectRouter: Router = Router();
 
@@ -94,10 +104,46 @@ projectRouter.get("/academic-support/preferences", requireAuth, requireResearchW
   res.json({ success: true, data: await projectMentorshipService.preferences(req.user!.sub) });
 });
 projectRouter.patch("/academic-support/preferences", requireAuth, requireResearchWorkflow,
-  validate(z.object({ acceptingMentorships: z.boolean().optional(), emailEnabled: z.boolean().optional(), locale: z.enum(["en", "vi"]).optional() }).strict()), async (req, res) => {
+  validate(z.object({
+    acceptingMentorships: z.boolean().optional(),
+    emailEnabled: z.boolean().optional(),
+    locale: z.enum(["en", "vi"]).optional(),
+    maxActiveProjects: z.number().int().min(1).max(20).nullable().optional(),
+    externalGroupCount: z.number().int().min(0).max(20).nullable().optional(),
+    supportTypes: z.array(z.enum(RESEARCH_SUPPORT_TYPE_VALUES)).max(8).optional(),
+    preferredTopics: z.array(z.string().trim().min(1).max(120)).max(12).optional(),
+    preferredRoles: z.array(z.enum(["PRIMARY", "SECONDARY"])).max(2).optional(),
+    expectedFrequency: z.string().trim().max(80).optional(),
+    expectedDuration: z.string().trim().max(80).optional(),
+    communicationMode: z.string().trim().max(80).optional(),
+    note: z.string().trim().max(1000).optional(),
+  }).strict()), async (req, res) => {
     res.json({ success: true, data: await projectMentorshipService.preferences(req.user!.sub, req.body) });
   });
-projectRouter.get("/academic-support/resources", requireAuth, requireResearchWorkflow, validate(mentorAccessPageSchema, "query"), async (req, res) => { res.set("Cache-Control", "private, no-store"); res.json({ success: true, data: await mentorAccessService.inbox(req.user!.sub, mentorAccessPageSchema.parse(req.query).page) }); });
+const myContributionsQuerySchema = z.object({
+  projectId: z.string().uuid().optional(),
+  role: z.string().trim().max(60).optional(),
+  source: z.enum(["SYSTEM_RECORDED", "SELF_DECLARED", "TEAM_DECLARED", "MENTOR_RECORDED", "IMPORTED"]).optional(),
+  status: z.enum(["RECORDED", "SELF_DECLARED", "PENDING_RESPONSE", "CLARIFICATION_REQUESTED", "ACKNOWLEDGED", "DISPUTED", "HISTORICAL"]).optional(),
+  view: z.enum(["mine", "pending", "saved"]).optional(),
+  q: z.string().trim().max(200).optional(),
+  from: z.string().trim().max(40).optional(),
+  to: z.string().trim().max(40).optional(),
+  page: z.coerce.number().int().min(1).max(1000).optional(),
+  pageSize: z.coerce.number().int().min(1).max(50).optional(),
+}).strict();
+const myContributionsExportLimiter = createRateLimiter("projects:my-contributions-export", { windowMs: 60 * 60 * 1000, limit: 60, keyGenerator: req => req.user!.sub, standardHeaders: true, legacyHeaders: false });
+// Global Personal Contribution Profile — independent of active workspace access & CONTRIBUTIONS_VIEW
+projectRouter.get("/my-contributions", requireAuth, validate(myContributionsQuerySchema, "query"), async (req, res) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ success: true, data: await contributionProtectionService.getGlobalPersonalContributions(req.user!.sub, myContributionsQuerySchema.parse(req.query)) });
+});
+projectRouter.get("/my-contributions/export", requireAuth, myContributionsExportLimiter, validate(myContributionsQuerySchema, "query"), async (req, res) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Content-Disposition", `attachment; filename="my-research-contributions.json"`);
+  res.json({ success: true, data: await contributionProtectionService.exportGlobalPersonalContributions(req.user!.sub, myContributionsQuerySchema.parse(req.query)) });
+});
+projectRouter.get("/academic-support/resources", requireAuth, requireResearchWorkflow, validate(mentorResourceInboxSchema, "query"), mentorAccessController.inbox);
 projectRouter.get("/academic-support/workspace", requireAuth, requireResearchWorkflow, validate(mentorWorkspaceQuerySchema, "query"), getMentorWorkspace);
 projectRouter.get("/academic-support/mine", requireAuth, requireResearchWorkflow, validate(academicSearchSchema, "query"), async (req, res) => {
   res.json({ success: true, data: await projectMentorshipService.mine(req.user!.sub, academicSearchSchema.parse(req.query)) });
@@ -108,6 +154,7 @@ projectRouter.get("/academic-support/available-mentors", requireAuth, requireRes
 projectRouter.get("/academic-support/opportunities", requireAuth, requireResearchWorkflow, validate(academicSearchSchema, "query"), async (req, res) => {
   res.json({ success: true, data: await projectMentorshipService.discovery(req.user!.sub, academicSearchSchema.parse(req.query)) });
 });
+projectRouter.get("/academic-support/opportunities/:id", requireAuth, requireResearchWorkflow, validate(paramIdSchema, "params"), projectMentorshipController.opportunityDossier);
 projectRouter.use("/academic-support/content", mentorshipContentRouter);
 projectRouter.get("/trash", requireAuth, requireResearchWorkflow, projectController.listTrash);
 projectRouter.get("/:id", optionalAuth, validate(paramIdSchema, "params"), projectController.getProjectById);
@@ -184,6 +231,11 @@ projectRouter.post("/:id/mentor-suggestions", academicRequestLimiter, validate(p
 projectRouter.post("/:id/mentor-suggestions/:suggestionId/dismiss", validate(paramIdSchema.extend({ suggestionId: z.string().uuid() }), "params"), validate(dismissMentorSuggestionSchema), async (req, res) => {
   res.json({ success: true, data: await projectMentorshipService.dismissSuggestion(String(req.params.id), String(req.params.suggestionId), req.user!.sub, req.body.reason) });
 });
+const mentorRecommendationAiLimiter = createRateLimiter("mentor-recommendation:ai", { windowMs: 15 * 60 * 1000, limit: 25, keyGenerator: req => req.user!.sub, standardHeaders: true, legacyHeaders: false });
+projectRouter.get("/:id/mentor-recommendation/needs", validate(paramIdSchema, "params"), projectMentorshipController.getResearchNeeds);
+projectRouter.post("/:id/mentor-recommendation/needs/analyze", mentorRecommendationAiLimiter, validate(paramIdSchema, "params"), validate(analyzeResearchNeedsInputSchema, "body"), projectMentorshipController.analyzeResearchNeeds);
+projectRouter.put("/:id/mentor-recommendation/needs", validate(paramIdSchema, "params"), validate(saveResearchNeedsInputSchema, "body"), projectMentorshipController.saveResearchNeeds);
+projectRouter.post("/:id/available-mentors/:mentorId/explanation", mentorRecommendationAiLimiter, validate(z.object({ id: databaseIdSchema, mentorId: databaseIdSchema }), "params"), validate(explainMentorSchema, "body"), projectMentorshipController.explainMentor);
 projectRouter.get("/:id/available-mentors/:mentorId/evidence", validate(z.object({ id: databaseIdSchema, mentorId: databaseIdSchema }), "params"), projectMentorshipController.mentorEvidence);
 projectRouter.get("/:id/available-mentors", validate(paramIdSchema, "params"), validate(academicSearchSchema, "query"), async (req, res) => {
   res.json({ success: true, data: await projectMentorshipService.mentors(String(req.params.id), req.user!.sub, academicSearchSchema.parse(req.query)) });
@@ -191,12 +243,16 @@ projectRouter.get("/:id/available-mentors", validate(paramIdSchema, "params"), v
 const topicSuggestionLimiter = createRateLimiter("mentor-topic-suggestions:start", { windowMs: 60_000, limit: 5, keyGenerator: req => req.user!.sub, standardHeaders: true, legacyHeaders: false });
 projectRouter.post("/:id/mentorship-topic-suggestions", topicSuggestionLimiter, validate(paramIdSchema, "params"), validate(z.object({ authorized: z.literal(true), expectedVersion: z.number().int().positive() }).strict()), projectMentorshipController.suggestTopics);
 projectRouter.get("/:id/mentorship-topic-suggestions/:jobId", validate(paramIdSchema.extend({ jobId: z.string().regex(/^mentor-topics-[a-f0-9-]+$/).max(180) }), "params"), projectMentorshipController.topicSuggestionStatus);
-const discoverySchema = z.object({ supportTypes: z.array(z.enum(["RESEARCH_DIRECTION", "LITERATURE_REVIEW", "RESEARCH_GAP_VALIDATION", "RESEARCH_METHODOLOGY", "EXPERIMENT_DESIGN", "DATA_ANALYSIS", "ACADEMIC_WRITING", "SOFTWARE_TECHNICAL_GUIDANCE"])).max(8).optional(), researchClassification: researchClassificationSchema.optional(), discovery: z.enum(["CLOSED", "SEEKING_MENTOR"]), summary: z.string().trim().max(2000), expertise: z.array(z.string().trim().min(1).max(120)).max(10), researchAreas: z.array(z.string().trim().min(1).max(120)).max(10).optional(), mentoringNeeds: z.string().trim().max(2000).optional(), methodologies: z.array(z.string().trim().min(2).max(120)).max(10).optional(), expectedVersion: z.number().int().positive().optional() }).strict().refine(v => v.discovery === "CLOSED" || v.summary.length >= 10, "Add a safe summary before opening discovery");
+const discoverySchema = z.object({ supportTypes: z.array(z.enum(RESEARCH_SUPPORT_TYPE_VALUES)).max(8).optional(), researchClassification: researchClassificationSchema.optional(), discovery: z.enum(["CLOSED", "SEEKING_MENTOR"]), summary: z.string().trim().max(2000), expertise: z.array(z.string().trim().min(1).max(120)).max(10), researchAreas: z.array(z.string().trim().min(1).max(120)).max(10).optional(), mentoringNeeds: z.string().trim().max(2000).optional(), methodologies: z.array(z.string().trim().min(2).max(120)).max(10).optional(), mentorshipProfile: mentorRecruitmentProfileInputSchema.optional(), expectedVersion: z.number().int().positive().optional() }).strict().refine(v => v.discovery === "CLOSED" || v.summary.length >= 10, "Add a safe summary before opening discovery");
 projectRouter.get("/:id/academic-support", validate(paramIdSchema, "params"), validate(contextQuerySchema, "query"), async (req, res) => { res.json({ success: true, data: await projectMentorshipService.workspace(String(req.params.id), req.user!.sub, undefined, contextQuerySchema.parse(req.query)) }); });
 projectRouter.post("/:id/academic-support/guidance", academicRequestLimiter, validate(paramIdSchema, "params"), validate(z.object({ note: z.string().trim().min(1).max(2000) }).strict()), async (req, res) => { res.status(201).json({ success: true, data: await projectMentorshipService.workspace(String(req.params.id), req.user!.sub, req.body.note) }); });
 projectRouter.get("/:id/mentorship-discovery", validate(paramIdSchema, "params"), async (req, res) => { res.json({ success: true, data: await projectMentorshipService.settings(String(req.params.id), req.user!.sub) }); });
 projectRouter.put("/:id/mentorship-discovery", validate(paramIdSchema, "params"), validate(discoverySchema), async (req, res) => { res.json({ success: true, data: await projectMentorshipService.settings(String(req.params.id), req.user!.sub, req.body) }); });
+projectRouter.get("/:id/mentorship-discovery/preview", validate(paramIdSchema, "params"), projectMentorshipController.previewTeamDossier);
+projectRouter.get("/:id/mentorship-profile-consent", validate(paramIdSchema, "params"), projectMentorshipController.getMyProfileConsent);
+projectRouter.patch("/:id/mentorship-profile-consent", projectWriteLimiter, validate(paramIdSchema, "params"), validate(memberMentorshipConsentSchema), projectMentorshipController.updateMyProfileConsent);
 projectRouter.post("/:id/mentorship-offers", academicRequestLimiter, validate(paramIdSchema, "params"), validate(mentorshipOfferSchema), async (req, res) => { res.status(201).json({ success: true, data: await projectMentorshipService.offer(String(req.params.id), req.user!.sub, req.body) }); });
+projectRouter.post("/:id/mentorship-proposals", academicRequestLimiter, validate(paramIdSchema, "params"), validate(formalMentorshipProposalSchema), projectMentorshipController.propose);
 projectRouter.post("/:id/mentorships/:relationshipId/cancel", validate(mentorshipParamsSchema, "params"), validate(respondMentorshipSchema), async (req, res) => { res.json({ success: true, data: await projectMentorshipService.cancel(String(req.params.id), String(req.params.relationshipId), req.user!.sub, req.body.note) }); });
 projectRouter.post(
   "/:id/mentorships",
@@ -216,6 +272,25 @@ projectRouter.post(
   validate(mentorshipParamsSchema, "params"),
   validate(respondMentorshipSchema, "body"),
   projectMentorshipController.decline,
+);
+projectRouter.post(
+  "/:id/mentorships/:relationshipId/counter-propose",
+  academicRequestLimiter,
+  validate(mentorshipParamsSchema, "params"),
+  validate(counterProposalSchema, "body"),
+  projectMentorshipController.counterPropose,
+);
+projectRouter.get(
+  "/:id/mentorships/:relationshipId/messages",
+  validate(mentorshipParamsSchema, "params"),
+  projectMentorshipController.listMessages,
+);
+projectRouter.post(
+  "/:id/mentorships/:relationshipId/messages",
+  academicRequestLimiter,
+  validate(mentorshipParamsSchema, "params"),
+  validate(clarificationMessageSchema, "body"),
+  projectMentorshipController.sendMessage,
 );
 projectRouter.post(
   "/:id/mentorships/:relationshipId/request-info", academicRequestLimiter, validate(mentorshipParamsSchema, "params"), validate(requestMentorshipInfoSchema, "body"), projectMentorshipController.requestInfo); projectRouter.post( "/:id/mentorships/:relationshipId/end",

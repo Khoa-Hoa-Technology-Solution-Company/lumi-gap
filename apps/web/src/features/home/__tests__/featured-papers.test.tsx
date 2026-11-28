@@ -50,7 +50,7 @@ async function advance(time = 1000) { await act(async () => vi.advanceTimersByTi
 async function pointer(type: "pointerover" | "pointerout") {
   const event = new MouseEvent(type, { bubbles: true, relatedTarget: document.body });
   Object.defineProperty(event, "pointerType", { value: "mouse" });
-  await act(async () => container.querySelector('.home-featured-content')!.dispatchEvent(event));
+  await act(async () => container.querySelector('.home-featured-viewport')!.dispatchEvent(event));
 }
 beforeEach(() => {
   vi.useFakeTimers(); mocks.reduced = false; mocks.overflow = true;
@@ -73,19 +73,46 @@ afterEach(async () => {
 });
 
 describe("Featured paper scrolling", () => {
-  it("uses a slow browser animation without per-frame native scrolling or an Auto scroll control", async () => {
+  it("stays still by default and starts gentle browser animation only when Play is activated", async () => {
     await render(); await advance();
+    expect(animate).not.toHaveBeenCalled();
+    expect(rail.scrollLeft).toBe(0);
+    const playButton = button("Start automatic scrolling");
+    expect(playButton).not.toBeNull();
+    expect(playButton.getAttribute("aria-pressed")).toBe("false");
+
+    await act(async () => playButton.click());
+    await advance();
     expect(animate).toHaveBeenCalledOnce();
     expect(animate.mock.calls[0]![0]).toEqual([{ transform: "translate3d(0, 0, 0)" }, { transform: "translate3d(-1200px, 0, 0)" }]);
     expect(animate.mock.calls[0]![1]).toMatchObject({ easing: "linear", iterations: Infinity, direction: "alternate" });
     expect(animations[0]!.effect.getComputedTiming().progress * 1200).toBeCloseTo(18);
-    expect(rail.scrollLeft).toBe(0);
-    expect(button("Pause automatic scrolling")).toBeNull();
-    expect(button("Resume automatic scrolling")).toBeNull();
-    expect(container.textContent).not.toContain("Auto scroll");
+    expect(button("Pause automatic scrolling").getAttribute("aria-pressed")).toBe("true");
   });
-  it("retains the reverse direction and position when pausing near the end", async () => {
+
+  it("never auto-resumes after the user explicitly clicks Pause", async () => {
     await render();
+    await act(async () => button("Start automatic scrolling").click());
+    await advance(500);
+    await act(async () => button("Pause automatic scrolling").click());
+    expect(animations[0]!.cancel).toHaveBeenCalledOnce();
+    const pausedPosition = rail.scrollLeft;
+    expect(pausedPosition).toBeCloseTo(9);
+
+    // Neither pointer-leave, touch-end, nor manual arrow clicks re-enable auto-scroll.
+    await pointer("pointerover");
+    await pointer("pointerout");
+    await act(async () => rail.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    await act(async () => rail.dispatchEvent(new Event("touchend", { bubbles: true })));
+    await act(async () => button("Next papers").click());
+    await advance(10000);
+    expect(animate).toHaveBeenCalledOnce();
+    expect(button("Start automatic scrolling").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("retains reverse direction and position when hovering near the end while auto-scroll is enabled", async () => {
+    await render();
+    await act(async () => button("Start automatic scrolling").click());
     animations[0]!.currentTime = Number(animate.mock.calls[0]![1].duration) + 1000;
     await pointer("pointerover");
     expect(rail.scrollLeft).toBeGreaterThan(1175);
@@ -94,17 +121,20 @@ describe("Featured paper scrolling", () => {
     await pointer("pointerout"); await advance(); await pointer("pointerover");
     expect(rail.scrollLeft).toBeCloseTo(before - 18);
   });
-  it("pauses on keyboard focus and manual navigation", async () => {
+
+  it("supports keyboard arrow scrolling and manual navigation controls", async () => {
     await render();
-    await act(async () => container.querySelector<HTMLAnchorElement>('.home-featured-paper')!.focus());
-    await advance(); expect(rail.scrollLeft).toBe(0);
-    await act(async () => button("Next papers").click());
+    await act(async () => rail.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
     expect(scrollBy).toHaveBeenCalledWith({ left: 380, behavior: "smooth" });
-    await advance(6000); expect(rail.scrollLeft).toBe(380);
+    await act(async () => rail.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+    expect(scrollBy).toHaveBeenCalledWith({ left: -380, behavior: "smooth" });
     expect(container.querySelector('.home-featured-paper')?.getAttribute('href')).toBe('/papers/paper%2F1');
   });
-  it("pauses while the pointer is over the papers and resumes when it leaves", async () => {
-    await render(); await advance(500);
+
+  it("pauses on keyboard focus inside the viewport and on pointer hover while auto-scroll is enabled", async () => {
+    await render();
+    await act(async () => button("Start automatic scrolling").click());
+    await advance(500);
     await pointer("pointerover");
     expect(animations[0]!.cancel).toHaveBeenCalledOnce();
     expect(rail.scrollLeft).toBeCloseTo(9);
@@ -112,24 +142,29 @@ describe("Featured paper scrolling", () => {
     await pointer("pointerout"); await advance(); await pointer("pointerover");
     expect(rail.scrollLeft).toBeCloseTo(27);
   });
-  it("waits until a touch finishes, then resumes after the reading delay", async () => {
+
+  it("waits until a touch finishes, then resumes after the reading delay when auto-scroll is enabled", async () => {
     await render();
-    const content = container.querySelector('.home-featured-content')!;
-    await act(async () => content.dispatchEvent(new Event("touchstart", { bubbles: true })));
+    await act(async () => button("Start automatic scrolling").click());
+    await act(async () => rail.dispatchEvent(new Event("touchstart", { bubbles: true })));
     await advance(6000); expect(rail.scrollLeft).toBe(0);
-    await act(async () => content.dispatchEvent(new Event("touchend", { bubbles: true })));
+    await act(async () => rail.dispatchEvent(new Event("touchend", { bubbles: true })));
     await advance(5000); expect(rail.scrollLeft).toBe(0);
     await advance(); await pointer("pointerover"); expect(rail.scrollLeft).toBeCloseTo(18);
   });
+
   it("respects reduced motion while keeping manual scrolling available", async () => {
     mocks.reduced = true; await render(); await advance(); expect(rail.scrollLeft).toBe(0);
     expect(animate).not.toHaveBeenCalled();
+    expect(button("Start automatic scrolling").disabled).toBe(true);
     await act(async () => button("Next papers").click());
     expect(scrollBy).toHaveBeenCalledWith({ left: 380, behavior: "instant" });
   });
+
   it("does not scroll or offer active controls when the papers fit", async () => {
     mocks.overflow = false; await render(); await advance(); expect(rail.scrollLeft).toBe(0);
     expect(animate).not.toHaveBeenCalled();
+    expect(button("Start automatic scrolling").disabled).toBe(true);
     expect(button("Next papers").disabled).toBe(true);
     expect(button("Previous papers").disabled).toBe(true);
   });

@@ -13,6 +13,7 @@ import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 
 const submissionParamsSchema = z.object({ id: objectIdSchema });
 const projectScopeSchema = z.object({ projectId: objectIdSchema.optional() });
+const aiPreReviewRevisionSchema = z.object({ revisionId: objectIdSchema.optional() });
 const revisionParamsSchema = z.object({ id: objectIdSchema, revisionId: objectIdSchema });
 const assignmentParamsSchema = z.object({ id: objectIdSchema, assignmentId: objectIdSchema });
 const createSchema = z.object({
@@ -200,13 +201,15 @@ submissionRouter.get("/:id/revisions", validate(submissionParamsSchema, "params"
   res.json({ success: true, data: await submissionService.listRevisions(String(req.params.id), req.user!.sub, req.user!.role) });
 });
 
-submissionRouter.get("/:id/ai-pre-reviews", validate(submissionParamsSchema, "params"), async (req, res) => {
-  res.json({ success: true, data: await submissionService.listAiPreReviews(String(req.params.id), req.user!.sub, req.user!.role) });
+submissionRouter.get("/:id/ai-pre-reviews", validate(submissionParamsSchema, "params"), validate(aiPreReviewRevisionSchema, "query"), async (req, res) => {
+  const revisionId = typeof req.query.revisionId === "string" ? req.query.revisionId : undefined;
+  res.json({ success: true, data: await submissionService.listAiPreReviews(String(req.params.id), req.user!.sub, req.user!.role, revisionId) });
 });
 
 /** 202 Accepted — the ai-jobs worker runs the pre-review; poll GET /:id/ai-pre-reviews for the result. */
-submissionRouter.post("/:id/ai-pre-review", aiPreReviewLimiter, validate(submissionParamsSchema, "params"), async (req, res) => {
-  const data = await submissionService.runAiPreReview(String(req.params.id), req.user!.sub, req.user!.role);
+submissionRouter.post("/:id/ai-pre-review", aiPreReviewLimiter, validate(submissionParamsSchema, "params"), validate(aiPreReviewRevisionSchema), async (req, res) => {
+  const revisionId = typeof req.body?.revisionId === "string" ? req.body.revisionId : undefined;
+  const data = await submissionService.runAiPreReview(String(req.params.id), req.user!.sub, req.user!.role, revisionId);
   res.status(202).json({ success: true, data });
 });
 

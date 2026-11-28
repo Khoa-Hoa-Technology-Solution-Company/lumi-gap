@@ -39,7 +39,7 @@ describe.skipIf(!enabled).sequential("scoped mentor delivery and revision workfl
   let sourceWorkspace: string, sourceSnapshot: string;
   let server: ReturnType<express.Express["listen"]>, base: string, directory: string;
   let finishInteractive: (() => void) | undefined;
-  let interactiveFixture: { submissionId: string; requestId: string } | undefined;
+  let interactiveFixture: { submissionId: string; requestId: string; projectId?: string; assignmentId?: string; scenarios?: Record<string, { requestId: string; projectId: string; assignmentId: string }> } | undefined;
   const sessions = new Map<string, string>();
   const headers = (id: string) => ({ Authorization: `Bearer ${tokenService.signAccessToken({ sub: id, systemRole: "USER", sessionId: sessions.get(id)! }).token}`, "Content-Type": "application/json" });
   const read = (extra = {}) => queue.read(mentor, mentorWorkspaceQuerySchema.parse(extra));
@@ -139,6 +139,8 @@ describe.skipIf(!enabled).sequential("scoped mentor delivery and revision workfl
     expect((await read()).items).toEqual([]);
     const global = await read({ status: "WAITING" }), scoped = await read({ status: "WAITING", projectId: project });
     expect(global.items).toEqual(scoped.items); expect(global.items[0]).toMatchObject({ status: "WAITING", version: 1 });
+    expect(scoped.facets).toMatchObject({ WAITING: 1, DONE: 0, ACTIONABLE: 0 });
+    expect(scoped.items[0]).toMatchObject({ roundNumber: 1, submittedAt: expect.any(String) });
     expect(await db.notification.count({ where: { userId: owner, targetUuid: request, type: "REVISION_REQUESTED" } })).toBe(1);
     expect((await requests.detail(request, owner)).reviews[0]!.overallComment).toBe(payload.overallComment);
   });
@@ -193,13 +195,22 @@ describe.skipIf(!enabled).sequential("scoped mentor delivery and revision workfl
     await requests.resubmit(request, owner, { revisionId: v2, responses: [{ revisionItemId: revisionItem, responseText: "Comparison group criteria are now recorded in Methods." }] });
     const workspace = await reviews.getReview(assignment, mentor); expect(workspace.artifactRevision!.id).toBe(v2); expect(workspace.artifactContent).toContain("predeclared criteria");
     expect(workspace.comparisonVersions.map(v => v.id)).toEqual([v1, v2]);
-    expect((await requests.detail(request, mentor)).reviews[0]!.id).toBe(firstReview);
+    const roundHistory = await requests.detail(request, mentor);
+    expect(roundHistory.reviews[0]!).toMatchObject({ id: firstReview, assignmentId: assignment, revisionId: v1, roundNumber: 1, artifactRevision: { id: v1, revisionNumber: 1 } });
+    expect(roundHistory.reviews[0]!.templateVersion?.id).toBe(roundHistory.templateVersion.id);
+    const beforeReads = { reviews: await db.humanReview.count({ where: { assignmentId: assignment } }), contributions: await db.researchContribution.count({ where: { contributorId: mentor, submissionId: submission } }) };
+    await requests.detail(request, mentor); await submissions.listRevisions(submission, mentor, "user");
+    expect(await db.humanReview.count({ where: { assignmentId: assignment } })).toBe(beforeReads.reviews);
+    expect(await db.researchContribution.count({ where: { contributorId: mentor, submissionId: submission } })).toBe(beforeReads.contributions);
     const history = await submissions.history(submission, owner, "user");
     expect(history.reviewRequests.find(row => row.id === request)).toMatchObject({ revisionId: v2, revisionNumber: 2, status: "RESUBMITTED" });
     const oldReview = history.versions.find(row => row.id === v1)!.reviews.find(row => row.id === firstReview)!;
     expect(oldReview.requestId).toBe(request);
     expect(oldReview.requiredRevisions.find(row => row.id === revisionItem)!.responses[0]).toMatchObject({ submissionRevisionId: v2, responseText: "Comparison group criteria are now recorded in Methods." });
     expect((await read()).items[0]).toMatchObject({ version: 2, kind: "MANUSCRIPT_REVIEW" });
+    // The separate comment-only request in this project has already completed.
+    expect((await read({ projectId: project })).facets).toMatchObject({ ACTIONABLE: 1, WAITING: 0, DONE: 1 });
+    expect((await read({ projectId: project })).items.find(item => item.sourceId === request)).toMatchObject({ status: "TODO", version: 2 });
     await requests.resolveRevisionItem(request, revisionItem, "ACCEPTED", mentor, v2);
     await reviews.saveReview(assignment, mentor, await input("STRONG"), true);
     expect((await db.humanReview.findUniqueOrThrow({ where: { id: firstReview } })).revisionId).toBe(v1);
@@ -249,6 +260,50 @@ describe.skipIf(!enabled).sequential("scoped mentor delivery and revision workfl
     await expect(writing.viewSnapshot(project, mentor, sourceWorkspace, privateSnapshot.id)).rejects.toMatchObject({ statusCode: 404 });
     await expect(writing.viewSnapshot(project, stranger, sourceWorkspace, sourceSnapshot)).rejects.toMatchObject({ statusCode: 404 });
   });
+  it("scopes integrity evidence strictly to the assigned snapshot and sanitizes persisted integrity notes", async () => {
+    const sent = await submissions.create({ projectId: project, title: "Integrity scoped persistence check", submissionType: "RESEARCH_PAPER", manuscriptSnapshotId: sourceSnapshot, mentorId: mentor }, undefined, owner, "user");
+    const assigned = await db.reviewerAssignment.findFirstOrThrow({ where: { submissionId: sent.submission.id, reviewerId: mentor } });
+    await requests.accept(assigned.reviewRequestId!, mentor);
+    const otherSnapshot = (await writing.snapshot(project, owner, sourceWorkspace, { label: "Unshared private snapshot", clientKey: randomUUID(), minimumSequences: {} })).id;
+    const hex64 = "a".repeat(64);
+    await db.manuscriptIntegrityRecord.createMany({
+      data: [
+        { projectId: project, workspaceId: sourceWorkspace, snapshotId: sourceSnapshot, kind: "AI_DECLARATION", version: 1, content: { disclosure: "Language polishing only on delivered snapshot", externalUsage: [{ tool: "Grammarly", category: "EDITING" }] }, evidenceDigest: hex64, checksum: hex64, createdById: owner, clientKey: randomUUID(), commandHash: hex64 },
+        { projectId: project, workspaceId: sourceWorkspace, snapshotId: otherSnapshot, kind: "RIGHTS_DECLARATION", version: 1, content: { restrictions: "PRIVATE_UNSHARED_SNAPSHOT_SECRET" }, evidenceDigest: hex64, checksum: hex64, createdById: owner, clientKey: randomUUID(), commandHash: hex64 },
+      ],
+    });
+    const wsRes = await fetch(`${base}/reviews/${assigned.id}`, { headers: headers(mentor) });
+    expect(wsRes.status).toBe(200);
+    const workspace = (await wsRes.json()).data;
+    expect(workspace.integrityEvidence).toBeTruthy();
+    expect(workspace.integrityEvidence.ai_disclosure.access).toBe("AVAILABLE");
+    expect(JSON.stringify(workspace.integrityEvidence.ai_disclosure)).toContain("Language polishing only");
+    expect(workspace.integrityEvidence.confidentiality.access).toBe("EMPTY");
+    expect(JSON.stringify(workspace.integrityEvidence)).not.toContain("PRIVATE_UNSHARED_SNAPSHOT_SECRET");
+    const baseIntegrity = Object.fromEntries(scientificIntegrityChecks.map((c) => [c.key, { status: "CHECKED" as const }]));
+    const concernPayload: AcademicReviewInput = {
+      expectedRevisionId: workspace.artifactRevision.id,
+      expectedRoundNumber: workspace.roundNumber,
+      clientKey: randomUUID(),
+      overallAssessment: "STRONG",
+      overallComment: "Methods are clear, but dataset provenance requires clarification.",
+      responses: workspace.criteria.map((c: { key: string; levels: Array<{ id: string; score: number }> }) => ({ criterionKey: c.key, performanceLevelId: c.levels.find((l) => l.score === 4)!.id, comment: "Reasoned feedback." })),
+      integrityChecks: {
+        ...baseIntegrity,
+        authorship: { status: "CHECKED", note: "Stale note must be stripped on save" },
+        data: { status: "CONCERN", note: "  Clarify raw dataset provenance and preprocessing steps.  " },
+      },
+      requiredRevisions: [{ priority: "MAJOR", description: "Provide dataset provenance appendix.", locator: "Data" }],
+    };
+    const blockedRes = await fetch(`${base}/reviews/${assigned.id}/submit`, { method: "POST", headers: headers(mentor), body: JSON.stringify(concernPayload) });
+    expect(blockedRes.status).toBe(409);
+    const allowedRes = await fetch(`${base}/reviews/${assigned.id}/submit`, { method: "POST", headers: headers(mentor), body: JSON.stringify({ ...concernPayload, overallAssessment: "MAJOR_REVISION" }) });
+    expect(allowedRes.status).toBe(200);
+    const persisted = await db.humanReview.findFirstOrThrow({ where: { assignmentId: assigned.id, status: "SUBMITTED" } });
+    const persistedChecks = persisted.integrityChecks as Record<string, { status: string; note?: string }>;
+    expect(persistedChecks.authorship).toEqual({ status: "CHECKED" });
+    expect(persistedChecks.data).toEqual({ status: "CONCERN", note: "Clarify raw dataset provenance and preprocessing steps." });
+  });
   it("blocks cancelled, expired and revoked review grants without deleting submitted evidence", async () => {
     const pending = await db.reviewRequest.findFirstOrThrow({ where: { projectId: { not: project }, requesterId: owner, status: "REQUESTED" } });
     await requests.cancel(pending.id, owner);
@@ -278,13 +333,30 @@ describe.skipIf(!enabled).sequential("scoped mentor delivery and revision workfl
     expect(JSON.stringify(requestsBody)).not.toContain("Reproducible methods");
   });
   it.skipIf(process.env.MENTOR_REVIEW_INTERACTIVE_UI !== "1")("serves disposable real-API fixtures for manual student and mentor UI verification", async () => {
-    for (const title of ["UI audit: Methods team", "UI audit: Evidence team"]) {
+    const lifecycleScenarios = process.env.MENTOR_LIFECYCLE_QA === "1" ? ["Todo", "In progress", "Waiting", "Resubmitted", "Completed"] : ["Methods team", "Evidence team"];
+    for (const scenario of lifecycleScenarios) {
+      const title = `UI audit: ${scenario}`;
       const p = await createProjectFixture({ data: { ownerId: owner, title, status: "ACTIVE", mentorshipSummary: "A study of reproducible academic methods", mentorshipNeeds: "Methodology", mentorshipDiscovery: "SEEKING_MENTOR" } });
       const invite = await consent.request(p.id, owner, { mentorUserId: mentor, message: "Please guide this reproducible study", idempotencyKey: randomUUID(), access: { preset: "ADVISOR", permissions: ["MENTOR_CHAT"], expiresAt: null } });
       await consent.accept(p.id, invite.id, mentor, "Accepted", invite.accessPolicy?.version);
       const sent = await submissions.create({ projectId: p.id, title: `${title}: manuscript`, submissionType: "RESEARCH_PAPER", mentorId: mentor, contentSnapshot: "# Research question\nHow can evaluation be reproduced?\n\n# Methods\nWe document the dataset, baselines and evaluation protocol.\n\n# Results\nInitial observations and limitations are reported transparently." }, undefined, owner, "user");
       const assigned = await db.reviewerAssignment.findFirstOrThrow({ where: { submissionId: sent.submission.id } });
-      interactiveFixture ??= { submissionId: sent.submission.id, requestId: assigned.reviewRequestId! };
+      interactiveFixture ??= { submissionId: sent.submission.id, requestId: assigned.reviewRequestId!, projectId: p.id, assignmentId: assigned.id, scenarios: {} };
+      if (process.env.MENTOR_LIFECYCLE_QA === "1") {
+        const requestId = assigned.reviewRequestId!;
+        interactiveFixture.scenarios![scenario] = { requestId, projectId: p.id, assignmentId: assigned.id };
+        await requests.accept(requestId, mentor);
+        const current = await reviews.getReview(assigned.id, mentor);
+        const payload: AcademicReviewInput = { clientKey: randomUUID(), expectedRevisionId: current.artifactRevision!.id, expectedRoundNumber: 1, overallAssessment: "MAJOR_REVISION", overallComment: "Clarify the comparison group and document the reproducibility protocol.", responses: current.criteria.map(c => ({ criterionKey: c.key, performanceLevelId: c.levels.find(level => level.score === 4)!.id, comment: "Methods are clear; please supply the protocol." })), integrityChecks: Object.fromEntries(scientificIntegrityChecks.map(check => [check.key, { status: "CHECKED" as const }])), requiredRevisions: [{ priority: "MAJOR", description: "Document the comparison group", locator: "Methods" }] };
+        if (scenario === "In progress") await reviews.saveReview(assigned.id, mentor, payload, false);
+        if (["Waiting", "Resubmitted"].includes(scenario)) await reviews.saveReview(assigned.id, mentor, payload, true);
+        if (scenario === "Resubmitted") {
+          const v2 = await submissions.createVersion(sent.submission.id, { content: "# Revised methods\nComparison criteria and reproducibility protocol added in version two.", summary: "Address the comparison criteria", expectedRevisionNumber: 1 }, owner, "user");
+          const item = await db.reviewRevisionItem.findFirstOrThrow({ where: { reviewId: { in: (await db.humanReview.findMany({ where: { assignmentId: assigned.id } })).map(review => review.id) } } });
+          await requests.resubmit(requestId, owner, { revisionId: v2.id, responses: [{ revisionItemId: item.id, responseText: "Comparison criteria added in Methods, version 2." }] });
+        }
+        if (scenario === "Completed") await reviews.saveReview(assigned.id, mentor, { ...payload, commentOnly: true, overallAssessment: undefined, responses: [], requiredRevisions: [] }, true);
+      }
     }
     console.log("Disposable UI API ready on 127.0.0.1:4001; finish via the local QA harness.");
     await new Promise<void>((resolve, reject) => { finishInteractive = resolve; const timeout = setTimeout(() => reject(Error("UI verification timed out")), 25 * 60000); timeout.unref(); });

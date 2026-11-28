@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { FileText, Users } from "lucide-react";
 import type { ResearchContributionRecord } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
@@ -34,9 +34,10 @@ function ResearchRecord({ projectId, record }: { projectId: string; record: Rese
 export function ResearchContributionsPanel({ projectId, manuscript = false }: { projectId: string; manuscript?: boolean }) {
   const { t } = useI18n();
   const { pathname } = useLocation();
+  const [params] = useSearchParams();
   const declarationHref=projectSectionHref(projectId,"contributions",{contributionTab:"declarations"});
   const [person, setPerson] = useState(""); const [kind, setKind] = useState(""); const [scopeKey, setScope] = useState(""); const [page, setPage] = useState(1);
-  const query = { page, pageSize:20, memberId:person || undefined, participantKind:kind || undefined, scopeKey:manuscript ? scopeKey || undefined : undefined };
+  const query = { page, pageSize:20, grouped: "true", ...(params.get("artifactKind") && params.get("artifactId") ? { artifactKind: params.get("artifactKind"), artifactId: params.get("artifactId") } : {}), memberId:person || undefined, participantKind:kind || undefined, scopeKey:manuscript ? scopeKey || undefined : undefined };
   const result = useWorkspaceResource(projectId, "research-contributions", () => contributionsApi.research(projectId,query),query);
   const visibleData = result.isError ? undefined : result.data;
   const statement = useWorkspaceResource(projectId,"manuscript-contribution-statement",()=>contributionsApi.statement(projectId,scopeKey),scopeKey,manuscript && Boolean(scopeKey) && Boolean(visibleData && !visibleData.mentorScoped));
@@ -65,7 +66,7 @@ export function ResearchContributionsPanel({ projectId, manuscript = false }: { 
       {manuscript && !visibleData?.mentorScoped ? <section className="research-contribution-statement"><h3>{t("researchContribution.statement")}</h3><p>{t("researchContribution.statementHint")}</p>
         {statement.isLoading ? <WorkspaceLoading/> : statement.isError ? <WorkspaceError error={statement.error} retry={()=>void statement.refetch()}/> : statement.data?.ready ? <><pre>{statement.data.statement}</pre><Button variant="outline" onClick={()=>{
           const url=URL.createObjectURL(new Blob([statement.data!.statement!],{type:"text/plain;charset=utf-8"}));const link=document.createElement("a");link.href=url;link.download="credit-contribution-statement.txt";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-        }}>{t("researchContribution.downloadStatement")}</Button></> : <p>{t("researchContribution.statementPending")}</p>}
+        }}>{t("researchContribution.downloadStatement")}</Button></> : <div><p>{t("researchContribution.statementPending")}</p>{statement.data?.draftStatement && <details><summary className="cursor-pointer">{t("Draft")}</summary><pre>{statement.data.draftStatement}</pre><Button variant="outline" onClick={() => { const url = URL.createObjectURL(new Blob([statement.data!.draftStatement!], { type: "text/plain;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = "draft-contribution-statement.txt"; link.click(); setTimeout(() => URL.revokeObjectURL(url),1000); }}>{t("Download draft contribution statement")}</Button></details>}</div>}
         <Link className="coord-inline-link" to={projectSectionHref(projectId,"contributions",{contributionTab:"declarations"})}>{t("researchContribution.reviewDeclaration")}</Link>
       </section> : null}
     </>}

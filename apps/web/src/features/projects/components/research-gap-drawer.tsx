@@ -5,6 +5,7 @@ import { useI18n } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { GapExpertValidationPanel } from "@/features/gaps/components/gap-expert-validation";
 import { ResearchGapEvaluation } from "./research-gap-evaluation";
+import { ResearchAttribution } from "./research-attribution";
 import { canLeaveWorkspace } from "./workspace-common";
 import { researchApi } from "../api/project-research.api";
 import { useResearchResource } from "../hooks/use-project-research";
@@ -21,6 +22,7 @@ export function ResearchGapDrawer({ gap: initialGap, projectId, open, onClose }:
       {gap.analysisMode === "DRAFT" && <p className="screening-notice mt-4">Kết quả sơ bộ từ bộ bài nháp. Cần kiểm chứng nguồn và quyết định chọn bài trước khi sử dụng.</p>}
       <div className="mt-6 space-y-4 text-sm leading-7"><div><h3 className="font-semibold">{t("Gap claim")}</h3><p className="whitespace-pre-wrap">{gap.description}</p></div><div><h3 className="font-semibold">{t("Why the gap might exist")}</h3><p className="whitespace-pre-wrap text-muted-foreground">{gap.rationale}</p></div></div>
       <div className="mt-6"><ResearchGapEvaluation key={gap.id} projectId={projectId} gapId={gap.id} /></div>
+      <ResearchAttribution projectId={projectId} kind="GAP" resourceId={gap.id} />
       <details className="mt-6"><summary className="cursor-pointer text-sm font-medium">{t("External expert opinions")}</summary><p className="my-3 text-sm leading-6 text-muted-foreground">{t("Expert opinions apply to the reviewed revision. They are optional and do not establish scientific proof.")}</p><GapExpertValidationPanel gap={gap} canRequestReview={Boolean(packet.data?.canRequestExpertReview)} /></details>
     </Dialog.Content>
   </Dialog.Portal></Dialog.Root>;

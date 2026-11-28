@@ -42,7 +42,7 @@ beforeEach(() => {
   document.body.append(container);
   root = createRoot(container);
   mocks.activity.mockResolvedValue({ items: [], total: 0, hasNext: false, days: [], members: [], timeZone: "UTC" });
-  mocks.research.mockResolvedValue({manuscripts:[]});
+  mocks.research.mockResolvedValue({manuscripts:[],profiles:[],items:[],total:0,page:1,pageSize:20,hasNext:false,currentActorId:"me"});
   mocks.work.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50, hasNext: false, currentActorId: "me" });
   mocks.periods.mockResolvedValue([]);
 });
@@ -391,10 +391,10 @@ describe("contribution UI governance", () => {
     expect(container.textContent).toContain("Research protocol & methodology");
   });
 
-  it("defaults the workspace to research activity while preserving historical allocation rendering", async () => {
+  it("defaults the integrity workspace to research products while preserving historical allocation rendering", async () => {
     await render(<ProjectContributionsWorkspace projectId="p" currentUserId="me" isOwner={true} readOnly={false} />);
     const activeTab = container.querySelector('.contribution-tabs button[aria-current="page"]');
-    expect(activeTab?.textContent).toBe("researchContribution.activity");
+    expect(activeTab?.textContent).toBe("Contributions");
     expect(container.querySelector('.contribution-tabs')?.textContent).not.toContain("Contribution allocation");
 
     const period = revision().period;

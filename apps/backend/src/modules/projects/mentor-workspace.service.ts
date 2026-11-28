@@ -169,21 +169,50 @@ export const mentorWorkspaceService = {
         JOIN projects p ON p.id=invitation.project_id AND p.deleted_at IS NULL
         WHERE invitation.mentor_user_id=${actor.id}::uuid AND invitation.direction='PROJECT_TO_LECTURER' AND invitation.status='PENDING'
           AND (invitation.expires_at IS NULL OR invitation.expires_at>NOW())`;
-      const projectWhere = query.projectSearch ? Prisma.sql`AND (s.title ILIKE ${`%${query.projectSearch.replace(/[\\%_]/g, "\\$&")}%`} OR s.research_field ILIKE ${`%${query.projectSearch.replace(/[\\%_]/g, "\\$&")}%`})` : Prisma.empty;
-      const projects = await tx.$queryRaw<(Omit<MentorProjectSummary, "updatedAt" | "startedAt" | "pendingCount" | "teamSize" | "sharedCount" | "completedCount"> & {
-        updatedAt: Date; startedAt: Date; pendingCount: bigint; teamSize: bigint; sharedCount: bigint; completedCount: bigint; canChat: boolean;
-      })[]>`${base}
+      const escapedProjectSearch = query.projectSearch ? `%${query.projectSearch.replace(/[\\%_]/g, "\\$&")}%` : null;
+      const projectSearchWhere = escapedProjectSearch
+        ? Prisma.sql`AND (title ILIKE ${escapedProjectSearch} OR COALESCE("researchField",'') ILIKE ${escapedProjectSearch} OR "teamLead" ILIKE ${escapedProjectSearch})`
+        : Prisma.empty;
+      const projectFilterWhere = query.projectFilter === "ATTENTION"
+        ? Prisma.sql`AND "pendingCount" > 0`
+        : query.projectFilter === "NO_PENDING"
+          ? Prisma.sql`AND "pendingCount" = 0`
+          : Prisma.empty;
+      const projectOrder = query.projectSort === "updated"
+        ? Prisma.sql`"updatedAt" DESC, id ASC`
+        : query.projectSort === "name"
+          ? Prisma.sql`lower(title) ASC, id ASC`
+          : Prisma.sql`CASE WHEN "pendingCount" > 0 THEN 0 ELSE 1 END ASC, CASE WHEN "overdueCount" > 0 THEN 0 ELSE 1 END ASC, "updatedAt" DESC, id ASC`;
+      const projectDirectory = Prisma.sql`${base}, project_directory AS (
         SELECT s.id::text AS id,s.title,s.research_field AS "researchField",s.research_stage AS "researchStage",s.status,owner.full_name AS "teamLead",s.updated_at AS "updatedAt",
           s.mentor_role AS "mentorRole", s.started_at AS "startedAt", ('MENTOR_CHAT'=ANY(s.permissions)) AS "canChat",
           (SELECT COUNT(*) FROM users member WHERE member.is_active AND member.account_status='ACTIVE' AND
             (member.id=s.owner_id OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id=s.id AND pm.user_id=member.id AND pm.status='ACTIVE'))) AS "teamSize",
           (SELECT COUNT(*) FROM work w WHERE w."projectId"=s.id::text AND w."needsAction") AS "pendingCount",
+          (SELECT COUNT(*) FROM work w WHERE w."projectId"=s.id::text AND w."needsAction" AND w."dueAt"<NOW()) AS "overdueCount",
+          (SELECT COUNT(*) FROM work w WHERE w."projectId"=s.id::text AND w.status='WAITING') AS "waitingCount",
           (SELECT COUNT(*) FROM work w WHERE w."projectId"=s.id::text AND w.status='DONE') AS "completedCount",
           ((SELECT COUNT(*) FROM mentor_resource_shares sh WHERE sh.access_id=s.access_id AND sh.project_id=s.id AND sh.revoked_at IS NULL) +
            (SELECT COUNT(*) FROM plan_shares ps WHERE ps.project_id=s.id AND ps.relationship_id=s.relationship_id AND ps.revoked_at IS NULL)) AS "sharedCount"
-        FROM scope s JOIN users owner ON owner.id=s.owner_id WHERE true ${projectWhere}
-        ORDER BY s.updated_at DESC,s.id LIMIT 20 OFFSET ${(query.projectPage - 1) * 20}`;
-      const projectTotals = await tx.$queryRaw<{ count: bigint }[]>`${base} SELECT COUNT(*) AS count FROM scope s WHERE true ${projectWhere}`;
+        FROM scope s JOIN users owner ON owner.id=s.owner_id
+      )`;
+      const projects = await tx.$queryRaw<(Omit<MentorProjectSummary, "updatedAt" | "startedAt" | "pendingCount" | "overdueCount" | "waitingCount" | "teamSize" | "sharedCount" | "completedCount"> & {
+        updatedAt: Date; startedAt: Date; pendingCount: bigint; overdueCount: bigint; waitingCount: bigint; teamSize: bigint; sharedCount: bigint; completedCount: bigint; canChat: boolean;
+      })[]>`${projectDirectory}
+        SELECT * FROM project_directory WHERE true ${projectSearchWhere} ${projectFilterWhere}
+        ORDER BY ${projectOrder} LIMIT 20 OFFSET ${(query.projectPage - 1) * 20}`;
+      const projectFacetRows = await tx.$queryRaw<{ ALL: bigint; ATTENTION: bigint; NO_PENDING: bigint }[]>`${projectDirectory}
+        SELECT
+          COUNT(*) AS "ALL",
+          COUNT(*) FILTER (WHERE "pendingCount" > 0) AS "ATTENTION",
+          COUNT(*) FILTER (WHERE "pendingCount" = 0) AS "NO_PENDING"
+        FROM project_directory WHERE true ${projectSearchWhere}`;
+      const projectFacets = {
+        ALL: Number(projectFacetRows[0]?.ALL ?? 0),
+        ATTENTION: Number(projectFacetRows[0]?.ATTENTION ?? 0),
+        NO_PENDING: Number(projectFacetRows[0]?.NO_PENDING ?? 0),
+      };
+      const projectTotal = projectFacets[query.projectFilter];
       const activeProjects = await tx.$queryRaw<{ count: bigint }[]>`${base} SELECT COUNT(*) AS count FROM scope WHERE status NOT IN ('ARCHIVED','COMPLETED')`;
       const overviewExtras = await tx.$queryRaw<{ sharedResources: bigint; totalStudents: bigint }[]>`${base}
         SELECT
@@ -192,7 +221,7 @@ export const mentorWorkspaceService = {
           (SELECT COUNT(DISTINCT member.id) FROM scope s JOIN users member ON member.is_active AND member.account_status='ACTIVE'
             AND (member.id=s.owner_id OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id=s.id AND pm.user_id=member.id AND pm.status='ACTIVE'))
             WHERE s.status NOT IN ('ARCHIVED','COMPLETED')) AS "totalStudents"`;
-      const total = Number(totals[0]?.count ?? 0), projectTotal = Number(projectTotals[0]?.count ?? 0);
+      const total = Number(totals[0]?.count ?? 0);
       const now = new Date();
       const mapRow = (row: WorkRow) => ({ id: row.id, sourceId: row.sourceId, kind: row.kind, title: row.title, description: row.description,
         projectId: row.projectId, projectTitle: row.projectTitle, sender: row.sender, status: row.status, priority: row.priority,
@@ -210,7 +239,18 @@ export const mentorWorkspaceService = {
         facets: Object.fromEntries(Object.entries(facets[0] ?? {}).map(([key, count]) => [key, Number(count)])) as NonNullable<MentorWorkspaceData["facets"]>,
         recentActivity: recentRows.map(mapRow),
         meta: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.ceil(total / query.pageSize) },
-        projects: projects.map(p => ({ ...p, teamSize: Number(p.teamSize), pendingCount: Number(p.pendingCount), completedCount: Number(p.completedCount), sharedCount: Number(p.sharedCount), updatedAt: p.updatedAt.toISOString(), startedAt: p.startedAt.toISOString() })),
+        projects: projects.map(p => ({
+          ...p,
+          teamSize: Number(p.teamSize),
+          pendingCount: Number(p.pendingCount),
+          overdueCount: Number(p.overdueCount),
+          waitingCount: Number(p.waitingCount),
+          completedCount: Number(p.completedCount),
+          sharedCount: Number(p.sharedCount),
+          updatedAt: p.updatedAt.toISOString(),
+          startedAt: p.startedAt.toISOString(),
+        })),
+        projectFacets,
         projectMeta: { page: query.projectPage, pageSize: 20, total: projectTotal, totalPages: Math.ceil(projectTotal / 20) },
         projectOptions: projectOptions.map(p => ({ id: p.id, title: p.title })),
         summary: { projects: Number(activeProjects[0]?.count ?? 0), needsResponse: Number(metrics[0]?.needsResponse ?? 0),

@@ -1,65 +1,91 @@
 import { Link } from "react-router-dom";
 import type { ResearchStage } from "@trend/shared-types";
-import { ArrowUpRight, Check, Layers } from "lucide-react";
+import { ArrowUpRight, Info, Layers } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useI18n } from "@/i18n";
 import { projectSectionHref, stageLabels } from "./workspace-common";
 
 const orderedStages = Object.keys(stageLabels) as ResearchStage[];
 
-/** Interactive multi-step progress strip showing where the project sits in the research lifecycle. */
+/**
+ * Interactive stage selector strip showing the team's current research focus.
+ * Does NOT infer completion of earlier stages from array order.
+ */
 export function ResearchStagePipeline({
   stage,
   canManage,
   pending,
   onSelect,
+  hideCurrentBadge = false,
 }: {
   stage: ResearchStage | null;
   canManage: boolean;
   pending: boolean;
   onSelect: (next: ResearchStage | null) => void;
+  hideCurrentBadge?: boolean;
 }) {
   const { t } = useI18n();
-  const activeIndex = stage ? orderedStages.indexOf(stage) : -1;
 
   return (
     <div className="mt-5 pt-4 border-t border-border/60" data-no-i18n>
-      <div className="flex items-center justify-between gap-2 mb-2.5">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
-          <Layers className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-          {t("Research pipeline")}
-        </span>
-        {activeIndex >= 0 ? (
-          <span className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full">
-            {t("Stage {{current}} of {{total}}", { current: activeIndex + 1, total: orderedStages.length })}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="inline-flex items-center gap-1.5">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
+            <Layers className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+            {t("Research stage")}
           </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("About research stage")}
+                className="h-5 w-5 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              >
+                <Info className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs leading-relaxed">
+              {t("Research stage reflects the team's current focus, not overall completion of the research.")}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+
+        {!hideCurrentBadge ? (
+          stage ? (
+            <span className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full">
+              {t("Current stage: {{stage}}", { stage: t(stageLabels[stage]) })}
+            </span>
+          ) : (
+            <span className="text-xs font-medium text-muted-foreground bg-muted/60 px-2.5 py-0.5 rounded-full">
+              {t("Not set")}
+            </span>
+          )
         ) : null}
       </div>
 
-      <ol className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2" aria-label={t("Research pipeline")}>
+      <ol
+        className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 gap-2"
+        aria-label={t("Research stage")}
+      >
         {orderedStages.map((key, index) => {
           const isActive = key === stage;
-          const isCompleted = activeIndex > index;
           const label = t(stageLabels[key]);
-          const baseClass = `group flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-xs transition-all ${
+          const baseClass = `group flex h-full items-start gap-2 rounded-xl border px-2.5 py-2.5 text-left text-xs transition-colors min-h-[46px] ${
             isActive
-              ? "border-primary/50 bg-primary/10 text-primary font-bold shadow-sm ring-1 ring-primary/20"
-              : isCompleted
-                ? "border-emerald-200/80 bg-emerald-50/60 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-300 font-medium"
-                : "border-border/70 bg-muted/20 text-muted-foreground font-medium"
+              ? "border-primary/60 bg-primary/10 text-primary font-semibold shadow-sm ring-1 ring-primary/20"
+              : "border-border/70 bg-muted/20 text-muted-foreground font-medium"
           }`;
           const indicator = (
             <span
-              className={`h-5 w-5 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${
+              className={`mt-0.5 h-5 w-5 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0 tabular-nums ${
                 isActive
                   ? "bg-primary text-primary-foreground"
-                  : isCompleted
-                    ? "bg-emerald-500 text-white"
-                    : "bg-muted text-muted-foreground"
+                  : "bg-muted text-muted-foreground"
               }`}
               aria-hidden="true"
             >
-              {isCompleted ? <Check className="h-3 w-3" /> : index + 1}
+              {index + 1}
             </span>
           );
 
@@ -69,17 +95,24 @@ export function ResearchStagePipeline({
                 <button
                   type="button"
                   disabled={pending}
+                  title={label}
+                  aria-label={label}
                   aria-current={isActive ? "step" : undefined}
                   onClick={() => onSelect(isActive ? null : key)}
-                  className={`${baseClass} w-full hover:border-primary/40 hover:bg-accent/50 disabled:opacity-60 cursor-pointer`}
+                  className={`${baseClass} w-full hover:border-primary/40 hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-60 cursor-pointer`}
                 >
                   {indicator}
-                  <span className="truncate">{label}</span>
+                  <span className="leading-snug line-clamp-2 break-words">{label}</span>
                 </button>
               ) : (
-                <div aria-current={isActive ? "step" : undefined} className={baseClass}>
+                <div
+                  title={label}
+                  aria-label={label}
+                  aria-current={isActive ? "step" : undefined}
+                  className={baseClass}
+                >
                   {indicator}
-                  <span className="truncate">{label}</span>
+                  <span className="leading-snug line-clamp-2 break-words">{label}</span>
                 </div>
               )}
             </li>

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { getNotificationDestination } from "./notification-destination";
 
+it("opens mentor paper feedback beside the team's paper detail and retains mentor project context", () => {
+  expect(getNotificationDestination({ type: "MENTOR_PAPER_COMMENT", targetKind: "project", targetId: "project-a", paperId: "paper-a" }, false)).toBe("/projects/project-a?tab=papers&source=paper-a&section=mentor-comments");
+  for (const type of ["MENTOR_RESOURCE_SHARED", "MENTOR_PAPER_REPLY"]) expect(getNotificationDestination({ type, targetKind: "project", targetId: "project-a", paperId: "paper-a" }, false)).toBe("/mentor-workspace?view=resources&projectId=project-a&paper=paper-a");
+});
+
 describe("getNotificationDestination", () => {
   it("opens evaluation notifications through the restricted input-review page", () => {
     expect(getNotificationDestination({ type: "PROJECT_CONTRIBUTION_UPDATE", targetKind: "project", targetId: "project/1", contributionEvaluationId: "evaluation/2" }, false)).toBe("/projects/project%2F1/contribution-review?evaluation=evaluation%2F2");

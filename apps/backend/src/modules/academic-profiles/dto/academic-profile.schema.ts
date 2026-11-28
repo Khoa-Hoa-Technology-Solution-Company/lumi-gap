@@ -5,7 +5,11 @@ import { objectIdSchema, paginationSchema } from "../../../common/validation/dat
 import { isValidPublicHandle, isValidResolvablePublicHandle, normalizePublicHandle } from "../public-handle.js";
 
 const normalizeList = (maxItems: number, maxLength = 120) => z
-  .array(z.string().trim().min(1).max(maxLength))
+  .array(
+    z.string()
+      .transform(item => item.normalize("NFKC").trim().replace(/\s+/g, " "))
+      .pipe(z.string().min(1).max(maxLength)),
+  )
   .max(maxItems)
   .transform((items) => {
     const seen = new Set<string>();
@@ -60,6 +64,8 @@ const availabilitySchema = <T extends z.ZodTypeAny>(typeSchema: T) => z.object({
   types: z.array(typeSchema).max(20).transform((items) => [...new Set(items)]),
   preferredTopics: normalizeList(30),
   preferredTopicIds: z.array(z.string().uuid()).max(10).optional(),
+  maxActiveProjects: z.number().int().min(1).max(20).nullable().optional(),
+  externalGroupCount: z.number().int().min(0).max(20).nullable().optional(),
   note: optionalText(1000),
 }).strict();
 
@@ -252,6 +258,7 @@ export const UpdateAcademicProfileDetailsSchema = z.object({
   researchClassification: researchClassificationSchema.optional(),
   researchSpecializations: normalizeList(30).optional(),
   skills: normalizeList(40).optional(),
+  researchMethods: normalizeList(30).optional(),
   researchKeywords: normalizeList(40).optional(),
   externalIdentities: z.array(externalIdentitySchema).max(8).refine(
     (items) => new Set(items.map((item) => item.provider)).size === items.length,
@@ -272,6 +279,7 @@ export const UpdateAcademicProfileDetailsSchema = z.object({
 }).strict().refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
 export const PublicProfileParamsSchema = z.object({ userId: objectIdSchema }).strict();
+export const PublicProfileQuerySchema = z.object({ preview: z.enum(["public"]).optional() }).strict();
 export const PublicHandleSchema = z.string().trim().transform(normalizePublicHandle)
   .refine(isValidPublicHandle, "Use 3–40 lowercase letters, numbers, or single hyphens; choose a non-reserved name");
 const ResolvablePublicHandleSchema = z.string().trim().transform(normalizePublicHandle)
@@ -355,6 +363,9 @@ export const VerificationStatusQuerySchema = z.object({ submissionKey: z.string(
 export const EvidenceUploadSchema = z.object({ institutionId: z.string().uuid() }).strict();
 export const VerificationListQuerySchema = paginationSchema.extend({
   status: z.enum(["ALL", "PENDING", "NEEDS_MORE_INFORMATION", "VERIFIED", "REJECTED", "EXPIRED", "INVALIDATED"]).default("ALL"),
+  search: z.string().trim().max(120).optional(),
+  verificationType: z.enum(["ALL", "POSITION", "AFFILIATION"]).default("ALL"),
+  sortOrder: z.enum(["desc", "asc"]).default("desc"),
 });
 export const LecturerListQuerySchema = paginationSchema.extend({
   expertise: z.string().trim().max(120).optional(),
@@ -377,6 +388,11 @@ export const VerificationDecisionSchema = z.discriminatedUnion("decision", [
   z.object({ decision: z.literal("more_info"), reason: z.string().trim().min(1).max(1000), note: optionalText(1000), ...reviewFields }).strict(),
 ]);
 
+export const RevokeVerificationSchema = z.object({
+  reason: z.string().trim().min(10, "Provide a clear revocation reason of at least 10 characters").max(1000),
+  note: optionalText(1000),
+}).strict();
+
 export const OrcidConnectStartSchema = z.object({
   returnTo: z.string().trim().max(200).optional(),
   returnOrigin: z.string().trim().max(300).optional(),
@@ -391,6 +407,7 @@ export const OrcidConnectCallbackSchema = z.object({
 
 export type UpdateAcademicProfileDetailsInput = z.infer<typeof UpdateAcademicProfileDetailsSchema>;
 export type VerificationDecisionInput = z.infer<typeof VerificationDecisionSchema>;
+export type RevokeVerificationInput = z.infer<typeof RevokeVerificationSchema>;
 export type VerificationRequestInput = z.infer<typeof VerificationRequestSchema>;
 export type LecturerListQueryInput = z.infer<typeof LecturerListQuerySchema>;
 export type OrcidConnectStartInput = z.infer<typeof OrcidConnectStartSchema>;

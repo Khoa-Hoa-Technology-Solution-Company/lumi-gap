@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type {
   AcademicReviewInput,
+  ChangeReviewTemplateInput,
   CreateReviewRequestInput,
   CreateReviewTemplateInput,
   ReviewAvailabilitySettings,
@@ -48,6 +49,17 @@ export function useReviewWorkspace(assignmentId: string) {
   const actor = useAuthStore(state => state.user?.id);
   return useQuery({ queryKey: ["reviews", assignmentId, actor], queryFn: () => reviewsApi.detail(assignmentId), enabled: Boolean(assignmentId && actor), retry: false, refetchOnWindowFocus: "always" });
 }
+export function usePreviousReviewFeedback(assignmentId: string, enabled: boolean) {
+  const actor = useAuthStore(state => state.user?.id);
+  return useQuery({
+    queryKey: ["reviews", assignmentId, actor, "previous-feedback"],
+    queryFn: ({ signal }) => reviewsApi.previousFeedback(assignmentId, signal),
+    enabled: Boolean(assignmentId && actor && enabled),
+    retry: false,
+    staleTime: 60_000,
+    placeholderData: undefined,
+  });
+}
 export function useSaveReview(assignmentId: string) {
   const client = useQueryClient();
   const actor = useAuthStore(state => state.user?.id);
@@ -58,9 +70,30 @@ export function useSubmitReview(assignmentId: string) {
   return useMutation({ mutationFn: (input: AcademicReviewInput) => reviewsApi.submit(assignmentId, input), onSuccess: () => refreshMentorReviewQueries(client) });
 }
 
-export function useReviewTemplates() {
+export function useReviewTemplates(includeArchived = false) {
   const actor = useAuthStore(state => state.user?.id);
-  return useQuery({ queryKey: ["review-templates", actor], queryFn: reviewsApi.templates, enabled: Boolean(actor) });
+  return useQuery({
+    queryKey: ["review-templates", actor, includeArchived ? "all" : "active"],
+    queryFn: () => reviewsApi.templates({ includeArchived }),
+    enabled: Boolean(actor),
+  });
+}
+export function useEligibleReviewTemplates(requestId?: string, enabled = true) {
+  const actor = useAuthStore(state => state.user?.id);
+  return useQuery({
+    queryKey: ["review-requests", requestId, "eligible-templates", actor],
+    queryFn: () => reviewsApi.eligibleTemplates(requestId!),
+    enabled: Boolean(requestId && actor && enabled),
+    retry: false,
+  });
+}
+export function useChangeReviewTemplate() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, input }: { requestId: string; input: ChangeReviewTemplateInput }) =>
+      reviewsApi.changeRequestTemplate(requestId, input),
+    onSuccess: () => refreshMentorReviewQueries(client),
+  });
 }
 export function useReviewTemplate(templateId?: string) {
   const actor = useAuthStore(state => state.user?.id);

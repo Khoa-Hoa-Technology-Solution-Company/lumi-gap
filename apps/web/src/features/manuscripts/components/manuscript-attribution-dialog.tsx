@@ -306,10 +306,16 @@ export function ManuscriptAttributionDialog({
                   return (
                     <div key={c.userId} className="p-3 space-y-2 text-xs">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-sm">{c.name}</span>
-                          <Badge variant="secondary" className="text-[10px]">
-                            {t(c.membershipStatus)}
+                          <Badge variant="secondary" className="text-[10px] font-medium">
+                            {c.membershipStatus === "FORMER"
+                              ? t("Đã kết thúc tham gia dự án")
+                              : c.membershipStatus === "ADVISOR"
+                                ? t("Cố vấn nghiên cứu")
+                                : c.membershipStatus === "OWNER"
+                                  ? t("Trưởng nhóm")
+                                  : t("Thành viên")}
                           </Badge>
                           {c.allocationPercentage && (
                             <Badge variant="outline" className="text-[10px]">

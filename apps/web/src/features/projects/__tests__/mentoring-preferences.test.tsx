@@ -28,12 +28,12 @@ async function mount() {
 it("persists the email opt-in independently of mentoring availability and displays the server's verified recipient", async () => {
   await mount();
   expect(host.textContent).toContain("Email notifications are off");
-  const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Email for mentorship invitations and decisions"]')!;
+  const toggle = host.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Email for mentorship invitations and decisions"]')!;
   await act(async () => toggle.click());
   expect(mocks.savePreferences).toHaveBeenCalledWith({emailEnabled: true, locale: "en"});
-  expect(toggle.checked).toBe(true);
+  expect(toggle.getAttribute("aria-checked")).toBe("true");
   expect(host.textContent).toContain("New mentorship invitations and decisions will be emailed to mentor@university.edu");
-  expect(host.querySelector<HTMLInputElement>('input[aria-label="Open to mentoring new teams"]')?.checked).toBe(true);
+  expect(host.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Open to mentoring new teams"]')?.getAttribute("aria-checked")).toBe("true");
   await act(async () => toggle.click());
   expect(mocks.savePreferences).toHaveBeenLastCalledWith({emailEnabled: false, locale: "en"});
 });
@@ -49,11 +49,11 @@ it.each([
 it("keeps the prior preference on a failed update and offers the existing error feedback", async () => {
   mocks.savePreferences.mockRejectedValue(new Error("Offline"));
   await mount();
-  const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Email for mentorship invitations and decisions"]')!;
-  await act(async () => toggle.click());
+  const toggle = host.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Email for mentorship invitations and decisions"]')!;
+  await act(async () => { toggle.click(); });
   await vi.waitFor(async () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-    expect(toggle.checked).toBe(false);
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
     expect(host.querySelector('[role="alert"]')).not.toBeNull();
   });
 });

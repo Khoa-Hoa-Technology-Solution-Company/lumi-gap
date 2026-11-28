@@ -1,13 +1,17 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useCurrentUser } from "@/features/auth";
-import { useI18n } from "@/i18n";
-import { Button } from "./ui/button";
+import { RouteAwarePageSkeleton, SectionErrorState } from "./loading";
 
 export function ResearchWorkflowRoute() {
-  const { data, isLoading, error, refetch } = useCurrentUser();
-  const { t } = useI18n();
-  if (isLoading) return <div className="mx-auto h-32 max-w-xl animate-pulse rounded-xl bg-muted" />;
-  if (error || !data) return <div className="p-6"><Button onClick={() => void refetch()}>{t("Retry")}</Button></div>;
+  const { data, isLoading, isFetching, error, refetch } = useCurrentUser();
+  if (isLoading) return <RouteAwarePageSkeleton />;
+  if (error || !data) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-12">
+        <SectionErrorState error={error} onRetry={() => void refetch()} retrying={isFetching} />
+      </div>
+    );
+  }
   if (data.user.systemRole !== "ADMIN" && !data.user.emailVerifiedAt) return <Navigate to="/verify-email" replace />;
   return <Outlet />;
 }

@@ -121,11 +121,11 @@ describe("ProjectLifecycleSection & ProjectTrashView", () => {
       );
     });
 
-    expect(container.textContent).toContain("Danger Zone");
+    expect(container.textContent).toContain("Archiving and trash");
     expect(container.textContent).toContain("Archive this project");
     expect(container.textContent).toContain("Move project to Trash");
 
-    const deleteButton = [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("Delete project"))!;
+    const deleteButton = [...container.querySelectorAll("button")].find((b) => b.textContent === "Move to Trash")!;
     await act(async () => deleteButton.click());
 
     const dialog = document.querySelector('[role="dialog"]')!;
@@ -151,7 +151,7 @@ describe("ProjectLifecycleSection & ProjectTrashView", () => {
       );
     });
 
-    expect(container.textContent).not.toContain("Danger Zone");
+    expect(container.textContent).not.toContain("Archiving and trash");
     expect(container.textContent).not.toContain("Delete project");
     expect(container.textContent).toContain("Leave project");
   });

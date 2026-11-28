@@ -11,6 +11,8 @@ export const mentorWorkspaceQuerySchema = z.object({
   sort: z.enum(["priority", "deadline"]).default("priority"),
   projectPage: z.coerce.number().int().min(1).max(10000).default(1),
   projectSearch: z.string().trim().max(160).optional(),
+  projectFilter: z.enum(["ALL", "ATTENTION", "NO_PENDING"]).default("ALL"),
+  projectSort: z.enum(["attention", "updated", "name"]).default("attention"),
   item: z.string().regex(/^(TASK|REVIEW|QUESTION):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).optional(),
 }).strict();
 export type MentorWorkspaceQuery = z.infer<typeof mentorWorkspaceQuerySchema>;

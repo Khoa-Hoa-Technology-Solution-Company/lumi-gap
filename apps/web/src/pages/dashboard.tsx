@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
@@ -10,6 +10,7 @@ import { useCurrentUser } from "@/features/auth";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InlineLoader, SectionErrorState } from "@/components/loading";
 import { useNavigate } from "react-router-dom";
 import {
   Search, Sparkles, Cpu, History, BarChart3, Settings,
@@ -35,6 +36,7 @@ function useDashboard(days: number, enabled: boolean) {
       return res.data.data as { topQueries: TopQuery[]; volumeByDay: VolumeByDay[]; days: number };
     },
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
     enabled,
   });
 }
@@ -70,9 +72,9 @@ export function DashboardPage() {
   const [days, setDays] = useState<7 | 14 | 30>(7);
 
   // APIs
-  const { data: dash, isLoading: isDashLoading, isError: isDashError } = useDashboard(days, isAdmin);
-  const { data: history, isLoading: isHistoryLoading, isError: isHistoryError } = useMySearchHistory();
-  const { data: summary, isLoading: isSummaryLoading, isError: isSummaryError } = useSearchSummary();
+  const { data: dash, isLoading: isDashLoading, isFetching: isDashFetching, isError: isDashError, error: dashError, refetch: refetchDash } = useDashboard(days, isAdmin);
+  const { data: history, isLoading: isHistoryLoading, isFetching: isHistoryFetching, isError: isHistoryError, error: historyError, refetch: refetchHistory } = useMySearchHistory();
+  const { data: summary, isLoading: isSummaryLoading, isFetching: isSummaryFetching, isError: isSummaryError, error: summaryError, refetch: refetchSummary } = useSearchSummary();
 
   // Admin KPI calculations
   const totalSearchesRange = useMemo(() => {
@@ -150,9 +152,7 @@ export function DashboardPage() {
             <Skeleton className="h-28 rounded-2xl" />
           </div>
         ) : isSummaryError ? (
-          <div className="p-6 bg-red-50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-900/30 rounded-2xl text-sm text-red-600">
-            Failed to load platform stats summary.
-          </div>
+          <SectionErrorState compact error={summaryError} onRetry={() => void refetchSummary()} retrying={isSummaryFetching} />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <KPICard
@@ -189,15 +189,13 @@ export function DashboardPage() {
             <Skeleton className="h-12 rounded-xl w-full" />
           </div>
         ) : isHistoryError ? (
-          <div className="p-6 bg-red-50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-900/30 rounded-2xl text-sm text-red-600">
-            Failed to load your recent search logs.
-          </div>
+          <SectionErrorState compact error={historyError} onRetry={() => void refetchHistory()} retrying={isHistoryFetching} />
         ) : !history || history.length === 0 ? (
           <div className="py-10 text-center bg-white dark:bg-[#121212] border border-slate-200/80 dark:border-slate-800/80 border-dashed rounded-2xl p-6 select-none">
             <p className="text-sm text-slate-500 mb-4">No recent searches logged yet. Start exploring now!</p>
             <Button
               onClick={() => navigate("/home")}
-              className="bg-blue-700 hover:bg-blue-800 text-white rounded-full font-bold shadow-md animate-pulse"
+              className="bg-blue-700 hover:bg-blue-800 text-white rounded-full font-bold shadow-sm"
             >
               Start Searching
             </Button>
@@ -267,7 +265,10 @@ export function DashboardPage() {
         <section className="border-t border-slate-200 dark:border-slate-800 pt-8 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-sm font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Admin Analytics</h2>
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-sm font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Admin Analytics</h2>
+                {isDashFetching && !isDashLoading ? <InlineLoader /> : null}
+              </div>
               <p className="text-xs text-slate-500 mt-1">Real-time system usage trends and user demand data.</p>
             </div>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full sm:w-auto mt-2 sm:mt-0">
@@ -296,9 +297,7 @@ export function DashboardPage() {
               <Skeleton className="h-64 rounded-2xl w-full" />
             </div>
           ) : isDashError ? (
-            <div className="p-6 bg-red-50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-900/30 rounded-2xl text-sm text-red-600">
-              Failed to load admin dashboard analytics.
-            </div>
+            <SectionErrorState compact error={dashError} onRetry={() => void refetchDash()} retrying={isDashFetching} />
           ) : dash?.volumeByDay?.length === 0 && dash?.topQueries?.length === 0 ? (
             <div className="py-12 text-center text-slate-500 border rounded-2xl border-dashed">
               No analytics data available for the selected {days}-day period.

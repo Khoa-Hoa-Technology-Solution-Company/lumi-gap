@@ -35,6 +35,7 @@ projectContributionsRouter.get("/activity", params, validate(s.activitySchema, "
 projectContributionsRouter.get("/work", params, validate(s.contributionsPageSchema, "query"), c.list);
 projectContributionsRouter.get("/work-people", params, c.people);
 projectContributionsRouter.get("/overview", params, c.overview);
+projectContributionsRouter.get("/summary", params, c.summary);
 projectContributionsRouter.post("/work", writes, params, validate(s.createWorkContributionSchema), c.create);
 projectContributionsRouter.get("/work/:itemId", item, c.detail);
 projectContributionsRouter.patch("/work/:itemId", writes, item, validate(s.editWorkContributionSchema), c.edit);

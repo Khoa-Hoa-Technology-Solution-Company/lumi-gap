@@ -41,6 +41,7 @@ vi.mock("@/i18n", () => ({
         "Team tasks": "Công việc nhóm",
         "Team Chat": "Trò chuyện nhóm",
         "Find Mentors": "Tìm cố vấn",
+        "Research Mentoring": "Hướng dẫn nghiên cứu",
         "Manuscripts": "Bản thảo",
         "Submissions": "Bản thảo & góp ý",
         "Team & settings": "Nhóm & cài đặt",

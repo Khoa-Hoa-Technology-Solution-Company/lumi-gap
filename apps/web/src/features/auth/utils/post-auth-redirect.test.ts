@@ -37,7 +37,7 @@ describe("resolvePostAuthPath", () => {
   });
 
   it("lands lecturers in the mentor workspace while preserving verification and onboarding", () => {
-    const lecturer = { ...member, academicRole: "LECTURER" as const };
+    const lecturer = { ...member, academicRole: "LECTURER" as const, academicRoleVerificationStatus: "VERIFIED" as const, positionVerificationStatus: "VERIFIED" as const };
     expect(resolvePostAuthPath(lecturer)).toBe("/mentor-workspace");
     expect(resolvePostAuthPath({ ...lecturer, emailVerifiedAt: undefined })).toBe("/verify-email");
     expect(resolvePostAuthPath({ ...lecturer, onboarding: { completed: false } })).toBe("/onboarding/academic-profile");
@@ -45,7 +45,7 @@ describe("resolvePostAuthPath", () => {
   });
 
   it("preserves explicit lecturer destinations and rejects unsafe return paths", () => {
-    const lecturer = { ...member, academicRole: "LECTURER" as const };
+    const lecturer = { ...member, academicRole: "LECTURER" as const, academicRoleVerificationStatus: "VERIFIED" as const, positionVerificationStatus: "VERIFIED" as const };
     expect(resolvePostAuthPath(lecturer, "/invitations/example")).toBe("/invitations/example");
     expect(resolvePostAuthPath(lecturer, "/projects/abc?tab=tasks")).toBe("/projects/abc?tab=tasks");
     expect(resolvePostAuthPath(lecturer, "/home")).toBe("/home");

@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/utils/cn"
 
@@ -40,22 +41,56 @@ export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean
+  loading?: boolean
+  loadingText?: React.ReactNode
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button"
+  ({ className, variant, size, asChild = false, loading = false, loadingText, disabled, children, ...props }, ref) => {
+    if (asChild) {
+      return (
+        <Slot
+          className={cn(buttonVariants({ variant, size, className }))}
+          ref={ref}
+          aria-busy={loading || undefined}
+          {...props}
+        >
+          {children}
+        </Slot>
+      )
+    }
+
     return (
-      <Comp
+      <button
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
+        disabled={Boolean(disabled || loading)}
+        aria-busy={loading || undefined}
         {...props}
-      />
+      >
+        {loading ? (
+          loadingText ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              <span>{loadingText}</span>
+            </>
+          ) : (
+            <span className="inline-grid items-center justify-items-center">
+              <span className="col-start-1 row-start-1 inline-flex items-center justify-center gap-2 invisible" aria-hidden="true">
+                {children}
+              </span>
+              <span className="col-start-1 row-start-1 inline-flex items-center justify-center">
+                <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              </span>
+            </span>
+          )
+        ) : (
+          children
+        )}
+      </button>
     )
   }
 )
 Button.displayName = "Button"
 
 export { Button, buttonVariants }
-
-// Code quality reviewed and formatted

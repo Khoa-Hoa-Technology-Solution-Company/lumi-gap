@@ -1,9 +1,11 @@
 import { MentorReviewFollowUp } from "@/features/reviews/components/mentor-review-follow-up";
 import { useReviewPageNavigation } from "@/features/reviews/hooks/use-review-page-navigation";
+import { resolveManuscriptDestination } from "@/features/projects/utils/mentor-workspace-navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   Calendar,
   CheckCircle2,
@@ -12,6 +14,7 @@ import {
   ExternalLink,
   FileText,
   Info,
+  Lightbulb,
   RotateCcw,
   Send,
   Sparkles,
@@ -21,14 +24,70 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FormRequiredLegend, RequiredMark } from "@/components/ui/required-mark";
 import { useReviewRequest, useReviewRequestAction } from "@/features/reviews";
 import { useSubmissionRevisions } from "@/features/submissions";
 import { ReviewIntegrityChecklist } from "@/features/reviews/components/review-integrity-checklist";
 import { reviewsApi } from "@/features/reviews/api/reviews.api";
 import { internalAssessmentLabel } from "@/features/reviews/scientific-review-model";
+import { isLumiGapSystemRubric, localizeSystemCriterion } from "@/features/reviews/system-rubric-i18n";
 import { formatSubmissionTypeLabel } from "@/features/submissions/submission-review-status";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
+import type { FeedbackItemPriority } from "@trend/shared-types";
+
+const SEVERITY_SORT: Record<FeedbackItemPriority, number> = {
+  MAJOR: 0,
+  MINOR: 1,
+  SUGGESTION: 2,
+};
+
+const REVISION_STATUS_META: Record<string, { label: string; className: string }> = {
+  OPEN: {
+    label: "Chưa xử lý",
+    className: "border-border bg-muted/60 text-muted-foreground",
+  },
+  ADDRESSED: {
+    label: "Đã xử lý bởi nhóm · Chờ giảng viên xác nhận",
+    className: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  },
+  ACCEPTED: {
+    label: "Giảng viên đã xác nhận",
+    className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  },
+  REOPENED: {
+    label: "Cần chỉnh sửa lại",
+    className: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  },
+};
+
+const QUICK_RESPONSE_CHIPS = [
+  "Đã chỉnh sửa trong bản mới",
+  "Đã ghi nhận và bổ sung",
+  "Chưa áp dụng (kèm giải thích): ",
+];
+
+function severityDisplay(priority: FeedbackItemPriority) {
+  if (priority === "MAJOR") {
+    return {
+      label: "Chỉnh sửa lớn",
+      Icon: AlertCircle,
+      className: "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30",
+    };
+  }
+  if (priority === "SUGGESTION") {
+    return {
+      label: "Gợi ý",
+      Icon: Lightbulb,
+      className: "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30",
+    };
+  }
+  return {
+    label: "Chỉnh sửa nhỏ",
+    Icon: AlertTriangle,
+    className: "bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30",
+  };
+}
 
 const DEFAULT_REVIEW_WINDOW_DAYS = 30; // backend DEFAULT_REVIEW_WINDOW_DAYS, used when a request has no due date
 
@@ -58,11 +117,11 @@ const ASSESSMENT_LABELS: Record<string, string> = {
   NOT_APPLICABLE: "Không áp dụng",
 };
 
-export function ReviewRequestDetailPage() {
+export function ReviewRequestDetailPage({ forceReader = false }: { forceReader?: boolean } = {}) {
   const { embedded, param, navigate, href } = useReviewPageNavigation();
   const Container = embedded ? "section" : "main";
   const requestId = param("requestId") ?? "";
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const currentUser = useAuthStore((state) => state.user);
   const query = useReviewRequest(requestId);
   const actions = useReviewRequestAction();
@@ -76,7 +135,9 @@ export function ReviewRequestDetailPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const detail = query.data;
   const openItems = useMemo(
-    () => detail?.reviews.flatMap((review) => review.requiredRevisions).filter((item) => ["OPEN", "REOPENED"].includes(item.status)) ?? [],
+    () =>
+      (detail?.reviews.flatMap((review) => review.requiredRevisions).filter((item) => ["OPEN", "REOPENED"].includes(item.status)) ?? [])
+        .sort((a, b) => (SEVERITY_SORT[a.priority] ?? 1) - (SEVERITY_SORT[b.priority] ?? 1)),
     [detail],
   );
 
@@ -140,13 +201,35 @@ export function ReviewRequestDetailPage() {
 
   const isRequester = currentUser?.id === detail.requester.id;
   const isReviewer = currentUser?.id === detail.reviewer.id;
-  if (embedded && isReviewer && detail.origin === "MENTOR_GUIDANCE") return <MentorReviewFollowUp detail={detail} />;
+
+  // Assigned reviewer / mentor in Mentor Workspace or explicit read-only mode renders the dedicated mentor follow-up & reader
+  if (isReviewer && (embedded || forceReader || param("reader") === "1")) {
+    return <MentorReviewFollowUp detail={detail} forceReader={forceReader} />;
+  }
+
   const canAccept = isReviewer && detail.status === "REQUESTED" && detail.assignment?.status === "assigned";
+  const canReviewerRead =
+    isReviewer &&
+    ["accepted", "completed"].includes(detail.assignment?.status ?? "") &&
+    ["ACCEPTED", "IN_REVIEW", "RESUBMITTED", "REVISION_REQUESTED", "COMPLETED"].includes(detail.status);
   const reviewBackPath = detail.origin === "MENTOR_GUIDANCE" && isReviewer ? "/mentor-workspace?view=work" : "/reviews";
-  const projectSubmissionHref =
-    detail.artifact.projectId && detail.artifact.submissionId
-      ? `/projects/${encodeURIComponent(detail.artifact.projectId)}?tab=submissions&submission=${encodeURIComponent(detail.artifact.submissionId)}`
-      : null;
+  const projectSubmissionHref = isReviewer
+    ? null
+    : resolveManuscriptDestination({
+        actorRole: "REQUESTER",
+        requestId: detail.id,
+        projectId: detail.artifact.projectId,
+        submissionId: detail.artifact.submissionId,
+      });
+  const manuscriptActionHref = isReviewer
+    ? canReviewerRead
+      ? resolveManuscriptDestination({
+          actorRole: "REVIEWER",
+          requestId: detail.id,
+          revisionId: detail.artifact.revisionId,
+        })
+      : null
+    : projectSubmissionHref;
 
   async function respondToInvitation(accept: boolean) {
     if (!detail || actions.accept.isPending || actions.decline.isPending) return;
@@ -185,13 +268,18 @@ export function ReviewRequestDetailPage() {
   async function resubmit() {
     if (!detail) return;
     if (!selectedVersion) return toast.error("Vui lòng chọn phiên bản bản thảo đã chỉnh sửa");
-    if (openItems.some((item) => !responses[item.id]?.trim())) return toast.error("Vui lòng phản hồi đầy đủ các mục cần chỉnh sửa");
+    const requiredOpen = openItems.filter((item) => item.priority !== "SUGGESTION");
+    if (requiredOpen.some((item) => !responses[item.id]?.trim())) {
+      return toast.error("Vui lòng phản hồi đầy đủ các mục chỉnh sửa lớn và chỉnh sửa nhỏ");
+    }
     try {
       await actions.resubmit.mutateAsync({
         id: detail.id,
         input: {
           revisionId: selectedVersion,
-          responses: openItems.map((item) => ({ revisionItemId: item.id, responseText: (responses[item.id] ?? "").trim() })),
+          responses: openItems
+            .filter((item) => item.priority !== "SUGGESTION" || Boolean(responses[item.id]?.trim()))
+            .map((item) => ({ revisionItemId: item.id, responseText: (responses[item.id] ?? "").trim() })),
         },
       });
       setResponseDirty(false);
@@ -293,9 +381,9 @@ export function ReviewRequestDetailPage() {
             </div>
           </div>
 
-          {projectSubmissionHref && (
+          {manuscriptActionHref && (
             <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 text-xs" asChild>
-              <Link to={projectSubmissionHref}>
+              <Link to={manuscriptActionHref}>
                 <FileText className="h-3.5 w-3.5" aria-hidden="true" />
                 Mở bản thảo (v{detail.artifact.revisionNumber})
               </Link>
@@ -458,10 +546,16 @@ export function ReviewRequestDetailPage() {
                           {detail.templateVersion.criteria.map((criterion) => {
                             const response = review.responses.find((item) => item.criterionKey === criterion.key);
                             if (!response) return null;
+                            const isSys = isLumiGapSystemRubric(detail.templateVersion.guidelines);
+                            const loc = localizeSystemCriterion(criterion, language, isSys, {
+                              artifactType: detail.artifact.type,
+                              versionNumber: detail.templateVersion.versionNumber,
+                              guidelines: detail.templateVersion.guidelines,
+                            });
                             return (
                               <div key={criterion.key} className="p-3.5 space-y-1.5">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <h3 className="text-xs font-semibold text-foreground">{criterion.title}</h3>
+                                  <h3 className="text-xs font-semibold text-foreground">{loc.title}</h3>
                                   <div className="flex items-center gap-1.5">
                                     {response.assessment && (
                                       <Badge variant="outline" className="h-5 px-2 text-[11px]">
@@ -489,42 +583,49 @@ export function ReviewRequestDetailPage() {
                       )}
 
                       {review.integrityChecks && Object.keys(review.integrityChecks).length > 0 && (
-                        <ReviewIntegrityChecklist disabled value={review.integrityChecks} onChange={() => {}} />
+                        <ReviewIntegrityChecklist variant="readonly" disabled value={review.integrityChecks} onChange={() => { }} />
                       )}
 
                       {review.requiredRevisions.length > 0 && (
-                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-4">
-                          <h3 className="text-xs font-semibold text-amber-900 dark:text-amber-200">{t("What the team needs to revise")}</h3>
+                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.05] p-4">
+                          <h3 className="text-xs font-semibold text-foreground">Danh sách góp ý & mục cần chỉnh sửa (ưu tiên từ cao xuống thấp)</h3>
                           <ul className="mt-2.5 space-y-2">
-                            {review.requiredRevisions.map((item) => (
-                              <li key={item.id} className="flex items-start gap-2.5 rounded-md border border-border/60 bg-background/80 p-3 text-xs">
-                                <span
-                                  className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                    item.priority === "MAJOR"
-                                      ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
-                                      : "bg-amber-500/15 text-amber-800 dark:text-amber-300"
-                                  }`}
-                                >
-                                  {item.priority === "MAJOR" ? "Quan trọng" : "Nên sửa"}
-                                </span>
-                                <div className="min-w-0 flex-1 space-y-1">
-                                  <p className="text-sm text-foreground leading-5">{item.description}</p>
-                                  {item.locator && <span className="block text-xs text-muted-foreground">{item.locator}</span>}
-                                  {item.quotation && <q className="block text-xs italic text-muted-foreground">{item.quotation}</q>}
-                                  {item.responses
-                                    ?.filter((response) => response.status !== "DRAFT")
-                                    .map((response) => (
-                                      <p key={response.submissionRevisionId} className="pt-1 text-xs text-muted-foreground">
-                                        <span className="font-medium text-foreground">Phản hồi của nhóm: </span>
-                                        {response.responseText} · {response.status}
-                                      </p>
-                                    ))}
-                                </div>
-                                <Badge variant="outline" className="shrink-0 text-[10px]">
-                                  {item.status}
-                                </Badge>
-                              </li>
-                            ))}
+                            {[...review.requiredRevisions]
+                              .sort((a, b) => (SEVERITY_SORT[a.priority] ?? 1) - (SEVERITY_SORT[b.priority] ?? 1))
+                              .map((item) => {
+                                const sev = severityDisplay(item.priority);
+                                const SevIcon = sev.Icon;
+                                const st = REVISION_STATUS_META[item.status] ?? {
+                                  label: item.status,
+                                  className: "border-border bg-muted/60 text-muted-foreground",
+                                };
+                                return (
+                                  <li key={item.id} className="flex flex-col gap-2 rounded-lg border border-border/70 bg-background p-3 text-xs sm:flex-row sm:items-start">
+                                    <span
+                                      className={`inline-flex shrink-0 items-center gap-1 self-start rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sev.className}`}
+                                    >
+                                      <SevIcon className="h-3 w-3" aria-hidden="true" />
+                                      {sev.label}
+                                    </span>
+                                    <div className="min-w-0 flex-1 space-y-1">
+                                      <p className="text-sm text-foreground leading-5">{item.description}</p>
+                                      {item.locator && <span className="block text-xs text-muted-foreground">Vị trí: {item.locator}</span>}
+                                      {item.quotation && <q className="block text-xs italic text-muted-foreground">{item.quotation}</q>}
+                                      {item.responses
+                                        ?.filter((response) => response.status !== "DRAFT")
+                                        .map((response) => (
+                                          <p key={response.submissionRevisionId} className="pt-1 text-xs text-muted-foreground">
+                                            <span className="font-medium text-foreground">Phản hồi của nhóm: </span>
+                                            {response.responseText}
+                                          </p>
+                                        ))}
+                                    </div>
+                                    <Badge variant="outline" className={`shrink-0 self-start text-[10px] ${st.className}`}>
+                                      {st.label}
+                                    </Badge>
+                                  </li>
+                                );
+                              })}
                           </ul>
                         </div>
                       )}
@@ -570,13 +671,17 @@ export function ReviewRequestDetailPage() {
               <p className="mt-0.5 text-xs text-muted-foreground">
                 Cập nhật bản thảo trước, sau đó giải trình cách nhóm đã tiếp thu cho từng mục cần chỉnh sửa.
               </p>
+              <FormRequiredLegend className="mt-1" />
             </div>
           </div>
 
           <div className="space-y-1.5">
             <label className="block text-xs font-medium text-foreground">
               Phiên bản bản thảo đã chỉnh sửa
+              <RequiredMark />
               <select
+                required
+                aria-required="true"
                 value={selectedVersion}
                 onChange={(event) => setSelectedVersion(event.target.value)}
                 disabled={responseDirty}
@@ -596,28 +701,79 @@ export function ReviewRequestDetailPage() {
           </div>
 
           <div className="space-y-3">
-            {openItems.map((item) => (
-              <label key={item.id} className="block rounded-lg border border-border bg-background p-3.5 text-xs font-medium">
-                <span className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-[10px]">
-                    {item.priority === "MAJOR" ? "Quan trọng" : "Nên sửa"}
-                  </Badge>
-                  <span className="text-sm text-foreground">{item.description}</span>
-                </span>
-                <textarea
-                  value={responses[item.id] ?? ""}
-                  onChange={(event) => {
-                    setResponses((current) => ({ ...current, [item.id]: event.target.value }));
-                    setResponseDirty(true);
-                  }}
-                  className="mt-2.5 min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-normal"
-                  placeholder="Mô tả thay đổi và vị trí trong bản thảo mới..."
-                />
-              </label>
-            ))}
+            {openItems.map((item, idx) => {
+              const sev = severityDisplay(item.priority);
+              const SevIcon = sev.Icon;
+              const isOptional = item.priority === "SUGGESTION";
+              const fieldId = `request-revision-response-${item.id}`;
+              return (
+                <div key={item.id} className="rounded-lg border border-border bg-background p-3.5 text-xs space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-foreground">Yêu cầu {idx + 1}</span>
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sev.className}`}>
+                      <SevIcon className="h-3 w-3" aria-hidden="true" />
+                      {sev.label}
+                    </span>
+                    {isOptional ? (
+                      <span className="text-[11px] text-muted-foreground">(không bắt buộc giải trình)</span>
+                    ) : null}
+                  </div>
+                  <p className="text-sm font-medium text-foreground">{item.description}</p>
+                  {item.locator ? <p className="text-xs text-muted-foreground">Vị trí: {item.locator}</p> : null}
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {QUICK_RESPONSE_CHIPS.map((chip) => (
+                      <button
+                        key={chip}
+                        type="button"
+                        className="rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                        onClick={() => {
+                          setResponses((current) => ({ ...current, [item.id]: chip }));
+                          setResponseDirty(true);
+                        }}
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+
+                  <label htmlFor={fieldId} className="block text-xs font-medium text-foreground pt-0.5">
+                    Phản hồi của nhóm
+                    {isOptional ? (
+                      <span className="ml-1 font-normal text-muted-foreground">(Không bắt buộc)</span>
+                    ) : (
+                      <RequiredMark />
+                    )}
+                  </label>
+                  <textarea
+                    id={fieldId}
+                    required={!isOptional}
+                    aria-required={!isOptional}
+                    aria-label={item.description}
+                    value={responses[item.id] ?? ""}
+                    onChange={(event) => {
+                      setResponses((current) => ({ ...current, [item.id]: event.target.value }));
+                      setResponseDirty(true);
+                    }}
+                    className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-normal"
+                    placeholder={
+                      isOptional
+                        ? "Ghi chú ngắn cách nhóm đã xử lý hoặc lý do chưa áp dụng (không bắt buộc)..."
+                        : "Mô tả thay đổi và vị trí trong bản thảo mới..."
+                    }
+                  />
+                </div>
+              );
+            })}
           </div>
 
           <p className="text-xs text-muted-foreground">{t("Drafts stay private until you submit the revised manuscript. Only the mentor can accept a correction.")}</p>
+
+          {!selectedVersion && (
+            <p className="rounded-lg border border-border/80 bg-background/80 px-3 py-2 text-xs text-muted-foreground" role="status">
+              <span className="font-medium text-foreground">Chưa thể lưu bản nháp hoặc gửi bản chỉnh sửa:</span> Vui lòng chọn phiên bản bản thảo mới trước.
+            </p>
+          )}
 
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={saveResponses} disabled={!selectedVersion || savingResponses || actions.resubmit.isPending}>

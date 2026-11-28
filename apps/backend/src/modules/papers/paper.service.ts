@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Paper, PaperRef } from "@trend/shared-types";
+import { Prisma } from "../../generated/prisma/client.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { normalizeAcademicTitle } from "../../common/text/academic-text.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
@@ -50,6 +51,40 @@ export function normalizeDoiSearchQuery(query: string): string | undefined {
   return /^10\.\d{4,9}\/\S+$/i.test(value) ? value : undefined;
 }
 
+const AUTHOR_TRANSLATE_FROM = "àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ–‐‑−—.";
+const AUTHOR_TRANSLATE_TO   = "aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd      ";
+
+/** Normalize an author query into accent-free, punctuation-free lowercase tokens for flexible author matching. */
+export function tokenizeAuthorSearchQuery(query: string): string[] {
+  const normalized = query
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  if (!normalized) return [];
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  return tokens.length >= 1 && tokens.length <= 6 ? tokens : [];
+}
+
+async function findPaperIdsByAuthorQuery(query: string): Promise<string[]> {
+  const tokens = tokenizeAuthorSearchQuery(query);
+  if (!tokens.length) return [];
+  const normalizedCol = Prisma.sql`translate(lower(display_name), ${AUTHOR_TRANSLATE_FROM}, ${AUTHOR_TRANSLATE_TO})`;
+  const conditions = tokens.map((token) => {
+    const escaped = token.replace(/[\\%_]/g, "\\$&");
+    return Prisma.sql`${normalizedCol} LIKE ${`%${escaped}%`} ESCAPE '\\'`;
+  });
+  const rows = await getPrisma().$queryRaw<Array<{ paper_id: string }>>(Prisma.sql`
+    SELECT DISTINCT paper_id::text AS paper_id
+    FROM paper_authors
+    WHERE ${Prisma.join(conditions, " AND ")}
+    LIMIT 500
+  `);
+  return rows.map((row) => row.paper_id);
+}
+
 function publicUser(user: Awaited<ReturnType<typeof resolveUser>>) {
   return { _id: publicDatabaseId(user), fullName: user.fullName, email: user.email, university: user.institution ?? undefined, role: user.role, avatarUrl: user.avatarUrl };
 }
@@ -89,7 +124,19 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 
 async function listWhere(input: ListPapersParams): Promise<Record<string, unknown>> {
   const where: Record<string, unknown> = { dataStatus: "active" };
-  if (input.q) { const doi = normalizeDoiSearchQuery(input.q); where.OR = doi ? [{ doi }] : [{ title: { contains: input.q, mode: "insensitive" } }, { abstractText: { contains: input.q, mode: "insensitive" } }]; }
+  if (input.q) {
+    const doi = normalizeDoiSearchQuery(input.q);
+    if (doi) {
+      where.OR = [{ doi }];
+    } else {
+      const authorPaperIds = await findPaperIdsByAuthorQuery(input.q);
+      where.OR = [
+        { title: { contains: input.q, mode: "insensitive" } },
+        { abstractText: { contains: input.q, mode: "insensitive" } },
+        ...(authorPaperIds.length ? [{ id: { in: authorPaperIds } }] : []),
+      ];
+    }
+  }
   if (input.yearFrom !== undefined || input.yearTo !== undefined) where.publicationYear = { ...(input.yearFrom !== undefined ? { gte: input.yearFrom } : {}), ...(input.yearTo !== undefined ? { lte: input.yearTo } : {}) };
   if (input.paperKinds?.length) where.paperKind = { in: input.paperKinds }; if (input.openAccess) where.openAccessUrl = { not: null };
   if (input.openAccessStatuses?.length) where.openAccessStatus = { in: input.openAccessStatuses.map((v) => v.toLowerCase()) };

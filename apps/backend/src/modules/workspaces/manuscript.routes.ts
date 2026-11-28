@@ -24,7 +24,8 @@ import { manuscriptSync, remoteBindingSchema, syncBundleSchema } from "./manuscr
 import { manuscriptAiSchema } from "./dto/manuscript-ai.schema.js";
 import { manuscriptPdfImport, pdfImportSchema } from "./manuscript-pdf-import.js";
 import { manuscriptWritingService } from "./manuscript-writing.service.js";
-import { writingReportSchema, writingReportPageSchema } from "./dto/manuscript.schema.js";
+import { manuscriptContributionsService } from "./manuscript-contributions.service.js";
+import { writingReportSchema, writingReportPageSchema, writingContributionDraftSchema, manuscriptContributionsQuerySchema } from "./dto/manuscript.schema.js";
 import { withWorkspace } from "../projects/workspace-access.js";
 import { manuscriptParams, createManuscriptSchema, createFileSchema, changeFileSchema, snapshotSchema, commentSchema, snapshotQuery, restoreSchema, compileSchema, importManuscriptSchema, manuscriptLifecycleActionSchema } from "./dto/manuscript.schema.js";
 
@@ -70,7 +71,7 @@ manuscriptRouter.post("/import-bundle", uploads, async (req, _res, next) => { co
   res.status(201).json({ success: true, data: await manuscriptRepository.import(a.project, a.actor, req.body, req.file.buffer) });
 });
 manuscriptRouter.post("/pdf-imports", pdfConversions, async (req, _res, next) => {
-  const a = await ids(req); await withWorkspace(a.project, a.actor, { write: true }, async () => {}); next();
+  const a = await ids(req); await withWorkspace(a.project, a.actor, { write: true }, async () => { }); next();
 }, pdfUpload.single("pdf"), validate(pdfImportSchema), async (req, res) => {
   const a = await ids(req); if (!req.file) throw AppError.badRequest("Choose a PDF no larger than 5 MB");
   res.status(202).json({ success: true, data: await manuscriptPdfImport.create(a.project, a.actor, req.body, req.file.buffer) });
@@ -100,11 +101,12 @@ manuscriptRouter.put("/:id/remote", writes, validate(remoteBindingSchema), async
 manuscriptRouter.post("/:id/sync-source", uploads, async (req, _res, next) => { const a = await ids(req); if (!(await manuscriptService.detail(a.project, a.actor, a.id)).canWrite) throw AppError.forbidden("Read-only manuscript"); next(); }, archiveUpload.single("bundle"), validate(syncBundleSchema), async (req, res) => { const a = await ids(req); if (!req.file) throw AppError.badRequest("Choose a source bundle"); res.json({ success: true, data: await manuscriptSync.apply(a.project, a.actor, a.id, req.body, req.file.buffer) }); });
 manuscriptRouter.patch("/:id/compiler-settings", writes, validate(compilerSettingsSchema), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.compilerSettings(a.project, a.actor, a.id, req.body) }); });
 manuscriptRouter.get("/:id/context", async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.context(a.project, a.actor, a.id) }); });
+manuscriptRouter.get("/:id/contributions", validate(manuscriptContributionsQuerySchema, "query"), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptContributionsService.summary(a.project, a.actor, a.id, req.query as { memberId?: string; fileId?: string }) }); });
 manuscriptRouter.post("/:id/writing-reports", writingReports, validate(writingReportSchema), async (req, res) => { const a = await ids(req); res.status(202).json({ success: true, data: await manuscriptWritingService.request(a.project, a.actor, a.id, req.body.snapshotId) }); });
 manuscriptRouter.get("/:id/writing-reports", validate(writingReportPageSchema, "query"), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptWritingService.list(a.project, a.actor, a.id, Number(req.query.page)) }); });
 const reportParams = z.object({ reportId: z.string().uuid() }).passthrough();
 manuscriptRouter.get("/:id/writing-reports/:reportId", validate(reportParams, "params"), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptWritingService.get(a.project, a.actor, a.id, String(req.params.reportId)) }); });
-manuscriptRouter.post("/:id/writing-reports/:reportId/contribution", writes, validate(reportParams, "params"), validate(z.object({}).strict()), async (req, res) => { const a = await ids(req); res.status(201).json({ success: true, data: await manuscriptWritingService.contributionDraft(a.project, a.actor, a.id, String(req.params.reportId)) }); });
+manuscriptRouter.post("/:id/writing-reports/:reportId/contribution", writes, validate(reportParams, "params"), validate(writingContributionDraftSchema), async (req, res) => { const a = await ids(req); res.status(201).json({ success: true, data: await manuscriptWritingService.contributionDraft(a.project, a.actor, a.id, String(req.params.reportId), req.body) }); });
 manuscriptRouter.get("/:id/suggestions", async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptSuggestions.list(a.project, a.actor, a.id) }); });
 manuscriptRouter.post("/:id/suggestions", writes, validate(suggestionSchema), async (req, res) => { const a = await ids(req); const data = await manuscriptSuggestions.create(a.project, a.actor, a.id, req.body); res.status(201).json({ success: true, data }); });
 manuscriptRouter.patch("/:id/suggestions/:suggestionId", writes, validate(z.object({ suggestionId: z.string().uuid() }).passthrough(), "params"), validate(z.object({ expectedRevision: z.number().int().positive().max(2147483646), replacement: z.string().max(100000) }).strict()), async (req, res) => {

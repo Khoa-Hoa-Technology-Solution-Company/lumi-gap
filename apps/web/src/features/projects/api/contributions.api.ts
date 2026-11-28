@@ -1,4 +1,21 @@
-import type { ActivityResult, AllocationDraftInput, AllocationPeriodInput, AllocationPeriodView, AllocationRevisionView, ContributionInput, ContributionPage, PersonalContributionHistoryExport, ProjectAdvisorContributionSummary, WorkContribution, ResearchContributionResult, ContributionStatement, ContributionArtifactLink } from "@trend/shared-types";
+import type {
+  ActivityResult,
+  AllocationDraftInput,
+  AllocationPeriodInput,
+  AllocationPeriodView,
+  AllocationRevisionView,
+  ContributionArtifactLink,
+  ContributionInput,
+  ContributionPage,
+  ContributionStatement,
+  CreateIntegrityCaseInput,
+  GlobalPersonalContributionsView,
+  PersonalContributionHistoryExport,
+  ProjectAdvisorContributionSummary,
+  ResearchContributionResult,
+  ResearchIntegrityCaseView,
+  WorkContribution,
+} from "@trend/shared-types";
 import { api as apiClient } from "@/services/api-client";
 const path = (id: string, resource: string) => `/projects/${encodeURIComponent(id)}/contributions/${resource}`;
 async function get<T>(id: string, resource: string, params?: Record<string, unknown>) { return (await apiClient.get<{ data: T }>(path(id, resource), { params })).data.data; }
@@ -8,6 +25,7 @@ export const contributionsApi = {
   statement: (id: string, scopeKey: string) => get<ContributionStatement>(id, "manuscript-statement", { scopeKey }),
   artifact: (id: string, link: ContributionArtifactLink) => get<{ href?: string; title?: string; content?: string }>(id, "research-artifact", { ...link }),
   overview: (id: string) => get<import("@trend/shared-types").ContributionOverview>(id, "overview"),
+  summary: (id: string) => get<import("@trend/shared-types").ContributionSummary>(id, "summary"),
   people: (id: string) => get<{ items: import("@trend/shared-types").WorkspacePerson[]; feedbackReferences?: Array<{kind:"MENTOR_FEEDBACK";id:string;label:string}> }>(id, "work-people"),
   activity: (id: string, query: Record<string, unknown>) => get<ActivityResult>(id, "activity", query),
   work: (id: string, query: Record<string, unknown>) => get<ContributionPage>(id, "work", query),
@@ -28,5 +46,11 @@ export const contributionsApi = {
   export: (id: string, revisionId: string) => get<AllocationRevisionView>(id, `revisions/${revisionId}/export`),
   myHistory: (id: string) => get<PersonalContributionHistoryExport>(id, "my-history"),
   exportMyHistory: (id: string) => get<PersonalContributionHistoryExport>(id, "my-history/export"),
+  myGlobal: async (params?: Record<string, unknown>) => (await apiClient.get<{ data: GlobalPersonalContributionsView }>("/projects/my-contributions", { params })).data.data,
+  exportMyGlobal: async (params?: Record<string, unknown>) => (await apiClient.get<{ data: GlobalPersonalContributionsView }>("/projects/my-contributions/export", { params })).data.data,
+  createIntegrityCase: async (projectId: string, input: CreateIntegrityCaseInput) =>
+    (await apiClient.post<{ data: ResearchIntegrityCaseView }>(`/projects/${encodeURIComponent(projectId)}/integrity-cases`, input)).data.data,
+  respondIntegrityCase: async (projectId: string, caseId: string, note: string) =>
+    (await apiClient.post<{ data: ResearchIntegrityCaseView }>(`/projects/${encodeURIComponent(projectId)}/integrity-cases/${encodeURIComponent(caseId)}/responses`, { note })).data.data,
   advisorContributions: (id: string) => get<ProjectAdvisorContributionSummary[]>(id, "advisor-contributions"),
 };
