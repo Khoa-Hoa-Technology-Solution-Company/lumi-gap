@@ -358,9 +358,9 @@ export function PaperReviewPage() {
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {history.map((h: any) => (
                     <div
-                      key={h._id}
+                      key={h.id}
                       onClick={async () => {
-                        const full = await papersApi.getReviewById(h._id);
+                        const full = await papersApi.getReviewById(h.id);
                         setCurrentReview(full);
                       }}
                       className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer flex items-center justify-between transition-colors"

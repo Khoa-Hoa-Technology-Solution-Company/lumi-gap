@@ -32,7 +32,6 @@ export function AddToProjectDropdown({ paperId, paper, children }: AddToProjectD
     const ids = new Set<string>();
     if (paperId) ids.add(String(paperId).trim().toLowerCase());
     if (paper?.id) ids.add(String(paper.id).trim().toLowerCase());
-    if (paper?._id) ids.add(String(paper._id).trim().toLowerCase());
     return ids;
   }, [paperId, paper]);
 

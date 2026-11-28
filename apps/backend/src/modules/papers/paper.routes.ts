@@ -229,11 +229,12 @@ paperRouter.post(
 
 /** GET /papers/:id/references — references resolved to public in-corpus papers. */
 paperRouter.get("/:id/references", optionalAuth, async (req, res) => {
-  const data = await paperService.getReferences(String(req.params.id), {
+  const { references, totalReferenced } = await paperService.getReferences(String(req.params.id), {
     userId: req.user?.sub,
     role: req.user?.role,
   });
-  res.json({ success: true, data });
+  // `data` stays a plain array (the mobile client reads it); the source total goes in `meta`.
+  res.json({ success: true, data: references, meta: { totalReferenced, inCorpus: references.length } });
 });
 
 /** GET /papers/:id/edit — authenticated draft/rejected paper data for edit forms. */
