@@ -724,6 +724,8 @@ export const adminService = {
       : null;
 
     const unhealthyWorkers = pipeline ? pipeline.workers.stale + pipeline.workers.missing : null;
+    // failedAiRuns only counts persisted AI runs; queue jobs that ran out of retries were invisible here.
+    const failedQueueJobs = pipeline ? pipeline.queues.reduce((sum, queue) => sum + queue.failed, 0) : null;
 
     return {
       generatedAt: checkedAt.toISOString(),
@@ -757,6 +759,7 @@ export const adminService = {
         staleAiJobs,
         failedSyncRuns,
         unhealthyWorkers,
+        failedQueueJobs,
       },
       corpus: pipeline
         ? {

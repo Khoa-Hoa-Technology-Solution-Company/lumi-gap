@@ -14,7 +14,8 @@ const sources = [
   { value: "arxiv", label: "arXiv" },
   { value: "user", label: "Contributed papers" },
 ] as const;
-const suggestions = ["Medicine", "Deep Learning", "Carbon Nanotubes", "Economics"];
+// The corpus is IT / Computer Science only: every suggestion must return papers (each had 60+ on production).
+const suggestions = ["Large Language Models", "Object Detection", "Blockchain", "Internet of Things"];
 const paperTypes = [
   { value: "proceedings", label: "Conference Proceedings" },
   { value: "article", label: "Journal Article" },

@@ -195,6 +195,8 @@ export interface AdminAttentionSummary {
   staleAiJobs: number | null;
   failedSyncRuns: number | null;
   unhealthyWorkers: number | null;
+  /** BullMQ jobs that exhausted all retries, summed over every queue (embedding, tagging, analysis, ...). */
+  failedQueueJobs: number | null;
 }
 
 export interface AdminStats {

@@ -169,6 +169,8 @@ async function issueTokens(user: PrismaUser, context: SessionContext = {}, famil
       userAgent: context.userAgent?.slice(0, 500),
       ipAddress: context.ipAddress?.slice(0, 64),
       expiresAt,
+      // Issuing a session is its first use; refresh() moves this forward on each rotation.
+      lastUsedAt: new Date(),
     },
   });
   const access = tokenService.signAccessToken({
@@ -406,6 +408,8 @@ export const authService = {
         data: {
           id: nextId, userId: user.id, familyId: current.familyId, tokenHash: hashOpaqueToken(nextRaw),
           userAgent: context.userAgent?.slice(0, 500), ipAddress: context.ipAddress?.slice(0, 64), expiresAt,
+          // The active session row is the one admins see; without this it always read "Last used: Not yet".
+          lastUsedAt: new Date(),
         },
       });
     });

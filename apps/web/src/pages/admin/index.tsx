@@ -124,6 +124,13 @@ export function AdminHomePage() {
       icon: Clock,
     },
     {
+      key: "failedQueueJobs",
+      label: isVi ? "Job nền thất bại (hết lượt thử)" : "Failed background jobs",
+      count: data?.attention.failedQueueJobs,
+      to: "/admin/pipeline",
+      icon: AlertTriangle,
+    },
+    {
       key: "failedSync",
       label: isVi ? "Lượt đồng bộ OpenAlex lỗi" : "Failed OpenAlex sync runs",
       count: data?.attention.failedSyncRuns,

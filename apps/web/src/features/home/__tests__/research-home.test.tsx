@@ -97,8 +97,8 @@ describe("Focused research home", () => {
   });
   it("puts a suggested topic in the composer and focuses it", async () => {
     await render();
-    await act(async () => Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Deep Learning")!.click());
-    expect(container.querySelector<HTMLInputElement>('input[type="search"]')?.value).toBe("Deep Learning");
+    await act(async () => Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Large Language Models")!.click());
+    expect(container.querySelector<HTMLInputElement>('input[type="search"]')?.value).toBe("Large Language Models");
     expect(document.activeElement).toBe(container.querySelector('input[type="search"]'));
   });
   it("keeps search available when library data fails and replaces the personal greeting with useful discovery content", async () => {

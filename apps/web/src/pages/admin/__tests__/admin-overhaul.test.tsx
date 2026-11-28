@@ -126,6 +126,7 @@ const MOCK_STATS: AdminStats = {
     staleAiJobs: 1,
     failedSyncRuns: 1,
     unhealthyWorkers: 2,
+    failedQueueJobs: 11,
   },
   corpus: {
     totalPapers: 3240,
@@ -395,6 +396,7 @@ describe("Admin Workspace Overhaul — Truthfulness & Workflows", () => {
     expect(text).toContain("21");
     expect(text).toContain("Degraded");
     expect(text).toContain("moderation");
+    expect(text).toContain("Failed background jobs");
   });
 
   it("renders an explicit error panel on dashboard stats failure instead of fallback zeros", async () => {

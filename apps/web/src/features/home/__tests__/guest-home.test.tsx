@@ -56,9 +56,9 @@ describe("Guest research home", () => {
   });
   it("puts a suggested question into the search field and focuses it", async () => {
     await render();
-    await act(async () => Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Carbon Nanotubes")!.click());
+    await act(async () => Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Object Detection")!.click());
     const input = container.querySelector("input")!;
-    expect(input.value).toBe("Carbon Nanotubes");
+    expect(input.value).toBe("Object Detection");
     expect(document.activeElement).toBe(input);
   });
   it("keeps the new controls available while reserving AI reranking for signed-in researchers", async () => {
