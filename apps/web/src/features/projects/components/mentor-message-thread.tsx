@@ -119,7 +119,7 @@ export function MentorMessageThread({ projectId, actorId, entry, readOnly, pendi
               </div>;
             })}
         </div>
-        {!atBottom && <button type="button" className="project-chat-jump" onClick={jumpToLatest}><ArrowDown size={15} aria-hidden="true" />{hasNewMessages ? "Có tin nhắn mới" : "Về tin mới nhất"}</button>}
+        {!atBottom && <div className="project-chat-jump-bar"><button type="button" className="project-chat-jump" onClick={jumpToLatest}><ArrowDown size={14} aria-hidden="true" />{hasNewMessages ? "Tin nhắn mới" : "Về tin nhắn mới nhất"}</button></div>}
       </div>
       {query.isError && <div role="alert" className="project-chat-error"><span>{denied ? "Bạn không còn quyền xem cuộc trò chuyện này." : "Chưa tải được tin nhắn. Nội dung đang soạn vẫn được giữ."}</span><Button type="button" variant="ghost" size="sm" onClick={() => void query.refetch()}>Thử lại</Button></div>}
       {error}

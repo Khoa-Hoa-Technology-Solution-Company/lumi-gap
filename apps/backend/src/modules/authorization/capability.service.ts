@@ -3,8 +3,9 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
-import { policyCapabilities } from "../identity/identity-foundation.rules.js";
+import { isEligibleVerifiedLecturer, policyCapabilities } from "../identity/identity-foundation.rules.js";
 import { participantScopeForUser } from "../identity/participant-scope.service.js";
+import { logger } from "../../infrastructure/logger.js";
 
 const POLICY_SOURCE = "SYSTEM_POLICY_V1";
 const ALL_CAPABILITIES: Capability[] = [
@@ -40,13 +41,40 @@ export const capabilityService = {
     }), participantScopeForUser(id), getPrisma().user.findUnique({ where: { id }, select: { systemRole: true, accountStatus: true, isActive: true, emailVerifiedAt: true } }),
     getPrisma().academicProfile.findUnique({ where: { userId: id }, select: { academicRole: true, roleVerificationStatus: true, positionStatus: true } })]);
     if (user?.accountStatus !== "ACTIVE" || !user.isActive || (user.systemRole !== "ADMIN" && !user.emailVerifiedAt)) return [];
-    const lecturer = profile?.academicRole === "LECTURER" && profile.roleVerificationStatus === "VERIFIED" && profile.positionStatus === "VERIFIED";
+    const lecturer = isEligibleVerifiedLecturer({
+      accountActive: user.accountStatus === "ACTIVE" && user.isActive,
+      emailVerified: Boolean(user.emailVerifiedAt),
+      academicRole: profile?.academicRole as "STUDENT" | "RESEARCHER" | "LECTURER" | undefined,
+      academicRoleVerificationStatus: profile?.roleVerificationStatus as never,
+      positionVerified: profile?.positionStatus === "VERIFIED",
+    });
     const core: Capability[] = user.systemRole === "ADMIN" ? ["MANAGE_SYSTEM"] : ["BASIC_RESEARCH", "CREATE_RESEARCH_PROJECT"];
-    return [...new Set([...core, ...rows.map((row) => row.capability).filter((value): value is Capability =>
+    // Reconcile policy-guaranteed lecturer capabilities when live verification is valid
+    // so a transient post-commit evaluation error cannot permanently desync access.
+    const verifiedLecturerBaseline: Capability[] = lecturer ? ["REVIEW_ARTIFACT", "STRUCTURED_REVIEW", "MENTOR_PROJECT"] : [];
+    return [...new Set([...core, ...verifiedLecturerBaseline, ...rows.map((row) => row.capability).filter((value): value is Capability =>
       ALL_CAPABILITIES.includes(value as Capability)
       && (!["REVIEW_ARTIFACT", "STRUCTURED_REVIEW", "MENTOR_PROJECT", "APPROVE_ACADEMIC_CONTRIBUTION"].includes(value) || lecturer)
       && (value !== "MANAGE_SYSTEM" || user.systemRole === "ADMIN")
       && (value !== "APPROVE_ACADEMIC_CONTRIBUTION" || scope === "INTERNAL"))])];
+  },
+
+  /**
+   * Evaluates and persists capabilities with bounded retries so transient database contention
+   * after a committed verification decision cannot silently desynchronize authorization.
+   */
+  async evaluateWithRetry(userId: string, maxAttempts = 3): Promise<Capability[] | null> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await this.evaluate(userId);
+      } catch (error) {
+        logger.warn({ userId, attempt, maxAttempts, error: error instanceof Error ? error.message : String(error) }, "Capability evaluation attempt failed");
+        if (attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, attempt * 150));
+        }
+      }
+    }
+    return null;
   },
 
   async evaluate(userId: string): Promise<Capability[]> {

@@ -3,15 +3,18 @@ import { Loader2, SendHorizonal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /** Presentation only. Each conversation keeps its own API and access rules. */
-export function ProjectChatMessage({ own, author, avatarUrl, createdAt, locale, content, deleted = false, footer, children, showOwnAvatar = false }: {
+export function ProjectChatMessage({ own, author, avatarUrl, createdAt, locale, content, deleted = false, footer, children, showOwnAvatar = false, grouped = false }: {
   own: boolean; author: string; avatarUrl?: string; createdAt: string; locale: string;
-  content: string; deleted?: boolean; footer?: ReactNode; children?: ReactNode; showOwnAvatar?: boolean;
+  content: string; deleted?: boolean; footer?: ReactNode; children?: ReactNode; showOwnAvatar?: boolean; grouped?: boolean;
 }) {
   const date = new Date(createdAt);
-  return <div className="project-chat-message" data-own={own} data-deleted={deleted}>
-    {(!own || showOwnAvatar) && <div className="project-chat-avatar" aria-hidden="true">{avatarUrl ? <img src={avatarUrl} alt="" /> : author.charAt(0).toUpperCase()}</div>}
+  return <div className="project-chat-message" data-own={own} data-deleted={deleted} data-grouped={grouped}>
+    {(!own || showOwnAvatar) && (grouped
+      ? <div className="project-chat-avatar-spacer" aria-hidden="true" />
+      : <div className="project-chat-avatar" aria-hidden="true">{avatarUrl ? <img src={avatarUrl} alt="" /> : author.charAt(0).toUpperCase()}</div>
+    )}
     <div className="project-chat-message-main">
-      <div className="project-chat-message-meta"><strong>{author}</strong><time dateTime={createdAt} title={date.toLocaleString(locale)}>{date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</time></div>
+      {!grouped && <div className="project-chat-message-meta"><strong>{author}</strong><time dateTime={createdAt} title={date.toLocaleString(locale)}>{date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</time></div>}
       <div className="project-chat-bubble">{children}{content && <p>{content}</p>}</div>
       {footer && <div className="project-chat-message-footer">{footer}</div>}
     </div>

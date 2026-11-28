@@ -1,5 +1,11 @@
 import { createReviewNotification, dispatchReviewNotifications, reviewTeamRecipients } from "./review-notifications.js";
-import type { AcademicReviewInput, ReviewAvailabilitySettings, SubmissionType, ManuscriptSourceVersionLink } from "@trend/shared-types";
+import type {
+  AcademicReviewInput,
+  ReviewAvailabilitySettings,
+  SubmissionType,
+  ManuscriptSourceVersionLink,
+  ReviewIntegrityEvidenceMap,
+} from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
@@ -7,11 +13,249 @@ import { auditService } from "../audit/audit.service.js";
 import { assertPeerReviewer, assertReviewerInTransaction, lockReviewerAndSubmission, refreshSubmissionReviewStatus } from "./peer-review-access.js";
 import { defaultReviewCriteria } from "./review.constants.js";
 import { hydrateReviewTemplateVersion } from "./review-template.service.js";
-import { reviewOutcome, weightedRubricScore } from "./academic-review.rules.js";
+import { decodeFeedbackItem, encodeFeedbackPriority, isLowRubricScore, isSuggestionRevisionItem, reviewOutcome, weightedRubricScore } from "./academic-review.rules.js";
 import { resolveFeaturedWorks } from "../academic-profiles/academic-featured-works.service.js";
 import { createHash } from "node:crypto";
 import { assertMentorReviewAccess, visibleMentorReviewAssignments } from "./mentor-review-access.js";
 import { validateScientificIntegrity } from "./scientific-review.rules.js";
+
+export function sanitizeIntegrityChecks(checks: AcademicReviewInput["integrityChecks"]): AcademicReviewInput["integrityChecks"] {
+  if (!checks) return checks;
+  return Object.fromEntries(
+    Object.entries(checks).map(([key, entry]) => [
+      key,
+      entry.status === "CONCERN"
+        ? { status: entry.status, ...(entry.note?.trim() ? { note: entry.note.trim() } : {}) }
+        : { status: entry.status },
+    ]),
+  );
+}
+
+/**
+ * Assemble strictly assignment-scoped, privacy-safe evidence previews for the 8 integrity checks.
+ * Never leaks private project files, private contribution histories, unrelated integrity cases,
+ * unshared drafts, or conflicting user identities.
+ */
+export async function buildScopedIntegrityEvidence(params: {
+  prisma: ReturnType<typeof getPrisma>;
+  assignment: { id: string; reviewerId: string; mentorAccessId: string | null; conflictChecks: unknown };
+  request: { origin: string | null } | null;
+  submission: {
+    id: string;
+    projectId: string;
+    submissionType: string | null;
+    methodology: string | null;
+    sourceReportId: string | null;
+  };
+  revision: {
+    id: string;
+    revisionNumber: number;
+    contentType: string;
+    manuscriptSnapshotId: string | null;
+    attributionCheckId: string | null;
+    integrityReportId: string | null;
+  };
+  authorCount: number;
+}): Promise<ReviewIntegrityEvidenceMap> {
+  const { prisma, assignment, request, submission, revision, authorCount } = params;
+  const isMentorGuidance = request?.origin === "MENTOR_GUIDANCE";
+
+  // Check whether an active mentor grant explicitly includes CONTRIBUTIONS_VIEW
+  const mentorAccess = assignment.mentorAccessId
+    ? await prisma.mentorAccess.findFirst({
+        where: { id: assignment.mentorAccessId, revokedAt: null },
+        select: { permissions: true },
+      })
+    : null;
+  const canViewContributions = Boolean(mentorAccess?.permissions.includes("CONTRIBUTIONS_VIEW"));
+
+  const [snapshotRecords, attributionCheck, declaredConflictCount, latestAiPreReview] = await Promise.all([
+    revision.manuscriptSnapshotId
+      ? prisma.manuscriptIntegrityRecord.findMany({
+          where: {
+            projectId: submission.projectId,
+            snapshotId: revision.manuscriptSnapshotId,
+            kind: { in: ["CITATION_AUDIT", "AI_DECLARATION", "RIGHTS_DECLARATION"] },
+          },
+          orderBy: [{ kind: "asc" }, { version: "desc" }],
+          select: { id: true, kind: true, version: true, content: true, createdAt: true },
+        })
+      : Promise.resolve([]),
+    revision.attributionCheckId && (canViewContributions || isMentorGuidance)
+      ? prisma.manuscriptAttributionCheck.findUnique({
+          where: { id: revision.attributionCheckId },
+          select: { id: true, status: true, createdAt: true },
+        })
+      : Promise.resolve(null),
+    prisma.submissionDeclaredConflict.count({ where: { submissionId: submission.id } }),
+    prisma.aiPreReview.findFirst({
+      where: { submissionId: submission.id, status: "COMPLETED" },
+      orderBy: { completedAt: "desc" },
+      select: { citationIssues: true, unsupportedClaims: true, reviewFocusAreas: true },
+    }),
+  ]);
+
+  const latestRecordByKind = new Map<string, (typeof snapshotRecords)[number]>();
+  for (const rec of snapshotRecords) {
+    if (!latestRecordByKind.has(rec.kind)) latestRecordByKind.set(rec.kind, rec);
+  }
+
+  // 1. Authorship & contributions (scoped to assigned revision & mentor permissions)
+  const authorship: ReviewIntegrityEvidenceMap["authorship"] = (() => {
+    const facts: NonNullable<ReviewIntegrityEvidenceMap["authorship"]>["facts"] = [];
+    if (isMentorGuidance && authorCount > 0) {
+      facts.push({ label: "submission_authors", value: String(authorCount), tone: "neutral" });
+    }
+    if (attributionCheck) {
+      facts.push({
+        label: "attribution_snapshot",
+        value: attributionCheck.status,
+        tone: attributionCheck.status === "DISPUTED" || attributionCheck.status === "NEEDS_REVIEW" ? "attention" : "info",
+      });
+    }
+    if (facts.length > 0) return { access: "AVAILABLE", facts };
+    if (!isMentorGuidance && !canViewContributions) return { access: "RESTRICTED", facts: [] };
+    return { access: "EMPTY", facts: [] };
+  })();
+
+  // 2 & 4. Source attribution (borrowing) & Source credibility (sources)
+  const citationAudit = latestRecordByKind.get("CITATION_AUDIT");
+  const citationContent = (citationAudit?.content ?? null) as {
+    citedKeys?: unknown[];
+    entries?: Array<{ identity?: string; metadata?: string; evidence?: { status?: string } }>;
+    findings?: Array<{ code?: string; message?: string }>;
+  } | null;
+
+  const borrowing: ReviewIntegrityEvidenceMap["borrowing"] = (() => {
+    const facts: NonNullable<ReviewIntegrityEvidenceMap["borrowing"]>["facts"] = [];
+    const advisoryNotes: string[] = [];
+    if (citationContent && Array.isArray(citationContent.citedKeys)) {
+      facts.push({ label: "cited_keys", value: String(citationContent.citedKeys.length), tone: "neutral" });
+    }
+    if (latestAiPreReview?.citationIssues?.length) {
+      facts.push({
+        label: "ai_citation_notes",
+        value: String(latestAiPreReview.citationIssues.length),
+        tone: "info",
+      });
+      advisoryNotes.push(...latestAiPreReview.citationIssues.slice(0, 2));
+    }
+    return facts.length > 0
+      ? { access: "AVAILABLE", facts, ...(advisoryNotes.length ? { advisoryNotes } : {}) }
+      : { access: "EMPTY", facts: [] };
+  })();
+
+  const sources: ReviewIntegrityEvidenceMap["sources"] = (() => {
+    const facts: NonNullable<ReviewIntegrityEvidenceMap["sources"]>["facts"] = [];
+    if (citationContent && Array.isArray(citationContent.entries)) {
+      const total = citationContent.entries.length;
+      const verified = citationContent.entries.filter(e => e.metadata === "VERIFIED").length;
+      const needsReview = citationContent.entries.filter(e => e.metadata === "NEEDS_REVIEW").length;
+      const retracted = citationContent.entries.filter(e => e.evidence?.status === "RETRACTED").length;
+      facts.push({ label: "citation_entries", value: String(total), tone: "neutral" });
+      facts.push({ label: "citation_metadata_verified", value: `${verified}/${total}`, tone: "info" });
+      if (needsReview > 0) {
+        facts.push({ label: "citation_metadata_review", value: String(needsReview), tone: "attention" });
+      }
+      if (retracted > 0) {
+        facts.push({ label: "citation_retracted_notice", value: String(retracted), tone: "attention" });
+      }
+    }
+    return facts.length > 0 ? { access: "AVAILABLE", facts } : { access: "EMPTY", facts: [] };
+  })();
+
+  // 3. Data integrity (scoped to assigned submission metadata & advisory focus only)
+  const data: ReviewIntegrityEvidenceMap["data"] = (() => {
+    const facts: NonNullable<ReviewIntegrityEvidenceMap["data"]>["facts"] = [];
+    facts.push({
+      label: "assigned_artifact",
+      value: `v${revision.revisionNumber} (${revision.contentType})`,
+      tone: "neutral",
+    });
+    if (submission.methodology?.trim()) {
+      facts.push({ label: "methodology_declared", value: "YES", tone: "info" });
+    }
+    const unsupportedCount = Array.isArray(latestAiPreReview?.unsupportedClaims)
+      ? latestAiPreReview.unsupportedClaims.length
+      : 0;
+    if (unsupportedCount > 0) {
+      facts.push({ label: "ai_unsupported_claims", value: String(unsupportedCount), tone: "info" });
+    }
+    return { access: "AVAILABLE", facts };
+  })();
+
+  // 5. Conflicts of interest (aggregate count only; never leak user identities)
+  const conflicts: ReviewIntegrityEvidenceMap["conflicts"] = {
+    access: "AVAILABLE",
+    facts: [
+      { label: "declared_conflicts_count", value: String(declaredConflictCount), tone: "neutral" },
+      { label: "reviewer_coi_separate", value: "SEPARATE", tone: "info" },
+    ],
+  };
+
+  // 6. AI-use disclosure (pinned snapshot AI_DECLARATION record)
+  const aiRecord = latestRecordByKind.get("AI_DECLARATION");
+  const aiContent = (aiRecord?.content ?? null) as {
+    disclosure?: string;
+    venuePolicy?: string;
+    externalUsage?: Array<{ tool?: string; category?: string }>;
+  } | null;
+  const ai_disclosure: ReviewIntegrityEvidenceMap["ai_disclosure"] = (() => {
+    if (!aiContent) return { access: "EMPTY", facts: [] };
+    const facts: NonNullable<ReviewIntegrityEvidenceMap["ai_disclosure"]>["facts"] = [
+      { label: "ai_declaration_version", value: `v${aiRecord!.version}`, tone: "info" },
+    ];
+    if (Array.isArray(aiContent.externalUsage)) {
+      facts.push({ label: "ai_tools_declared", value: String(aiContent.externalUsage.length), tone: "neutral" });
+    }
+    if (aiContent.disclosure?.trim()) {
+      facts.push({ label: "ai_disclosure_summary", value: aiContent.disclosure.trim().slice(0, 180), tone: "neutral" });
+    }
+    return { access: "AVAILABLE", facts };
+  })();
+
+  // 7 & 8. Ethics & Confidentiality (pinned snapshot RIGHTS_DECLARATION record if provided)
+  const rightsRecord = latestRecordByKind.get("RIGHTS_DECLARATION");
+  const rightsContent = (rightsRecord?.content ?? null) as {
+    basis?: string;
+    restrictions?: string;
+    thirdPartyContent?: string;
+    unresolvedQuestions?: string;
+  } | null;
+
+  const ethics: ReviewIntegrityEvidenceMap["ethics"] = (() => {
+    const facts: NonNullable<ReviewIntegrityEvidenceMap["ethics"]>["facts"] = [];
+    if (rightsContent?.unresolvedQuestions?.trim()) {
+      facts.push({
+        label: "unresolved_questions",
+        value: rightsContent.unresolvedQuestions.trim().slice(0, 180),
+        tone: "attention",
+      });
+    }
+    return facts.length > 0 ? { access: "AVAILABLE", facts } : { access: "EMPTY", facts: [] };
+  })();
+
+  const confidentiality: ReviewIntegrityEvidenceMap["confidentiality"] = (() => {
+    const facts: NonNullable<ReviewIntegrityEvidenceMap["confidentiality"]>["facts"] = [];
+    if (rightsContent?.restrictions?.trim()) {
+      facts.push({
+        label: "sharing_restrictions",
+        value: rightsContent.restrictions.trim().slice(0, 180),
+        tone: "info",
+      });
+    }
+    if (rightsContent?.thirdPartyContent?.trim()) {
+      facts.push({
+        label: "third_party_content",
+        value: rightsContent.thirdPartyContent.trim().slice(0, 180),
+        tone: "neutral",
+      });
+    }
+    return facts.length > 0 ? { access: "AVAILABLE", facts } : { access: "EMPTY", facts: [] };
+  })();
+
+  return { authorship, borrowing, data, sources, conflicts, ai_disclosure, ethics, confidentiality };
+}
 
 type AvailabilityInput = Omit<ReviewAvailabilitySettings, "activeReviewCount">;
 type OpportunityFilters = { researchField?: string; topic?: string; submissionType?: SubmissionType; methodology?: string; dateFrom?: Date; sort?: "relevance" | "newest" };
@@ -71,6 +315,224 @@ async function resolveSubmission(input: string) {
   return submission;
 }
 
+async function loadAuthorizedReviewAssignment(assignmentInput: string, reviewerInput: string) {
+  const reviewer = await resolveUser(reviewerInput);
+  const prisma = getPrisma();
+  const assignment = await prisma.reviewerAssignment.findFirst({ where: { ...idWhere(assignmentInput), reviewerId: reviewer.id } });
+  if (!assignment) throw AppError.notFound("Review assignment not found");
+  if (!["accepted", "completed"].includes(assignment.status)) throw AppError.forbidden("Accept the review request before accessing the artifact");
+  await assertPeerReviewer(reviewer.id);
+  const request = assignment.reviewRequestId ? await prisma.reviewRequest.findUnique({ where: { id: assignment.reviewRequestId } }) : null;
+  if (assignment.reviewRequestId && (!request || !["ACCEPTED", "IN_REVIEW", "RESUBMITTED", "REVISION_REQUESTED", "COMPLETED"].includes(request.status))) {
+    throw AppError.forbidden("This review request is no longer accessible");
+  }
+  if (request?.origin === "MENTOR_GUIDANCE") {
+    await assertMentorReviewAccess(prisma, request.projectId, reviewer.id, request.submissionId, assignment.id);
+  }
+  const submission = await prisma.submission.findUniqueOrThrow({ where: { id: assignment.submissionId } });
+  const project = await prisma.project.findUnique({ where: { id: submission.projectId }, select: { deletedAt: true, title: true, status: true, ownerId: true } });
+  if (!project || project.deletedAt) throw AppError.notFound("Project not found");
+  if (!request && assignment.anonymousCode.startsWith("mentor-")) {
+    await assertMentorReviewAccess(prisma, submission.projectId, reviewer.id, submission.id, assignment.id);
+  }
+  const pinnedRevisionId = request?.artifactRevisionId ?? assignment.artifactRevisionId;
+  const revision = pinnedRevisionId
+    ? await prisma.submissionRevision.findFirst({ where: { id: pinnedRevisionId, submissionId: assignment.submissionId } })
+    : null;
+  if (!revision || (request && (request.submissionId !== assignment.submissionId || request.projectId !== submission.projectId || assignment.artifactRevisionId !== request.artifactRevisionId))) {
+    throw AppError.conflict("Review assignment does not match the target artifact");
+  }
+  return { prisma, reviewer, assignment, request, submission, project, pinnedRevisionId: revision.id, revision };
+}
+
+/**
+ * Assemble strictly read-only, batched (N+1-free) prior submitted review rounds
+ * belonging exclusively to this reviewer's assignment before the current round.
+ */
+async function buildPriorSubmittedFeedback(params: {
+  prisma: ReturnType<typeof getPrisma>;
+  reviewerName: string;
+  submissionId: string;
+  pinnedRevisionId: string;
+  currentRoundNumber: number;
+  reviews: Awaited<ReturnType<ReturnType<typeof getPrisma>["humanReview"]["findMany"]>>;
+}) {
+  const { prisma, reviewerName, submissionId, pinnedRevisionId, currentRoundNumber, reviews } = params;
+  const priorSubmittedRows = reviews
+    .filter(item => item.status === "SUBMITTED" && item.revisionId !== pinnedRevisionId && item.roundNumber < currentRoundNumber)
+    .sort((a, b) => b.roundNumber - a.roundNumber);
+
+  const priorReviewIds = priorSubmittedRows.map(item => item.id);
+  const priorReviewById = new Map(priorSubmittedRows.map(item => [item.id, item]));
+  const priorTemplateVersionIds = [
+    ...new Set(priorSubmittedRows.flatMap(item => (item.templateVersionId ? [item.templateVersionId] : []))),
+  ];
+
+  const [priorResponses, priorItems, priorTemplateVersions, priorCriteria] = await Promise.all([
+    priorReviewIds.length
+      ? prisma.reviewResponse.findMany({ where: { reviewId: { in: priorReviewIds } }, orderBy: { createdAt: "asc" } })
+      : Promise.resolve([]),
+    priorReviewIds.length
+      ? prisma.reviewRevisionItem.findMany({ where: { reviewId: { in: priorReviewIds } }, orderBy: [{ createdAt: "asc" }, { position: "asc" }] })
+      : Promise.resolve([]),
+    priorTemplateVersionIds.length && typeof prisma.reviewTemplateVersion?.findMany === "function"
+      ? prisma.reviewTemplateVersion.findMany({
+          where: { id: { in: priorTemplateVersionIds } },
+          select: { id: true, versionNumber: true, reviewMode: true, guidelines: true },
+        })
+      : Promise.resolve([]),
+    priorTemplateVersionIds.length && typeof prisma.reviewCriterion?.findMany === "function"
+      ? prisma.reviewCriterion.findMany({
+          where: { versionId: { in: priorTemplateVersionIds } },
+          orderBy: { order: "asc" },
+          select: { id: true, versionId: true, key: true, label: true, weight: true, order: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const priorItemIds = priorItems.map(item => item.id);
+  const priorCriterionIds = priorCriteria.map(c => c.id);
+  const [priorItemResponses, priorLevels] = await Promise.all([
+    priorItemIds.length
+      ? prisma.reviewRevisionResponse.findMany({
+          where: { revisionItemId: { in: priorItemIds }, status: { not: "DRAFT" } },
+          orderBy: { createdAt: "desc" },
+        })
+      : Promise.resolve([]),
+    priorCriterionIds.length && typeof prisma.reviewCriterionLevel?.findMany === "function"
+      ? prisma.reviewCriterionLevel.findMany({
+          where: { criterionId: { in: priorCriterionIds } },
+          select: { id: true, criterionId: true, label: true, score: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const referencedRevisionIds = [
+    ...new Set([
+      ...priorSubmittedRows.map(r => r.revisionId),
+      ...priorItemResponses.map(resp => resp.submissionRevisionId),
+    ]),
+  ];
+  const referencedRevisions = referencedRevisionIds.length
+    ? await prisma.submissionRevision.findMany({
+        where: { submissionId, id: { in: referencedRevisionIds } },
+        orderBy: { revisionNumber: "asc" },
+      })
+    : [];
+  const revisionNumberById = new Map(referencedRevisions.map(v => [v.id, v.revisionNumber]));
+
+  const maxScoreByCriterionId = new Map<string, number>();
+  const levelById = new Map<string, { label: string; score: number }>();
+  for (const level of priorLevels) {
+    levelById.set(level.id, { label: level.label, score: level.score });
+    if (level.score != null) {
+      const prev = maxScoreByCriterionId.get(level.criterionId);
+      if (prev === undefined || level.score > prev) maxScoreByCriterionId.set(level.criterionId, level.score);
+    }
+  }
+  const templateMetaById = new Map(priorTemplateVersions.map(tv => [tv.id, tv]));
+  const criterionMetaByKey = new Map(
+    priorCriteria.map(c => [
+      `${c.versionId}:${c.key}`,
+      { title: c.label, weight: c.weight, order: c.order, maxScore: maxScoreByCriterionId.get(c.id) ?? null },
+    ]),
+  );
+
+  const priorResponsesByReviewId = new Map<string, typeof priorResponses>();
+  for (const resp of priorResponses) {
+    const list = priorResponsesByReviewId.get(resp.reviewId) ?? [];
+    list.push(resp);
+    priorResponsesByReviewId.set(resp.reviewId, list);
+  }
+  const itemResponsesByItemId = new Map<string, typeof priorItemResponses>();
+  for (const resp of priorItemResponses) {
+    const list = itemResponsesByItemId.get(resp.revisionItemId) ?? [];
+    list.push(resp);
+    itemResponsesByItemId.set(resp.revisionItemId, list);
+  }
+
+  const previousRevisionItems = priorItems.map(item => {
+    const originReview = priorReviewById.get(item.reviewId);
+    const decoded = decodeFeedbackItem(item);
+    return {
+      ...decoded,
+      reviewId: item.reviewId,
+      roundNumber: originReview?.roundNumber,
+      revisionId: originReview?.revisionId,
+      revisionNumber: originReview ? revisionNumberById.get(originReview.revisionId) : undefined,
+      createdAt: item.createdAt.toISOString(),
+      responses: (itemResponsesByItemId.get(item.id) ?? []).map(resp => ({
+        submissionRevisionId: resp.submissionRevisionId,
+        submissionRevisionNumber: revisionNumberById.get(resp.submissionRevisionId),
+        responseText: resp.responseText,
+        status: resp.status,
+        createdAt: resp.createdAt.toISOString(),
+      })),
+    };
+  });
+
+  const itemsByReviewId = new Map<string, typeof previousRevisionItems>();
+  for (const item of previousRevisionItems) {
+    const list = itemsByReviewId.get(item.reviewId) ?? [];
+    list.push(item);
+    itemsByReviewId.set(item.reviewId, list);
+  }
+
+  const previousReviews = priorSubmittedRows.map(item => {
+    const tvMeta = item.templateVersionId ? templateMetaById.get(item.templateVersionId) : undefined;
+    const rawResponses = priorResponsesByReviewId.get(item.id) ?? [];
+    const mappedResponses = rawResponses
+      .map(r => {
+        const cleanKey = r.criterionKey.replace(/^rubric:/, "");
+        const cMeta = item.templateVersionId
+          ? criterionMetaByKey.get(`${item.templateVersionId}:${cleanKey}`) ??
+            criterionMetaByKey.get(`${item.templateVersionId}:${r.criterionKey}`)
+          : undefined;
+        const level = r.performanceLevelId ? levelById.get(r.performanceLevelId) : undefined;
+        return {
+          criterionKey: r.criterionKey,
+          criterionTitle: cMeta?.title ?? undefined,
+          order: cMeta?.order ?? 999,
+          maxScore: cMeta?.maxScore ?? undefined,
+          levelLabel: level?.label ?? undefined,
+          comment: r.comment,
+          evidence: r.evidence ?? undefined,
+          assessment: r.assessment ?? undefined,
+          performanceLevelId: r.performanceLevelId ?? undefined,
+          score: r.score ?? undefined,
+          notApplicable: r.notApplicable,
+        };
+      })
+      .sort((a, b) => a.order - b.order)
+      .map(({ order: _order, ...rest }) => rest);
+
+    return {
+      id: item.id,
+      roundNumber: item.roundNumber,
+      revisionId: item.revisionId,
+      revisionNumber: revisionNumberById.get(item.revisionId),
+      reviewerName,
+      templateVersionId: item.templateVersionId ?? undefined,
+      templateVersionNumber: tvMeta?.versionNumber,
+      reviewMode: tvMeta?.reviewMode,
+      guidelines: tvMeta?.guidelines ?? undefined,
+      keyStrengths: item.keyStrengths ?? undefined,
+      keyConcerns: item.keyConcerns ?? undefined,
+      overallComment: item.overallComment ?? undefined,
+      overallAssessment: item.overallAssessment ?? undefined,
+      recommendation: item.recommendation ?? undefined,
+      weightedScore: item.weightedScore ?? undefined,
+      integrityChecks: (item.integrityChecks && typeof item.integrityChecks === "object" && !Array.isArray(item.integrityChecks)
+        ? item.integrityChecks
+        : undefined) as AcademicReviewInput["integrityChecks"] | undefined,
+      responses: mappedResponses,
+      revisionItems: itemsByReviewId.get(item.id) ?? [],
+      submittedAt: item.submittedAt?.toISOString(),
+    };
+  });
+
+  return { previousReviews, previousRevisionItems };
+}
 
 export const reviewService = {
   async getAvailability(userId: string) { return availabilityDto(await reviewerContext(userId)); },
@@ -159,8 +621,13 @@ export const reviewService = {
     const version = request ? await prisma.reviewTemplateVersion.findUnique({ where: { id: request.templateVersionId } }) : null;
     if (request?.origin === "MENTOR_GUIDANCE" && (!input.expectedRevisionId || !input.expectedRoundNumber)) throw AppError.badRequest("Mentor feedback must identify the assigned manuscript revision and review round");
     if (input.commentOnly && request?.origin !== "MENTOR_GUIDANCE") throw AppError.badRequest("Comment-only feedback is available for assigned mentor guidance only");
+    if (input.feedbackOnly && request?.origin !== "MENTOR_GUIDANCE") throw AppError.badRequest("Feedback-only mode is available for assigned mentor guidance only");
     if (input.commentOnly && (input.overallAssessment || input.requiredRevisions?.length)) throw AppError.badRequest("Comments do not include readiness approval or required changes; choose the corresponding outcome");
-    validateScientificIntegrity(input, version?.guidelines ?? [], request?.origin, submit && !input.commentOnly);
+    if (input.feedbackOnly && input.overallAssessment === "STRONG") throw AppError.badRequest("Internal readiness approval requires completing the rubric and integrity checks");
+    const isMentorFeedbackOnly = Boolean(input.feedbackOnly && request?.origin === "MENTOR_GUIDANCE");
+    const isFeedbackResubmit = isMentorFeedbackOnly && (input.mentorAction === "RESUBMIT" || ["MINOR_REVISION", "MAJOR_REVISION", "NOT_READY"].includes(input.overallAssessment ?? ""));
+    const cleanedIntegrityChecks = sanitizeIntegrityChecks(input.integrityChecks);
+    validateScientificIntegrity({ ...input, integrityChecks: cleanedIntegrityChecks }, version?.guidelines ?? [], request?.origin, submit && !input.commentOnly && !isMentorFeedbackOnly);
     const criteria = version
       ? await prisma.reviewCriterion.findMany({ where: { versionId: version.id }, orderBy: { order: "asc" } })
       : defaultReviewCriteria.map(([key, label, description], order) => ({ id: key, key, label, description, order, required: true, allowNotApplicable: false, weight: null }));
@@ -176,13 +643,13 @@ export const reviewService = {
         if (!response) return true;
         if (response.notApplicable) return !criterion.allowNotApplicable;
         if (version?.reviewMode === "RUBRIC_ASSESSMENT") return !response.performanceLevelId;
-        if (version?.reviewMode === "STRUCTURED_REVIEW") return !response.assessment || !response.comment?.trim();
+        if (version?.reviewMode === "STRUCTURED_REVIEW") return !response.assessment;
         return !response.comment?.trim();
       }).map((criterion) => criterion.label);
-      if (!input.commentOnly && missing.length) throw AppError.badRequest("Complete every required review criterion before submitting", { missing });
+      if (!input.commentOnly && !isMentorFeedbackOnly && missing.length) throw AppError.badRequest("Complete every required review criterion before submitting", { missing });
       const commentsMissing = input.responses.filter((response) => ["MAJOR_ISSUES", "NEEDS_IMPROVEMENT"].includes(response.assessment ?? "") && !response.comment?.trim());
       if (commentsMissing.length) throw AppError.badRequest("Major issues and needs-improvement assessments require a comment");
-      if (!input.overallAssessment && !input.commentOnly) throw AppError.badRequest("Select an overall assessment before submitting");
+      if (!input.overallAssessment && !input.commentOnly && !isMentorFeedbackOnly) throw AppError.badRequest("Select an overall assessment before submitting");
       if (!input.overallComment?.trim()) throw AppError.badRequest("Explain the overall assessment before submitting");
     }
     const reviews = await prisma.humanReview.findMany({ where: { assignmentId: assignment.id }, orderBy: { roundNumber: "desc" } });
@@ -194,7 +661,22 @@ export const reviewService = {
     const levels = version?.reviewMode === "RUBRIC_ASSESSMENT" ? await prisma.reviewCriterionLevel.findMany({ where: { criterionId: { in: criteria.map((item) => item.id) } } }) : [];
     const levelMap = new Map(levels.map((level) => [level.id, level]));
     for (const response of input.responses) if (response.performanceLevelId && levelMap.get(response.performanceLevelId)?.criterionId !== criteria.find((item) => item.key === response.criterionKey)?.id) throw AppError.badRequest("Review contains an invalid performance level");
-    if (submit && input.responses.some(response => !response.notApplicable && response.performanceLevelId && (levelMap.get(response.performanceLevelId)?.score ?? 5) <= 2 && !response.comment?.trim())) throw AppError.badRequest("Low ratings require actionable academic comments");
+    const levelsByCriterionId = new Map<string, number[]>();
+    for (const level of levels) {
+      levelsByCriterionId.set(level.criterionId, [...(levelsByCriterionId.get(level.criterionId) ?? []), level.score]);
+    }
+    if (
+      submit &&
+      input.responses.some(response => {
+        if (response.notApplicable || !response.performanceLevelId || response.comment?.trim()) return false;
+        const level = levelMap.get(response.performanceLevelId);
+        if (!level) return false;
+        const scale = levelsByCriterionId.get(level.criterionId) ?? [];
+        return isLowRubricScore(level.score, scale);
+      })
+    ) {
+      throw AppError.badRequest("Low ratings require actionable academic comments");
+    }
     const scored = input.responses.flatMap((response) => {
       if (response.notApplicable || !response.performanceLevelId) return [];
       const level = levelMap.get(response.performanceLevelId); const criterion = criteria.find((item) => item.key === response.criterionKey);
@@ -226,23 +708,37 @@ export const reviewService = {
       const storedRound = await tx.humanReview.findUnique({ where: { assignmentId_roundNumber: { assignmentId: assignment.id, roundNumber } } });
       if (storedRound?.status === "SUBMITTED") throw AppError.conflict("Submitted review rounds are immutable");
       let pendingRevisionCount = 0;
+      const effectiveAssessment = isMentorFeedbackOnly
+        ? (isFeedbackResubmit
+          ? (input.overallAssessment ?? (input.requiredRevisions?.some(r => r.priority === "MAJOR") ? "MAJOR_REVISION" : "MINOR_REVISION"))
+          : undefined)
+        : input.overallAssessment;
+      const effectiveRecommendation = isMentorFeedbackOnly
+        ? (isFeedbackResubmit
+          ? (effectiveAssessment ?? "MINOR_REVISION")
+          : input.mentorAction === "SELF_REVISE"
+            ? "SELF_REVISION"
+            : "COMMENT_ONLY")
+        : (input.commentOnly ? "COMMENT_ONLY" : input.overallAssessment ?? null);
+      const mandatoryNewRevisionCount = (input.requiredRevisions ?? []).filter((item) => item.priority !== "SUGGESTION").length;
       if (submit) {
         const previousReviews = await tx.humanReview.findMany({ where: { assignmentId: assignment.id, status: "SUBMITTED" }, select: { id: true } });
         const unresolved = await tx.reviewRevisionItem.findMany({ where: { reviewId: { in: previousReviews.map((item) => item.id) }, status: { not: "ACCEPTED" } } });
-        if (unresolved.some((item) => item.status === "ADDRESSED")) throw AppError.conflict("Accept or reopen every author response before submitting");
-        pendingRevisionCount = unresolved.length;
-        if (input.commentOnly && pendingRevisionCount) throw AppError.conflict("Resolve required changes before closing this round with comments only");
-        if (["NOT_READY", "MINOR_REVISION", "MAJOR_REVISION"].includes(input.overallAssessment ?? "") && !input.requiredRevisions?.length && !pendingRevisionCount) throw AppError.badRequest("Revision assessments require at least one actionable revision item");
-        if (input.overallAssessment === "STRONG" && (pendingRevisionCount || input.requiredRevisions?.length)) throw AppError.conflict("Resolve required changes before marking this revision ready to advance");
+        const mandatoryUnresolved = unresolved.filter((item) => !isSuggestionRevisionItem(item));
+        if (mandatoryUnresolved.some((item) => item.status === "ADDRESSED")) throw AppError.conflict("Accept or reopen every author response before submitting");
+        pendingRevisionCount = mandatoryUnresolved.length;
+        if ((input.commentOnly || (isMentorFeedbackOnly && !isFeedbackResubmit)) && pendingRevisionCount) throw AppError.conflict("Resolve required changes before closing this round with comments only");
+        if (!isMentorFeedbackOnly && ["NOT_READY", "MINOR_REVISION", "MAJOR_REVISION"].includes(effectiveAssessment ?? "") && !mandatoryNewRevisionCount && !pendingRevisionCount) throw AppError.badRequest("Revision assessments require at least one actionable revision item");
+        if (effectiveAssessment === "STRONG" && (pendingRevisionCount || mandatoryNewRevisionCount)) throw AppError.conflict("Resolve required changes before marking this revision ready to advance");
       }
       for (const item of input.requiredRevisions ?? []) {
         if (item.criterionKey && !allowedKeys.has(item.criterionKey)) throw AppError.badRequest("Revision item references an unknown criterion");
         if (item.quotation && (!revision.contentSnapshot || !revision.contentSnapshot.includes(item.quotation))) throw AppError.badRequest("Quoted excerpt must match this exact manuscript revision; use a page/section locator for PDFs");
       }
-      const reviewData = { reviewerAcademicRole: submit ? liveProfile.academicRole : undefined, reviewerId: reviewer.id, submissionId: assignment.submissionId, revisionId, templateId: version?.templateId, templateVersionId: version?.id, overallComment: input.overallComment ?? null, keyStrengths: input.keyStrengths ?? null, keyConcerns: input.keyConcerns ?? null, overallAssessment: input.overallAssessment ?? null, recommendation: input.overallAssessment ?? null, weightedScore: weightedScore ?? null, status: submit ? "SUBMITTED" : "DRAFT", submittedAt: submit ? now : null };
-      // Keep the explicit comment-only choice in the existing recommendation field,
+      const reviewData = { reviewerAcademicRole: submit ? liveProfile.academicRole : undefined, reviewerId: reviewer.id, submissionId: assignment.submissionId, revisionId, templateId: version?.templateId, templateVersionId: version?.id, overallComment: input.overallComment ?? null, keyStrengths: input.keyStrengths ?? null, keyConcerns: input.keyConcerns ?? null, overallAssessment: effectiveAssessment ?? null, recommendation: effectiveRecommendation, weightedScore: weightedScore ?? null, status: submit ? "SUBMITTED" : "DRAFT", submittedAt: submit ? now : null };
+      // Keep the explicit comment-only or feedback-first choice in the existing recommendation field,
       // including drafts, without treating it as a readiness assessment.
-      const metadata = { recommendation: input.commentOnly ? "COMMENT_ONLY" : input.overallAssessment ?? null, integrityChecks: input.integrityChecks ?? {}, ...(submit ? { clientKey: input.clientKey ?? null, submissionHash: requestHash } : {}) };
+      const metadata = { recommendation: effectiveRecommendation, integrityChecks: cleanedIntegrityChecks ?? {}, ...(submit ? { clientKey: input.clientKey ?? null, submissionHash: requestHash } : {}) };
       const saved = await tx.humanReview.upsert({ where: { assignmentId_roundNumber: { assignmentId: assignment.id, roundNumber } }, create: { assignmentId: assignment.id, roundNumber, ...reviewData, ...metadata }, update: { ...reviewData, ...metadata } });
       for (const response of persistable) {
         const level = response.performanceLevelId ? levelMap.get(response.performanceLevelId) : undefined;
@@ -250,11 +746,15 @@ export const reviewService = {
       }
       await tx.reviewResponse.deleteMany({ where: { reviewId: saved.id, criterionKey: { notIn: persistable.map((response) => response.criterionKey) } } });
       await tx.reviewRevisionItem.deleteMany({ where: { reviewId: saved.id } });
-      if (input.requiredRevisions?.length) await tx.reviewRevisionItem.createMany({ data: input.requiredRevisions.map((item, position) => ({ reviewId: saved.id, position, priority: item.priority, description: item.description.trim(), criterionKey: item.criterionKey, locator: item.locator, quotation: item.quotation })) });
+      if (input.requiredRevisions?.length) await tx.reviewRevisionItem.createMany({ data: input.requiredRevisions.map((item, position) => {
+        const encoded = encodeFeedbackPriority(item.priority, item.criterionKey);
+        return { reviewId: saved.id, position, priority: encoded.priority, description: item.description.trim(), criterionKey: encoded.criterionKey, locator: item.locator, quotation: item.quotation };
+      }) });
       if (request && !submit && ["ACCEPTED", "RESUBMITTED"].includes(request.status)) await tx.reviewRequest.update({ where: { id: request.id }, data: { status: "IN_REVIEW" } });
       if (submit) {
-        outcome = reviewOutcome(input.overallAssessment, (input.requiredRevisions?.length ?? 0) + pendingRevisionCount);
-        await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: outcome.assignmentStatus, decision: input.overallAssessment?.toLowerCase(), reviewText: input.overallComment ?? input.keyConcerns, completedAt: outcome.requestStatus === "COMPLETED" ? now : null } });
+        const blockingRevisionCount = isMentorFeedbackOnly && !isFeedbackResubmit ? 0 : mandatoryNewRevisionCount + pendingRevisionCount;
+        outcome = reviewOutcome(effectiveAssessment, blockingRevisionCount);
+        await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: outcome.assignmentStatus, decision: effectiveAssessment?.toLowerCase(), reviewText: input.overallComment ?? input.keyConcerns, completedAt: outcome.requestStatus === "COMPLETED" ? now : null } });
         if (request) await tx.reviewRequest.update({ where: { id: request.id }, data: { status: outcome.requestStatus, completedAt: outcome.requestStatus === "COMPLETED" ? now : null } });
         await refreshSubmissionReviewStatus(tx, submission.id);
         if (liveRequest?.origin === "MENTOR_GUIDANCE") await tx.projectActivity.upsert({
@@ -280,48 +780,96 @@ export const reviewService = {
       await auditService.log(outcome.requestStatus === "REVISION_REQUESTED" ? "REVISION_REQUESTED" : "REVIEW_COMPLETED", { userId: reviewer.id, targetTableName: "review_requests", targetRecordId: request?.id, details: { reviewId: review.id, roundNumber } });
       await dispatchReviewNotifications(pendingNotifications);
     } else if (!submit && !existing) await auditService.log("REVIEW_STARTED", { userId: reviewer.id, targetTableName: "human_reviews", targetRecordId: review.id, details: { assignmentId: assignment.id, roundNumber } });
-    return { review, responses: await prisma.reviewResponse.findMany({ where: { reviewId: review.id }, orderBy: { createdAt: "asc" } }), requiredRevisions: await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } }) };
+    return { review, responses: await prisma.reviewResponse.findMany({ where: { reviewId: review.id }, orderBy: { createdAt: "asc" } }), requiredRevisions: (await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } })).map(decodeFeedbackItem) };
+  },
+
+  async getPreviousFeedback(assignmentInput: string, reviewerInput: string) {
+    const { prisma, reviewer, assignment, pinnedRevisionId } = await loadAuthorizedReviewAssignment(assignmentInput, reviewerInput);
+    const reviews = await prisma.humanReview.findMany({ where: { assignmentId: assignment.id }, orderBy: { roundNumber: "desc" } });
+    const currentReview =
+      reviews.find(item => item.status === "DRAFT" && item.revisionId === pinnedRevisionId) ??
+      reviews.find(item => item.revisionId === pinnedRevisionId);
+    const currentRoundNumber = currentReview?.roundNumber ?? (reviews[0]?.roundNumber ?? 0) + 1;
+    const { previousReviews } = await buildPriorSubmittedFeedback({
+      prisma,
+      reviewerName: reviewer.fullName,
+      submissionId: assignment.submissionId,
+      pinnedRevisionId,
+      currentRoundNumber,
+      reviews,
+    });
+    return {
+      assignmentId: publicDatabaseId(assignment),
+      submissionId: assignment.submissionId,
+      currentRoundNumber,
+      currentRevisionId: pinnedRevisionId,
+      rounds: previousReviews,
+    };
   },
 
   async getReview(assignmentInput: string, reviewerInput: string) {
-    const reviewer = await resolveUser(reviewerInput); const prisma = getPrisma(); const assignment = await prisma.reviewerAssignment.findFirst({ where: { ...idWhere(assignmentInput), reviewerId: reviewer.id } });
-    if (!assignment) throw AppError.notFound("Review assignment not found");
-    if (!["accepted", "completed"].includes(assignment.status)) throw AppError.forbidden("Accept the review request before accessing the artifact");
-    await assertPeerReviewer(reviewer.id);
-    const request = assignment.reviewRequestId ? await prisma.reviewRequest.findUnique({ where: { id: assignment.reviewRequestId } }) : null;
-    if (assignment.reviewRequestId && (!request || !["ACCEPTED", "IN_REVIEW", "RESUBMITTED", "REVISION_REQUESTED", "COMPLETED"].includes(request.status))) throw AppError.forbidden("This review request is no longer accessible");
-    if (request?.origin === "MENTOR_GUIDANCE") await assertMentorReviewAccess(prisma, request.projectId, reviewer.id, request.submissionId, assignment.id);
+    const { prisma, reviewer, assignment, request, submission, project, pinnedRevisionId, revision } =
+      await loadAuthorizedReviewAssignment(assignmentInput, reviewerInput);
     const reviews = await prisma.humanReview.findMany({ where: { assignmentId: assignment.id }, orderBy: { roundNumber: "desc" } });
-    const pinnedRevisionId = request?.artifactRevisionId ?? assignment.artifactRevisionId;
     const review = reviews.find((item) => item.status === "DRAFT" && item.revisionId === pinnedRevisionId) ?? reviews.find((item) => item.revisionId === pinnedRevisionId);
     const templateVersion = request ? await hydrateReviewTemplateVersion(request.templateVersionId) : undefined;
-    const submission = await prisma.submission.findUniqueOrThrow({ where: { id: assignment.submissionId } });
-    const project = await prisma.project.findUnique({ where: { id: submission.projectId }, select: { deletedAt: true } });
-    if (!project || project.deletedAt) throw AppError.notFound("Project not found");
-    if (!request && assignment.anonymousCode.startsWith("mentor-")) await assertMentorReviewAccess(prisma, submission.projectId, reviewer.id, submission.id, assignment.id);
-    const revision = pinnedRevisionId ? await prisma.submissionRevision.findFirst({ where: { id: pinnedRevisionId, submissionId: assignment.submissionId } }) : null;
-    if (!revision || (request && (request.submissionId !== assignment.submissionId || request.projectId !== submission.projectId || assignment.artifactRevisionId !== request.artifactRevisionId))) throw AppError.conflict("Review assignment does not match the target artifact");
     const oldRevisionIds = [...new Set(reviews.filter(review => review.status === "SUBMITTED").map(review => review.revisionId))];
     const previousVersions = await prisma.submissionRevision.findMany({ where: { submissionId: assignment.submissionId, id: { in: oldRevisionIds } }, orderBy: { revisionNumber: "asc" } });
     const manuscriptSnapshot = revision.manuscriptSnapshotId ? await prisma.manuscriptSnapshot.findUnique({ where: { id: revision.manuscriptSnapshotId }, select: { id: true, projectId: true, workspaceId: true } }) : null;
     const manuscriptSource: ManuscriptSourceVersionLink | undefined = manuscriptSnapshot ? { projectId: manuscriptSnapshot.projectId, manuscriptId: manuscriptSnapshot.workspaceId, snapshotId: manuscriptSnapshot.id } : undefined;
     const authorLinks = request?.origin === "MENTOR_GUIDANCE" ? await prisma.submissionAuthor.findMany({ where: { submissionId: submission.id }, orderBy: { position: "asc" }, select: { userId: true } }) : [];
     const authorPeople = authorLinks.length ? await prisma.user.findMany({ where: { id: { in: authorLinks.map(row => row.userId) } }, select: { id: true, fullName: true } }) : [];
+    const integrityEvidence = await buildScopedIntegrityEvidence({
+      prisma,
+      assignment,
+      request,
+      submission,
+      revision,
+      authorCount: authorLinks.length,
+    });
+    const currentRoundNumber = review?.roundNumber ?? (reviews[0]?.roundNumber ?? 0) + 1;
+    const { previousReviews: previousSubmittedReviews, previousRevisionItems } = await buildPriorSubmittedFeedback({
+      prisma,
+      reviewerName: reviewer.fullName,
+      submissionId: assignment.submissionId,
+      pinnedRevisionId,
+      currentRoundNumber,
+      reviews,
+    });
+    const draftResponseRows = review ? await prisma.reviewResponse.findMany({ where: { reviewId: review.id } }) : [];
+    const submittedRoundCount = reviews.filter(r => r.status === "SUBMITTED").length;
+    const mandatoryProjectTemplate = templateVersion?.templateSource === "PROJECT";
+    const canChangeTemplate = Boolean(
+      request &&
+      assignment.status === "accepted" &&
+      ["ACCEPTED", "IN_REVIEW", "RESUBMITTED"].includes(request.status) &&
+      !["ARCHIVED", "COMPLETED"].includes(project.status) &&
+      (!mandatoryProjectTemplate || project.ownerId === reviewer.id),
+    );
     return {
-      previousReviews: reviews.filter(item => item.status === "SUBMITTED" && item.revisionId !== pinnedRevisionId).map(item => ({ id: item.id, roundNumber: item.roundNumber, revisionId: item.revisionId, revisionNumber: previousVersions.find(version => version.id === item.revisionId)?.revisionNumber, overallComment: item.overallComment ?? undefined, overallAssessment: item.overallAssessment ?? undefined, recommendation: item.recommendation ?? undefined, weightedScore: item.weightedScore ?? undefined, submittedAt: item.submittedAt?.toISOString() })),
+      projectTitle: project.title,
       assignment: { ...assignment, id: publicDatabaseId(assignment), submissionId: submissionDto(submission) },
       request: request ? { id: publicDatabaseId(request), origin: request.origin, status: request.status, message: request.message, dueAt: request.dueAt } : undefined,
-      review, responses: review ? await prisma.reviewResponse.findMany({ where: { reviewId: review.id } }) : [],
-      requiredRevisions: review ? await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } }) : [],
+      review, responses: draftResponseRows,
+      requiredRevisions: review ? (await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } })).map(decodeFeedbackItem) : [],
       templateVersion,
+      templateSelection: {
+        canChangeTemplate,
+        mandatoryProjectTemplate,
+        hasDraftResponses: review?.status === "DRAFT" && draftResponseRows.length > 0,
+        draftResponseCount: review?.status === "DRAFT" ? draftResponseRows.length : 0,
+        submittedRoundCount,
+      },
       criteria: templateVersion?.criteria ?? defaultReviewCriteria.map(([key, label, description], order) => ({ key, title: label, description, order, required: true, allowNotApplicable: false, levels: [] })),
       artifactContent: revision?.contentSnapshot ?? undefined,
       artifactRevision: revision ? { id: revision.id, revisionNumber: revision.revisionNumber, contentType: revision.contentType } : undefined,
       manuscriptSource,
+      integrityEvidence,
       delivery: request?.origin === "MENTOR_GUIDANCE" ? { sentAt: request.createdAt.toISOString(), authors: authorLinks.map(row => authorPeople.find(person => person.id === row.userId)?.fullName).filter(Boolean) } : undefined,
       comparisonVersions: [...previousVersions, ...(previousVersions.some(item => item.id === revision.id) ? [] : [revision])].map(item => ({ id: item.id, revisionNumber: item.revisionNumber, contentType: item.contentType, contentSnapshot: item.contentSnapshot, checksumSha256: item.checksumSha256, sizeBytes: item.sizeBytes, sourceRevisionId: item.sourceRevisionId, responseToReview: item.responseToReview, createdAt: item.createdAt.toISOString(), hasPdf: Boolean(item.storageUri), reviews: [] })),
-      previousRevisionItems: await Promise.all((await prisma.reviewRevisionItem.findMany({ where: { reviewId: { in: reviews.filter((item) => item.status === "SUBMITTED" && item.revisionId !== pinnedRevisionId).map((item) => item.id) } }, orderBy: { createdAt: "asc" } })).map(async (item) => ({ ...item, responses: await prisma.reviewRevisionResponse.findMany({ where: { revisionItemId: item.id, status: { not: "DRAFT" } }, orderBy: { createdAt: "desc" } }) }))),
-      roundNumber: review?.roundNumber ?? (reviews[0]?.roundNumber ?? 0) + 1,
+      previousReviews: previousSubmittedReviews,
+      previousRevisionItems,
+      roundNumber: currentRoundNumber,
     };
   },
 

@@ -29,7 +29,8 @@ export function getNotificationDestination(
   if (notification.type.startsWith("LECTURER_VERIFICATION_")) return `/settings/verification/lecturer${verificationQuery}`;
   if (notification.type === "MENTORSHIP_APPLICATION_UPDATE") return "/academic-support?view=outgoing";
   if (notification.type === "MENTORSHIP_APPLICANT_UPDATE" && notification.targetId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=support`;
-  if (notification.type === "MENTOR_RESOURCE_SHARED") return "/mentor-workspace?view=resources";
+  if (["MENTOR_RESOURCE_SHARED", "MENTOR_PAPER_REPLY"].includes(notification.type)) return `/mentor-workspace?view=resources${notification.targetId ? `&projectId=${encodeURIComponent(notification.targetId)}` : ""}${notification.paperId ? `&paper=${encodeURIComponent(notification.paperId)}` : ""}`;
+  if (notification.type === "MENTOR_PAPER_COMMENT" && notification.targetId && notification.paperId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=papers&source=${encodeURIComponent(notification.paperId)}&section=mentor-comments`;
   if (notification.type.startsWith("MENTORSHIP_") || notification.type.startsWith("PROJECT_MENTORSHIP_")) {
     if (["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED"].includes(notification.type)) {
       const query = new URLSearchParams({ view: "incoming" });

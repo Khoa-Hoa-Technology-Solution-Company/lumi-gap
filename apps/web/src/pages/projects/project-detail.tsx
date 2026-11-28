@@ -3,6 +3,7 @@ import { lazy, Suspense, useState, useEffect } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageLoading } from "@/components/page-loading";
 import { useProject } from "@/features/projects/hooks/use-projects";
 import { useGaps } from "@/features/gaps";
 import { GapDetailDrawer } from "@/features/gaps/components/gap-detail-drawer";
@@ -73,21 +74,8 @@ export function ProjectDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="project-workspace" role="status" aria-busy="true">
-        <span className="sr-only">{t("Loading projects...")}</span>
-        <div className="project-page-width project-detail-page" aria-hidden="true">
-          <Skeleton className="mb-[26px] h-5 w-40 rounded" />
-          <div className="flex items-start gap-4">
-            <Skeleton className="h-[68px] w-[68px] shrink-0 rounded-md" />
-            <div className="w-full max-w-lg space-y-3"><Skeleton className="h-4 w-32 rounded" /><Skeleton className="h-10 w-3/4 rounded" /></div>
-          </div>
-          <Skeleton className="mt-[22px] h-9 w-64 max-w-full rounded" />
-          <div className="project-workspace-shell">
-            <Skeleton className="h-[62px] w-full rounded-none" />
-            <Skeleton className="mt-7 h-8 w-52 rounded" />
-            <Skeleton className="mt-6 h-[310px] w-full rounded-none" />
-          </div>
-        </div>
+      <div className="project-workspace">
+        <PageLoading className="min-h-[450px] items-start pt-8" />
       </div>
     );
   }

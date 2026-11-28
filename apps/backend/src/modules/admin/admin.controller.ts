@@ -1,8 +1,18 @@
 import type { Request, Response } from "express";
 import { adminService } from "./admin.service.js";
-import { ListUsersQuerySchema } from "./dto/admin.schema.js";
+import {
+  ListAiOperationsQuerySchema,
+  ListAuditLogsQuerySchema,
+  ListUsersQuerySchema,
+} from "./dto/admin.schema.js";
 import type {
-  AdminReasonInput, CreateUserInput, UpdateRoleInput, UpdateStatusInput, UpdateUserInput,
+  AdminReasonInput,
+  CreateUserInput,
+  UpdateAdminApiProviderInput,
+  UpdateAdminInstitutionInput,
+  UpdateRoleInput,
+  UpdateStatusInput,
+  UpdateUserInput,
 } from "./dto/admin.schema.js";
 
 export const adminController = {
@@ -53,10 +63,8 @@ export const adminController = {
   },
 
   async listAuditLogs(req: Request, res: Response) {
-    const search = req.query.search as string | undefined;
-    const page = req.query.page ? Number(req.query.page) : 1;
-    const pageSize = req.query.pageSize ? Number(req.query.pageSize) : 20;
-    const result = await adminService.listAuditLogs({ search, page, pageSize });
+    const q = ListAuditLogsQuerySchema.parse(req.query);
+    const result = await adminService.listAuditLogs(q);
     res.json({ success: true, data: result.data, meta: result.meta });
   },
 
@@ -65,8 +73,24 @@ export const adminController = {
     res.json({ success: true, data });
   },
 
+  async listAiOperations(req: Request, res: Response) {
+    const q = ListAiOperationsQuerySchema.parse(req.query);
+    const data = await adminService.listAiOperations(q);
+    res.json({ success: true, data });
+  },
+
   async getSettings(_req: Request, res: Response) {
     const data = await adminService.getPlatformSettings();
+    res.json({ success: true, data });
+  },
+
+  async updateInstitution(req: Request<{ id: string }, unknown, UpdateAdminInstitutionInput>, res: Response) {
+    const data = await adminService.updateInstitutionSetting(req.user!.sub, req.params.id, req.body);
+    res.json({ success: true, data });
+  },
+
+  async updateApiProvider(req: Request<{ id: string }, unknown, UpdateAdminApiProviderInput>, res: Response) {
+    const data = await adminService.updateApiProviderSetting(req.user!.sub, req.params.id, req.body);
     res.json({ success: true, data });
   },
 };

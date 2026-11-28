@@ -12,6 +12,7 @@ mentorAccessRouter.use((_r, res, next) => { res.set("Cache-Control", "private, n
 mentorAccessRouter.get("/", base, validate(s.mentorAccessPageSchema, "query"), c.workspace);
 mentorAccessRouter.get("/catalog", base, validate(s.mentorAccessPageSchema, "query"), c.catalog);
 mentorAccessRouter.get("/tasks", base, validate(s.mentorAccessPageSchema, "query"), c.tasks);
+mentorAccessRouter.get("/papers/:paperId/shares", validate(workspaceParams.extend({ paperId: z.string().uuid() }), "params"), validate(s.mentorAccessPageSchema, "query"), c.paperShares);
 mentorAccessRouter.put("/:accessId", writes, access, validate(s.configureMentorAccessSchema), c.configure);
 mentorAccessRouter.post("/:accessId/revoke", writes, access, validate(s.mentorAccessActionSchema), c.revoke);
 mentorAccessRouter.post("/:accessId/shares", writes, access, validate(s.mentorResourceWriteSchema), c.share);

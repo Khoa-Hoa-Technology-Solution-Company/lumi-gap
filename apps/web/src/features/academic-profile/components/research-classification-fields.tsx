@@ -8,12 +8,20 @@ import { Input } from "@/components/ui/input";
 import { useI18n } from "@/i18n";
 
 type Option = { id: string; name: string; context: string; source: string; labelVi?: string | null };
-export function ResearchClassificationFields({ value, onChange }: { value?: ResearchClassificationInput; onChange: (value: ResearchClassificationInput) => void }) {
+export function ResearchClassificationFields({ value, onChange, mode = "full" }: { value?: ResearchClassificationInput; onChange: (value: ResearchClassificationInput) => void; mode?: "full" | "project" }) {
   const { t } = useI18n(), selected = classificationInput(value);
   return <section data-no-i18n className="min-w-0 space-y-4" aria-label={t("Shared research classification")}>
     <p className="text-xs leading-5 text-muted-foreground">{t("Use the same research catalogue as projects and lecturers. Expertise is self-declared; selections do not verify qualifications.")}</p>
-    <CataloguePicker label="Research expertise" ids={selected.nodeIds} levels={["field", "subfield", "topic"]} onChange={nodeIds => onChange({ ...selected, nodeIds })} max={20} />
-    <CataloguePicker label="Technical skills and methods" ids={selected.skillIds} levels={["skill"]} onChange={skillIds => onChange({ ...selected, skillIds })} max={30} />
+    <CataloguePicker
+      label={mode === "project" ? "Related subfields & topics" : "Research expertise"}
+      ids={selected.nodeIds}
+      levels={mode === "project" ? ["subfield", "topic", "field"] : ["field", "subfield", "topic"]}
+      onChange={nodeIds => onChange({ ...selected, nodeIds })}
+      max={20}
+    />
+    {mode === "full" ? (
+      <CataloguePicker label="Technical skills and methods" ids={selected.skillIds} levels={["skill"]} onChange={skillIds => onChange({ ...selected, skillIds })} max={30} />
+    ) : null}
     <CataloguePicker label="Catalogue keywords" ids={selected.keywordIds} levels={["keyword"]} onChange={keywordIds => onChange({ ...selected, keywordIds })} max={30} />
   </section>;
 }

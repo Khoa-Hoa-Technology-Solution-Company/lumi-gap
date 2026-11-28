@@ -8,6 +8,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import logoImage from "@/assets/logo.png";
 import logoDarkImage from "@/assets/logo-dark.png";
 import { Button } from "@/components/ui/button";
+import { AppLoading, SectionErrorState } from "@/components/loading";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authApi } from "@/features/auth/api/auth.api";
@@ -51,7 +52,6 @@ function readDraft(key: string, institutionName: string, academicRole: AcademicR
 }
 
 export function AcademicProfileOnboardingPage() {
-  const { t } = useI18n();
   const location = useLocation();
   const requestedPath = typeof location.state?.from === "string" ? location.state.from : undefined;
   const accessToken = useAuthStore(s => s.tokens?.accessToken);
@@ -59,8 +59,8 @@ export function AcademicProfileOnboardingPage() {
   const current = useCurrentUser();
   const user = current.data?.user ?? storedUser;
   if (!accessToken) return <Navigate to="/login" replace />;
-  if (current.isLoading || current.isPlaceholderData) return <div role="status" aria-busy="true" className="flex min-h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
-  if (!user || current.isError) return <div className="p-8"><Button onClick={() => void current.refetch()}>{t("Retry")}</Button></div>;
+  if (current.isLoading || current.isPlaceholderData) return <AppLoading />;
+  if (!user || current.isError) return <main className="mx-auto max-w-lg px-4 py-16"><SectionErrorState error={current.error} onRetry={() => void current.refetch()} retrying={current.isFetching} /></main>;
   if (user.systemRole !== "ADMIN" && !user.emailVerifiedAt) return <Navigate to="/verify-email" replace />;
   if (!requiresAcademicProfile(user)) return <Navigate to={resolvePostAuthPath(user, requestedPath)} replace />;
   return <AcademicProfileOnboardingForm key={user.id} user={user} accessToken={accessToken} requestedPath={requestedPath} />;
@@ -131,7 +131,12 @@ function AcademicProfileOnboardingForm({ user, accessToken, requestedPath }: { u
     setError("");
     try {
       const result = await save.mutateAsync({ academicRole: draft.academicRole as AcademicRole, institutionName: draft.institutionName.trim(), ...(draft.institutionId ? { institutionId: draft.institutionId } : {}), ...(isStudent ? (draft.programId ? { programId: draft.programId } : { programName: draft.programName.trim() }) : { positionTitle: currentPosition }), researchAreas: draft.researchAreas, researchInterests: draft.researchInterests, skills: draft.skills, ...(isLecturer ? { researchClassification: classificationInput(draft.researchClassification), researchSpecializations: draft.researchSpecializations, researchKeywords: draft.researchKeywords, ...(draft.biography ? { biography: draft.biography } : {}), mentorshipPreferences: { preferredTopicIds: draft.preferredTopicIds ?? [], supportTypes: draft.mentoringSupportTypes ?? [], interested: draft.mentoringInterested, preferredTopics: draft.mentoringTopics } } : {}) });
-      try { for (const version of ["v4", "v3", "v2"]) sessionStorage.removeItem(`lumigap.onboarding.${version}.${user.id}`); } catch { /* Optional persistence. */ }
+      try {
+        for (const version of ["v4", "v3", "v2"]) sessionStorage.removeItem(`lumigap.onboarding.${version}.${user.id}`);
+        if (isLecturer && !result.user.lecturerWorkspaceEligible) {
+          sessionStorage.setItem(`lumigap.lecturerVerifyPrompt.${user.id}`, "1");
+        }
+      } catch { /* Optional persistence. */ }
       navigate(resolvePostAuthPath(result.user, requestedPath), { replace: true });
     } catch (failure) {
       const status = (failure as { response?: { status?: number } }).response?.status;

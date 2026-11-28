@@ -88,7 +88,7 @@ describe("Forum readability and locale", () => {
   });
   it("localizes the entire thread metric and composer vocabulary", () => {
     for (const key of ["References", "replies", "views", "helpful", "active", "Reply to discussion", "Position verified", "Load more replies", "Topic pagination", "Add citation", "Post reply"] as const) expect(vietnamese[key]).not.toBe(key);
-    expect(vietnamese.References).toBe("Tài liệu tham khảo");
+    expect(vietnamese.References).toBe("Nguồn tham khảo");
     expect(vietnamese["Paper Discussion"]).toBe("Bình luận bài báo");
   });
 });

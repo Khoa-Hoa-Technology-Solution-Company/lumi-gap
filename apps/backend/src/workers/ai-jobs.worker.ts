@@ -99,7 +99,8 @@ async function processAiRun(payload: AiJobPayload): Promise<void> {
 }
 
 /** Pre-reviews stuck longer than this with no live job lost their worker; fail them so the author can retry. */
-const STUCK_PRE_REVIEW_MS = 15 * 60_000;
+const STUCK_PRE_REVIEW_MS = 10 * 60_000;
+const STUCK_SWEEP_INTERVAL_MS = 2 * 60_000;
 
 async function sweepStuckPreReviews() {
   const stuck = await getPrisma().aiPreReview.findMany({
@@ -119,6 +120,10 @@ async function main() {
   await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({ workerName: "worker:ai-jobs", queueName: QUEUE_NAMES.aiJobs });
   await sweepStuckPreReviews();
+  const sweepTimer = setInterval(() => {
+    void sweepStuckPreReviews().catch((err) => logger.warn({ err }, "periodic AI pre-review sweep failed"));
+  }, STUCK_SWEEP_INTERVAL_MS);
+  sweepTimer.unref();
   for (const run of await getPrisma().screeningAiSuggestion.findMany({ where: { status: "QUEUED" }, select: { id: true } })) {
     if (!await hasLiveJob(aiJobsQueue, `screening-${run.id}`)) await enqueueScreeningAi(run.id);
   }
@@ -163,6 +168,7 @@ async function main() {
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "AI job worker shutting down");
+    clearInterval(sweepTimer);
     await stopHeartbeat();
     await worker.close();
     await disconnectPostgres();

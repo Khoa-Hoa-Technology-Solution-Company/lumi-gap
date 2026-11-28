@@ -12,6 +12,9 @@ import {
   type AcademicReviewType,
   type CompactAcademicProfile,
   type PrimaryPosition,
+  type ProfilePortfolio,
+  type ProfilePortfolioContribution,
+  type ProfilePortfolioProject,
   type PublicAcademicProfile,
   type ResearchSupportType,
   type VerificationStatus,
@@ -71,6 +74,206 @@ function primaryFromCategory(category: AcademicPositionCategory, fallback?: Prim
 function record(value: unknown): LooseRecord { return value && typeof value === "object" ? value as LooseRecord : {}; }
 function stringValue(value: unknown): string | undefined { return typeof value === "string" && value.length > 0 ? value : undefined; }
 function stringArray(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []; }
+function readStoredResearchMethods(value: unknown): string[] {
+  const raw = record(value);
+  return stringArray(raw.researchMethods);
+}
+async function buildSafePortfolio(
+  userId: string,
+  viewerIsOwner: boolean,
+  options?: { verifiedLecturer?: boolean },
+): Promise<ProfilePortfolio> {
+  const prisma = getPrisma();
+  const [ownedProjects, memberships, allMentorRelations, confirmedContributions, profileRow] = await Promise.all([
+    prisma.project.findMany({
+      where: {
+        ownerId: userId,
+        deletedAt: null,
+        ...(!viewerIsOwner ? { visibility: { in: ["PUBLIC", "PUBLIC_SUMMARY"] } } : {}),
+      },
+      select: { id: true, legacyMongoId: true, title: true, description: true, researchField: true, status: true, visibility: true, createdAt: true, updatedAt: true },
+      orderBy: { updatedAt: "desc" },
+      take: 15,
+    }),
+    prisma.projectMember.findMany({
+      where: { userId, status: "ACTIVE" },
+      select: { projectId: true, role: true, joinedAt: true },
+      orderBy: { joinedAt: "desc" },
+      take: 20,
+    }),
+    prisma.mentorRelationship.findMany({
+      where: { mentorUserId: userId },
+      select: { projectId: true, mentorRole: true, status: true, startedAt: true, endedAt: true, updatedAt: true },
+      orderBy: { startedAt: "desc" },
+      take: 40,
+    }),
+    prisma.projectContributionProposal.findMany({
+      where: {
+        contributorId: userId,
+        status: "CONFIRMED",
+        ...(!viewerIsOwner ? { visibility: "PUBLIC" } : {}),
+      },
+      select: { id: true, projectId: true, title: true, description: true, roles: true, category: true, workDate: true, confirmedAt: true, visibility: true },
+      orderBy: [{ workDate: "desc" }, { createdAt: "desc" }],
+      take: 20,
+    }),
+    prisma.academicProfile.findUnique({
+      where: { userId },
+      select: { academicRole: true, supportAvailability: true },
+    }),
+  ]);
+
+  const mentorRelations = allMentorRelations.filter(r => r.status === "ACTIVE");
+  const ownedIds = new Set(ownedProjects.map(p => p.id));
+  const extraProjectIds = [...new Set([
+    ...memberships.map(m => m.projectId),
+    ...allMentorRelations.map(r => r.projectId),
+    ...confirmedContributions.map(c => c.projectId),
+  ])].filter(id => !ownedIds.has(id));
+
+  const extraProjects = extraProjectIds.length
+    ? await prisma.project.findMany({
+        where: {
+          id: { in: extraProjectIds },
+          deletedAt: null,
+        },
+        select: { id: true, legacyMongoId: true, title: true, description: true, researchField: true, status: true, visibility: true, createdAt: true, updatedAt: true },
+      })
+    : [];
+
+  const allLiveProjectById = new Map([...ownedProjects, ...extraProjects].map(p => [p.id, p]));
+  const projectById = new Map(
+    [...allLiveProjectById.values()]
+      .filter(p => viewerIsOwner || p.visibility === "PUBLIC" || p.visibility === "PUBLIC_SUMMARY")
+      .map(p => [p.id, p]),
+  );
+  const projects: ProfilePortfolioProject[] = [];
+  const seenProjects = new Set<string>();
+
+  const pushProject = (projectId: string, role: ProfilePortfolioProject["role"], joinedAt?: Date | null) => {
+    if (seenProjects.has(projectId)) return;
+    const p = projectById.get(projectId);
+    if (!p) return;
+    seenProjects.add(projectId);
+    const vis = p.visibility === "PUBLIC" || p.visibility === "PUBLIC_SUMMARY" ? p.visibility : "PRIVATE";
+    const pubId = publicDatabaseId(p);
+    projects.push({
+      projectId: pubId,
+      title: p.title,
+      role,
+      description: p.description?.slice(0, 240) || undefined,
+      researchField: p.researchField || undefined,
+      status: p.status,
+      visibility: vis,
+      joinedAt: (joinedAt ?? p.createdAt).toISOString(),
+      href: `/projects/${pubId}`,
+    });
+  };
+
+  for (const p of ownedProjects) pushProject(p.id, "OWNER", p.createdAt);
+  for (const m of memberships) pushProject(m.projectId, m.role === "OWNER" ? "OWNER" : "COLLABORATOR", m.joinedAt);
+  for (const r of mentorRelations) pushProject(r.projectId, "MENTOR", r.startedAt);
+
+  const contributions: ProfilePortfolioContribution[] = confirmedContributions.flatMap(item => {
+    const p = projectById.get(item.projectId);
+    if (!p) return []; // Strictly omits contributions tied to private/deleted projects for public viewers
+    const vis = item.visibility === "PUBLIC" ? "PUBLIC" : "PRIVATE";
+    if (!viewerIsOwner && vis !== "PUBLIC") return [];
+    return [{
+      id: item.id,
+      projectId: publicDatabaseId(p),
+      projectTitle: p.title,
+      title: item.title || item.description.slice(0, 100),
+      description: item.description,
+      roles: item.roles,
+      category: item.category,
+      workDate: item.workDate.toISOString(),
+      confirmedAt: item.confirmedAt?.toISOString(),
+      visibility: vis,
+    }];
+  });
+
+  // Privacy-safe mentoring transparency summary (only for lecturers or users with mentorship history)
+  let mentoringActivity: ProfilePortfolio["mentoringActivity"] = undefined;
+  if (profileRow?.academicRole === "LECTURER" || allMentorRelations.length > 0) {
+    const support = record(profileRow?.supportAvailability);
+    const liveMentorRels = allMentorRelations.filter(r => allLiveProjectById.has(r.projectId));
+    const activeProjectIds = new Set(liveMentorRels.filter(r => r.status === "ACTIVE").map(r => r.projectId));
+    const activeProjectCount = activeProjectIds.size;
+    const endedRels = liveMentorRels.filter(r => r.status !== "ACTIVE");
+    const completedMentorshipCount = endedRels.filter(r => allLiveProjectById.get(r.projectId)?.status === "COMPLETED").length;
+    const endedMentorshipCount = endedRels.length - completedMentorshipCount;
+    const maxActiveProjects =
+      typeof support.maxActiveProjects === "number" && Number.isInteger(support.maxActiveProjects) && support.maxActiveProjects > 0
+        ? support.maxActiveProjects
+        : null;
+    const externalGroupCount =
+      typeof support.externalGroupCount === "number" && Number.isInteger(support.externalGroupCount) && support.externalGroupCount >= 0
+        ? support.externalGroupCount
+        : null;
+    const remainingSlots = maxActiveProjects !== null ? Math.max(0, maxActiveProjects - activeProjectCount) : null;
+
+    // Fetch latest submission status ONLY for publicly visible mentored projects (never leaks private project titles)
+    const visibleMentoredProjectIds = [...new Set(liveMentorRels.map(r => r.projectId))].filter(pid => projectById.has(pid));
+    const submissions = visibleMentoredProjectIds.length
+      ? await prisma.submission.findMany({
+          where: { projectId: { in: visibleMentoredProjectIds } },
+          select: { projectId: true, status: true, updatedAt: true },
+          orderBy: { updatedAt: "desc" },
+        })
+      : [];
+    const latestSubmissionByProject = new Map<string, string>();
+    for (const s of submissions) {
+      if (!latestSubmissionByProject.has(s.projectId)) latestSubmissionByProject.set(s.projectId, s.status);
+    }
+
+    const seenMentored = new Set<string>();
+    const currentProjects: NonNullable<ProfilePortfolio["mentoringActivity"]>["currentProjects"] = [];
+    for (const rel of liveMentorRels) {
+      if (seenMentored.has(rel.projectId)) continue;
+      const p = projectById.get(rel.projectId);
+      if (!p) continue; // Private projects are omitted from public list; counted only in privateActiveCount
+      seenMentored.add(rel.projectId);
+      const rawPubStatus = latestSubmissionByProject.get(rel.projectId) ?? null;
+      const safePubStatus = viewerIsOwner
+        ? rawPubStatus
+        : rawPubStatus?.toLowerCase() === "published"
+          ? "published"
+          : null;
+      currentProjects.push({
+        projectId: publicDatabaseId(p),
+        title: p.title,
+        researchField: p.researchField || undefined,
+        mentorRole: rel.mentorRole,
+        stage: p.status,
+        mentorshipStatus: rel.status === "ACTIVE" ? "ACTIVE" : p.status === "COMPLETED" ? "COMPLETED" : "ENDED",
+        publicationStatus: safePubStatus,
+        updatedAt: (rel.updatedAt ?? p.updatedAt).toISOString(),
+      });
+    }
+
+    const privateActiveCount = viewerIsOwner
+      ? [...activeProjectIds].filter(pid => !projectById.has(pid)).length
+      : 0;
+    const capacityReached = maxActiveProjects !== null && activeProjectCount >= maxActiveProjects;
+    const lecturerVerified = options?.verifiedLecturer ?? true;
+    mentoringActivity = {
+      acceptingNew: lecturerVerified && support.enabled === true && !capacityReached,
+      capacityReached,
+      activeProjectCount,
+      maxActiveProjects,
+      remainingSlots,
+      externalGroupCount: viewerIsOwner ? externalGroupCount : null,
+      completedMentorshipCount,
+      endedMentorshipCount,
+      privateActiveCount,
+      updatedAt: iso(support.updatedAt),
+      currentProjects: currentProjects.slice(0, 12),
+    };
+  }
+
+  return { projects: projects.slice(0, 15), contributions: contributions.slice(0, 15), mentoringActivity };
+}
 function safeEvidenceFileName(value: string): string {
   const leaf = value.split(/[\\/]/).pop() ?? "position-evidence.pdf";
   return leaf.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-180) || "position-evidence.pdf";
@@ -200,7 +403,7 @@ async function buildPrivateProfile(userId: string, context: { viewerId?: string;
     affiliation: { ...currentAffiliation, institutionalEmail: profile.institutionalEmail ?? undefined, institutionalEmailVerifiedAt: profile.institutionalEmailVerifiedAt?.toISOString() },
     affiliationHistory: mappedAffiliations, institution: currentAffiliation.institutionName, department: currentAffiliation.department,
     institutionalEmail: profile.institutionalEmail ?? undefined, researchInterests: user.researchInterests,
-    researchClassification: readResearchClassification(profile.researchClassification), expertiseAreas: profile.expertiseAreas, researchSpecializations: profile.researchSpecializations, skills: profile.skills, researchKeywords: profile.researchKeywords,
+    researchClassification: readResearchClassification(profile.researchClassification), expertiseAreas: profile.expertiseAreas, researchSpecializations: profile.researchSpecializations, skills: profile.skills, researchMethods: readStoredResearchMethods(profile.researchClassification), researchKeywords: profile.researchKeywords,
      externalIdentities: identities.map((identity) => ({
        provider: identity.provider as AcademicProfile["externalIdentities"][number]["provider"], externalId: identity.externalId ?? undefined,
        profileUrl: identity.profileUrl ?? undefined, status: identity.status as AcademicProfile["externalIdentities"][number]["status"],
@@ -215,8 +418,27 @@ async function buildPrivateProfile(userId: string, context: { viewerId?: string;
        visibility: identity.visibility as AcademicIdentityLink["visibility"],
      })),
     featuredWorks: await resolveFeaturedWorks(works.map(work => ({ kind: work.kind as AcademicFeaturedWork["kind"], paperId: work.paperId ?? undefined, projectId: work.projectId ?? undefined, submissionId: work.submissionId ?? undefined, reportId: work.reportId ?? undefined, gapId: work.gapId ?? undefined, doi: work.doi ?? undefined, title: work.title ?? undefined, year: work.year ?? undefined, source: work.source as AcademicFeaturedWork["source"] })), context.viewerId),
-    supportAvailability: { enabled: support.enabled === true && (profile.academicRole !== "LECTURER" || isVerifiedLecturer(user, profile)), types: normalizeSupportTypes(support.types), preferredTopics: stringArray(support.preferredTopics), preferredTopicIds: stringArray(support.preferredTopicIds), requestedEnabled: support.requestedEnabled === true, note: stringValue(support.note), updatedAt: iso(support.updatedAt) },
-    reviewAvailability: { enabled: review.enabled === true, types: normalizeReviewTypes(review.types), preferredTopics: stringArray(review.preferredTopics), acceptedFields: stringArray(review.acceptedFields), maximumActiveReviews: typeof review.maximumActiveReviews === "number" ? review.maximumActiveReviews : 3, preferredReviewWorkload: stringValue(review.preferredReviewWorkload), note: stringValue(review.note), temporarilyUnavailableUntil: iso(review.temporarilyUnavailableUntil), autoRecommendationEnabled: review.autoRecommendationEnabled !== false, updatedAt: iso(review.updatedAt) },
+    portfolio: await buildSafePortfolio(
+      user.id,
+      Boolean(context.viewerId && (context.viewerId === user.id || context.viewerId === publicUserId)),
+      { verifiedLecturer: isVerifiedLecturer(user, profile) },
+    ),
+    supportAvailability: {
+      enabled: support.enabled === true && (profile.academicRole !== "LECTURER" || isVerifiedLecturer(user, profile)),
+      types: normalizeSupportTypes(support.types),
+      preferredTopics: stringArray(support.preferredTopics),
+      preferredTopicIds: stringArray(support.preferredTopicIds),
+      preferredRoles: Array.isArray(support.preferredRoles) ? support.preferredRoles.filter((r): r is "PRIMARY" | "SECONDARY" => r === "PRIMARY" || r === "SECONDARY") : undefined,
+      expectedFrequency: stringValue(support.expectedFrequency),
+      expectedDuration: stringValue(support.expectedDuration),
+      communicationMode: stringValue(support.communicationMode),
+      requestedEnabled: support.requestedEnabled === true,
+      note: stringValue(support.note),
+      maxActiveProjects: typeof support.maxActiveProjects === "number" && Number.isInteger(support.maxActiveProjects) && support.maxActiveProjects > 0 ? support.maxActiveProjects : null,
+      externalGroupCount: typeof support.externalGroupCount === "number" && Number.isInteger(support.externalGroupCount) && support.externalGroupCount >= 0 ? support.externalGroupCount : null,
+      updatedAt: iso(support.updatedAt),
+    },
+    reviewAvailability: { enabled: review.enabled === true && (profile.academicRole !== "LECTURER" || isVerifiedLecturer(user, profile)), types: normalizeReviewTypes(review.types), preferredTopics: stringArray(review.preferredTopics), acceptedFields: stringArray(review.acceptedFields), maximumActiveReviews: typeof review.maximumActiveReviews === "number" ? review.maximumActiveReviews : 3, preferredReviewWorkload: stringValue(review.preferredReviewWorkload), note: stringValue(review.note), temporarilyUnavailableUntil: iso(review.temporarilyUnavailableUntil), autoRecommendationEnabled: review.autoRecommendationEnabled !== false, updatedAt: iso(review.updatedAt) },
     verificationStatus: compositeStatus,
     verificationStatuses: { identity: status(profile.identityStatus), email: status(profile.emailStatus), affiliation: status(profile.affiliationStatus), position: status(profile.positionStatus), orcid: status(profile.orcidStatus) },
     verification: { status: compositeStatus, requestedAt: profile.verificationRequestedAt?.toISOString(), verifiedAt: profile.verifiedAt?.toISOString(), verifiedBy: profile.verifiedById ?? undefined, rejectedAt: profile.rejectedAt?.toISOString(), rejectedBy: profile.rejectedById ?? undefined, rejectionReason: profile.rejectionReason ?? undefined, method: profile.verificationMethod ?? undefined, adminNote: context.reviewer ? profile.verificationNote ?? undefined : undefined },
@@ -242,8 +464,9 @@ function visibleTo(setting: AcademicProfilePrivacy[keyof AcademicProfilePrivacy]
 function toPublicProfile(profile: AcademicProfile, viewerId?: string): PublicAcademicProfile {
   const { id: _id, institutionalEmail: _email, displayNamePolicy: _displayNamePolicy, verification: _verification, verificationEvidence: _evidence,
     verificationRequests: _requests, profileHistory: _history, privacy, affiliationHistory: _affiliationHistory,
-    affiliation, reviewAvailability, ...safe } = profile;
+    affiliation, supportAvailability, reviewAvailability, ...safe } = profile;
   const unavailable = reviewAvailability.temporarilyUnavailableUntil ? new Date(reviewAvailability.temporarilyUnavailableUntil).getTime() > Date.now() : false;
+  const capacityReached = safe.portfolio?.mentoringActivity?.capacityReached === true;
   return {
     ...safe,
     researchInterests: visibleTo(privacy.researchInterests, viewerId) ? safe.researchInterests : [],
@@ -251,11 +474,25 @@ function toPublicProfile(profile: AcademicProfile, viewerId?: string): PublicAca
     researchClassification: visibleTo(privacy.expertise, viewerId) ? safe.researchClassification : undefined,
     researchSpecializations: visibleTo(privacy.expertise, viewerId) ? safe.researchSpecializations ?? [] : [],
      skills: visibleTo(privacy.expertise, viewerId) ? safe.skills : [],
+    researchMethods: visibleTo(privacy.expertise, viewerId) ? safe.researchMethods ?? [] : [],
     researchKeywords: visibleTo(privacy.expertise, viewerId) ? safe.researchKeywords : [],
      // Backfilled scholarly rows must not bypass per-link visibility or resurrect deleted links.
      externalIdentities: safe.externalIdentities.filter((identity) => identity.provider === "GITHUB"),
      academicIdentityLinks: visibleAcademicIdentityLinks(safe.academicIdentityLinks, viewerId, profile.userId),
     affiliation: { id: affiliation.id, institutionId: affiliation.institutionId, hostInstitution: affiliation.hostInstitution, programId: affiliation.programId, programName: affiliation.programName, institutionName: affiliation.institutionName, rorId: affiliation.rorId, department: affiliation.department, position: affiliation.position, positionTitle: affiliation.positionTitle, positionCategory: affiliation.positionCategory, positionSource: affiliation.positionSource, affiliationVerificationStatus: affiliation.affiliationVerificationStatus, positionVerificationStatus: affiliation.positionVerificationStatus, startYear: affiliation.startYear, startDate: affiliation.startDate, endDate: affiliation.endDate, isCurrent: affiliation.isCurrent, isPrimary: affiliation.isPrimary },
+    supportAvailability: {
+      enabled: supportAvailability.enabled && !capacityReached,
+      types: supportAvailability.types,
+      preferredTopics: supportAvailability.preferredTopics,
+      preferredTopicIds: supportAvailability.preferredTopicIds,
+      preferredRoles: supportAvailability.preferredRoles,
+      expectedFrequency: supportAvailability.expectedFrequency,
+      expectedDuration: supportAvailability.expectedDuration,
+      communicationMode: supportAvailability.communicationMode,
+      maxActiveProjects: supportAvailability.maxActiveProjects ?? null,
+      externalGroupCount: null,
+      updatedAt: supportAvailability.updatedAt,
+    },
     reviewAvailability: { enabled: reviewAvailability.enabled && !unavailable, types: reviewAvailability.types, preferredTopics: reviewAvailability.preferredTopics, acceptedFields: reviewAvailability.acceptedFields, note: reviewAvailability.note, updatedAt: reviewAvailability.updatedAt },
   };
 }
@@ -263,12 +500,21 @@ function assertVisible(profile: AcademicProfile, viewerId?: string) {
   if (profile.userId === viewerId || profile.profileVisibility === "PUBLIC" || profile.profileVisibility === "MEMBERS_ONLY" && viewerId) return;
   throw AppError.notFound("Academic profile not found");
 }
-async function publicProfile(userInput: string, viewerId?: string) {
+async function publicProfile(userInput: string, viewerId?: string, options?: { preview?: "public" }) {
   const owner = await resolveUser(userInput);
-  const profile = await buildPrivateProfile(owner.id, { viewerId });
-  const publicViewerId = viewerId === owner.id ? publicDatabaseId(owner) : viewerId;
-  assertVisible(profile, publicViewerId);
-  return toPublicProfile(profile, publicViewerId);
+  const isOwner = Boolean(viewerId && (viewerId === owner.id || viewerId === publicDatabaseId(owner)));
+  const publicPreview = options?.preview === "public" && isOwner;
+  const effectiveViewerId = publicPreview ? undefined : viewerId;
+  const profile = await buildPrivateProfile(owner.id, { viewerId: effectiveViewerId });
+  const publicViewerId = effectiveViewerId === owner.id ? publicDatabaseId(owner) : effectiveViewerId;
+  if (!publicPreview) {
+    assertVisible(profile, publicViewerId);
+  }
+  const result = toPublicProfile(profile, publicViewerId);
+  if (publicPreview && profile.profileVisibility !== "PUBLIC") {
+    return { ...result, previewNotice: profile.profileVisibility };
+  }
+  return result;
 }
 function compact(profile: PublicAcademicProfile): CompactAcademicProfile {
   return { userId: profile.userId, publicHandle: profile.publicHandle, displayName: profile.displayName, avatarUrl: profile.avatarUrl, academicRole: profile.academicRole ?? academicRoleForPosition(profile.primaryPosition ?? positionFromLegacy(profile.academicType)), programMajor: profile.academicRole === "STUDENT" || profile.academicType === "student" ? profile.affiliation.programName : undefined, currentPosition: profile.academicRole === "STUDENT" || profile.academicType === "student" ? undefined : profile.positionTitle, affiliationVerification: profile.affiliation.affiliationVerificationStatus, fptAffiliationVerified: profile.affiliation.hostInstitution === true && profile.affiliation.isCurrent === true && profile.affiliation.affiliationVerificationStatus === "VERIFIED", positionVerification: profile.verificationStatuses?.position, academicTitle: profile.academicTitle, institutionName: profile.affiliation.institutionName, verificationStatus: profile.verificationStatus, expertiseAreas: profile.expertiseAreas, supportAvailable: profile.supportAvailability.enabled, reviewAvailable: profile.reviewAvailability.enabled };
@@ -276,15 +522,15 @@ function compact(profile: PublicAcademicProfile): CompactAcademicProfile {
 
 export const academicProfileService = {
   async getMine(userId: string) { return buildPrivateProfile(userId); },
-  async getPublic(userId: string, viewerId?: string) { return publicProfile(userId, viewerId); },
-  async getPublicByHandle(handle: string, viewerId?: string) {
+  async getPublic(userId: string, viewerId?: string, options?: { preview?: "public" }) { return publicProfile(userId, viewerId, options); },
+  async getPublicByHandle(handle: string, viewerId?: string, options?: { preview?: "public" }) {
     const normalized = normalizePublicHandle(handle);
     if (!isValidResolvablePublicHandle(normalized)) throw AppError.notFound("Academic profile not found");
     const prisma = getPrisma();
     const claimed = await prisma.academicProfileHandle.findUnique({ where: { handle: normalized }, select: { userId: true } })
       ?? await prisma.academicProfile.findFirst({ where: { publicHandle: normalized }, select: { userId: true } });
     if (!claimed) throw AppError.notFound("Academic profile not found");
-    return publicProfile(claimed.userId, viewerId);
+    return publicProfile(claimed.userId, viewerId, options);
   },
   async setPublicHandle(userId: string, rawHandle: string) {
     const handle = normalizePublicHandle(rawHandle);
@@ -342,7 +588,18 @@ export const academicProfileService = {
     const incomingOrcid = input.externalIdentities?.find((item) => item.provider === "ORCID"), oldOrcid = identities.find((item) => item.provider === "ORCID");
     const orcidChanged = input.externalIdentities !== undefined && JSON.stringify(incomingOrcid ?? null) !== JSON.stringify(oldOrcid ? { provider: "ORCID", externalId: oldOrcid.externalId ?? undefined, profileUrl: oldOrcid.profileUrl ?? undefined } : null);
     if (input.supportAvailability?.preferredTopicIds) await validateSupervisionTopics(input.supportAvailability.preferredTopicIds);
-    const researchClassification = input.researchClassification ? await resolveResearchClassification(input.researchClassification) : undefined;
+    const resolvedClassification = input.researchClassification ? await resolveResearchClassification(input.researchClassification) : undefined;
+    const existingClassification = record(profile.researchClassification);
+    const nextResearchClassification =
+      resolvedClassification !== undefined || input.researchMethods !== undefined
+        ? {
+            ...(resolvedClassification ?? existingClassification),
+            researchMethods:
+              input.researchMethods !== undefined
+                ? input.researchMethods
+                : readStoredResearchMethods(profile.researchClassification),
+          }
+        : undefined;
     const resolvedWorks = input.featuredWorks ? await prepareFeaturedWorks(input.featuredWorks, user.id) : [];
     const nextRole = input.academicRole ?? (nextPrimaryPosition ? academicRoleForPosition(nextPrimaryPosition) : profile.academicRole);
     const enteringLecturerRole = nextRole === "LECTURER" && profile.academicRole !== "LECTURER";
@@ -354,6 +611,10 @@ export const academicProfileService = {
       await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id}::uuid FOR UPDATE`;
       if (input.supportAvailability?.enabled && nextRole === "LECTURER") {
         if (positionVerificationTargetChanged) throw AppError.forbidden("Verify your current Lecturer position before enabling mentorship");
+        await assertVerifiedLecturer(tx, user.id);
+      }
+      if (input.reviewAvailability?.enabled && nextRole === "LECTURER") {
+        if (positionVerificationTargetChanged) throw AppError.forbidden("Verify your current Lecturer position before enabling academic review");
         await assertVerifiedLecturer(tx, user.id);
       }
       if (selectedInstitution && !await tx.institution.findFirst({ where: { id: selectedInstitution.id, isActive: true, status: "ACTIVE" } })) throw AppError.badRequest("Selected institution is no longer available");
@@ -399,12 +660,13 @@ export const academicProfileService = {
         ...(input.discoverability?.allowCollaborationRequests !== undefined ? { allowCollaborationRequests: input.discoverability.allowCollaborationRequests } : {}),
         ...((input.biography ?? input.bio) !== undefined ? { biography: (input.biography ?? input.bio) || null } : {}), ...(input.academicTitle !== undefined ? { academicTitle: input.academicTitle } : {}),
         ...(input.expertiseAreas !== undefined ? { expertiseAreas: input.expertiseAreas } : {}),
-        ...(researchClassification ? { researchClassification: researchClassification as never } : {}), ...(input.researchSpecializations !== undefined ? { researchSpecializations: input.researchSpecializations } : {}), ...(input.skills !== undefined ? { skills: input.skills } : {}), ...(input.researchKeywords !== undefined ? { researchKeywords: input.researchKeywords } : {}),
+        ...(nextResearchClassification ? { researchClassification: nextResearchClassification as never } : {}), ...(input.researchSpecializations !== undefined ? { researchSpecializations: input.researchSpecializations } : {}), ...(input.skills !== undefined ? { skills: input.skills } : {}), ...(input.researchKeywords !== undefined ? { researchKeywords: input.researchKeywords } : {}),
         ...(requested.rorId !== undefined ? { affiliationRorId: requested.rorId || null } : {}), ...(requestedDepartment !== undefined ? { affiliationDepartment: requestedDepartment || null } : {}), ...(positionInputProvided ? { affiliationPosition: nextTitle || null } : {}),
         ...(requested.startYear !== undefined ? { affiliationStartYear: requested.startYear } : {}), ...(requestedEmail !== undefined ? { institutionalEmail: requestedEmail || null } : {}),
         // General research support is not consent to receive official mentorship requests.
         ...(enteringLecturerRole ? { supportAvailability: { ...record(profile.supportAvailability), enabled: false, updatedAt: now.toISOString() } as never } : {}),
-        ...(input.supportAvailability !== undefined ? { supportAvailability: { ...input.supportAvailability, updatedAt: now.toISOString() } as never } : {}), ...(input.reviewAvailability !== undefined ? { reviewAvailability: { ...input.reviewAvailability, updatedAt: now.toISOString() } as never } : {}),
+        ...(input.supportAvailability !== undefined ? { supportAvailability: { ...record(profile.supportAvailability), ...input.supportAvailability, updatedAt: now.toISOString() } as never } : {}),
+        ...(input.reviewAvailability !== undefined ? { reviewAvailability: { ...record(profile.reviewAvailability), ...input.reviewAvailability, updatedAt: now.toISOString() } as never } : {}),
         ...(emailChanged ? { institutionalEmailVerifiedAt: null, emailStatus: "NOT_SUBMITTED" } : {}), ...(orcidChanged ? { orcidStatus: "NOT_SUBMITTED" } : {}),
       } });
       if (positionVerificationTargetChanged) {
@@ -527,20 +789,92 @@ export const academicProfileService = {
     await notificationService.create({ userId: user.id, title: "Lecturer verification submitted", message: "Open Academic Profile to view your verification status.", type: "academic_verification_submitted", targetKind: "academic_profile", targetId: profile.id });
     return buildPrivateProfile(user.id);
   },
-  async listVerificationRequests(statusValue: string, page: number, pageSize: number) {
+  async listVerificationRequests(
+    statusValue: string,
+    page: number,
+    pageSize: number,
+    options?: { search?: string; verificationType?: "ALL" | "POSITION" | "AFFILIATION"; sortOrder?: "asc" | "desc" },
+  ) {
     const prisma = getPrisma();
     const isFiltered = statusValue && statusValue !== "ALL";
+    const typeFilter = options?.verificationType && options.verificationType !== "ALL"
+      ? { verificationType: options.verificationType }
+      : { verificationType: { in: ["POSITION", "AFFILIATION"] } };
+    const search = options?.search?.trim();
+
+    let searchCondition: Record<string, unknown> = {};
+    if (search) {
+      const [matchingUsers, matchingProfiles, matchingAffiliations, matchingInstitutions] = await Promise.all([
+        prisma.user.findMany({
+          where: {
+            OR: [
+              { fullName: { contains: search, mode: "insensitive" } },
+              { email: { contains: search, mode: "insensitive" } },
+              { institution: { contains: search, mode: "insensitive" } },
+            ],
+          },
+          select: { id: true },
+          take: 500,
+        }),
+        prisma.academicProfile.findMany({
+          where: {
+            OR: [
+              { institutionalEmail: { contains: search, mode: "insensitive" } },
+              { positionTitle: { contains: search, mode: "insensitive" } },
+              { affiliationDepartment: { contains: search, mode: "insensitive" } },
+            ],
+          },
+          select: { userId: true },
+          take: 500,
+        }),
+        prisma.affiliation.findMany({
+          where: {
+            OR: [
+              { institutionName: { contains: search, mode: "insensitive" } },
+              { positionTitle: { contains: search, mode: "insensitive" } },
+            ],
+          },
+          select: { userId: true },
+          take: 500,
+        }),
+        prisma.institution.findMany({
+          where: { name: { contains: search, mode: "insensitive" } },
+          select: { id: true },
+          take: 100,
+        }),
+      ]);
+
+      const matchedUserIds = [...new Set([
+        ...matchingUsers.map((u) => u.id),
+        ...matchingProfiles.map((p) => p.userId),
+        ...matchingAffiliations.map((a) => a.userId),
+      ])];
+      const matchedInstitutionIds = matchingInstitutions.map((i) => i.id);
+
+      const orClauses: Record<string, unknown>[] = [
+        { sourceReference: { contains: search, mode: "insensitive" } },
+      ];
+      if (matchedUserIds.length > 0) orClauses.push({ userId: { in: matchedUserIds } });
+      if (matchedInstitutionIds.length > 0) orClauses.push({ institutionId: { in: matchedInstitutionIds } });
+      searchCondition = { OR: orClauses };
+    }
+
+    const baseWhere = {
+      ...typeFilter,
+      ...searchCondition,
+    };
     const where = {
-      verificationType: { in: ["POSITION", "AFFILIATION"] },
+      ...baseWhere,
       ...(isFiltered ? { status: statusValue } : {}),
       ...(statusValue === "NEEDS_MORE_INFORMATION" ? { supersededAt: null } : {}),
     };
+    const sortOrder = options?.sortOrder === "asc" ? "asc" : "desc";
     const [requests, total, statusCountsRaw] = await Promise.all([
-      prisma.verificationEvidence.findMany({ where, orderBy: { submittedAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.verificationEvidence.findMany({ where, orderBy: { submittedAt: sortOrder }, skip: (page - 1) * pageSize, take: pageSize }),
       prisma.verificationEvidence.count({ where }),
       prisma.verificationEvidence.groupBy({
         by: ["status"],
-        where: { verificationType: { in: ["POSITION", "AFFILIATION"] } },
+        where: baseWhere,
         _count: { status: true },
       }),
     ]);
@@ -548,12 +882,17 @@ export const academicProfileService = {
       statusCountsRaw.map((item) => [item.status, item._count.status])
     );
     statusCounts.ALL = statusCountsRaw.reduce((sum, item) => sum + item._count.status, 0);
+    const userIds = [...new Set(requests.map((r) => r.userId))];
+    const accounts = userIds.length
+      ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, email: true, emailVerifiedAt: true } })
+      : [];
+    const accountMap = new Map(accounts.map((a) => [a.id, a]));
     const data = await Promise.all(requests.map(async (request) => {
       const profile = await buildPrivateProfile(request.userId, { viewerId: request.userId, reviewer: true });
       const history = profile.verificationRequests.filter((item) => item.type === request.verificationType);
       const currentRequest = history.find((item) => item.id === request.id);
       if (!currentRequest) throw AppError.notFound("Verification request not found");
-      const account = await prisma.user.findUnique({ where: { id: request.userId }, select: { email: true, emailVerifiedAt: true } });
+      const account = accountMap.get(request.userId);
       return { profile, request: currentRequest, history, accountEmail: account?.email, accountEmailVerified: Boolean(account?.emailVerifiedAt) };
     }));
     return { data, meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), statusCounts } };
@@ -660,7 +999,7 @@ export const academicProfileService = {
         await tx.auditLog.create({ data: { userId: admin.id, actionName: "LECTURER_VERIFICATION_DECIDED", targetTableName: "verification_evidence", targetRecordId: request.id, details: { decision: input.decision, method: reviewedMethod ?? "MANUAL_REVIEW" } } });
       }
     });
-    await capabilityService.evaluate(request.userId);
+    await capabilityService.evaluateWithRetry(request.userId);
     if (request.verificationType === "AFFILIATION") {
       await auditService.log(approved ? "AFFILIATION_VERIFICATION_APPROVED" : input.decision === "more_info" ? "AFFILIATION_MORE_INFO_REQUESTED" : "AFFILIATION_VERIFICATION_REJECTED", { userId: admin.id, targetTableName: "verification_evidence", targetRecordId: request.id, details: { targetUserId: request.userId } });
       await notificationService.create({ userId: request.userId, title: approved ? "FPT Education affiliation verified" : nextStatus === "NEEDS_MORE_INFORMATION" ? "More information needed" : "Affiliation request rejected", message: "Open Academic Profile to view your verification status and review message.", type: `affiliation_${nextStatus.toLowerCase()}`, targetKind: "academic_profile", targetId: profile.id });
@@ -678,10 +1017,124 @@ export const academicProfileService = {
     if (profile.academicRole !== "LECTURER") await notificationService.create({ userId: request.userId, title: `${request.verificationType === "POSITION" ? "Position" : "Affiliation"} verification ${approved ? "approved" : input.decision === "more_info" ? "needs more information" : "rejected"}`, message: approved ? "Your academic verification is now visible on your profile." : "Your verification request needs changes. Open Academic Profile for details.", type: `academic_verification_${approved ? "approved" : input.decision === "more_info" ? "more_info" : "rejected"}`, targetKind: "academic_profile", targetId: profile.id });
     return buildPrivateProfile(request.userId);
   },
+
+  /**
+   * Authoritatively revokes a previously verified Lecturer position credential.
+   * Preserves all historical mentorship relationships, reviews, and research contributions,
+   * while immediately removing Lecturer Workspace eligibility, mentoring availability, and lecturer capabilities.
+   */
+  async revokeVerification(requestId: string, input: { reason: string; note?: string }, adminId: string) {
+    const prisma = getPrisma();
+    const parsed = parseDatabaseId(requestId);
+    if (!parsed || parsed.kind !== "uuid") throw AppError.notFound("Verification request not found");
+    const [request, admin] = await Promise.all([
+      prisma.verificationEvidence.findUnique({ where: { id: parsed.value } }),
+      resolveUser(adminId),
+    ]);
+    if (!request || request.verificationType !== "POSITION") throw AppError.notFound("Verification request not found");
+    if (request.userId === admin.id) throw AppError.conflict("Administrators cannot revoke their own verification");
+    if (admin.systemRole !== "ADMIN" || admin.accountStatus !== "ACTIVE") throw AppError.forbidden("Administrator access required");
+    if (request.status !== "VERIFIED" || request.invalidatedAt) {
+      throw AppError.conflict("Only an active verified Lecturer credential can be revoked");
+    }
+
+    const now = new Date();
+    const profile = request.academicProfileId
+      ? await prisma.academicProfile.findUnique({ where: { id: request.academicProfileId } })
+      : await prisma.academicProfile.findUnique({ where: { userId: request.userId } });
+    if (!profile) throw AppError.notFound("Academic profile not found");
+
+    await prisma.$transaction(async (tx) => {
+      for (const id of [request.userId, admin.id].sort()) {
+        await tx.$queryRaw`SELECT id FROM users WHERE id = ${id}::uuid FOR UPDATE`;
+      }
+      const liveAdmin = await tx.user.findUnique({ where: { id: admin.id } });
+      if (!liveAdmin?.isActive || liveAdmin.accountStatus !== "ACTIVE" || liveAdmin.systemRole !== "ADMIN") {
+        throw AppError.forbidden("Administrator access required");
+      }
+      const liveMeta = record(request.metadata);
+      const updated = await tx.verificationEvidence.updateMany({
+        where: { id: request.id, status: "VERIFIED", invalidatedAt: null },
+        data: {
+          status: "INVALIDATED",
+          invalidatedAt: now,
+          reviewedById: admin.id,
+          reviewedAt: now,
+          rejectionReason: input.reason,
+          metadata: {
+            ...liveMeta,
+            revokedAt: now.toISOString(),
+            revokedById: admin.id,
+            revocationReason: input.reason,
+            ...(input.note ? { revocationNote: input.note } : {}),
+          } as never,
+        },
+      });
+      if (updated.count !== 1) throw AppError.conflict("This verification credential was already revoked or invalidated");
+
+      const currentSupport = record(profile.supportAvailability);
+      const currentReview = record(profile.reviewAvailability);
+      await tx.academicProfile.update({
+        where: { id: profile.id },
+        data: {
+          positionStatus: "INVALIDATED",
+          roleVerificationStatus: "INVALIDATED",
+          verificationStatus: "SELF_DECLARED",
+          verifiedAt: null,
+          verifiedById: null,
+          rejectionReason: input.reason,
+          verificationNote: input.note ?? profile.verificationNote,
+          supportAvailability: { ...currentSupport, enabled: false, updatedAt: now.toISOString() } as never,
+          reviewAvailability: { ...currentReview, enabled: false, updatedAt: now.toISOString() } as never,
+        },
+      });
+      await tx.affiliation.updateMany({
+        where: { userId: request.userId, isPrimary: true, isCurrent: true },
+        data: { positionStatus: "INVALIDATED" },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: admin.id,
+          actionName: "LECTURER_VERIFICATION_REVOKED",
+          targetTableName: "verification_evidence",
+          targetRecordId: request.id,
+          details: { targetUserId: request.userId, reason: input.reason },
+        },
+      });
+      await lecturerVerificationNotification(tx, "LECTURER_VERIFICATION_REVOKED", {
+        id: request.id,
+        userId: request.userId,
+        academicProfileId: profile.id,
+      });
+    });
+
+    await capabilityService.evaluateWithRetry(request.userId);
+    return buildPrivateProfile(request.userId);
+  },
   async listLecturers(query: LecturerListQueryInput) {
     const prisma = getPrisma();
-    const users = await prisma.user.findMany({ where: { isActive: true, accountStatus: "ACTIVE", systemRole: "USER", ...(query.institution ? { institution: { contains: query.institution, mode: "insensitive" } } : {}), ...(query.researchInterest ? { researchInterests: { has: query.researchInterest } } : {}) }, select: { id: true } });
-    const where = { userId: { in: users.map((item) => item.id) }, academicRole: "LECTURER", profileVisibility: "PUBLIC", showInResearcherSearch: true, ...(query.verifiedOnly ? { positionStatus: "VERIFIED", roleVerificationStatus: "VERIFIED" } : {}), ...(query.expertise ? { expertiseAreas: { has: query.expertise } } : {}), ...(query.supportAvailable !== undefined ? { supportAvailability: { path: ["enabled"], equals: query.supportAvailable } } : {}), ...(query.reviewAvailable !== undefined ? { reviewAvailability: { path: ["enabled"], equals: query.reviewAvailable } } : {}) };
+    const requireVerified = query.verifiedOnly !== false || query.supportAvailable === true || query.reviewAvailable === true;
+    const users = await prisma.user.findMany({
+      where: {
+        isActive: true,
+        accountStatus: "ACTIVE",
+        ...(requireVerified ? { emailVerifiedAt: { not: null } } : {}),
+        ...(query.institution ? { institution: { contains: query.institution, mode: "insensitive" } } : {}),
+        ...(query.researchInterest ? { researchInterests: { has: query.researchInterest } } : {}),
+      },
+      select: { id: true },
+    });
+    const where = {
+      userId: { in: users.map((item) => item.id) },
+      academicRole: "LECTURER",
+      profileVisibility: "PUBLIC",
+      showInResearcherSearch: true,
+      ...(requireVerified ? { positionStatus: "VERIFIED", roleVerificationStatus: "VERIFIED" } : {}),
+      ...(query.expertise ? { expertiseAreas: { has: query.expertise } } : {}),
+      ...(query.supportAvailable !== undefined ? { supportAvailability: { path: ["enabled"], equals: query.supportAvailable } } : {}),
+      ...(query.reviewAvailable !== undefined ? { reviewAvailability: { path: ["enabled"], equals: query.reviewAvailable } } : {}),
+    };
     const [profiles, total] = await Promise.all([prisma.academicProfile.findMany({ where, orderBy: [{ verifiedAt: "desc" }, { updatedAt: "desc" }], skip: (query.page - 1) * query.pageSize, take: query.pageSize }), prisma.academicProfile.count({ where })]);
     return { data: await Promise.all(profiles.map((item) => this.getCompact(item.userId))), meta: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.max(1, Math.ceil(total / query.pageSize)) } };
   },

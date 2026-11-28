@@ -19,6 +19,7 @@ import {
   loadDictionary,
   type Dictionary,
 } from "./locales";
+import { AppLoading } from "@/components/loading/primitives";
 
 export const UI_LANGUAGES = [
   { code: "en", label: "English", nativeLabel: "English" },
@@ -134,11 +135,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   return (
     <I18nContext.Provider value={value}>
-      {loadedDictionary ? children : (
-        <div className="flex min-h-dvh items-center justify-center bg-slate-50 dark:bg-black" role="status" aria-busy="true" aria-label={t("Loading...")}>
-          <Languages className="h-6 w-6 animate-pulse text-slate-400 motion-reduce:animate-none" aria-hidden="true" />
-        </div>
-      )}
+      {loadedDictionary ? children : <AppLoading />}
     </I18nContext.Provider>
   );
 }
@@ -399,7 +396,7 @@ export function resolveInitialLanguage(
   return "en";
 }
 
-function readStoredLanguage(): UiLanguageCode {
+export function readStoredLanguage(): UiLanguageCode {
   let storedLanguage: string | null = null;
   try {
     storedLanguage = window.localStorage.getItem(STORAGE_KEY)
@@ -415,6 +412,12 @@ function readStoredLanguage(): UiLanguageCode {
       : [navigator.language];
 
   return resolveInitialLanguage(storedLanguage, browserLanguages);
+}
+
+/** Start downloading the active locale dictionary before React mounts to avoid boot waterfalls. */
+export function preloadInitialDictionary(): void {
+  const language = readStoredLanguage();
+  void loadDictionary(language).catch(() => undefined);
 }
 
 function interpolate(template: string, values?: Record<string, string | number>) {

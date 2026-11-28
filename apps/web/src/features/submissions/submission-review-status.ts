@@ -26,6 +26,8 @@ export interface ReviewStatusPresentation {
   needsRevision: boolean;
   hasFeedback: boolean;
   isUnavailable: boolean;
+  isResubmitted?: boolean;
+  isInternalApproval?: boolean;
 }
 
 export interface VersionMentorThread {
@@ -42,9 +44,13 @@ export interface VersionMentorThread {
 export interface VersionReviewContext {
   threads: VersionMentorThread[];
   activeThread?: VersionMentorThread;
+  /** Stable aggregate status for this version across all mentor threads (never flips when switching mentor tab). */
+  overallVersionStatus: ReviewStatusPresentation;
+  /** Backwards-compatible alias pointing to the active thread status for single-mentor or overall status for multi-mentor. */
   versionStatus: ReviewStatusPresentation;
   hasOpenReviewOnCurrentVersion: boolean;
   allMentorsBusyOnCurrentVersion: boolean;
+  overallSummaryText: string;
   summaryText: string;
 }
 
@@ -110,20 +116,36 @@ export function normalizeReviewStatus(params: {
       };
     }
     if (req === "COMPLETED") {
+      const internalApproval = Boolean(
+        review && ["STRONG", "READY_TO_ADVANCE"].includes((review.overallAssessment ?? "").toUpperCase()),
+      );
       return {
         state: "COMPLETED",
-        label: "Đã hoàn tất góp ý",
+        label: internalApproval ? "Chấp thuận nội bộ" : "Đã hoàn tất góp ý",
         tone: "emerald",
         isActiveOpen: false,
         needsRevision: false,
         hasFeedback: Boolean(review),
         isUnavailable: false,
+        isInternalApproval: internalApproval,
       };
     }
     if (req === "ACCEPTED") {
       return { state: "PENDING", label: "Giảng viên đã nhận yêu cầu", tone: "amber", isActiveOpen: true, needsRevision: false, hasFeedback: Boolean(review), isUnavailable: false };
     }
-    if (req === "IN_REVIEW" || req === "RESUBMITTED") {
+    if (req === "RESUBMITTED") {
+      return {
+        state: "IN_PROGRESS",
+        label: "Đã gửi bản chỉnh sửa",
+        tone: "blue",
+        isActiveOpen: true,
+        needsRevision: false,
+        hasFeedback: Boolean(review),
+        isUnavailable: false,
+        isResubmitted: true,
+      };
+    }
+    if (req === "IN_REVIEW") {
       return {
         state: "IN_PROGRESS",
         label: "Giảng viên đang đánh giá",
@@ -280,23 +302,96 @@ export function normalizeReviewStatus(params: {
 type TranslateReview = (key: string, values?: Record<string, string | number>) => string;
 const interpolateReview: TranslateReview = (key, values) => key.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(values?.[name] ?? ""));
 
+function aggregateVersionStatus(
+  threads: VersionMentorThread[],
+  fallback: ReviewStatusPresentation,
+): ReviewStatusPresentation {
+  if (threads.length === 0) return fallback;
+  if (threads.length === 1) return threads[0]!.status;
+  const revisionThread = threads.find((t) => t.status.state === "REVISION_REQUESTED");
+  if (revisionThread) return revisionThread.status;
+  const resubmittedThread = threads.find((t) => t.status.isResubmitted);
+  if (resubmittedThread) return resubmittedThread.status;
+  const activeThread = threads.find((t) => t.status.isActiveOpen);
+  if (activeThread) return activeThread.status;
+  const allCompleted = threads.every((t) => t.status.state === "COMPLETED");
+  if (allCompleted) {
+    const allInternalApproved = threads.every((t) => t.status.isInternalApproval);
+    return {
+      state: "COMPLETED",
+      label: allInternalApproved ? "Chấp thuận nội bộ" : "Đã hoàn tất góp ý",
+      tone: "emerald",
+      isActiveOpen: false,
+      needsRevision: false,
+      hasFeedback: threads.some((t) => t.status.hasFeedback),
+      isUnavailable: false,
+      isInternalApproval: allInternalApproved,
+    };
+  }
+  const feedbackThread = threads.find((t) => t.status.hasFeedback);
+  if (feedbackThread) return feedbackThread.status;
+  return threads[0]!.status;
+}
+
+function buildMultiMentorOverview(
+  threads: VersionMentorThread[],
+  activeThread: VersionMentorThread | undefined,
+  t: TranslateReview = interpolateReview,
+): string {
+  const revisionCount = threads.filter((item) => item.status.state === "REVISION_REQUESTED").length;
+  const reviewingCount = threads.filter((item) => item.status.isActiveOpen).length;
+  const completedCount = threads.filter(
+    (item) => item.status.state === "COMPLETED" || item.status.state === "FEEDBACK_SUBMITTED",
+  ).length;
+  const parts: string[] = [];
+  if (revisionCount > 0) {
+    parts.push(
+      revisionCount === 1
+        ? t("Có yêu cầu chỉnh sửa cần xử lý")
+        : t("{{count}} giảng viên yêu cầu chỉnh sửa", { count: revisionCount }),
+    );
+  }
+  if (reviewingCount > 0) {
+    parts.push(t("{{count}} giảng viên đang phản biện", { count: reviewingCount }));
+  }
+  if (completedCount > 0 && revisionCount === 0 && reviewingCount === 0) {
+    parts.push(t("{{count}} giảng viên đã gửi phản hồi", { count: completedCount }));
+  } else if (completedCount > 0) {
+    parts.push(t("{{count}} giảng viên đã phản hồi", { count: completedCount }));
+  }
+  const summary = parts.length > 0 ? parts.join(" · ") : t("{{count}} giảng viên tham gia góp ý", { count: threads.length });
+  return activeThread ? `${summary} · ${t("Đang xem:")} ${activeThread.reviewerName}` : summary;
+}
+
 function buildSummarySentence(versionNumber: number, thread?: VersionMentorThread, totalThreads = 0, t: TranslateReview = interpolateReview): string {
   if (!thread) {
-    return t("Phiên bản v{{version}} đã được lưu. Chưa gửi yêu cầu góp ý cho giảng viên.", { version: versionNumber });
+    return t("Phiên bản v{{version}} đã được lưu. Bạn có thể gửi giảng viên góp ý khi sẵn sàng.", { version: versionNumber });
   }
   const values = { mentor: thread.reviewerName, version: versionNumber };
   const multiPrefix = totalThreads > 1 ? t("({{count}} giảng viên) ", { count: totalThreads }) : "";
+  if (thread.status.isResubmitted) {
+    return multiPrefix + t("Bản chỉnh sửa v{{version}} đã được gửi cho {{mentor}}. Nhóm đang chờ kết quả rà soát.", values);
+  }
   switch (thread.status.state) {
     case "PENDING":
-      return multiPrefix + t("Đã gửi bản v{{version}} cho {{mentor}}. Giảng viên chưa gửi phản hồi.", values);
+      return multiPrefix + t("Đã gửi bản v{{version}} cho {{mentor}}. Nhóm có thể tiếp tục hoàn thiện bản làm việc trong khi chờ phản hồi.", values);
     case "IN_PROGRESS":
       return multiPrefix + t("Đã gửi bản v{{version}} cho {{mentor}}. Giảng viên đang đánh giá bản thảo.", values);
-    case "REVISION_REQUESTED":
+    case "REVISION_REQUESTED": {
+      const openMandatory = (thread.latestReview?.requiredRevisions ?? []).filter(
+        (item) => item.priority !== "SUGGESTION" && ["OPEN", "REOPENED"].includes(item.status),
+      ).length;
+      if (openMandatory > 0) {
+        return multiPrefix + t("{{mentor}} đã gửi phản hồi cho bản v{{version}}. Có {{count}} yêu cầu chỉnh sửa cần nhóm xử lý.", { ...values, count: openMandatory });
+      }
       return multiPrefix + t("{{mentor}} đã đề nghị chỉnh sửa cho bản v{{version}}. Hãy xem góp ý và chuẩn bị phiên bản mới.", values);
+    }
     case "FEEDBACK_SUBMITTED":
       return multiPrefix + t("{{mentor}} đã gửi góp ý cho bản v{{version}}.", values);
     case "COMPLETED":
-      return multiPrefix + t("Vòng góp ý nội bộ với {{mentor}} cho bản v{{version}} đã hoàn tất.", values);
+      return multiPrefix + (thread.status.isInternalApproval
+        ? t("Quá trình phản biện nội bộ với {{mentor}} đã hoàn tất cho bản v{{version}}.", values)
+        : t("Vòng góp ý nội bộ với {{mentor}} cho bản v{{version}} đã hoàn tất.", values));
     case "DECLINED":
       return multiPrefix + t("{{mentor}} đã từ chối yêu cầu góp ý bản v{{version}}.", values);
     case "CANCELLED":
@@ -415,12 +510,16 @@ export function resolveVersionReviewContext(params: {
     (selectedMentorKey ? threads.find((t) => t.key === selectedMentorKey) : undefined) ??
     threads[0];
 
-  const versionStatus =
-    activeThread?.status ??
-    normalizeReviewStatus({
-      submissionStatus: isCurrentVersion ? submissionStatus : undefined,
-      hasAssignedMentor: Boolean(history?.assignedMentor),
-    });
+  const fallbackStatus = normalizeReviewStatus({
+    submissionStatus: isCurrentVersion ? submissionStatus : undefined,
+    hasAssignedMentor: Boolean(history?.assignedMentor),
+  });
+  const overallVersionStatus = aggregateVersionStatus(threads, fallbackStatus);
+  const versionStatus = overallVersionStatus;
+  const overallSummaryText =
+    threads.length > 1
+      ? buildMultiMentorOverview(threads, activeThread, params.translate)
+      : buildSummarySentence(version.revisionNumber, activeThread, threads.length, params.translate);
 
   // Check open reviews on the CURRENT (latest) version across all requests
   const currentRequests = allRequests.filter(
@@ -438,10 +537,12 @@ export function resolveVersionReviewContext(params: {
   return {
     threads,
     activeThread,
+    overallVersionStatus,
     versionStatus,
     hasOpenReviewOnCurrentVersion,
     allMentorsBusyOnCurrentVersion,
-    summaryText: buildSummarySentence(version.revisionNumber, activeThread, threads.length, params.translate),
+    overallSummaryText,
+    summaryText: overallSummaryText,
   };
 }
 
@@ -488,11 +589,11 @@ export function resolveSubmissionPrimaryAction(params: {
     return { kind: "NONE", label: "", secondaryEditLink: false };
   }
 
-  // State 1: Revision requested -> main job is to submit revised version (or edit first if LumiGap manuscript)
+  // State 1: Revision requested -> main job is to prepare and submit revised version
   if (params.status.state === "REVISION_REQUESTED") {
     return {
       kind: "SEND_NEXT_VERSION",
-      label: "Gửi phiên bản mới để góp ý",
+      label: "Chuẩn bị bản mới",
       secondaryEditLink: params.hasEditableSource,
     };
   }

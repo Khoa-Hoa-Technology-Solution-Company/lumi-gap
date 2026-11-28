@@ -52,6 +52,7 @@ export const API_ROUTES = {
   reviews: {
     list: "/reviews",
     detail: (assignmentId: string) => `/reviews/${assignmentId}`,
+    previousFeedback: (assignmentId: string) => `/reviews/${assignmentId}/previous-feedback`,
     save: (assignmentId: string) => `/reviews/${assignmentId}`,
     submit: (assignmentId: string) => `/reviews/${assignmentId}/submit`,
   },
@@ -68,6 +69,8 @@ export const API_ROUTES = {
     list: "/review-requests",
     reviewers: "/review-requests/reviewers",
     detail: (requestId: string) => `/review-requests/${requestId}`,
+    eligibleTemplates: (requestId: string) => `/review-requests/${requestId}/eligible-templates`,
+    changeTemplate: (requestId: string) => `/review-requests/${requestId}/template`,
     accept: (requestId: string) => `/review-requests/${requestId}/accept`,
     decline: (requestId: string) => `/review-requests/${requestId}/decline`,
     cancel: (requestId: string) => `/review-requests/${requestId}/cancel`,
@@ -226,7 +229,10 @@ export const API_ROUTES = {
     academicVerification: (profileId: string) => `/admin/academic-verifications/${profileId}`,
     auditLogs: "/admin/audit-logs",
     workers: "/admin/workers",
+    aiOperations: "/admin/ai-operations",
     settings: "/admin/settings",
+    settingInstitution: (id: string) => `/admin/settings/institutions/${encodeURIComponent(id)}`,
+    settingApiProvider: (id: string) => `/admin/settings/api-providers/${encodeURIComponent(id)}`,
     topicBackfill: {
       request: "/admin/topic-backfill",
       runs: "/admin/topic-backfill/runs",
@@ -332,6 +338,7 @@ export const API_ROUTES = {
     chat: {
       send: (id: string) => `/projects/${id}/chat`,
       history: (id: string) => `/projects/${id}/chat`,
+      sources: (id: string) => `/projects/${id}/chat/sources`,
       events: (id: string) => `/projects/${id}/chat/events`,
       pin: (id: string, messageId: string) => `/projects/${id}/chat/${messageId}/pin`,
     },

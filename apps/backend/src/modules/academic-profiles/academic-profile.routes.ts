@@ -13,6 +13,7 @@ import {
   UpdateAcademicProfileDetailsSchema,
   VerificationDecisionParamsSchema,
   VerificationDecisionSchema,
+  RevokeVerificationSchema,
   VerificationListQuerySchema,
   VerificationRequestSchema,
   InstitutionalEmailChallengeSchema,
@@ -141,4 +142,10 @@ academicProfileAdminRouter.patch(
   validate(VerificationDecisionParamsSchema, "params"),
   validate(VerificationDecisionSchema),
   academicProfileController.decideVerification,
+);
+academicProfileAdminRouter.post(
+  "/academic-verifications/:requestId/revoke",
+  validate(VerificationDecisionParamsSchema, "params"),
+  validate(RevokeVerificationSchema),
+  academicProfileController.revokeVerification,
 );

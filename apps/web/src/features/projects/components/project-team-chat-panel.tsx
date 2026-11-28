@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, CheckCheck, FileText, Lightbulb, Loader2, Trash2, Users, XCircle, MoreHorizontal, Reply, Search, X, Bookmark, Maximize2 } from "lucide-react";
+import { ArrowDown, CheckCheck, Clipboard, FileText, Lightbulb, Loader2, Trash2, Users, XCircle, MoreHorizontal, Reply, Search, X, Bookmark, Maximize2 } from "lucide-react";
 import { isAdminSystemRole, type ProjectChatReference, type ProjectTeamChatMessage } from "@trend/shared-types";
 import { useSearchParams } from "react-router-dom";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -376,9 +376,9 @@ export function ProjectTeamChatPanel({
             <div className="project-chat-empty" role="alert"><XCircle size={24} /><h4>{t("Could not load team messages")}</h4><p>{t("Check your connection and project access, then try again.")}</p><Button variant="outline" size="sm" onClick={() => void historyQuery.refetch()}>{t("Try again")}</Button></div>
           ) : visibleMessages.length === 0 ? (
             <div className="project-chat-empty">
-              <Users size={28} aria-hidden="true" />
-              <h4>{t("Start a conversation with your team")}</h4>
-              <p>{t("Share an update, ask a question or agree on your next step.")}</p>
+              <Users size={26} aria-hidden="true" />
+              <h4>{t("No messages yet.")}</h4>
+              <p>{t("Start a discussion with your team members.")}</p>
               <div className="project-chat-starters">
                 {teamStarters.map(starter => <button type="button" key={starter.label} onClick={() => selectStarter(starter.label)}><starter.icon size={16} aria-hidden="true" /><span>{starter.label}</span></button>)}
               </div>
@@ -391,21 +391,29 @@ export function ProjectTeamChatPanel({
             const previous = visibleMessages[index - 1];
             const date = new Date(item.createdAt);
             const newDay = !previous || date.toDateString() !== new Date(previous.createdAt).toDateString();
+            const grouped = Boolean(
+              !newDay
+              && previous
+              && previous.sender.id === item.sender.id
+              && !item.replyTo
+              && !previous.isDeleted
+              && Math.abs(date.getTime() - new Date(previous.createdAt).getTime()) < 5 * 60 * 1000,
+            );
             return <div key={item.id} id={`team-message-${item.id}`} tabIndex={-1} data-highlight={highlight === item.id}>
               {newDay && <div className="project-chat-date"><time dateTime={item.createdAt}>{date.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}</time></div>}
-              <ProjectChatMessage own={isMe} author={isMe ? t("You") : item.sender.fullName || item.sender.email || t("Member")} avatarUrl={item.sender.avatarUrl} createdAt={item.createdAt} locale={locale} deleted={item.isDeleted} content={item.isDeleted ? t("This message was removed.") : item.content} footer={<>
+              <ProjectChatMessage own={isMe} grouped={grouped} author={isMe ? t("You") : item.sender.fullName || item.sender.email || t("Member")} avatarUrl={item.sender.avatarUrl} createdAt={item.createdAt} locale={locale} deleted={item.isDeleted} content={item.isDeleted ? t("This message was removed.") : item.content} footer={<>
 
                     {isMe && !item.isDeleted && <span><CheckCheck size={13} aria-hidden="true" />{isPending ? t("Sending…") : readByOthers ? t("Seen by {{count}}", { count: readByOthers }) : t("Sent")}</span>}
-                    {!isPending && !item.isDeleted && <DropdownMenu><DropdownMenuTrigger asChild><button type="button" aria-label={t("chat.messageActions")}><MoreHorizontal size={16} /></button></DropdownMenuTrigger><DropdownMenuContent align={isMe ? "end" : "start"}><DropdownMenuItem onSelect={() => { setReplyId(item.id); textareaRef.current?.focus({ preventScroll: true }); }}><Reply size={15} />{t("chat.reply")}</DropdownMenuItem><DropdownMenuItem onSelect={() => setDecisionMessage(item)}><Bookmark size={15} />{t("chat.saveDecision")}</DropdownMenuItem>{canDelete && <DropdownMenuItem disabled={deleteMutation.isPending} onSelect={() => deleteMutation.mutate(item.id)}><Trash2 size={15} />{t("Delete message")}</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}
+                    {!isPending && !item.isDeleted && <DropdownMenu><DropdownMenuTrigger asChild><button type="button" aria-label={t("chat.messageActions")}><MoreHorizontal size={16} /></button></DropdownMenuTrigger><DropdownMenuContent align={isMe ? "end" : "start"}><DropdownMenuItem onSelect={() => { setReplyId(item.id); textareaRef.current?.focus({ preventScroll: true }); }}><Reply size={15} />{t("chat.reply")}</DropdownMenuItem>{item.content && <DropdownMenuItem onSelect={() => { void navigator.clipboard?.writeText(item.content); }}><Clipboard size={15} />{t("Copy")}</DropdownMenuItem>}<DropdownMenuItem onSelect={() => setDecisionMessage(item)}><Bookmark size={15} />{t("chat.saveDecision")}</DropdownMenuItem>{canDelete && <DropdownMenuItem disabled={deleteMutation.isPending} onSelect={() => deleteMutation.mutate(item.id)}><Trash2 size={15} />{t("Delete message")}</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}
               </>} >{item.replyTo && <button type="button" className="research-chat-reply" onClick={() => locate.mutate(item.replyTo!.id)}><strong>{item.replyTo.sender.fullName || t("chat.reply")}</strong><span>{item.replyTo.isDeleted ? t("This message was removed.") : item.replyTo.content || t("chat.sharedReference")}</span></button>}{!item.isDeleted && item.reference && <ChatReferenceCard projectId={projectId} reference={item.reference} />}</ProjectChatMessage>
             </div>;
           })}
         </div>
         {focusedWindow && <div className="research-chat-context-navigation"><Button variant="outline" size="sm" disabled={newer.isPending} onClick={() => newer.mutate()}>{t("chat.loadNewer")}</Button><Button size="sm" variant="ghost" onClick={() => { setFocusedWindow(null); setHighlight(undefined); jumpToLatest(); }}>{t("Jump to latest")}</Button>{newer.isError && <p role="alert">{t("chat.historyError")}</p>}</div>}
-        {!atBottom && !focusedWindow && <button type="button" className="project-chat-jump" onClick={jumpToLatest}><ArrowDown size={15} aria-hidden="true" />{t(hasNewMessages ? "New messages" : "Jump to latest")}</button>}
+        {!atBottom && !focusedWindow && <div className="project-chat-jump-bar"><button type="button" className="project-chat-jump" onClick={jumpToLatest}><ArrowDown size={14} aria-hidden="true" />{t(hasNewMessages ? "New messages" : "Jump to latest")}</button></div>}
         </div>
         {(sendMutation.isError || deleteMutation.isError) && <div className="project-chat-error" role="alert"><XCircle size={16} aria-hidden="true" />{t(sendMutation.isError ? "Could not send. Your message is kept below; try again." : "Could not remove this message. Try again.")}{sendMutation.isError && <Button type="button" size="sm" variant="ghost" disabled={historyQuery.isError} onClick={submit}>{t("Try again")}</Button>}</div>}
-        <ProjectChatComposer hasAttachment={!!reference} leading={<ChatShareMenu disabled={isDisabled} onChoose={kind => setPicker(kind)} />} preview={<>{picker && <ChatReferencePicker key={picker} projectId={projectId} kind={picker} onSelect={ref => { setReference(ref); setPicker(undefined); textareaRef.current?.focus({ preventScroll: true }); }} onClose={() => { setPicker(undefined); textareaRef.current?.focus({ preventScroll: true }); }} />}{replyId && <div className="research-chat-compose-preview"><Reply size={16} /><span>{t("chat.replyingTo")}<strong>{messages.find(item => item.id === replyId)?.content.slice(0, 140) || t("chat.selectedMessage")}</strong></span><Button type="button" variant="ghost" size="icon" aria-label={t("chat.cancelReply")} onClick={() => { setReplyId(undefined); textareaRef.current?.focus({ preventScroll: true }); }}><X size={15} /></Button></div>}{reference && <div className="research-chat-compose-preview"><ChatReferenceCard projectId={projectId} reference={reference} /><Button type="button" variant="ghost" size="icon" aria-label={t("chat.removeReference")} onClick={() => { setReference(undefined); textareaRef.current?.focus({ preventScroll: true }); }}><X size={15} /></Button></div>}</>} value={message} onChange={value => { setMessage(value); if (sendMutation.isError) sendMutation.reset(); }} onSend={submit} textareaRef={textareaRef} disabled={isDisabled || historyQuery.isLoading} pending={sendMutation.isPending} label={t("Message your team")} placeholder={t("Message your team…")} sendLabel={t("Send")} keyboardHint={t("Enter to send · Shift+Enter for a new line")} mobileHint={t("Only visible to your team")} />
+        <ProjectChatComposer hasAttachment={!!reference} leading={<ChatShareMenu disabled={isDisabled} onChoose={kind => setPicker(kind)} />} preview={<>{picker && <ChatReferencePicker key={picker} projectId={projectId} kind={picker} onSelect={ref => { setReference(ref); setPicker(undefined); textareaRef.current?.focus({ preventScroll: true }); }} onClose={() => { setPicker(undefined); textareaRef.current?.focus({ preventScroll: true }); }} />}{replyId && <div className="research-chat-compose-preview"><Reply size={16} /><span>{t("chat.replyingTo")}<strong>{messages.find(item => item.id === replyId)?.content.slice(0, 140) || t("chat.selectedMessage")}</strong></span><Button type="button" variant="ghost" size="icon" aria-label={t("chat.cancelReply")} onClick={() => { setReplyId(undefined); textareaRef.current?.focus({ preventScroll: true }); }}><X size={15} /></Button></div>}{reference && <div className="research-chat-compose-preview"><ChatReferenceCard projectId={projectId} reference={reference} /><Button type="button" variant="ghost" size="icon" aria-label={t("chat.removeReference")} onClick={() => { setReference(undefined); textareaRef.current?.focus({ preventScroll: true }); }}><X size={15} /></Button></div>}</>} value={message} onChange={value => { setMessage(value); if (sendMutation.isError) sendMutation.reset(); }} onSend={submit} textareaRef={textareaRef} disabled={isDisabled || historyQuery.isLoading} pending={sendMutation.isPending} label={t("Message your team")} placeholder={t("Talk with your research team…")} sendLabel={t("Send")} keyboardHint={t("Enter to send · Shift+Enter for a new line")} mobileHint={t("Only visible to your team")} />
       </div>
       {decisionMessage && <ChatDecisionDialog projectId={projectId} message={decisionMessage} onClose={() => { setDecisionMessage(undefined); textareaRef.current?.focus({ preventScroll: true }); }} />}
     </div>

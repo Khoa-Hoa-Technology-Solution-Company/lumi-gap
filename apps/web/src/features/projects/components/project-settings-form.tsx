@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import type { IProject, ResearchApproach, UpdateProjectRequest } from "@trend/shared-types";
+import type { IProject, ResearchApproach, ResearchClassificationInput, UpdateProjectRequest } from "@trend/shared-types";
 import { ArrowUpRight, Globe, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { authApi } from "@/features/auth/api/auth.api";
+import { ResearchClassificationFields } from "@/features/academic-profile/components/research-classification-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,14 +13,29 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useI18n } from "@/i18n";
 import { useUpdateProject } from "../hooks/use-projects";
+import {
+  DEFAULT_MAX_KEYWORD_LENGTH,
+  DEFAULT_MAX_KEYWORDS,
+  KeywordTagInput,
+  mergeKeywordTerms,
+  splitKeywordTerms,
+} from "./keyword-tag-input";
 import { RESEARCH_APPROACHES } from "./project-research-fields";
 import { ResearchAreaSelect } from "./research-area-select";
 import { canLeaveWorkspace, projectSectionHref, useUnsavedWorkspace } from "./workspace-common";
 
+const toClassificationInput = (p: IProject): ResearchClassificationInput => ({
+  nodeIds: (p.researchClassification?.nodes ?? []).map(node => node.id),
+  keywordIds: (p.researchClassification?.keywords ?? []).map(keyword => keyword.id),
+  skillIds: p.researchClassification?.skillIds ?? [],
+});
+
 const generalValue = (p: IProject) => ({
   title: p.title,
   description: p.description ?? "",
-  areas: p.researchAreas ?? (p.researchField ? [p.researchField] : []),
+  areas: p.researchAreas?.length ? p.researchAreas : (p.researchField ? [p.researchField] : []),
+  keywords: p.keywords ?? [],
+  classification: toClassificationInput(p),
 });
 const privacyValue = (p: IProject) => ({ visibility: p.visibility, summary: p.publicSummary ?? "" });
 const isPublic = (visibility: string) => ["PUBLIC", "PUBLIC_SUMMARY"].includes(visibility);
@@ -52,11 +68,12 @@ export function settingsSaveError(failure: unknown) {
 }
 
 export function ProjectGeneralSettings({ project }: { project: IProject }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const state = useSettingsDraft(project, generalValue);
   const update = useUpdateProject(project._id);
   const lock = useRef(false);
   const { draft, setDraft, baseline } = state;
+  const [keywordsInput, setKeywordsInput] = useState("");
   const [error, setError] = useState("");
   const writable = project.accessRole === "OWNER" && project.status !== "ARCHIVED";
   const taxonomy = useQuery({
@@ -66,10 +83,11 @@ export function ProjectGeneralSettings({ project }: { project: IProject }) {
   });
   const approachKey: ResearchApproach = project.researchApproach ?? "UNDECIDED";
   const approachLabel = RESEARCH_APPROACHES[approachKey] ?? RESEARCH_APPROACHES.UNDECIDED;
+  const hasChanges = state.dirty || Boolean(keywordsInput.trim());
 
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (!writable || lock.current || !state.dirty) return;
+    if (!writable || lock.current || !hasChanges) return;
     if (!draft.title.trim() || draft.title.trim().length > 100) {
       setError(t("Enter a project title."));
       return;
@@ -86,15 +104,37 @@ export function ProjectGeneralSettings({ project }: { project: IProject }) {
       setError(t("Keep the description under 5000 characters."));
       return;
     }
+    let nextKeywords = draft.keywords;
+    if (keywordsInput.trim()) {
+      const merged = mergeKeywordTerms(draft.keywords, splitKeywordTerms(keywordsInput), {
+        max: DEFAULT_MAX_KEYWORDS,
+        maxLength: DEFAULT_MAX_KEYWORD_LENGTH,
+        language,
+      });
+      if (merged.error) {
+        setError(merged.error);
+        return;
+      }
+      nextKeywords = merged.next;
+    }
     const patch: UpdateProjectRequest = { expectedVersion: baseline.version };
     if (draft.title !== original.title) patch.title = draft.title.trim();
     if (draft.description !== original.description) patch.description = draft.description;
     if (JSON.stringify(draft.areas) !== JSON.stringify(original.areas)) patch.researchAreas = draft.areas;
+    if (JSON.stringify(nextKeywords) !== JSON.stringify(original.keywords)) patch.keywords = nextKeywords;
+    if (JSON.stringify(draft.classification) !== JSON.stringify(original.classification)) {
+      patch.researchClassification = draft.classification;
+    }
+    if (Object.keys(patch).length <= 1) {
+      setKeywordsInput("");
+      return;
+    }
     lock.current = true;
     setError("");
     try {
       const saved = await update.mutateAsync(patch);
       state.accept(saved);
+      setKeywordsInput("");
       toast.success(t("Project settings saved"));
     } catch (failure) {
       setError(t(settingsSaveError(failure)));
@@ -120,7 +160,7 @@ export function ProjectGeneralSettings({ project }: { project: IProject }) {
 
       <ChangedNotice visible={state.latest} reload={state.reload} />
 
-      <fieldset disabled={!writable || update.isPending} className="min-w-0 space-y-4">
+      <fieldset disabled={!writable || update.isPending} className="min-w-0 space-y-5">
         <div className="space-y-1.5">
           <Label htmlFor="project-settings-title">{t("Project name")} *</Label>
           <Input
@@ -147,11 +187,52 @@ export function ProjectGeneralSettings({ project }: { project: IProject }) {
         <div className="space-y-1">
           <ResearchAreaSelect
             values={draft.areas}
+            label="Research areas (up to 3)"
+            showPrimaryBadge
             onChange={areas => setDraft({ ...draft, areas })}
             options={taxonomy.data?.researchAreas}
           />
-          <p className="text-xs text-muted-foreground">{t("Choose a suggested area or add your own.")}</p>
+          <p className="text-xs text-muted-foreground">
+            {t("First selected area is the primary research area. Keywords are managed separately below.")}
+          </p>
         </div>
+
+        <div className="space-y-1">
+          <KeywordTagInput
+            id="project-settings-keywords"
+            label={t("Research keywords")}
+            disabled={!writable || update.isPending}
+            values={draft.keywords}
+            draftInput={keywordsInput}
+            onChange={keywords => {
+              setDraft({ ...draft, keywords });
+              if (error) setError("");
+            }}
+            onDraftInputChange={value => {
+              setKeywordsInput(value);
+              if (error) setError("");
+            }}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("Keywords help organize literature discovery and never overwrite your Research Plan search strategy.")}
+          </p>
+        </div>
+
+        <details className="rounded-xl border border-border/80 bg-muted/20 px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium text-foreground">
+            {t("Additional research classification")}
+          </summary>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t("Optional taxonomy links from the shared research catalogue.")}
+          </p>
+          <div className="pt-3">
+            <ResearchClassificationFields
+              mode="project"
+              value={draft.classification}
+              onChange={classification => setDraft({ ...draft, classification })}
+            />
+          </div>
+        </details>
       </fieldset>
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3.5 py-2.5 text-sm">
@@ -176,8 +257,22 @@ export function ProjectGeneralSettings({ project }: { project: IProject }) {
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
       {writable ? (
-        <div className="flex flex-wrap items-center justify-end gap-3 pt-1 border-t border-border/60">
-          <Button type="submit" disabled={!state.dirty || update.isPending}>
+        <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2 border-t border-border/60">
+          {hasChanges ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={update.isPending}
+              onClick={() => {
+                setDraft(generalValue(baseline));
+                setKeywordsInput("");
+                setError("");
+              }}
+            >
+              {t("Discard changes")}
+            </Button>
+          ) : null}
+          <Button type="submit" disabled={!hasChanges || update.isPending}>
             {t(update.isPending ? "Saving…" : "Save changes")}
           </Button>
         </div>
@@ -335,8 +430,21 @@ export function ProjectPrivacySettings({ project }: { project: IProject }) {
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
       {writable ? (
-        <div className="flex justify-end pt-1 border-t border-border/60">
-          <Button type="submit" variant="outline" disabled={!state.dirty || update.isPending}>
+        <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2 border-t border-border/60">
+          {state.dirty ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={update.isPending}
+              onClick={() => {
+                setDraft(privacyValue(baseline));
+                setError("");
+              }}
+            >
+              {t("Discard changes")}
+            </Button>
+          ) : null}
+          <Button type="submit" disabled={!state.dirty || update.isPending}>
             {t(update.isPending ? "Saving…" : "Save privacy")}
           </Button>
         </div>

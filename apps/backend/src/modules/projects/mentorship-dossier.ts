@@ -476,17 +476,19 @@ function buildAccessSummary(
 async function loadTeamBundles(db: WorkspaceDb, projectId: string, representativeUserId: string) {
   const members = await db.projectMember.findMany({
     where: { projectId, status: "ACTIVE" },
-    select: { userId: true, role: true },
+    select: { userId: true, role: true, mentorshipProfileShared: true },
   });
   const teamIds = [...new Set([representativeUserId, ...members.map(m => m.userId)])];
   const bundles = await loadProfileBundles(db, teamIds);
   const roleMap = new Map<string, "OWNER" | "MEMBER">();
+  const consentMap = new Map<string, boolean>();
   for (const m of members) {
+    consentMap.set(m.userId, Boolean(m.mentorshipProfileShared));
     if (m.userId === representativeUserId) continue;
     const role = m.role === "OWNER" ? "OWNER" : "MEMBER";
     roleMap.set(m.userId, role);
   }
-  return { members, bundles, roleMap, teamMemberCount: teamIds.length };
+  return { members, bundles, roleMap, consentMap, teamMemberCount: teamIds.length };
 }
 
 export interface DossierProjectSource {
@@ -524,10 +526,11 @@ function briefDossier(project: DossierProjectSource, context: MentorInvitationCo
 }
 
 export async function buildDossierDefaults(db: WorkspaceDb, project: DossierProjectSource, viewerId: string) {
-  const { bundles, roleMap, teamMemberCount } = await loadTeamBundles(db, project.id, project.ownerId);
+  const { bundles, roleMap, consentMap, teamMemberCount } = await loadTeamBundles(db, project.id, project.ownerId);
   const representative = projectStudentProfile(bundles.get(project.ownerId), viewerId);
   let shareableMemberCount = 0;
   for (const [userId, role] of roleMap) {
+    if (!consentMap.get(userId)) continue;
     const b = bundles.get(userId);
     if (b && projectTeamMemberSummary(b, role, viewerId)) shareableMemberCount += 1;
   }
@@ -566,7 +569,7 @@ export async function buildInvitationDossier(
 ): Promise<InvitationDossier> {
   const { project, representativeUserId, mentorUserId, viewerId, message, mentorRole = "UNASSIGNED", access, dossier } = params;
   if (dossier?.presentation === "BRIEF") return briefDossier(project, await buildMentorInvitationContext(db, project, representativeUserId), dossier, message, mentorRole, access);
-  const { bundles, roleMap, teamMemberCount } = await loadTeamBundles(db, project.id, representativeUserId);
+  const { bundles, roleMap, consentMap, teamMemberCount } = await loadTeamBundles(db, project.id, representativeUserId);
   const mentorBundles = await loadProfileBundles(db, [mentorUserId]);
   const mentorBundle = mentorBundles.get(mentorUserId);
 
@@ -580,6 +583,10 @@ export async function buildInvitationDossier(
   let privacyRedactedCount = 0;
   if (dossier?.shareTeamOverview) {
     for (const [userId, role] of roleMap) {
+      if (!consentMap.get(userId)) {
+        privacyRedactedCount += 1;
+        continue;
+      }
       const b = bundles.get(userId);
       const summary = b ? projectTeamMemberSummary(b, role, viewerId) : null;
       if (summary) {
@@ -711,12 +718,12 @@ export async function projectRequestDossiers(
   const projectIds = [...new Set(nonLegacy.map(r => r.projectId))];
   const allMembers = await db.projectMember.findMany({
     where: { projectId: { in: projectIds }, status: "ACTIVE" },
-    select: { projectId: true, userId: true, role: true },
+    select: { projectId: true, userId: true, role: true, mentorshipProfileShared: true },
   });
-  const membersByProject = new Map<string, Array<{ userId: string; role: string }>>();
+  const membersByProject = new Map<string, Array<{ userId: string; role: string; mentorshipProfileShared: boolean }>>();
   for (const m of allMembers) {
     const bucket = membersByProject.get(m.projectId) ?? [];
-    bucket.push({ userId: m.userId, role: m.role });
+    bucket.push({ userId: m.userId, role: m.role, mentorshipProfileShared: Boolean(m.mentorshipProfileShared) });
     membersByProject.set(m.projectId, bucket);
   }
 
@@ -745,6 +752,10 @@ export async function projectRequestDossiers(
     if (dossierInput?.shareTeamOverview) {
       for (const m of projectMembers) {
         if (m.userId === r.requestedBy) continue;
+        if (!m.mentorshipProfileShared) {
+          privacyRedactedCount += 1;
+          continue;
+        }
         const b = bundles.get(m.userId);
         const role = m.role === "OWNER" ? "OWNER" : "MEMBER";
         const summary = b ? projectTeamMemberSummary(b, role, viewerId) : null;

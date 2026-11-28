@@ -6,7 +6,8 @@ import logoImage from "@/assets/logo.png";
 import logoDarkImage from "@/assets/logo-dark.png";
 import { Button } from "@/components/ui/button";
 import { RouteTransition } from "@/components/route-transition";
-import { PageLoading } from "@/components/page-loading";
+import { AppLoading, PageSkeleton, RouteAwarePageSkeleton } from "@/components/loading";
+import { prefetchRouteChunk } from "@/routes/route-prefetch";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   DropdownMenu,
@@ -26,6 +27,7 @@ import { avatars, getLevel } from "@/utils/level";
 import { formatCompactNumber, formatNumber } from "@/utils";
 import { LanguageSwitcher, useI18n } from "@/i18n";
 import { isAdminSystemRole } from "@trend/shared-types";
+import { isLecturerWorkspaceEligible } from "@/features/auth/utils/lecturer-eligibility";
 import { storePostLogoutProjectPath } from "@/features/projects/utils/project-workspace-navigation";
 import { mentorWorkspaceDestination } from "@/features/projects/utils/mentor-workspace-navigation";
 import "./app-header.css";
@@ -140,6 +142,8 @@ function DesktopNavDropdown({
                 <Link
                   to={item.to}
                   aria-current={itemActive ? "page" : undefined}
+                  onMouseEnter={() => prefetchRouteChunk(item.to)}
+                  onFocus={() => prefetchRouteChunk(item.to)}
                   className={cn(
                     "w-full rounded-lg px-3 py-2.5",
                     // DropdownMenuItem (asChild) merges "flex items-center gap-2" into this link; with a description the
@@ -161,7 +165,7 @@ function DesktopNavDropdown({
 }
 
 function PageLoadingFallback() {
-  return <PageLoading />;
+  return <RouteAwarePageSkeleton />;
 }
 
 export function MainLayout() {
@@ -176,7 +180,8 @@ export function MainLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeDesktopMenu, setActiveDesktopMenu] = useState<string | null>(null);
   const desktopMenuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { t } = useI18n();
+  const { t, language } = useI18n();
+  const [lecturerPromptDismissed, setLecturerPromptDismissed] = useState(false);
 
   useEffect(() => {
     if (!isForumSurface) return;
@@ -221,9 +226,11 @@ export function MainLayout() {
   const { data: notifications, isLoading: notificationsLoading } = useNotifications({ enabled: isAuthed && !currentUserQuery.isFetching && !!currentUserQuery.data?.user });
   const currentUserData = currentUserQuery.data;
   const activeUser = currentUserData?.user ?? user;
+  const canAccessLecturerWorkspace = isLecturerWorkspaceEligible(activeUser);
   const visibleNavGroups = navGroups.map(group => ({
     ...group,
-    items: group.items.map(item => activeUser?.academicRole === "LECTURER" && ["/reviews", "/review-templates"].includes(item.to)
+    items: group.items.filter(item => item.to !== "/academic-support" || !canAccessLecturerWorkspace)
+      .map(item => canAccessLecturerWorkspace && ["/reviews", "/review-templates"].includes(item.to)
         ? { ...item, to: mentorWorkspaceDestination(item.to) } : item),
   }));
   const { data: balanceData } = useCreditBalance({ enabled: isAuthed && !currentUserQuery.isFetching && !!currentUserData?.user });
@@ -239,7 +246,7 @@ export function MainLayout() {
   }).length || 0;
 
   if (isAuthed && (currentUserQuery.isLoading || currentUserQuery.isPlaceholderData)) {
-    return <PageLoadingFallback />;
+    return <AppLoading />;
   }
 
   if (isAuthed && !currentUserQuery.isFetching && currentUserData?.user) {
@@ -248,9 +255,9 @@ export function MainLayout() {
     if (destination !== currentPath) {
       return <Navigate to={destination} state={{ from: currentPath }} replace />;
     }
-    // Existing bookmarks and notification URLs enter the same mentor shell as
-    // its sidebar links. The destination page still checks assignment access.
-    if (currentUserData.user.academicRole === "LECTURER" && /^\/(reviews|review-requests|review-templates)(\/|$)/.test(location.pathname)) {
+    // Existing bookmarks and notification URLs enter the Lecturer Workspace shell ONLY
+    // when the user is an eligible verified lecturer.
+    if (isLecturerWorkspaceEligible(currentUserData.user) && /^\/(reviews|review-requests|review-templates)(\/|$)/.test(location.pathname)) {
       const mentorPath = mentorWorkspaceDestination(location.pathname.replace(/\/$/, ""));
       if (mentorPath.startsWith("/mentor-workspace?")) {
         const search = new URLSearchParams(location.search);
@@ -261,8 +268,36 @@ export function MainLayout() {
   }
 
   if (/^\/projects\/[^/]+\/manuscripts\/[^/]+\/?$/.test(location.pathname)) {
-    return <main className="min-w-0"><Suspense fallback={<PageLoadingFallback />}><Outlet /></Suspense></main>;
+    return <main className="min-w-0"><Suspense fallback={<PageSkeleton variant="manuscript-editor" />}><Outlet /></Suspense></main>;
   }
+
+  const showOnboardingLecturerPrompt = Boolean(
+    isAuthed
+    && activeUser?.id
+    && activeUser.academicRole === "LECTURER"
+    && !canAccessLecturerWorkspace
+    && !lecturerPromptDismissed
+    && !location.pathname.startsWith("/settings/verification/lecturer")
+    && typeof window !== "undefined"
+    && (() => {
+      try {
+        return sessionStorage.getItem(`lumigap.lecturerVerifyPrompt.${activeUser.id}`) === "1";
+      } catch {
+        return false;
+      }
+    })(),
+  );
+
+  const dismissOnboardingLecturerPrompt = () => {
+    setLecturerPromptDismissed(true);
+    if (activeUser?.id) {
+      try {
+        sessionStorage.removeItem(`lumigap.lecturerVerifyPrompt.${activeUser.id}`);
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   return (
     <div
@@ -371,6 +406,31 @@ export function MainLayout() {
         )}
       </header>
       <main className={cn("relative min-w-0 flex-1", isForumSurface || isHomeSurface || isProjectsSurface ? "w-full p-0" : "container mx-auto w-full px-4 py-5 sm:px-6 sm:py-8 lg:px-8")}>
+        {showOnboardingLecturerPrompt ? (
+          <div
+            role="status"
+            className="mx-auto mb-4 flex max-w-5xl flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-sm text-slate-900 shadow-2xs sm:flex-row sm:items-center sm:justify-between dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-slate-100"
+          >
+            <div className="flex items-start gap-2.5">
+              <GraduationCap className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+              <p className="text-xs leading-5 sm:text-sm">
+                {language === "vi"
+                  ? "Xác minh vị trí giảng viên để sử dụng các chức năng hướng dẫn và phản biện học thuật."
+                  : "Verify your Lecturer position to access mentoring and academic review features."}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button size="sm" asChild onClick={dismissOnboardingLecturerPrompt}>
+                <Link to="/settings/verification/lecturer">
+                  {language === "vi" ? "Bắt đầu xác minh" : "Start verification"}
+                </Link>
+              </Button>
+              <Button size="sm" variant="ghost" onClick={dismissOnboardingLecturerPrompt}>
+                {language === "vi" ? "Để sau" : "Later"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <Suspense fallback={<PageLoadingFallback />}>
           <RouteTransition><Outlet /></RouteTransition>
         </Suspense>
@@ -465,12 +525,20 @@ function UserMenu({ bookmarkCount, credits }: { bookmarkCount: number; credits?:
           </>
         )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => navigate("/profile")}>
+        <DropdownMenuItem
+          onMouseEnter={() => prefetchRouteChunk("/profile")}
+          onFocus={() => prefetchRouteChunk("/profile")}
+          onSelect={() => navigate("/profile")}
+        >
           <User className="mr-2 h-4 w-4" />
           {t("Profile")}
         </DropdownMenuItem>
-        {(data?.user?.academicRole === "LECTURER" || isAdminSystemRole(systemRole)) && (
-          <DropdownMenuItem onSelect={() => navigate("/mentor-workspace")}>
+        {isLecturerWorkspaceEligible(data?.user) && (
+          <DropdownMenuItem
+            onMouseEnter={() => prefetchRouteChunk("/mentor-workspace")}
+            onFocus={() => prefetchRouteChunk("/mentor-workspace")}
+            onSelect={() => navigate("/mentor-workspace")}
+          >
             <GraduationCap className="mr-2 h-4 w-4" />{t("mentorWorkspace.title")}
           </DropdownMenuItem>
         )}

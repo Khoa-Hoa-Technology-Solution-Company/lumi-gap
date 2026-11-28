@@ -18,7 +18,33 @@
   margin-inline: auto;
 }
 
+.project-mentor-channel .mentor-conversation-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mentor-project-page .project-mentor-channel .mentor-conversation-workspace {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+
+.project-mentor-channel .mentor-conversation-workspace > header,
+.project-mentor-channel .mentor-conversation-workspace > .mentor-access-error,
+.project-mentor-channel .mentor-conversation-workspace > nav,
+.project-mentor-channel .mentor-conversation-workspace > div:last-child {
+  flex: none;
+}
+
 .project-mentor-channel .mentor-message-chat {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   margin-top: 0;
   border: 0;
   border-radius: 0;
@@ -30,8 +56,8 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 10px 16px;
-  padding: 12px 18px;
+  gap: 8px 14px;
+  padding: 9px 16px;
   border-bottom: 1px solid hsl(var(--border));
   background: hsl(var(--muted) / 0.25);
 }
@@ -85,11 +111,13 @@
 }
 
 .mentor-message-chat .project-chat-body {
-  height: clamp(340px, calc(100dvh - 300px), 640px);
+  height: clamp(320px, calc(100dvh - 340px), 620px);
 }
 
 .project-mentor-channel .mentor-message-chat .project-chat-body {
-  height: clamp(320px, calc(100dvh - 285px), 660px);
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
 }
 
 .mentor-message-chat .project-chat-feed {
@@ -178,10 +206,20 @@
 .mentor-conversation-workspace > details summary { padding-block: 5px; font-size: 13px; color: hsl(var(--muted-foreground)); }
 
 @media (max-width: 640px) {
-  .mentor-chat-header { padding: 10px 12px; }
-  .mentor-message-chat .project-chat-body,
+  .mentor-chat-header { padding: 8px 12px; }
+  .project-mentor-channel .mentor-conversation-workspace,
+  .mentor-project-page .project-mentor-channel .mentor-conversation-workspace {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 0;
+  }
+  .mentor-message-chat .project-chat-body {
+    height: clamp(360px, calc(100svh - 280px), 580px);
+  }
   .project-mentor-channel .mentor-message-chat .project-chat-body {
-    height: clamp(380px, calc(100svh - 260px), 600px);
+    flex: 1 1 0;
+    height: auto;
+    min-height: 0;
   }
   .mentor-message-chat .project-chat-feed { padding: 10px 12px 12px; }
   .mentor-message-chat .project-chat-message-meta { flex-wrap: wrap; column-gap: 6px; row-gap: 2px; }

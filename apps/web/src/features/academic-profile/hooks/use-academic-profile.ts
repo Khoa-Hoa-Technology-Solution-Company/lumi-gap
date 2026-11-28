@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UpdateAcademicProfileDetailsRequest, AcademicVerificationDecision } from "@trend/shared-types";
+import { useAuthStore } from "@/stores/auth-store";
+import { isLecturerWorkspaceEligible } from "@/features/auth/utils/lecturer-eligibility";
 import { academicProfileApi } from "../api/academic-profile.api";
 
 export function useAcademicProfile(enabled = true) {
@@ -16,6 +18,9 @@ export function useUpdateAcademicProfile() {
       queryClient.invalidateQueries({ queryKey: ["academic-profile", "institutional-email"] });
       queryClient.invalidateQueries({ queryKey: ["academic-profile", "public", profile.userId] });
       queryClient.invalidateQueries({ queryKey: ["academic-profile", "handle"] });
+      queryClient.invalidateQueries({ queryKey: ["academic-profiles", "lecturers"] });
+      queryClient.invalidateQueries({ queryKey: ["academic-support"] });
+      queryClient.invalidateQueries({ queryKey: ["mentor-workspace"] });
       queryClient.invalidateQueries({ queryKey: ["current-user"] });
     },
     onError: (_error, input) => {
@@ -121,7 +126,31 @@ export function useAcademicVerificationStatus(enabled = true) {
   return useQuery({ queryKey: ["academic-profile", "verification-status"], queryFn: () => academicProfileApi.verificationStatus(), enabled, refetchInterval: 30000 });
 }
 export function useLecturerVerificationTracking(requestId?: string, page = 1) {
-  return useQuery({ queryKey: ["academic-profile", "verification-status", requestId ?? "current", page], queryFn: () => academicProfileApi.lecturerTracking(requestId, page), staleTime: 10000, refetchOnWindowFocus: "always", refetchOnMount: "always", refetchInterval: 60000 });
+  const queryClient = useQueryClient();
+  const authUser = useAuthStore((state) => state.user);
+  const query = useQuery({
+    queryKey: ["academic-profile", "verification-status", requestId ?? "current", page],
+    queryFn: () => academicProfileApi.lecturerTracking(requestId, page),
+    staleTime: 10000,
+    refetchOnWindowFocus: "always",
+    refetchOnMount: "always",
+    refetchInterval: 60000,
+  });
+
+  // Immediately synchronize authoritative user & capability caches when verification status
+  // transitions to VERIFIED or loses eligibility so Lecturer Workspace activates/deactivates without re-login.
+  const lecturerStatus = query.data?.lecturer?.status;
+  const allowsWorkspace = Boolean(query.data?.lecturer?.allowedActions?.includes("WORKSPACE"));
+  useEffect(() => {
+    if (!lecturerStatus || !authUser) return;
+    const trackingVerified = lecturerStatus === "VERIFIED" && allowsWorkspace;
+    if (trackingVerified !== isLecturerWorkspaceEligible(authUser)) {
+      void queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      void queryClient.invalidateQueries({ queryKey: ["academic-profile", "me"] });
+    }
+  }, [lecturerStatus, allowsWorkspace, authUser, queryClient]);
+
+  return query;
 }
 
 export function useAcademicVerificationEvidenceFile() {
@@ -147,22 +176,23 @@ export function useVerifyInstitutionalEmail() {
     onSuccess: (status) => {
       queryClient.setQueryData(["academic-profile", "institutional-email"], status);
       queryClient.invalidateQueries({ queryKey: ["academic-profile", "me"] });
+      queryClient.invalidateQueries({ queryKey: ["current-user"] });
     },
   });
 }
 
-export function usePublicAcademicProfile(userId: string) {
+export function usePublicAcademicProfile(userId: string, preview?: "public") {
   return useQuery({
-    queryKey: ["academic-profile", "public", userId],
-    queryFn: () => academicProfileApi.publicProfile(userId),
+    queryKey: ["academic-profile", "public", userId, preview ?? "default"],
+    queryFn: () => academicProfileApi.publicProfile(userId, preview ? { preview } : undefined),
     enabled: Boolean(userId),
   });
 }
 
-export function usePublicAcademicProfileByHandle(handle: string) {
+export function usePublicAcademicProfileByHandle(handle: string, preview?: "public") {
   return useQuery({
-    queryKey: ["academic-profile", "handle", handle],
-    queryFn: () => academicProfileApi.publicProfileByHandle(handle),
+    queryKey: ["academic-profile", "handle", handle, preview ?? "default"],
+    queryFn: () => academicProfileApi.publicProfileByHandle(handle, preview ? { preview } : undefined),
     enabled: Boolean(handle),
   });
 }
@@ -252,8 +282,16 @@ export function useLecturers(filters: Parameters<typeof academicProfileApi.lectu
   });
 }
 
-export function useAcademicVerifications(status = "ALL", page = 1, pageSize = 10) {
-  return useQuery({ queryKey: ["admin", "academic-verifications", status, page, pageSize], queryFn: () => academicProfileApi.listVerifications(status, page, pageSize) });
+export function useAcademicVerifications(
+  status = "ALL",
+  page = 1,
+  pageSize = 10,
+  options?: { search?: string; verificationType?: "ALL" | "POSITION" | "AFFILIATION"; sortOrder?: "asc" | "desc" },
+) {
+  return useQuery({
+    queryKey: ["admin", "academic-verifications", status, page, pageSize, options?.search ?? "", options?.verificationType ?? "ALL", options?.sortOrder ?? "desc"],
+    queryFn: () => academicProfileApi.listVerifications(status, page, pageSize, options),
+  });
 }
 
 export function useAcademicVerificationDetails(requestId: string | null) {
@@ -271,6 +309,26 @@ export function useDecideAcademicVerification() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "academic-verifications"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "academic-verification"] });
+      queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      queryClient.invalidateQueries({ queryKey: ["academic-profile", "me"] });
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "academic-verifications"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "academic-verification"] });
+    },
+  });
+}
+
+export function useRevokeAcademicVerification() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, input }: { requestId: string; input: { reason: string; note?: string } }) =>
+      academicProfileApi.revoke(requestId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "academic-verifications"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "academic-verification"] });
+      queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      queryClient.invalidateQueries({ queryKey: ["academic-profile", "me"] });
     },
     onError: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "academic-verifications"] });

@@ -1,3 +1,33 @@
+export interface SubmittedVersionReviewResponse {
+  criterionKey: string;
+  criterionTitle?: string | null;
+  weight?: number | null;
+  maxScore?: number | null;
+  comment: string;
+  evidence: string | null;
+  assessment: string | null;
+  score: number | null;
+  notApplicable: boolean;
+}
+
+export interface SubmittedVersionRevisionItem {
+  id: string;
+  description: string;
+  priority: string;
+  status: string;
+  criterionKey?: string | null;
+  locator?: string | null;
+  quotation?: string | null;
+  createdAt?: string | null;
+  responses: Array<{
+    id?: string;
+    submissionRevisionId: string;
+    responseText: string;
+    status: string;
+    createdAt?: string | null;
+  }>;
+}
+
 export interface SubmittedVersionReview {
   id: string;
   reviewerId: string;
@@ -6,15 +36,17 @@ export interface SubmittedVersionReview {
   revisionId: string;
   roundNumber: number;
   templateVersionId: string | null;
+  reviewMode?: string | null;
   weightedScore: number | null;
   overallAssessment: string | null;
   keyStrengths: string | null;
   keyConcerns: string | null;
   overallComment: string | null;
+  integrityChecks?: Record<string, { status: string; note?: string }> | null;
   submittedAt: string | null;
   requestId?: string | null;
-  responses: Array<{ criterionKey: string; comment: string; evidence: string | null; assessment: string | null; score: number | null; notApplicable: boolean }>;
-  requiredRevisions: Array<{ id: string; description: string; priority: string; status: string; responses: Array<{ submissionRevisionId: string; responseText: string; status: string }> }>;
+  responses: SubmittedVersionReviewResponse[];
+  requiredRevisions: SubmittedVersionRevisionItem[];
 }
 
 export interface ResearchVersion {

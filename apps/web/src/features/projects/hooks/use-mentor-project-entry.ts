@@ -13,7 +13,8 @@ export function useMentorProjectEntry(projectId: string | undefined, enabled = t
     queryKey: ["mentor-access", actorId, projectId, "workspace", 1],
     queryFn: () => mentorAccessApi.workspace(projectId!, 1),
     enabled: Boolean(actorId && projectId && enabled),
+    staleTime: 15_000,
     retry: false,
-    refetchInterval: enabled ? 5000 : false,
+    refetchInterval: enabled ? 30_000 : false,
   });
 }

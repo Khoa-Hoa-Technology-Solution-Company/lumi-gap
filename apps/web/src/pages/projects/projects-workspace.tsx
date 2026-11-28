@@ -2,7 +2,7 @@ import { Suspense, useMemo, useRef, useEffect } from "react";
 import { Navigate, Outlet, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { FolderOpen, ChevronRight, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PageLoading } from "@/components/page-loading";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/i18n";
 import { useProject, useProjects } from "@/features/projects/hooks/use-projects";
@@ -153,11 +153,11 @@ function WorkspaceSidebar({
 }
 
 function ProjectWorkspaceLoading() {
-  const { t } = useI18n();
-  return <div className="project-browser-loading" role="status" aria-label={t("Loading projects")}>
-    <Skeleton className="h-5 w-32" /><Skeleton className="mt-4 h-10 w-64 max-w-full" />
-    <Skeleton className="mt-6 h-10 w-full" /><Skeleton className="mt-6 h-64 w-full" />
-  </div>;
+  return (
+    <div className="project-browser-loading">
+      <PageLoading className="min-h-[450px] items-start pt-8" />
+    </div>
+  );
 }
 
 export function ProjectWorkspaceStart() {
@@ -176,6 +176,8 @@ export function ProjectWorkspaceStart() {
   if (user?.academicRole === "LECTURER") return <ProjectsListPage />;
   if (isLoading || mentoring.isLoading) return <ProjectWorkspaceLoading />;
   if (mentoring.isError || (!mentoring.error && mentoring.data?.length)) return <ProjectsListPage />;
+  // Confirm the refreshed library before redirecting: a cached project may have
+  // just been deleted or left by this user.
   if (isFetching) return <ProjectWorkspaceLoading />;
   const target = savedProject ?? first;
   if (target && !isError && params.get("create") !== "1") return <Navigate to={projectWorkspaceHref(target._id, params, savedProject ? saved?.tab : undefined)} replace />;

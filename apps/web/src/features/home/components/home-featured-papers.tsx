@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { Link } from "react-router-dom";
-import { ArrowLeft, ArrowRight, ArrowUpRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Pause, Play } from "lucide-react";
 import { useHomeFeaturedPapers } from "../hooks/use-home-featured-papers";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/i18n";
@@ -18,7 +18,8 @@ export function HomeFeaturedPapers() {
   const stage = useRef<HTMLDivElement>(null);
   const scrollDirection = useRef(1);
   const resumeTimer = useRef<number>();
-  const [paused, setPaused] = useState(false);
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(false);
+  const [temporarilyPaused, setTemporarilyPaused] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
@@ -26,6 +27,7 @@ export function HomeFeaturedPapers() {
   const [pageVisible, setPageVisible] = useState(!document.hidden);
   const [scrollDistance, setScrollDistance] = useState(0);
   const overflow = scrollDistance > 1;
+  const canAutoScroll = autoScrollEnabled && !reducedMotion && overflow;
 
   useEffect(() => {
     const preference = window.matchMedia?.("(prefers-reduced-motion: reduce)");
@@ -63,19 +65,25 @@ export function HomeFeaturedPapers() {
 
   useEffect(() => () => window.clearTimeout(resumeTimer.current), []);
 
-  const pauseAutoScroll = () => {
+  const pauseTemporarily = () => {
     window.clearTimeout(resumeTimer.current);
-    setPaused(true);
+    setTemporarilyPaused(true);
   };
   const resumeAutoScrollLater = () => {
     window.clearTimeout(resumeTimer.current);
-    resumeTimer.current = window.setTimeout(() => setPaused(false), 5000);
+    if (!autoScrollEnabled) return;
+    resumeTimer.current = window.setTimeout(() => setTemporarilyPaused(false), 5000);
+  };
+  const toggleAutoScroll = () => {
+    window.clearTimeout(resumeTimer.current);
+    setTemporarilyPaused(false);
+    setAutoScrollEnabled((previous) => !previous);
   };
 
   useLayoutEffect(() => {
     const element = rail.current;
     const content = track.current;
-    if (!element || !content?.animate || paused || reducedMotion || hovered || focused || !visible || !pageVisible || !overflow) return;
+    if (!element || !content?.animate || !canAutoScroll || temporarilyPaused || hovered || focused || !visible || !pageVisible) return;
     const position = Math.min(scrollDistance, element.scrollLeft);
     const duration = scrollDistance / 18 * 1000;
     const animation = content.animate([
@@ -94,11 +102,13 @@ export function HomeFeaturedPapers() {
       // Hand the same visual position back to native scrolling before the next paint.
       element.scrollLeft = Math.min(scrollDistance, element.scrollLeft + progress * scrollDistance);
     };
-  }, [paused, reducedMotion, hovered, focused, visible, pageVisible, overflow, scrollDistance]);
+  }, [canAutoScroll, temporarilyPaused, hovered, focused, visible, pageVisible, scrollDistance]);
 
   const move = (direction: number) => {
-    flushSync(pauseAutoScroll);
-    resumeAutoScrollLater();
+    if (autoScrollEnabled) {
+      flushSync(pauseTemporarily);
+      resumeAutoScrollLater();
+    }
     const element = rail.current;
     if (!element) return;
     const step = (track.current?.firstElementChild as HTMLElement | null)?.offsetWidth ?? 360;
@@ -110,11 +120,31 @@ export function HomeFeaturedPapers() {
       <div><h2 id="home-featured-heading">{t("Most cited papers")}</h2><p>{t("LumiGap library · {{from}}–{{to}}", { from: year - 1, to: year })}</p></div>
       <Link to="/literature?sort=citations" className="academic-text-link">{t("Browse literature")}<ArrowUpRight aria-hidden="true" /></Link>
     </div>
-    <div className="home-featured-content home-width" data-home-animate onPointerEnter={(event) => { if (event.pointerType === "mouse") setHovered(true); }} onPointerLeave={() => setHovered(false)} onTouchStart={pauseAutoScroll} onTouchEnd={resumeAutoScrollLater} onTouchCancel={resumeAutoScrollLater} onWheel={() => { pauseAutoScroll(); resumeAutoScrollLater(); }} onFocusCapture={() => setFocused(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); }}>
+    <div className="home-featured-content home-width" data-home-animate>
       {query.isLoading ? <div className="home-featured-loading" role="status" aria-label={t("Loading featured papers")}><Skeleton /><Skeleton /><Skeleton /></div>
         : !papers.length ? <div className="home-featured-empty"><p>{t(query.isError ? "Featured papers are temporarily unavailable." : "Your next read will appear as the library grows.")}</p>{query.isError ? <button type="button" className="academic-text-link" onClick={() => { void query.refetch(); }}>{t("Reload featured papers")}<ArrowRight aria-hidden="true" /></button> : <Link to="/literature" className="academic-text-link">{t("Browse literature")}<ArrowRight aria-hidden="true" /></Link>}</div>
           : <>
-            <div id="home-featured-rail" ref={rail} className="home-featured-viewport">
+            <div
+              id="home-featured-rail"
+              ref={rail}
+              className="home-featured-viewport"
+              tabIndex={0}
+              role="region"
+              aria-label={t("Most cited papers")}
+              aria-describedby="home-featured-keyboard-hint"
+              onPointerEnter={(event) => { if (event.pointerType === "mouse") setHovered(true); }}
+              onPointerLeave={() => setHovered(false)}
+              onTouchStart={() => { if (autoScrollEnabled) pauseTemporarily(); }}
+              onTouchEnd={() => { if (autoScrollEnabled) resumeAutoScrollLater(); }}
+              onTouchCancel={() => { if (autoScrollEnabled) resumeAutoScrollLater(); }}
+              onWheel={() => { if (autoScrollEnabled) { pauseTemporarily(); resumeAutoScrollLater(); } }}
+              onFocusCapture={() => setFocused(true)}
+              onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowLeft") { event.preventDefault(); move(-1); }
+                else if (event.key === "ArrowRight") { event.preventDefault(); move(1); }
+              }}
+            >
             <div ref={stage} className="home-featured-stage">
             <ul ref={track} className="home-featured-rail" aria-label={t("Featured papers")}>
               {papers.map((paper) => <li key={paper.id}>
@@ -128,9 +158,22 @@ export function HomeFeaturedPapers() {
             </ul>
             </div>
             </div>
+            <span id="home-featured-keyboard-hint" className="sr-only">{t("Use Left and Right arrow keys to browse papers.")}</span>
             <div className="home-featured-footer"><span>{t("{{count}} papers", { count: new Intl.NumberFormat(language).format(papers.length) })}</span><div role="group" aria-label={t("Featured paper controls")}>
-              <button type="button" aria-controls="home-featured-rail" aria-label={t("Previous papers")} disabled={!overflow} onClick={() => move(-1)}><ArrowLeft aria-hidden="true" /></button>
-              <button type="button" aria-controls="home-featured-rail" aria-label={t("Next papers")} disabled={!overflow} onClick={() => move(1)}><ArrowRight aria-hidden="true" /></button>
+              <button
+                type="button"
+                className="home-featured-autoplay-btn"
+                aria-controls="home-featured-rail"
+                aria-pressed={canAutoScroll}
+                aria-label={canAutoScroll ? t("Pause automatic scrolling") : t("Start automatic scrolling")}
+                disabled={!overflow || reducedMotion}
+                onClick={toggleAutoScroll}
+              >
+                {canAutoScroll ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+                <span>{canAutoScroll ? t("Pause") : t("Auto scroll")}</span>
+              </button>
+              <button type="button" className="home-featured-nav-btn" aria-controls="home-featured-rail" aria-label={t("Previous papers")} disabled={!overflow} onClick={() => move(-1)}><ArrowLeft aria-hidden="true" /></button>
+              <button type="button" className="home-featured-nav-btn" aria-controls="home-featured-rail" aria-label={t("Next papers")} disabled={!overflow} onClick={() => move(1)}><ArrowRight aria-hidden="true" /></button>
             </div></div>
           </>}
     </div>

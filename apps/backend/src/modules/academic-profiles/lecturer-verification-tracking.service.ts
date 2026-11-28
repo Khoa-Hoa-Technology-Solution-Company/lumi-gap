@@ -67,11 +67,12 @@ export async function lecturerTracking(userId: string, requestId?: string, page 
     const status = (profile.academicRole !== "LECTURER" || profile.positionStatus === "VERIFIED" && profile.roleVerificationStatus !== "VERIFIED" ? "NOT_SUBMITTED" : profile.positionStatus === "UNVERIFIED" ? "NOT_SUBMITTED" : profile.positionStatus) as VerificationStatus;
     const institution = affiliation ? await tx.institution.findUnique({ where: { id: affiliation.institutionId } }) : null;
     const eligible = profile.academicRole === "LECTURER" && Boolean(user.emailVerifiedAt && profile.positionTitle && institution?.isActive && institution.status === "ACTIVE");
+    const verifiedEligible = eligible && status === "VERIFIED" && profile.roleVerificationStatus === "VERIFIED" && profile.positionStatus === "VERIFIED";
     const actions: LecturerVerificationTracking["allowedActions"] = [];
     if (eligible && status !== "PENDING") {
-      if (status === "VERIFIED") actions.push("MENTORING_SETTINGS", "WORKSPACE");
+      if (verifiedEligible) actions.push("MENTORING_SETTINGS", "WORKSPACE");
       else if (status === "NEEDS_MORE_INFORMATION" && latest?.status === "NEEDS_MORE_INFORMATION" && !latest.supersededAt && !latest.invalidatedAt && (latest.institutionId ?? text(metadata(latest).institutionId)) === affiliation?.institutionId && metadata(latest).positionTitle === profile.positionTitle) actions.push("SUPPLEMENT");
-      else if (status === "REJECTED") actions.push("NEW_REQUEST");
+      else if (["REJECTED", "INVALIDATED", "EXPIRED"].includes(status)) actions.push("NEW_REQUEST");
       else actions.push("START");
     }
     return { status, academicRole: profile.academicRole as AcademicRole, accountEmailVerified: Boolean(user.emailVerifiedAt), institutionId: affiliation?.institutionId,

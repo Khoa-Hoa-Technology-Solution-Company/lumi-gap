@@ -20,26 +20,40 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useI18n } from "@/i18n";
 import { projectsApi } from "../api/projects.api";
 import type {
   DeclareExternalAiInput,
   ProjectIntegrityOverview,
 } from "@trend/shared-types";
 
+const aiPurposeLabels: Record<DeclareExternalAiInput["purpose"], string> = {
+  LANGUAGE_POLISH: "Hiệu đính và trau chuốt ngôn ngữ",
+  SUMMARY: "Tóm tắt và tổng hợp tài liệu",
+  ANALYSIS: "Hỗ trợ phân tích dữ liệu",
+  CODE_ASSISTANCE: "Hỗ trợ viết mã / thuật toán",
+  OUTLINE: "Gợi ý dàn ý nghiên cứu",
+  SEARCH: "Tìm kiếm tài liệu sơ bộ",
+  OTHER: "Mục đích khác",
+};
 
 export function SubmissionReadinessPackage({
   projectId,
   currentUserId,
   readOnly = false,
+  section,
 }: {
   projectId: string;
   currentUserId: string;
   isOwner: boolean;
   readOnly?: boolean;
+  section?: "integrity";
 }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
 
-  const [activeSubTab, setActiveSubTab] = useState<"authorship" | "credit" | "mentors" | "ai" | "citations" | "export">("authorship");
+  const [activeSubTab, setActiveSubTab] = useState<"authorship" | "credit" | "mentors" | "ai" | "citations" | "export">(section === "integrity" ? "citations" : "authorship");
 
   // Dispute modal / prompt state
   const [disputeNote, setDisputeNote] = useState("");
@@ -51,6 +65,8 @@ export function SubmissionReadinessPackage({
   const [aiPurpose, setAiPurpose] = useState<DeclareExternalAiInput["purpose"]>("LANGUAGE_POLISH");
   const [aiDescription, setAiDescription] = useState("");
   const [aiHumanOversightNote, setAiHumanOversightNote] = useState("");
+  const [aiOversightVerified, setAiOversightVerified] = useState(false);
+  const [aiScope, setAiScope] = useState("");
 
   const overviewQuery = useQuery({
     queryKey: ["projects", projectId, "scientific-integrity"],
@@ -85,12 +101,14 @@ export function SubmissionReadinessPackage({
   const declareAiMutation = useMutation({
     mutationFn: (data: DeclareExternalAiInput) => projectsApi.declareExternalAi(projectId, data),
     onSuccess: () => {
-      toast.success("Đã ghi nhận khai báo AI hỗ trợ theo chuẩn COPE/ICMJE");
+      toast.success(t("AI disclosure recorded"));
       queryClient.invalidateQueries({ queryKey: ["projects", projectId, "scientific-integrity"] });
       setShowAiModal(false);
       setAiToolName("");
       setAiDescription("");
       setAiHumanOversightNote("");
+      setAiOversightVerified(false);
+      setAiScope("");
     },
     onError: (e: any) => toast.error(e.response?.data?.error?.message ?? "Lỗi khi khai báo AI"),
   });
@@ -199,7 +217,7 @@ export function SubmissionReadinessPackage({
   return (
     <div className="space-y-6">
       {/* Top Banner: Readiness Checklist */}
-      <section className="rounded-xl border border-border bg-card p-6 shadow-xs">
+      {!section && <section className="rounded-xl border border-border bg-card p-6 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b">
           <div>
             <div className="flex items-center gap-2">
@@ -209,7 +227,7 @@ export function SubmissionReadinessPackage({
               </h3>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Quản lý thứ tự tác giả, vai trò CRediT, ghi nhận cố vấn (Mentors), và khai báo liêm chính học thuật theo chuẩn COPE/ICMJE.
+              Quản lý thông tin tác giả dự kiến, vai trò CRediT, ghi nhận cố vấn và khai báo sử dụng AI. Đây không phải chứng nhận liêm chính hay quyền tác giả.
             </p>
           </div>
 
@@ -313,17 +331,17 @@ export function SubmissionReadinessPackage({
             </p>
           </div>
         </div>
-      </section>
+      </section>}
 
       {/* Navigation Tabs */}
-      <div className="flex border-b border-border/80 gap-2">
+      <div className="flex flex-wrap border-b border-border/80 gap-2">
         {[
           { key: "authorship", label: `Danh sách tác giả (${overview.contributions.authors.length})` },
           { key: "credit", label: `Vai trò CRediT (${overview.contributions.members.length})` },
           { key: "mentors", label: `Ghi nhận Cố vấn (${mentors.length})` },
           { key: "ai", label: `Minh bạch AI (${overview.aiTransparency.manualDeclarationsCount})` },
           { key: "citations", label: `Kiểm chứng trích dẫn (${overview.citations.totalCount})` },
-        ].map(tab => (
+        ].filter(tab => !section || ["ai", "citations"].includes(tab.key)).map(tab => (
           <button
             key={tab.key}
             type="button"
@@ -569,7 +587,7 @@ export function SubmissionReadinessPackage({
                 Khai báo sử dụng AI hỗ trợ (AI Transparency & Ethics Disclosure)
               </h4>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Tuân thủ quy định của COPE, Nature, Elsevier, IEEE về minh bạch công cụ sinh ngôn ngữ và lập trình trợ giúp.
+                Khai báo công cụ, mục đích, phạm vi hỗ trợ và người kiểm tra. Khai báo không thay thế trách nhiệm của người nghiên cứu.
               </p>
             </div>
             {!readOnly && (
@@ -593,13 +611,15 @@ export function SubmissionReadinessPackage({
                     <div className="flex items-center gap-2">
                       <Bot className="h-4 w-4 text-primary" />
                       <span className="font-semibold text-sm text-foreground">{item.toolName}</span>
+                      <span className="text-muted-foreground">{t(item.source === "PLATFORM" ? "researchContribution.SYSTEM_RECORDED" : "recognition.source.SELF_DECLARED")}</span>
                       <Badge variant="outline" className="text-[10px]">
-                        Mục đích: {item.purpose}
+                        Mục đích: {aiPurposeLabels[item.purpose] ?? item.purpose}
                       </Badge>
                     </div>
-                    {!readOnly && (
+                    {!readOnly && item.source === "MANUAL_EXTERNAL" && item.userId === currentUserId && (
                       <button
                         type="button"
+                        aria-label="Rút lại khai báo AI của tôi"
                         className="text-muted-foreground hover:text-destructive p-1"
                         onClick={() => deleteAiMutation.mutate(item.id)}
                         disabled={deleteAiMutation.isPending}
@@ -610,6 +630,7 @@ export function SubmissionReadinessPackage({
                   </div>
 
                   <p className="text-foreground leading-relaxed">{item.purposeDescription}</p>
+                  {item.affectedScope && <p className="text-muted-foreground">Phạm vi đã khai báo: {item.affectedScope}</p>}
 
                   {(item.humanOversightNote ?? item.verificationNote) && (
                     <div className="rounded bg-muted/20 p-2.5 text-[11px] text-muted-foreground">
@@ -633,7 +654,7 @@ export function SubmissionReadinessPackage({
                 Đối soát danh mục trích dẫn ({overview.citations.totalCount} tài liệu)
               </h4>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Kiểm tra tính hợp lệ của BibTeX keys, DOI và đối chiếu với cơ sở dữ liệu học thuật OpenAlex.
+                Kiểm tra khóa BibTeX, định dạng DOI và đối chiếu với Thư viện dự án. Không thay thế xác minh metadata hoặc tình trạng công bố từ nguồn bên ngoài.
               </p>
             </div>
           </div>
@@ -661,7 +682,7 @@ export function SubmissionReadinessPackage({
                     const citKey = citation.citationKey ?? citation.key;
                     const citTitle = citation.title ?? citation.bibEntry?.title ?? "Chưa rõ nhan đề";
                     const citDoi = citation.doi ?? citation.bibEntry?.doi ?? "Không có DOI";
-                    const citStatus = citation.status ?? (citation.doiStatus === "VALID" ? "VALID" : citation.doiStatus === "NOT_FOUND" ? "BROKEN" : "PENDING");
+                    const citStatus = citation.status ?? (citation.issueKind === "NONE" ? "VALID" : ["MISSING_FROM_BIB", "DUPLICATE_KEY", "METADATA_MISMATCH"].includes(citation.issueKind) ? "BROKEN" : "PENDING");
                     return (
                     <tr key={citKey}>
                       <td className="py-3 px-4 font-mono font-semibold text-primary">{citKey}</td>
@@ -670,7 +691,7 @@ export function SubmissionReadinessPackage({
                       <td className="py-3 px-4">
                         {citStatus === "VALID" ? (
                           <Badge className="bg-emerald-500/15 text-emerald-800 border-emerald-300 text-[10px]">
-                            Hợp lệ
+                            Đã đối chiếu trong phạm vi đã ghi
                           </Badge>
                         ) : citStatus === "BROKEN" ? (
                           <Badge className="bg-rose-500/15 text-rose-800 border-rose-300 text-[10px]">
@@ -710,17 +731,14 @@ export function SubmissionReadinessPackage({
 
       {/* Modal: Add AI Declaration */}
       {showAiModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-xs p-4">
-          <div className="w-full max-w-lg rounded-xl border bg-card p-6 shadow-xl space-y-4">
-            <h3 className="font-bold text-base text-foreground">Khai báo công cụ AI sử dụng trong nghiên cứu</h3>
-            <p className="text-xs text-muted-foreground">
-              Minh bạch công cụ AI (như ChatGPT, Claude, Grammarly, GitHub Copilot) theo hướng dẫn của COPE và ICMJE.
-            </p>
+        <Dialog open onOpenChange={value => { if (!value && !declareAiMutation.isPending) setShowAiModal(false); }}><DialogContent className="max-w-lg space-y-4">
+            <DialogHeader><DialogTitle>Khai báo công cụ AI sử dụng trong nghiên cứu</DialogTitle><DialogDescription>Công cụ, mục đích và phạm vi hỗ trợ được lưu như thông tin khai báo của bạn.</DialogDescription></DialogHeader>
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold block mb-1">Tên công cụ AI (ví dụ: Claude 3.5 Sonnet, Grammarly)</label>
+                <label htmlFor="contribution-ai-tool" className="font-semibold block mb-1">Tên công cụ AI</label>
                 <Input
+                  id="contribution-ai-tool" maxLength={120}
                   className="text-xs h-9"
                   placeholder="Nhập tên công cụ..."
                   value={aiToolName}
@@ -729,14 +747,16 @@ export function SubmissionReadinessPackage({
               </div>
 
               <div>
-                <label className="font-semibold block mb-1">Mục đích sử dụng chính</label>
+                <label htmlFor="contribution-ai-purpose" className="font-semibold block mb-1">Mục đích sử dụng chính</label>
                 <select
+                  id="contribution-ai-purpose"
                   className="w-full rounded-md border border-input bg-background p-2 text-xs"
                   value={aiPurpose}
-                  onChange={e => setAiPurpose(e.target.value as any)}
+                  onChange={e => setAiPurpose(e.target.value as DeclareExternalAiInput["purpose"])}
                 >
                   <option value="LANGUAGE_POLISH">Hiệu đính và trau chuốt ngôn ngữ (Language Polish)</option>
                   <option value="SUMMARY">Tóm tắt và tổng hợp tài liệu (Literature Summary)</option>
+                  <option value="ANALYSIS">Hỗ trợ phân tích dữ liệu</option>
                   <option value="CODE_ASSISTANCE">Hỗ trợ viết mã / thuật toán (Code Assistance)</option>
                   <option value="OUTLINE">Gợi ý dàn ý nghiên cứu (Outline)</option>
                   <option value="SEARCH">Tìm kiếm tài liệu sơ bộ (Search)</option>
@@ -745,8 +765,9 @@ export function SubmissionReadinessPackage({
               </div>
 
               <div>
-                <label className="font-semibold block mb-1">Mô tả cụ thể cách thức sử dụng</label>
+                <label htmlFor="contribution-ai-description" className="font-semibold block mb-1">Mô tả cụ thể cách thức sử dụng</label>
                 <textarea
+                  id="contribution-ai-description" maxLength={2000}
                   className="w-full rounded-md border border-input bg-background p-2 text-xs min-h-20"
                   placeholder="Mô tả phạm vi văn bản hoặc mã nguồn mà AI tham gia hỗ trợ..."
                   value={aiDescription}
@@ -755,14 +776,17 @@ export function SubmissionReadinessPackage({
               </div>
 
               <div>
-                <label className="font-semibold block mb-1">Ghi chú về kiểm soát của con người (Human Oversight)</label>
+                <label htmlFor="contribution-ai-oversight" className="font-semibold block mb-1">Ghi chú về kiểm soát của con người (Human Oversight)</label>
                 <textarea
+                  id="contribution-ai-oversight" maxLength={2000}
                   className="w-full rounded-md border border-input bg-background p-2 text-xs min-h-16"
                   placeholder="Tác giả đã trực tiếp đọc lại, đối chiếu dữ liệu và chịu toàn bộ trách nhiệm về nội dung..."
                   value={aiHumanOversightNote}
                   onChange={e => setAiHumanOversightNote(e.target.value)}
                 />
               </div>
+              <label htmlFor="contribution-ai-scope" className="block font-semibold">Phạm vi nội dung hoặc phiên bản liên quan<Input id="contribution-ai-scope" maxLength={500} value={aiScope} onChange={event => setAiScope(event.target.value)} /></label>
+              <label className="flex items-start gap-2"><input type="checkbox" checked={aiOversightVerified} onChange={event => setAiOversightVerified(event.target.checked)} />Tôi đã kiểm tra phần nội dung được AI hỗ trợ trong phạm vi khai báo.</label>
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t">
@@ -773,16 +797,16 @@ export function SubmissionReadinessPackage({
                   toolName: aiToolName.trim(),
                   purpose: aiPurpose,
                   purposeDescription: aiDescription.trim(),
-                  humanOversightVerified: true,
+                  affectedScope: aiScope.trim() || undefined,
+                  humanOversightVerified: aiOversightVerified,
                   humanOversightNote: aiHumanOversightNote.trim() || undefined,
                 })}
-                disabled={declareAiMutation.isPending || !aiToolName.trim() || !aiDescription.trim()}
+                disabled={declareAiMutation.isPending || aiToolName.trim().length < 2 || aiDescription.trim().length < 3}
               >
                 Lưu khai báo
               </Button>
             </div>
-          </div>
-        </div>
+          </DialogContent></Dialog>
       )}
 
       {/* Modal: Dispute */}

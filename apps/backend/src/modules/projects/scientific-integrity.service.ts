@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type {
   CitationIntegrityItem,
@@ -35,7 +35,7 @@ export const declareExternalAiSchema = z.object({
   purpose: z.enum(["SEARCH", "OUTLINE", "SUMMARY", "LANGUAGE_POLISH", "ANALYSIS", "CODE_ASSISTANCE", "OTHER"]),
   purposeDescription: z.string().trim().min(3).max(2000),
   affectedScope: z.string().trim().max(500).optional(),
-  humanOversightVerified: z.boolean().default(true),
+  humanOversightVerified: z.boolean().default(false),
   humanOversightNote: z.string().trim().max(2000).optional(),
 });
 
@@ -69,6 +69,10 @@ export const confirmAuthorshipSchema = z.object({
 });
 
 // Helper for parsing BibTeX entries
+function bibliographyDigest(files: { id: string; path: string; crdtState: Uint8Array | null }[]) {
+  return createHash("sha256").update(JSON.stringify(files.filter(file => file.path.endsWith(".bib")).map(file => ({ id: file.id, path: file.path, source: file.crdtState ? sourceText(file.crdtState) : "" })).sort((a,b) => a.id.localeCompare(b.id)))).digest("hex");
+}
+
 function parseBibtexEntries(bibContent: string) {
   const entries: Map<string, { type: string; title?: string; authors?: string[]; year?: number; doi?: string; journal?: string }> = new Map();
   const entryRegex = /@([a-zA-Z]+)\s*\{\s*([^,]+),([^@]*)/g;
@@ -188,7 +192,8 @@ export const scientificIntegrityService = {
         orderBy: { createdAt: "desc" },
       });
 
-      const verificationMap = new Map<string, { verifiedById: string; verifiedByName: string; verifiedAt: string; note?: string; unverified?: boolean }>();
+      const currentBibliographyDigest = bibliographyDigest(manuscriptFiles);
+      const verificationMap = new Map<string, { verifiedById: string; verifiedByName: string; verifiedAt: string; note?: string; unverified?: boolean; bibliographyDigest?: string }>();
       for (const act of citationVerificationActivities) {
         if (!act.entityId || verificationMap.has(act.entityId)) continue;
         const meta = (act.metadata ?? {}) as Record<string, unknown>;
@@ -199,6 +204,7 @@ export const scientificIntegrityService = {
           verifiedAt: act.createdAt.toISOString(),
           note: typeof meta.note === "string" ? meta.note : undefined,
           unverified: meta.action === "UNVERIFY",
+          bibliographyDigest: typeof meta.bibliographyDigest === "string" ? meta.bibliographyDigest : undefined,
         });
       }
 
@@ -212,7 +218,7 @@ export const scientificIntegrityService = {
         const bib = bibEntriesMap.get(occ.key);
         const isDuplicate = duplicateBibKeys.has(occ.key);
         const verification = verificationMap.get(occ.key);
-        const isManuallyVerified = Boolean(verification && !verification.unverified);
+        const isManuallyVerified = Boolean(verification && !verification.unverified && verification.bibliographyDigest === currentBibliographyDigest);
 
         let doiStatus: CitationIntegrityItem["doiStatus"] = "NO_DOI_SUPPLIED";
         let issueKind: CitationIntegrityItem["issueKind"] = "NONE";
@@ -238,13 +244,21 @@ export const scientificIntegrityService = {
             if (matched) {
               matchedPaperId = matched.id;
               matchedPaperTitle = matched.title;
-              doiStatus = "VALID";
-              issueKind = "NONE";
-              issueMessage = "Đã khớp với tài liệu trong Thư viện dự án.";
+              const normalizedTitle = (value: string) => value.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+              if (!bib.title || !bib.year) {
+                doiStatus = "UNCHECKED"; issueKind = "UNVERIFIED";
+                issueMessage = "Đã tìm thấy DOI trong thư viện nhưng thiếu tiêu đề hoặc năm để đối chiếu metadata.";
+              } else if (normalizedTitle(bib.title) !== normalizedTitle(matched.title) || bib.year !== matched.publicationYear) {
+                doiStatus = "METADATA_MISMATCH"; issueKind = "METADATA_MISMATCH";
+                issueMessage = "DOI khớp nhưng tiêu đề hoặc năm khác tài liệu trong thư viện. Cần kiểm tra nguồn gốc.";
+              } else {
+                doiStatus = "VALID"; issueKind = "NONE";
+                issueMessage = "Khớp DOI, tiêu đề và năm với Thư viện dự án. Chưa kiểm tra thông báo đính chính hoặc thu hồi từ nguồn ngoài.";
+              }
             } else {
-              doiStatus = "VALID";
-              issueKind = "NONE";
-              issueMessage = "DOI chuẩn khoa học.";
+              doiStatus = "UNCHECKED";
+              issueKind = "UNVERIFIED";
+              issueMessage = "DOI đúng định dạng nhưng chưa được đối chiếu với nguồn metadata. Không có kết quả xác minh bên ngoài.";
             }
           }
         } else {
@@ -253,7 +267,7 @@ export const scientificIntegrityService = {
           issueMessage = "Tài liệu chưa có mã DOI. Cần nhóm kiểm tra tính hợp lệ thủ công.";
         }
 
-        if (isManuallyVerified) {
+        if (isManuallyVerified && !["MISSING_FROM_BIB", "DUPLICATE_KEY"].includes(issueKind)) {
           issueKind = "NONE";
           issueMessage = verification?.note || "Đã được xác minh thủ công bởi nhóm.";
         }
@@ -317,10 +331,10 @@ export const scientificIntegrityService = {
           purpose: (meta.purpose as any) || "OTHER",
           purposeDescription: String(meta.purposeDescription || ""),
           affectedScope: typeof meta.affectedScope === "string" ? meta.affectedScope : null,
-          humanOversightVerified: Boolean(meta.humanOversightVerified ?? true),
-          verifiedById: act.actorId || null,
-          verifiedByName: actor?.fullName || null,
-          verifiedAt: act.createdAt.toISOString(),
+          humanOversightVerified: meta.humanOversightVerified === true,
+          verifiedById: meta.humanOversightVerified === true ? act.actorId || null : null,
+          verifiedByName: meta.humanOversightVerified === true ? actor?.fullName || null : null,
+          verifiedAt: meta.humanOversightVerified === true ? act.createdAt.toISOString() : null,
           verificationNote: typeof meta.humanOversightNote === "string" ? meta.humanOversightNote : null,
           createdAt: act.createdAt.toISOString(),
         });
@@ -348,17 +362,17 @@ export const scientificIntegrityService = {
         return {
           id: run.id,
           source: "PLATFORM",
-          toolName: `LumiGap AI (${run.jobType})`,
+          toolName: "LumiGap AI",
           userId: run.ownerId,
           userName: user?.fullName || "Thành viên",
           purpose,
           purposeDescription: purposeDesc,
           affectedScope: "Hệ thống LumiGap",
-          humanOversightVerified: run.status === "completed",
-          verifiedById: run.ownerId,
-          verifiedByName: user?.fullName || null,
-          verifiedAt: run.completedAt?.toISOString() || null,
-          verificationNote: "Kết quả đã được người dùng kiểm tra trước khi áp dụng.",
+          humanOversightVerified: false,
+          verifiedById: null,
+          verifiedByName: null,
+          verifiedAt: null,
+          verificationNote: "Hệ thống ghi nhận lần sử dụng AI; trạng thái hoàn thành không chứng minh nội dung đã được con người kiểm tra. Khai báo theo phiên bản tại bản thảo khi cần công bố.",
           createdAt: run.createdAt.toISOString(),
         };
       });
@@ -631,6 +645,10 @@ export const scientificIntegrityService = {
   async verifyCitation(projectId: string, actorId: string, input: VerifyCitationInput) {
     return withWorkspace(projectId, actorId, { write: true }, async (context) => {
       const { tx, project } = context;
+      const drafts = await tx.draftWorkspace.findMany({ where: { projectId: project.id, writingMode: "LATEX", deletedAt: null }, select: { id: true } });
+      const files = await tx.manuscriptFile.findMany({ where: { workspaceId: { in: drafts.map(d => d.id) }, deletedAt: null }, select: { id: true, path: true, crdtState: true } });
+      const cited = files.some(file => file.path.endsWith(".tex") && file.crdtState && [...sourceText(file.crdtState).matchAll(/\\[A-Za-z]*cite[A-Za-z]*\*?\s*(?:\[[^\]]*\]\s*){0,2}\{([^}]+)\}/gi)].some(match => match[1]!.split(",").map(key => key.trim()).includes(input.citationKey)));
+      if (input.action === "VERIFY" && !cited) throw AppError.notFound("Citation is not present in the current project manuscript");
       const act = await tx.projectActivity.create({
         data: {
           projectId: project.id,
@@ -643,6 +661,7 @@ export const scientificIntegrityService = {
             action: input.action,
             note: input.note || null,
             verifiedAt: new Date().toISOString(),
+            bibliographyDigest: bibliographyDigest(files),
           },
         },
       });
@@ -666,6 +685,11 @@ export const scientificIntegrityService = {
     return withWorkspace(projectId, actorId, { write: true }, async (context) => {
       const { tx, project } = context;
       const declarationId = input.id || randomUUID();
+      if (input.id) {
+        const original = await tx.projectActivity.findFirst({ where: { projectId: project.id, type: "EXTERNAL_AI_DECLARED", entityId: input.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+        if (!original) throw AppError.notFound("AI disclosure not found");
+        if (original.actorId !== context.actorId) throw AppError.forbidden("Only the declarant can update their AI disclosure");
+      }
 
       const act = await tx.projectActivity.create({
         data: {
@@ -704,6 +728,9 @@ export const scientificIntegrityService = {
   async deleteExternalAi(projectId: string, actorId: string, declarationId: string) {
     return withWorkspace(projectId, actorId, { write: true }, async (context) => {
       const { tx, project } = context;
+      const original = await tx.projectActivity.findFirst({ where: { projectId: project.id, type: "EXTERNAL_AI_DECLARED", entityId: declarationId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+      if (!original) throw AppError.notFound("AI disclosure not found");
+      if (original.actorId !== context.actorId) throw AppError.forbidden("Only the declarant can withdraw their AI disclosure");
       return tx.projectActivity.create({
         data: {
           projectId: project.id,

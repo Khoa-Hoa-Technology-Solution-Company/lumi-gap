@@ -55,7 +55,7 @@ it("locks mention choices along with the body while a workspace comment is pendi
 it("keeps an edited work draft after uncertain save and refuses cancellation without confirmation", async () => {
   mocks.save.mockRejectedValue(new Error("Response lost"));
   await render(<WorkContributionsPanel projectId="p" currentUserId="me" readOnly={false} />);
-  await click("Record work contribution"); await fill("Title", "Original work"); await submit(); await submit();
+  await click("Declare contribution"); await fill("Title", "Original work"); await submit(); await submit();
   expect(mocks.save.mock.calls[1]?.[1].clientKey).toBe(mocks.save.mock.calls[0]?.[1].clientKey);
   await fill("Title", "Revised work"); await submit();
   expect(mocks.save.mock.calls[2]?.[1].clientKey).not.toBe(mocks.save.mock.calls[0]?.[1].clientKey);
@@ -65,7 +65,7 @@ it("keeps an edited work draft after uncertain save and refuses cancellation wit
 it("serializes work saves and locks input until a failed save returns", async () => {
   let fail!: (error: Error) => void;
   mocks.save.mockImplementation(() => new Promise((_resolve, reject) => { fail = reject; }));
-  await render(<WorkContributionsPanel projectId="p" currentUserId="me" readOnly={false} />); await click("Record work contribution"); await fill("Title", "Pending work");
+  await render(<WorkContributionsPanel projectId="p" currentUserId="me" readOnly={false} />); await click("Declare contribution"); await fill("Title", "Pending work");
   await act(async () => { const form = host.querySelector("form")!; form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); }); await settle();
   expect(mocks.save).toHaveBeenCalledTimes(1); expect(host.querySelector<HTMLFieldSetElement>(".contribution-editor-fields")?.disabled).toBe(true);
   await act(async () => fail(new Error("Offline"))); await settle();
@@ -87,7 +87,7 @@ it("binds allocation proposal receipts to the exact shares and rationale", async
 
 it("retains an open work draft and prevents saving when the project becomes read-only", async () => {
   await render(<WorkContributionsPanel projectId="p" currentUserId="me" readOnly={false} />);
-  await click("Record work contribution"); await fill("Title", "Retained work draft");
+  await click("Declare contribution"); await fill("Title", "Retained work draft");
   await render(<WorkContributionsPanel projectId="p" currentUserId="me" readOnly />);
   expect(host.querySelector<HTMLInputElement>("input")?.value).toBe("Retained work draft");
   expect(host.querySelector<HTMLFieldSetElement>(".contribution-editor-fields")?.disabled).toBe(true);

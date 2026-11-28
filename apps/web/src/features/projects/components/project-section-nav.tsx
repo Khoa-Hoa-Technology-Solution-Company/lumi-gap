@@ -16,12 +16,12 @@ export const projectSections: Array<{
   { key: "papers", label: "Literature", group: "Research", icon: BookOpen, iconColor: "text-indigo-500" },
   { key: "gaps", label: "Research Gaps", group: "Research", icon: Compass, iconColor: "text-amber-500" },
   { key: "tasks", label: "Team tasks", group: "Collaboration", icon: ListChecks, iconColor: "text-emerald-500" },
-  { key: "chat", label: "Team Chat", group: "Collaboration", icon: MessageSquare, iconColor: "text-cyan-500" },
-  { key: "support", label: "Find Mentors", group: "Collaboration", icon: GraduationCap, iconColor: "text-purple-500" },
+  { key: "chat", label: "Research Conversations", group: "Collaboration", icon: MessageSquare, iconColor: "text-cyan-500" },
+  { key: "support", label: "Research Mentoring", group: "Collaboration", icon: GraduationCap, iconColor: "text-purple-500" },
   { key: "manuscripts", label: "Manuscripts", group: "Writing & review", icon: FileText, iconColor: "text-indigo-500" },
   { key: "submissions", label: "Submissions", group: "Writing & review", icon: Send, iconColor: "text-teal-500" },
   { key: "members", label: "Team & settings", group: "Team", icon: Users, iconColor: "text-slate-500" },
-  { key: "contributions", label: "Contributions", group: "Team", icon: Award, iconColor: "text-yellow-600" },
+  { key: "contributions", label: "Research Integrity & Contributions", group: "Team", icon: Award, iconColor: "text-yellow-600" },
   { key: "plan", label: "About project", group: "Team", icon: NotebookPen, iconColor: "text-violet-500" },
 ];
 

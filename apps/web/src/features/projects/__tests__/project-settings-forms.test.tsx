@@ -24,8 +24,12 @@ vi.mock("../components/project-member-invite", () => ({ ProjectMemberInvite: () 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const project: IProject = { _id: "project", title: "Research idea", description: "Existing objective", visibility: "PRIVATE", status: "PLANNING", ownerId: "owner", accessRole: "OWNER", version: 3, memberCount: 1, paperCount: 0, members: [], papers: [], updatedAt: "2026-10-14T10:00:00Z", createdAt: "2026-10-14T10:00:00Z" };
 let root: Root, container: HTMLDivElement, client: QueryClient;
-async function render(value = project) {
-  await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/project?tab=members&team=settings"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><ProjectTeamSettings project={value} /><ConfirmationDialog /></MemoryRouter></QueryClientProvider>));
+async function render(value = project, path = "/projects/project?tab=members&team=settings") {
+  await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><ProjectTeamSettings project={value} /><ConfirmationDialog /></MemoryRouter></QueryClientProvider>));
+}
+async function openSection(label: string) {
+  const navBtn = [...container.querySelectorAll<HTMLButtonElement>('nav[aria-label="Project settings sections"] button')].find(b => b.textContent?.includes(label))!;
+  await act(async () => navBtn.click());
 }
 async function fill(selector: string, value: string) {
   const input = container.querySelector<HTMLInputElement>(selector)!;
@@ -40,16 +44,33 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); container.remove(); vi.unstubAllGlobals(); });
 
-it("scopes saves and hides the public editor, discovery form and advanced actions initially", async () => {
+it("scopes saves across 5 settings sections, keeps classification collapsed, and removes unrelated mentor discovery links", async () => {
   await render();
   expect(container.querySelector("#project-public-summary")).toBeNull();
   expect(container.querySelector("[role=listbox]")).toBeNull();
   expect(container.querySelector<HTMLDetailsElement>("details")?.open).toBe(false);
   expect(container.textContent).not.toContain("Let verified lecturers discover this project");
-  expect(container.querySelector('a[href="/projects/project?tab=support"]')).not.toBeNull();
+  expect(container.querySelector('a[href="/projects/project?tab=support"]')).toBeNull();
+  expect(container.querySelector('a[href="/projects/project?tab=plan"]')).not.toBeNull();
   expect([...container.querySelectorAll<HTMLButtonElement>('button[type=submit]')].every(button => button.disabled)).toBe(true);
   await fill("#project-settings-title", "Renamed project"); await submit();
   expect(mocks.update).toHaveBeenCalledWith({ title: "Renamed project", expectedVersion: 3 });
+});
+it("edits project keywords separately from research areas and supports Discard changes", async () => {
+  await render({ ...project, researchAreas: ["Software Engineering"], keywords: ["LLM"] });
+  const kwInput = container.querySelector<HTMLInputElement>("#project-settings-keywords")!;
+  await fill("#project-settings-keywords", "Literature Review");
+  await act(async () => kwInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+  expect(container.textContent).toContain("Literature Review");
+  const discard = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Discard changes")!;
+  expect(discard).toBeDefined();
+  await act(async () => discard.click());
+  expect(container.textContent).not.toContain("Literature Review");
+
+  await fill("#project-settings-keywords", "Systematic Review");
+  await act(async () => kwInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+  await submit();
+  expect(mocks.update).toHaveBeenCalledWith({ keywords: ["LLM", "Systematic Review"], expectedVersion: 3 });
 });
 it("retains dirty edits and their original version when refetched project data changes", async () => {
   await render(); await fill("#project-settings-title", "My draft");
@@ -64,7 +85,7 @@ it("preserves legacy privacy and objectives when only a title changes", async ()
   expect(mocks.update).toHaveBeenCalledWith({ title: "New title", expectedVersion: 3 });
 });
 it("requires an explicit confirmation and a scoped privacy update to publish", async () => {
-  await render({ ...project, publicSummary: "Safe introduction" });
+  await render({ ...project, publicSummary: "Safe introduction" }, "/projects/project?tab=members&team=settings&section=privacy");
   await act(async () => container.querySelectorAll<HTMLInputElement>('input[type=radio]')[1]!.click());
   expect(container.querySelector<HTMLTextAreaElement>("#project-public-summary")?.value).toBe("Safe introduction");
   await submit('form[aria-labelledby="project-privacy-heading"]');
@@ -75,7 +96,7 @@ it("requires an explicit confirmation and a scoped privacy update to publish", a
   expect(mocks.update).toHaveBeenCalledWith({ visibility: "PUBLIC", expectedVersion: 3 });
 });
 it("keeps the saved summary when privacy switches back to private", async () => {
-  await render({ ...project, visibility: "PUBLIC_SUMMARY", publicSummary: "Saved introduction" });
+  await render({ ...project, visibility: "PUBLIC_SUMMARY", publicSummary: "Saved introduction" }, "/projects/project?tab=members&team=settings&section=privacy");
   await act(async () => container.querySelectorAll<HTMLInputElement>('input[type=radio]')[0]!.click());
   expect(container.querySelector("#project-public-summary")).toBeNull();
   await submit('form[aria-labelledby="project-privacy-heading"]');
@@ -87,6 +108,7 @@ it("supports keyboard selection, custom areas, the three-item limit and Escape",
   await act(async () => combo.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
   await act(async () => combo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
   expect(container.querySelector('button[aria-label="Remove Computer Science"]')).not.toBeNull();
+  expect(container.textContent).toContain("Primary");
   await fill('[role=combobox]', "Custom area");
   await act(async () => combo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
   await fill('[role=combobox]', "Biology");
@@ -97,10 +119,15 @@ it("supports keyboard selection, custom areas, the three-item limit and Escape",
   expect(combo.getAttribute("aria-expanded")).toBe("false");
   await submit(); expect(mocks.update).toHaveBeenCalledWith({ researchAreas: ["Computer Science", "Custom area", "Biology"], expectedVersion: 3 });
 });
-it("protects dirty drafts when switching tabs", async () => {
+it("protects dirty drafts when switching tabs or settings sections", async () => {
   await render(); await fill("#project-settings-title", "Unsaved title");
-  await act(async () => container.querySelector<HTMLButtonElement>("#project-people-tab")!.click());
+  await openSection("Privacy");
   expect(container.querySelector<HTMLInputElement>("#project-settings-title")?.value).toBe("Unsaved title");
+  expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("Leave without saving?");
+  await act(async () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Keep editing")!.click());
+  expect(container.querySelector<HTMLInputElement>("#project-settings-title")?.value).toBe("Unsaved title");
+
+  await act(async () => container.querySelector<HTMLButtonElement>("#project-people-tab")!.click());
   expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("Leave without saving?");
   await act(async () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Keep editing")!.click());
   expect(container.querySelector<HTMLInputElement>("#project-settings-title")?.value).toBe("Unsaved title");

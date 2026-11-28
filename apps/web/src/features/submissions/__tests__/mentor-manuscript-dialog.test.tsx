@@ -46,7 +46,7 @@ it("saves through the editor durability callback, previews and sends the exact s
   expect(api.pdf).toHaveBeenCalledWith("project", "manuscript", "compilation");
   expect(document.querySelector('input[type="text"]')).toBeNull();
   await act(async () => button("Send for mentor feedback").click());
-  expect(api.sendMentorFeedback).toHaveBeenCalledWith(expect.objectContaining({ source: "SNAPSHOT", manuscriptSnapshotId: "snapshot", compilationId: "compilation", mentorId: "mentor" }), undefined);
+  expect(api.sendMentorFeedback).toHaveBeenCalledWith(expect.objectContaining({ source: "SNAPSHOT", manuscriptSnapshotId: "snapshot", compilationId: "compilation", mentorId: "mentor" }), undefined, expect.anything());
   expect(sent).toHaveBeenCalledWith(result);
 });
 it("keeps external PDF upload separate and retains the file, message and idempotency key after a failed send", async () => {
@@ -56,27 +56,70 @@ it("keeps external PDF upload separate and retains the file, message and idempot
   await act(async () => button("Send for mentor feedback").click());
   expect(document.body.textContent).toContain("retained"); expect(document.querySelector('textarea')?.value).toBe("Please check the method.");
   const payload = api.sendMentorFeedback.mock.calls[0]![0]; expect(payload).toMatchObject({ source: "PDF", title: "External study", message: "Please check the method." }); expect(payload.manuscriptSnapshotId).toBeUndefined();
-  await act(async () => button("Send for mentor feedback").click()); expect(api.sendMentorFeedback).toHaveBeenLastCalledWith(payload, file);
+  await act(async () => button("Send for mentor feedback").click()); expect(api.sendMentorFeedback).toHaveBeenLastCalledWith(payload, file, expect.anything());
 });
-it("does not send when mentors are missing or unavailable", async () => {
+it("does not send when mentors are missing or unavailable and explains why submit is disabled", async () => {
   api.activeMentors.mockResolvedValue([]); await render(); await upload();
-  expect(button("Send for mentor feedback").disabled).toBe(true); expect(document.body.textContent).toContain("No accepted mentor"); expect(api.sendMentorFeedback).not.toHaveBeenCalled();
+  expect(button("Send for mentor feedback").disabled).toBe(true);
+  expect(document.body.textContent).toContain("No accepted mentor");
+  expect(document.body.textContent).toContain("Chưa thể gửi:");
+  expect(document.body.textContent).toContain("Chưa chọn giảng viên nhận bản thảo.");
+  expect(api.sendMentorFeedback).not.toHaveBeenCalled();
 });
 it("does not fall back to an older successful PDF when the requested compilation fails", async () => {
   api.compilations.mockResolvedValue({ latest: { id: "compilation", status: "FAILED", diagnostics: "main.tex:1: Invalid source" }, successful: { id: "older-compilation", status: "SUCCESS" } });
   await render("manuscript"); await vi.waitFor(() => expect(document.body.textContent).toContain("did not compile"));
   expect(api.pdf).not.toHaveBeenCalled(); expect(button("Send for mentor feedback").disabled).toBe(true);
 });
-it("rejects empty and oversized uploads before sending", async () => {
+it("rejects empty and oversized (>50 MB) uploads and warns calmly on >10 MB files without blocking", async () => {
   await render();
-  await upload(new File([], "empty.pdf", { type: "application/pdf" })); expect(document.body.textContent).toContain("10 MB");
-  await upload(new File([new Uint8Array(10 * 1024 * 1024 + 1)], "large.pdf", { type: "application/pdf" })); expect(button("Send for mentor feedback").disabled).toBe(true); expect(api.sendMentorFeedback).not.toHaveBeenCalled();
-});
-it("collects explicit responses only when the mentor requested revisions", async () => {
-  api.mentorFeedbackContext.mockResolvedValue({ submission: { id: "submission", currentRevisionNumber: 1 }, requests: [{ id: "request", mentorId: "mentor", status: "REVISION_REQUESTED", items: [{ id: "item", description: "Clarify the comparison group" }] }] });
-  await render("manuscript"); await vi.waitFor(() => expect(document.body.textContent).toContain("Clarify the comparison group"));
+  await upload(new File([], "empty.pdf", { type: "application/pdf" }));
+  expect(document.body.textContent).toContain("Tệp PDF không có dữ liệu.");
+  const largeAllowed = new File([new Uint8Array(11 * 1024 * 1024)], "thesis-11mb.pdf", { type: "application/pdf" });
+  await upload(largeAllowed);
+  await ready();
+  expect(document.body.textContent).toContain("Tài liệu có dung lượng lớn");
+  expect(button("Send for mentor feedback").disabled).toBe(false);
+  const oversized = new File(["%PDF"], "huge.pdf", { type: "application/pdf" });
+  Object.defineProperty(oversized, "size", { value: 50 * 1024 * 1024 + 1 });
+  await upload(oversized);
+  expect(document.body.textContent).toContain("50 MB");
   expect(button("Send for mentor feedback").disabled).toBe(true);
-  await act(async () => { const response = document.querySelector<HTMLTextAreaElement>('textarea')!; Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(response, "The comparison group is now described."); response.dispatchEvent(new Event("input", { bubbles: true })); });
-  await ready(); await act(async () => button("Send for mentor feedback").click());
-  expect(api.sendMentorFeedback).toHaveBeenCalledWith(expect.objectContaining({ submissionId: "submission", expectedRevisionNumber: 1, responses: [{ revisionItemId: "item", responseText: "The comparison group is now described." }] }), undefined);
+  expect(api.sendMentorFeedback).not.toHaveBeenCalled();
+});
+it("collects explicit responses for mandatory items, keeps SUGGESTION optional, and marks required fields clearly", async () => {
+  api.mentorFeedbackContext.mockResolvedValue({
+    submission: { id: "submission", currentRevisionNumber: 1 },
+    requests: [{
+      id: "request",
+      mentorId: "mentor",
+      status: "REVISION_REQUESTED",
+      items: [
+        { id: "item-req", description: "Clarify the comparison group", priority: "MAJOR" },
+        { id: "item-opt", description: "Consider adding an overview figure", priority: "SUGGESTION", optional: true },
+      ],
+    }],
+  });
+  await render("manuscript");
+  await vi.waitFor(() => expect(document.body.textContent).toContain("Clarify the comparison group"));
+  expect(document.body.textContent).toContain("Các trường có dấu");
+  expect(document.body.textContent).toContain("Không bắt buộc");
+  expect(button("Send for mentor feedback").disabled).toBe(true);
+  expect(document.body.textContent).toContain("Chưa thể gửi:");
+  await act(async () => {
+    const response = document.getElementById("revision-response-item-req") as HTMLTextAreaElement;
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(response, "The comparison group is now described.");
+    response.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await ready();
+  await act(async () => button("Send for mentor feedback").click());
+  expect(api.sendMentorFeedback).toHaveBeenCalledWith(
+    expect.objectContaining({
+      submissionId: "submission",
+      expectedRevisionNumber: 1,
+      responses: [{ revisionItemId: "item-req", responseText: "The comparison group is now described." }],
+    }),
+    undefined,
+    expect.anything(),
+  );
 });

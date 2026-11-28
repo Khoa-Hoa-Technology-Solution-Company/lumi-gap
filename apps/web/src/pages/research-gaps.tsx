@@ -18,6 +18,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AsyncTaskProgress } from "@/components/loading";
 import { toast } from "sonner";
 import { TrendContextCard } from "@/features/trends/components/trend-context-card";
 import {
@@ -99,43 +100,24 @@ function AnalysisPoller({
 
   if (data?.status === "failed") {
     return (
-      <div role="alert" className="max-w-3xl rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-        <div className="flex items-start gap-3">
-          <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="font-bold">{t("Analysis failed for {{topic}}", { topic: data.topic })}</p>
-            <p className="mt-1 break-words text-xs">{data.errorMessage ?? t("Analysis failed.")}</p>
-            <p className="mt-1 text-xs opacity-80">
-              {t("Your credits were refunded. Retry uses the same reviewed papers and settings.")}
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={isRetrying}
-            onClick={() => onRetry(analysisId)}
-            className="shrink-0 border-red-300 bg-white text-red-700 hover:bg-red-100 dark:bg-red-950"
-          >
-            {isRetrying && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {t("Retry analysis")}
-          </Button>
-        </div>
-      </div>
+      <AsyncTaskProgress
+        className="max-w-3xl"
+        status="failed"
+        title={t("Analysis failed for {{topic}}", { topic: data.topic })}
+        description={`${data.errorMessage ?? t("Analysis failed.")} ${t("Your credits were refunded. Retry uses the same reviewed papers and settings.")}`}
+        onRetry={() => onRetry(analysisId)}
+        retrying={isRetrying}
+      />
     );
   }
   if (data?.status === "ready") return null;
   return (
-    <div aria-live="polite" className="max-w-3xl rounded-lg border border-blue-100 bg-blue-50/50 p-4 shadow-sm dark:border-blue-900 dark:bg-blue-900/10">
-      <div className="flex items-center gap-3">
-      <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-        <div>
-          <p className="text-sm font-bold text-blue-800 dark:text-blue-200">{data?.topic}</p>
-          <p className="text-xs font-medium text-blue-700 dark:text-blue-300">
-            {data?.status === "analyzing" ? t("Analyzing documents with Gemini AI…") : t("Analysis job queued…")}
-          </p>
-        </div>
-      </div>
-    </div>
+    <AsyncTaskProgress
+      className="max-w-3xl"
+      status={data?.status === "analyzing" ? "running" : "queued"}
+      title={data?.topic || t("Research gap analysis")}
+      description={data?.status === "analyzing" ? t("Analyzing documents with Gemini AI…") : t("Analysis job queued…")}
+    />
   );
 }
 

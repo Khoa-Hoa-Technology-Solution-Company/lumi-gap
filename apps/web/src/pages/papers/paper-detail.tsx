@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageSkeleton, SectionErrorState } from "@/components/loading";
 import { isAdminSystemRole } from "@trend/shared-types";
 import { AddToProjectDropdown } from "@/features/projects/components/add-to-project-dropdown";
 import {
@@ -315,7 +316,7 @@ export function PaperDetailPage() {
   };
 
   if (isLoading) {
-    return <div className="container py-8 text-center text-slate-500 mt-20">Loading paper details...</div>;
+    return <PageSkeleton variant="paper-detail" label={t("loading.paperDetail")} />;
   }
 
   if (isPaperError) {
@@ -323,26 +324,23 @@ export function PaperDetailPage() {
       response?: { status?: number; data?: { error?: { message?: string } } };
       message?: string;
     })?.response;
-    const notFound = message?.status === 404;
     return (
-      <div role="alert" className="container py-16 text-center mt-20">
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-          {notFound ? "Paper not found" : "Paper details are unavailable"}
-        </h1>
-        <p className="mt-2 text-sm text-slate-500">
-          {message?.data?.error?.message || (paperError as Error)?.message || "Please try again."}
-        </p>
-        {!notFound && (
-          <Button className="mt-5" variant="outline" onClick={() => void refetch()}>
-            Try again
-          </Button>
-        )}
-      </div>
+      <main className="container mx-auto max-w-2xl px-4 py-16">
+        <SectionErrorState
+          error={paperError}
+          description={message?.data?.error?.message}
+          onRetry={() => void refetch()}
+        />
+      </main>
     );
   }
 
   if (!paper) {
-    return <div className="container py-8 text-center text-slate-500 mt-20">Paper not found.</div>;
+    return (
+      <main className="container mx-auto max-w-2xl px-4 py-16">
+        <SectionErrorState error={{ response: { status: 404 } }} />
+      </main>
+    );
   }
 
   const isBookmarked = !!bookmarkStatus?.bookmarked;

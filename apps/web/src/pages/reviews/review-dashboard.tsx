@@ -1,4 +1,5 @@
 import { useReviewPageNavigation } from "@/features/reviews/hooks/use-review-page-navigation";
+import { withMentorWorkReturn } from "@/features/projects/utils/mentor-workspace-navigation";
 import { useVerifiedLecturer } from "@/features/academic-profile/hooks/use-verified-lecturer";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -6,6 +7,7 @@ import { ArrowRight, BookOpenCheck, Check, Clock3, FileCheck2, Inbox, Send, Shap
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { InlineLoader, PageSkeleton, SectionErrorState } from "@/components/loading";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useReviewCenter, useReviewRequestAction, type ReviewCenterItem } from "@/features/reviews";
 import { useI18n } from "@/i18n";
@@ -45,6 +47,8 @@ export function ReviewDashboardPage() {
   const { embedded, href } = useReviewPageNavigation();
   const Container = embedded ? "section" : "main";
   const canReview = useVerifiedLecturer();
+  const centerHref = (path: string) =>
+    embedded ? withMentorWorkReturn(href(path), "/mentor-workspace?view=reviews") : href(path);
   const query = useReviewCenter();
   const actions = useReviewRequestAction();
   const [tab, setTab] = useState<CenterTab>("incoming");
@@ -69,17 +73,20 @@ export function ReviewDashboardPage() {
 
   if (query.isLoading) {
     return (
-      <Container className={embedded ? "space-y-4" : "mx-auto max-w-6xl px-4 py-10"}>
-        <div className="h-72 animate-pulse rounded-2xl bg-muted" />
+      <Container className={embedded ? "min-w-0 w-full" : "mx-auto max-w-6xl px-4 py-6"}>
+        <PageSkeleton variant="review-center" embedded={embedded} label={t("loading.reviewCenter")} />
       </Container>
     );
   }
   if (query.error) {
     return (
-      <Container className={embedded ? "space-y-4" : "mx-auto max-w-3xl px-4 py-16"}>
-        <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-sm text-destructive">
-          {t("reviewCenter.loadError")}
-        </div>
+      <Container className={embedded ? "min-w-0 w-full" : "mx-auto max-w-2xl px-4 py-12"}>
+        <SectionErrorState
+          error={query.error}
+          title={t("reviewCenter.loadError")}
+          onRetry={() => void query.refetch()}
+          retrying={query.isFetching}
+        />
       </Container>
     );
   }
@@ -117,7 +124,10 @@ export function ReviewDashboardPage() {
     <Container className={embedded ? "min-w-0 w-full space-y-6" : "mx-auto min-w-0 w-full max-w-6xl py-4 sm:py-8"} data-no-i18n>
       <header className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("reviewCenter.title")}</h1>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("reviewCenter.title")}</h1>
+            {query.isFetching ? <InlineLoader label={t("loading.refreshing")} /> : null}
+          </div>
           <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">{t("reviewCenter.subtitle")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -214,6 +224,11 @@ export function ReviewDashboardPage() {
                           {t("reviewCenter.withdraw")}
                         </Button>
                       ) : null}
+                      <Button asChild variant="outline" size="sm">
+                        <Link to={centerHref(`/review-requests/${encodeURIComponent(item.id)}`)}>
+                          <span>{t("reviewCenter.viewDetails")}</span>
+                        </Link>
+                      </Button>
                       <Button asChild size="sm">
                         <Link to={href(`/reviews/${encodeURIComponent(item.assignment.id)}`)}>
                           <span>
@@ -225,7 +240,7 @@ export function ReviewDashboardPage() {
                     </>
                   ) : (
                     <Button asChild variant="outline" size="sm">
-                      <Link to={href(`/review-requests/${encodeURIComponent(item.id)}`)}>
+                      <Link to={centerHref(`/review-requests/${encodeURIComponent(item.id)}`)}>
                         <span>{t("reviewCenter.viewDetails")}</span>
                         <ArrowRight className="h-4 w-4" aria-hidden="true" />
                       </Link>

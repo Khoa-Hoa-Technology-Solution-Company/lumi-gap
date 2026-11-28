@@ -24,7 +24,7 @@ vi.mock("@/features/submissions", () => ({
 let root: Root, host: HTMLDivElement, client: QueryClient, detail: ReviewRequestDetail;
 function Location() { const location = useLocation(); return <output>{location.pathname}{location.search}</output>; }
 async function mount(search = "", path = "/mentor-workspace?view=review-request&requestId=request") {
-  await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path + search]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><ReviewRequestDetailPage /><Location /></MemoryRouter></QueryClientProvider>));
+  await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter key={path + search} initialEntries={[path + search]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><ReviewRequestDetailPage /><Location /></MemoryRouter></QueryClientProvider>));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
 }
 beforeEach(() => {
@@ -59,13 +59,21 @@ it("rejects a revision that does not belong to the selected historical review", 
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("no longer shared");
   expect(host.textContent).not.toContain("manuscript snapshot");
 });
-it("keeps history collapsed and does not invent a score for feedback without scoring", async () => {
+it("shows the focused latest submitted feedback without inventing a score for unscored rounds", async () => {
   await mount("&detailTab=feedback");
-  const history = host.querySelector("article details")!;
-  expect(history.hasAttribute("open")).toBe(false);
   expect(host.textContent).toContain("Document the comparison group");
   expect(host.textContent).not.toMatch(/0\s*\/\s*5/);
-  expect(host.querySelector('a[href*="reviewId=review-v1"]')).not.toBeNull();
+  const v1Link = host.querySelector<HTMLAnchorElement>('a[href*="reviewId=review-v1"]')!;
+  expect(v1Link).not.toBeNull();
+  expect(v1Link.getAttribute("href")).toContain("detailTab=feedback");
+
+  // Transition live into Read-Only Viewer and back without hook-order crashes
+  await act(async () => v1Link.click());
+  expect(host.textContent).toContain("Immutable first manuscript snapshot");
+  const backLink = host.querySelector<HTMLAnchorElement>('a[href*="detailTab=feedback"]')!;
+  expect(backLink).not.toBeNull();
+  await act(async () => backLink.click());
+  expect(host.textContent).toContain("Document the comparison group");
 });
 it("keeps author responses awaiting verification and submits the exact current revision", async () => {
   detail.status = "RESUBMITTED";
@@ -82,11 +90,13 @@ it("preserves the requester's project manuscript link", async () => {
   expect(host.querySelector('a[href="/projects/project?tab=submissions&submission=submission"]')).not.toBeNull();
   expect(host.textContent).not.toContain("The team is addressing your revision requests");
 });
-it("opens only the submitted round selected after submission and shows its saved version", async () => {
+it("selects the requested submitted review without rendering editable inputs and flags invalid reviewId", async () => {
   await mount("&detailTab=feedback&reviewId=review-v1");
-  expect(host.querySelector("article details")?.hasAttribute("open")).toBe(true);
   expect(host.textContent).toContain("Feedback saved · round 1 · manuscript v1");
   expect(host.querySelectorAll("textarea, input")).toHaveLength(0);
+
+  await mount("&detailTab=feedback&reviewId=nonexistent-review");
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("could not be found");
 });
 it("does not present an ordinary feedback round as internal approval", async () => {
   detail.status = "COMPLETED";
@@ -99,7 +109,39 @@ it("does not present an ordinary feedback round as internal approval", async () 
 it("hides an obsolete zero score on an unscored feedback round", async () => {
   detail.reviews[0]!.weightedScore = 0;
   await mount("&detailTab=feedback");
-  expect(host.querySelector("article summary")?.textContent).not.toMatch(/·\s*0/);
+  expect(host.textContent).not.toMatch(/0[.,]00\s*\/\s*5/);
+});
+it("renders compact rubric table with expandable details, independent integrity summary, and revision filters", async () => {
+  const tpl = {
+    id: "tpl-v1",
+    versionNumber: 1,
+    reviewMode: "RUBRIC_ASSESSMENT",
+    guidelines: [],
+    criteria: [
+      { id: "c1", key: "methods", title: "Research methodology", order: 1, required: true, allowNotApplicable: false, weight: 50, levels: [{ id: "l4", label: "Strong", score: 5, position: 1 }] },
+    ],
+  };
+  detail.status = "RESUBMITTED";
+  detail.templateVersion = tpl as unknown as ReviewRequestDetail["templateVersion"];
+  detail.reviews[0]!.templateVersion = tpl as unknown as ReviewRequestDetail["templateVersion"];
+  detail.reviews[0]!.weightedScore = 4.0;
+  detail.reviews[0]!.responses = [{ criterionKey: "methods", score: 4, comment: "Clear experimental protocol.", evidence: "Section 3.2", notApplicable: false }];
+  detail.reviews[0]!.integrityChecks = {
+    authorship_credit: { status: "CHECKED" },
+    data_evidence: { status: "CONCERN", note: "Clarify dataset provenance." },
+  };
+  await mount("&detailTab=feedback");
+  expect(host.textContent).toContain("Template v1 · 1 criteria");
+  expect(host.textContent).toContain("4.00");
+  expect(host.querySelector("table")?.textContent).toContain("Research methodology");
+  expect(host.textContent).not.toContain("Clear experimental protocol.");
+  // Expand criterion detail
+  const viewBtn = [...host.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.includes("View"))!;
+  await act(async () => viewBtn.click());
+  expect(host.textContent).toContain("Clear experimental protocol.");
+  expect(host.textContent).toContain("Section 3.2");
+  // Concern is visible immediately in independent integrity summary
+  expect(host.textContent).toContain("Clarify dataset provenance.");
 });
 it("removes the reader and feedback if request access is revoked during refetch", async () => {
   await mount("&reader=1&reviewId=review-v1&revisionId=v1");
@@ -110,4 +152,57 @@ it("removes the reader and feedback if request access is revoked during refetch"
   expect(host.querySelector('[role="alert"]')).not.toBeNull();
   expect(host.textContent).not.toContain("Immutable first manuscript snapshot");
   expect(host.textContent).not.toContain("Document the comparison group");
+});
+
+it("opens dedicated view=manuscript read-only mode via forceReader without mutating review state", async () => {
+  detail.status = "RESUBMITTED";
+  const back = encodeURIComponent("/mentor-workspace?view=work&workPage=1&workStatus=ACTIONABLE&workSort=priority");
+  await act(async () =>
+    root.render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter
+          initialEntries={[`/mentor-workspace?view=manuscript&requestId=request&revisionId=v2&returnTo=${back}`]}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
+          <ReviewRequestDetailPage forceReader />
+          <Location />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  );
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+  expect(host.textContent).toContain("Revised second manuscript snapshot");
+  expect(host.textContent).toContain("Read-only manuscript");
+  expect(host.querySelector('a[href^="/projects/"]')).toBeNull();
+  const backLink = host.querySelector<HTMLAnchorElement>('a[href*="view=review-request"]')!;
+  expect(backLink).not.toBeNull();
+  expect(backLink.getAttribute("href")).toContain("returnTo=");
+  expect(mocks.accept).not.toHaveBeenCalled();
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(mocks.submit).not.toHaveBeenCalled();
+});
+
+it("blocks unaccepted REQUESTED manuscript view without weakening authorization and offers accept CTA", async () => {
+  detail.status = "REQUESTED";
+  detail.assignment.status = "assigned";
+  await mount("&reader=1&revisionId=v2");
+  expect(host.textContent).toContain("Accept this review invitation");
+  expect(host.textContent).not.toContain("Revised second manuscript snapshot");
+  expect(mocks.accept).not.toHaveBeenCalled();
+});
+
+it("shows error without silently falling back to latest revision when revisionId is unknown", async () => {
+  detail.status = "RESUBMITTED";
+  await mount("&reader=1&revisionId=nonexistent-v99");
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("no longer shared");
+  expect(host.textContent).not.toContain("Revised second manuscript snapshot");
+});
+
+it("preserves work queue returnTo URL on the back button of review request detail", async () => {
+  const back = "/mentor-workspace?view=work&workPage=2&workStatus=ACTIONABLE&workSort=priority";
+  await mount(`&returnTo=${encodeURIComponent(back)}`);
+  const backLink = host.querySelector<HTMLAnchorElement>(`a[href*="workPage=2"]`);
+  expect(backLink).not.toBeNull();
+  expect(backLink?.getAttribute("href")).toContain("workStatus=ACTIONABLE");
+  expect(backLink?.getAttribute("href")).toContain("workSort=priority");
 });

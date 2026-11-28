@@ -25,6 +25,40 @@ export function isAdminSystemRole(role: unknown): role is "ADMIN" {
   return role === "ADMIN";
 }
 
+/**
+ * Canonical client-safe eligibility check for Lecturer Workspace access.
+ * Always prefers the server-computed `lecturerWorkspaceEligible` boolean when present,
+ * and never grants access solely from `academicRole === "LECTURER"` or `systemRole === "ADMIN"`.
+ */
+export function isLecturerWorkspaceEligible(
+  user?: Pick<
+    User,
+    | "accountStatus"
+    | "isActive"
+    | "emailVerifiedAt"
+    | "academicRole"
+    | "academicRoleVerificationStatus"
+    | "positionVerificationStatus"
+    | "capabilities"
+    | "lecturerWorkspaceEligible"
+  > | null,
+): boolean {
+  if (!user) return false;
+  if (user.accountStatus && user.accountStatus !== "ACTIVE") return false;
+  if (user.isActive === false) return false;
+  if (!user.emailVerifiedAt) return false;
+  if (typeof user.lecturerWorkspaceEligible === "boolean") {
+    return user.lecturerWorkspaceEligible;
+  }
+  if (user.academicRole !== "LECTURER") return false;
+  if (user.academicRoleVerificationStatus !== "VERIFIED") return false;
+  if (user.positionVerificationStatus !== "VERIFIED") return false;
+  if (Array.isArray(user.capabilities)) {
+    return user.capabilities.includes("MENTOR_PROJECT") || user.capabilities.includes("STRUCTURED_REVIEW");
+  }
+  return false;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -35,6 +69,9 @@ export interface User {
   academicProfileType?: AcademicProfileType;
   academicRole?: AcademicRole;
   academicRoleVerificationStatus?: VerificationStatus | "SELF_DECLARED";
+  positionVerificationStatus?: VerificationStatus;
+  /** Server-derived authoritative Lecturer Workspace access eligibility. */
+  lecturerWorkspaceEligible?: boolean;
   primaryPosition?: PrimaryPosition;
   participantScope?: ParticipantScope;
   admissionBasis?: AdmissionBasis;

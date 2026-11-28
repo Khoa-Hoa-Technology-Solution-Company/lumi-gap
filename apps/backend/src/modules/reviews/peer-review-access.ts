@@ -82,7 +82,7 @@ export async function refreshSubmissionReviewStatus(tx: Prisma.TransactionClient
 
 export async function defaultPeerReviewTemplate(tx: Prisma.TransactionClient, submissionType: string | null) {
   const templates = await tx.reviewTemplate.findMany({ where: { source: "SYSTEM", status: "PUBLISHED", active: true, activeVersionId: { not: null } }, orderBy: { createdAt: "asc" } });
-  const template = templates.find((item) => item.name.startsWith("LumiGap Scientific Manuscript Review Rubric v1.0") && (item.artifactType === submissionType || item.submissionType === submissionType))
+  const template = templates.find((item) => item.name.startsWith("LumiGap Scientific Manuscript Review Rubric") && (item.artifactType === submissionType || item.submissionType === submissionType))
     ?? templates.find((item) => item.artifactType === submissionType || item.submissionType === submissionType)
     ?? templates.find((item) => !item.artifactType && !item.submissionType)
     ?? ([null, "THESIS_DRAFT", "SOFTWARE_RESEARCH_PROJECT"].includes(submissionType) ? templates.find((item) => item.submissionType === "RESEARCH_PAPER") : undefined);

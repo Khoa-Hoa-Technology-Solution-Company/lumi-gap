@@ -12,6 +12,7 @@ import { visibleMentorReviewAssignments } from "../reviews/mentor-review-access.
 type Query = z.infer<typeof researchContributionsQuerySchema>;
 type ResearchContext = WorkspaceContext & { readableAssignmentIds?: string[] };
 export type ResearchProjectionRow = {
+  activityCount?: bigint;
   id: string; actorId: string; name: string; participantKind: "MEMBER" | "MENTOR";
   type: string; sourceType: string; sourceId: string; description: string; createdAt: Date;
   scopeKeys: string[]; versionId: string | null; version: number | null;
@@ -120,7 +121,7 @@ export function presentResearchRecord(row: ResearchProjectionRow, projectId: str
   const allowed = ["TASK", "PAPER", "GAP", "EVIDENCE", "MANUSCRIPT", "MANUSCRIPT_SNAPSHOT", "PLAN_REVISION", "SUBMISSION", "SUBMISSION_REVISION", "HUMAN_REVIEW", "SYNTHESIS", "RESEARCH_DECISION"];
   const link = row.linkKind && row.linkId && /^[0-9a-f-]{36}$/i.test(row.linkId) && allowed.includes(row.linkKind)
     ? { kind: row.linkKind, id: row.linkId } as ResearchContributionRecord["link"] : null;
-  return { id: row.id, projectId, actor: { id: row.actorId, name: row.name }, participantKind: row.participantKind,
+  return { activityCount: row.activityCount ? Number(row.activityCount) : 1, id: row.id, projectId, actor: { id: row.actorId, name: row.name }, participantKind: row.participantKind,
     type: row.type, category: activityCategory(row.type), description: row.description, createdAt: row.createdAt.toISOString(),
     provenance: row.provenance, sourceType: row.sourceType ?? "PROJECT_ACTIVITY", sourceId: row.sourceId ?? row.id,
     manuscriptKeys: row.scopeKeys, manuscriptVersionId: row.versionId, artifactVersion: row.version, link,
@@ -182,16 +183,31 @@ export async function researchContributions(projectId: string, actorId: string, 
     const scopes = await c.tx.$queryRaw<ResearchContributionResult["manuscripts"]>`${base} SELECT key,title,kind FROM scopes ORDER BY lower(title),key`;
     if (query.scopeKey && !scopes.some(scope => scope.key === query.scopeKey)) throw AppError.notFound("Manuscript contribution scope unavailable");
     const conditions = [Prisma.sql`true`];
+    if (query.grouped === "true") conditions.push(Prisma.sql`type <> 'TASK_CREATED'`);
     if (query.memberId) conditions.push(Prisma.sql`actor_id=${query.memberId}::uuid`);
     if (query.participantKind) conditions.push(Prisma.sql`participant_kind=${query.participantKind}`);
     if (query.scopeKey) conditions.push(Prisma.sql`${query.scopeKey}=ANY(scope_keys)`);
     if (query.category) conditions.push(Prisma.sql`type=ANY(${meaningfulActivity[query.category]}::text[])`);
+    if (query.artifactKind && query.artifactId) conditions.push(Prisma.sql`((link_kind=${query.artifactKind} AND link_id=${query.artifactId}) OR (source_type='CONTRIBUTION' AND EXISTS(SELECT 1 FROM project_contribution_proposals p WHERE p.project_id=${c.project.id}::uuid AND p.id::text=source_id AND p.evidence_refs @> ${JSON.stringify([{kind:query.artifactKind,id:query.artifactId}])}::jsonb)))`);
     const where = Prisma.join(conditions, " AND ");
     const scopeWhere = query.scopeKey ? Prisma.sql`${query.scopeKey}=ANY(scope_keys)` : Prisma.sql`true`;
+    // Group source revisions before pagination. Activities remain independently
+    // inspectable through /activity; this projection never multiplies credit.
+    const grouped = query.grouped === "true";
+    const baseRows = grouped ? Prisma.sql`${base}, scoped_records AS (
+      SELECT *, CASE WHEN source_type='SYNTHESIS' THEN COALESCE((SELECT r.entity_id::text FROM project_workspace_revisions r WHERE r.id::text=source_id AND r.project_id=${c.project.id}::uuid),source_id)
+        WHEN source_type='MANUSCRIPT_SNAPSHOT' THEN COALESCE((SELECT s.workspace_id::text FROM manuscript_snapshots s WHERE s.id::text=source_id AND s.project_id=${c.project.id}::uuid),source_id)
+        ELSE source_id END AS artifact_group FROM records WHERE ${where}
+    ), product_records AS (
+      SELECT DISTINCT ON(actor_id,source_type,artifact_group) *, count(*) OVER(PARTITION BY actor_id,source_type,artifact_group) AS "activityCount"
+      FROM scoped_records ORDER BY actor_id,source_type,artifact_group,created_at DESC,id DESC
+    )` : base;
+    const source = grouped ? Prisma.sql`product_records` : Prisma.sql`records`;
+    const rowWhere = grouped ? Prisma.sql`true` : where;
     const [rows, total, profiles] = await Promise.all([
-      c.tx.$queryRaw<ResearchProjectionRow[]>`${base} SELECT ${researchRecordSelect} FROM records WHERE ${where} ORDER BY created_at DESC,id LIMIT ${query.pageSize} OFFSET ${(query.page-1)*query.pageSize}`,
-      c.tx.$queryRaw<{ count: bigint }[]>`${base} SELECT count(*) AS count FROM records WHERE ${where}`,
-      c.tx.$queryRaw<{ id: string; name: string; participantKind: "MENTOR" | "MEMBER"; recordCount: bigint; types: string[] }[]>`${base} SELECT actor_id AS id,name,participant_kind AS "participantKind",count(*) AS "recordCount",array_agg(DISTINCT type) AS types FROM records WHERE ${scopeWhere} GROUP BY actor_id,name,participant_kind ORDER BY lower(name),actor_id`,
+      c.tx.$queryRaw<ResearchProjectionRow[]>`${baseRows} SELECT ${researchRecordSelect}${grouped ? Prisma.sql`, "activityCount"` : Prisma.empty} FROM ${source} WHERE ${rowWhere} ORDER BY created_at DESC,id LIMIT ${query.pageSize} OFFSET ${(query.page-1)*query.pageSize}`,
+      c.tx.$queryRaw<{ count: bigint }[]>`${baseRows} SELECT count(*) AS count FROM ${source} WHERE ${rowWhere}`,
+      c.tx.$queryRaw<{ id: string; name: string; participantKind: "MENTOR" | "MEMBER"; recordCount: bigint; types: string[] }[]>`${grouped ? baseRows : base} SELECT actor_id AS id,name,participant_kind AS "participantKind",count(*) AS "recordCount",array_agg(DISTINCT type) AS types FROM ${source} WHERE ${grouped ? Prisma.sql`true` : scopeWhere} GROUP BY actor_id,name,participant_kind ORDER BY lower(name),actor_id`,
     ]);
     if (!query.scopeKey) {
       const roster = await c.tx.$queryRaw<{ id: string; name: string; participantKind: "MEMBER" | "MENTOR" }[]>`
@@ -215,7 +231,7 @@ export async function manuscriptContributionStatement(projectId: string, actorId
     const base = researchContributionSql(c);
     if (!(await c.tx.$queryRaw<{ key: string }[]>`${base} SELECT key FROM scopes WHERE key=${scopeKey}`).length) throw AppError.notFound("Manuscript scope unavailable");
     const rows = await c.tx.$queryRaw<ResearchProjectionRow[]>`${base} SELECT ${researchRecordSelect} FROM records WHERE source_type='CONTRIBUTION' AND ${scopeKey}=ANY(scope_keys)`;
-    const pending = rows.filter(row => !["ACCEPTED", "SELF_RECORDED", "REJECTED"].includes(row.status));
+    const pending = rows.filter(row => !["ACCEPTED", "REJECTED"].includes(row.status));
     const grouped = new Map<string, ContributionStatement["contributors"][number]>();
     for (const row of rows.filter(row => ["ACCEPTED", "SELF_RECORDED"].includes(row.status))) {
       const person = grouped.get(row.actorId) ?? { userId: row.actorId, name: row.name, roles: [] };
@@ -224,7 +240,10 @@ export async function manuscriptContributionStatement(projectId: string, actorId
     }
     const contributors = [...grouped.values()].sort((a,b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));
     const ready = pending.length === 0 && contributors.length > 0 && contributors.every(person => person.roles.length>0);
-    return { scopeKey, ready, pendingCount: new Set(pending.map(row => row.sourceId)).size, contributors,
+    const generatedAt = new Date().toISOString();
+    const versions = [...new Map(rows.map(row => [row.sourceId, { id: row.sourceId, version: row.version, status: row.status }])).values()];
+    const draftStatement = ["DRAFT — declared contributions; this is not a team authorship agreement.", `Generated: ${generatedAt}`, ...rows.filter(row => row.status !== "REJECTED").map(row => `${row.name}: ${row.roles.join(", ") || "No roles declared"} (${row.status}, v${row.version}).`), "Record versions:", ...versions.map(row => `${row.id} · v${row.version} · ${row.status}`)].join("\n");
+    return { scopeKey, ready, generatedAt, draftStatement, recordVersions: versions, consensusScope: "DECLARED_CONTRIBUTIONS_ONLY", pendingCount: new Set(pending.map(row => row.sourceId)).size, contributors,
       statement: ready ? contributors.map(person => `${person.name}: ${person.roles.join(", ")}.`).join("\n") : null, determinesAuthorship: false };
   });
 }

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-export const PROJECT_CHAT_PROMPT_VERSION = "project-chat-v1";
+export const PROJECT_CHAT_PROMPT_VERSION = "project-chat-v2";
 
 export interface BudgetPaper {
   id: string;

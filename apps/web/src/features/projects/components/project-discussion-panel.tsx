@@ -45,10 +45,10 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers, mento
   useUnsavedWorkspace(Object.values(drafts).some(value => Boolean(value.trim())));
   const setDraft = (mode: ChatMode, value: string) => setDrafts(current => ({ ...current, [mode]: value }));
   const clearSentDraft = (mode: ChatMode, content: string) => setDrafts(current => current[mode].trim() === content ? { ...current, [mode]: "" } : current);
-  const channels = mentorView ? [{ id: "mentors" as const, label: t("With mentors"), icon: GraduationCap }] : [
-    { id: "team-chat" as const, label: t("Team Chat"), icon: Users },
-    { id: "private-ai" as const, label: t("My AI"), icon: Sparkles },
-    { id: "mentors" as const, label: t("With mentors"), icon: GraduationCap },
+  const channels = mentorView ? [{ id: "mentors" as const, label: t("Mentor Conversations"), icon: GraduationCap }] : [
+    { id: "team-chat" as const, label: t("Research Team Chat"), icon: Users },
+    { id: "private-ai" as const, label: t("Research AI Assistant"), icon: Sparkles },
+    { id: "mentors" as const, label: t("Mentor Conversations"), icon: GraduationCap },
   ];
 
   return (
@@ -80,7 +80,7 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers, mento
           </button>;
         })}
       </div>
-      <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${activeMode}`} key={activeMode}>
+      <div id={`${id}-panel`} className="project-chat-tabpanel" role="tabpanel" aria-labelledby={`${id}-${activeMode}`} key={activeMode}>
         {activeMode === "mentors" ? <div className="project-mentor-channel"><MentorAccessWorkspace projectId={projectId} mentorView={mentorView} mode="conversation" /></div> : activeMode === "team-chat" ? <ProjectTeamChatPanel projectId={projectId} ownerId={ownerId} draft={drafts[activeMode]} onDraftChange={value => setDraft(activeMode, value)} onSent={content => clearSentDraft("team-chat", content)} /> : (
           <ProjectChatPanel
             projectId={projectId}

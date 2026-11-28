@@ -19,7 +19,7 @@ function refreshProject(client: QueryClient, id: string) {
   return Promise.all([
     client.invalidateQueries({ queryKey: ["projects"] }),
     client.invalidateQueries({ predicate: query => query.queryKey[0] === "project" &&
-      (query.queryKey[1] === id || (query.state.data as { _id?: string } | undefined)?._id === id) }),
+      (query.queryKey[1] === id || query.queryKey[2] === id || (query.state.data as { _id?: string } | undefined)?._id === id) }),
     client.invalidateQueries({ predicate: query => ["project-research", "project-workspace"].includes(String(query.queryKey[0])) && query.queryKey[2] === id }),
   ]);
 }
@@ -31,24 +31,27 @@ function refreshProjectLiterature(client: QueryClient, id: string) {
 }
 
 export function useTrashedProjects(options?: { enabled?: boolean }) {
+  const actorId = useAuthStore(s => s.user?.id ?? "guest");
   return useQuery({
-    queryKey: ["projects", "trash"],
+    queryKey: ["projects", "trash", actorId],
     queryFn: projectsApi.listTrash,
     enabled: options?.enabled ?? true,
   });
 }
 
 export function useProjects(options?: { enabled?: boolean }) {
+  const actorId = useAuthStore(s => s.user?.id ?? "guest");
   return useQuery({
-    queryKey: ["projects"],
+    queryKey: ["projects", actorId],
     queryFn: projectsApi.list,
     enabled: options?.enabled ?? true,
   });
 }
 
 export function useProject(id: string | undefined) {
+  const actorId = useAuthStore(s => s.user?.id ?? "guest");
   return useQuery({
-    queryKey: ["project", id],
+    queryKey: ["project", actorId, id],
     queryFn: () => projectsApi.detail(id!),
     enabled: !!id,
     retry: (failureCount, error) => ![401, 403, 404].includes((error as { response?: { status?: number } })?.response?.status ?? 0) && failureCount < 2,
@@ -68,10 +71,11 @@ export function useCreateProject() {
 
 export function useUpdateProject(id: string) {
   const queryClient = useQueryClient();
+  const actorId = useAuthStore(s => s.user?.id ?? "guest");
   return useMutation({
     mutationFn: (data: UpdateProjectRequest) => projectsApi.update(id, data),
     onSuccess: (project) => {
-      queryClient.setQueryData(["project", id], project);
+      queryClient.setQueryData(["project", actorId, id], project);
       return refreshProject(queryClient, id);
     },
   });
@@ -79,12 +83,13 @@ export function useUpdateProject(id: string) {
 
 export function useDeleteProject(id: string) {
   const queryClient = useQueryClient();
+  const actorId = useAuthStore(s => s.user?.id ?? "guest");
   return useMutation({
     mutationFn: () => projectsApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       queryClient.invalidateQueries({ queryKey: ["projects", "trash"] });
-      queryClient.removeQueries({ queryKey: ["project", id] });
+      queryClient.removeQueries({ queryKey: ["project", actorId, id] });
     },
   });
 }

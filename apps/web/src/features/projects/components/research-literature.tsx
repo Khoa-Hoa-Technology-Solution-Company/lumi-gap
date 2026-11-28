@@ -78,6 +78,7 @@ export function ResearchLiterature({
   const view = params.get("view") ?? "my-work";
   const primaryTab = resolvePrimaryLiteratureTab(view);
   const [activePaperId, setActivePaperId] = useState<string | null>(params.get("paper"));
+  const [paperSequence, setPaperSequence] = useState<Array<{ paperId: string; roundId?: string; section?: string }>>([]);
 
   useEffect(() => {
     setActivePaperId(params.get("paper"));
@@ -85,16 +86,28 @@ export function ResearchLiterature({
 
   const change = async (value: string) => {
     if (!(await canLeaveWorkspace())) return;
+    setPaperSequence([]);
     setParams(buildLiteratureViewParams(params, value), { replace: true });
   };
 
-  const openPaper = (paperId: string, context?: { roundId: string; section: string }) => {
+  const openPaper = (
+    paperId: string,
+    context?: { roundId: string; section: string },
+  ) => {
     setActivePaperId(paperId);
     const next = new URLSearchParams(params);
     next.delete("round"); next.delete("section");
     if (context) { next.set("round", context.roundId); next.set("section", context.section); }
     next.set("paper", paperId);
     setParams(next);
+  };
+
+  const selectSequencePaper = (nextPaperId: string) => {
+    const matched = paperSequence.find(item => item.paperId === nextPaperId);
+    openPaper(
+      nextPaperId,
+      matched?.roundId ? { roundId: matched.roundId, section: matched.section ?? "review" } : undefined,
+    );
   };
 
   const closePaper = () => {
@@ -290,6 +303,7 @@ export function ResearchLiterature({
             projectId={projectId}
             readOnly={readOnly}
             onOpenPaper={openPaper}
+            onSequenceChange={setPaperSequence}
             onSwitchView={change}
             onAddPaper={onAddPaper}
           />
@@ -299,6 +313,7 @@ export function ResearchLiterature({
             projectId={projectId}
             readOnly={readOnly}
             onOpenPaper={openPaper}
+            onSequenceChange={setPaperSequence}
             onAddPaper={onAddPaper}
           />
         ) : view === "my-proposals" ? (
@@ -343,6 +358,8 @@ export function ResearchLiterature({
           paperId={activePaperId}
           readOnly={readOnly}
           onClose={closePaper}
+          paperIds={paperSequence.length > 1 ? paperSequence.map(item => item.paperId) : undefined}
+          onSelectPaper={paperSequence.length > 1 ? selectSequencePaper : undefined}
         />
       )}
     </div>

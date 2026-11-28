@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { getPrisma, disconnectPostgres } from "../../../infrastructure/database/prisma.js";
 import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { researchContributions as read, manuscriptContributionStatement as statement, researchContributionArtifact } from "../research-contribution-projection.js";
-import { researchContributionsQuerySchema as query, activitySchema } from "../dto/project-contributions.schema.js";
+import { researchContributionsQuerySchema as query, activitySchema, createWorkContributionSchema, contributionReviewSchema, contributionsPageSchema } from "../dto/project-contributions.schema.js";
 import { workContributionsService as work } from "../work-contributions.service.js";
 import { contributionActivityService } from "../contribution-activity.service.js";
 import { projectTasksService } from "../project-tasks.service.js";
@@ -18,6 +18,8 @@ import { screeningService } from "../screening.service.js";
 import { projectEvidenceService } from "../project-evidence.service.js";
 import { projectSynthesisService } from "../project-synthesis.service.js";
 import { contributionProtectionService } from "../contribution-protection.service.js";
+import { scientificIntegrityService, declareExternalAiSchema } from "../scientific-integrity.service.js";
+import { sourceState } from "../../workspaces/manuscript-source.js";
 
 vi.mock("../../../infrastructure/queue.js", () => {
   const queue=()=>({add:vi.fn().mockResolvedValue({}),getJob:vi.fn().mockResolvedValue(null)});
@@ -62,6 +64,133 @@ describe.skipIf(!enabled).sequential("research contributions from real PostgreSQ
     return {s,request,assignment,initialRevision};
   }
   const claim=(f:Fixture,refs: {kind:"MANUSCRIPT";id:string}[] = [])=>({title:"Offline method design",description:"Designed a comparison protocol outside the platform.",source:"MANUAL" as const,workDate:new Date().toISOString(),participants:[{userId:f.member,roles:["METHODOLOGY" as const]}],evidence:"Dated experiment protocol notes",evidenceRefs:refs,clientKey:randomUUID()});
+  it("separates teammate attribution, personal acknowledgement and independent verification", async () => {
+    const f = await fixture();
+    const input = { ...claim(f), participants: [{ userId: f.peer, roles: ["METHODOLOGY" as const], participation: { METHODOLOGY: "LEAD" as const } }], outcome: "A reproducible experiment protocol", externalEvidence: [{ kind: "REPOSITORY" as const, url: "https://example.org/research/protocol", label: "Versioned protocol", version: "commit-a1" }] };
+    const saved = await work.save(f.projectId, f.member, input);
+    expect(saved.createdBy.id).toBe(f.member); expect(saved.participants.map(p => p.userId)).toEqual([f.peer]);
+    expect(saved.recognitionSource).toBe("MEMBER_DECLARED");
+    expect((await contributionProtectionService.getMyContributionHistory(f.projectId, f.member)).workContributions.some(record => record.id === saved.id)).toBe(false);
+    expect((await contributionProtectionService.getMyContributionHistory(f.projectId, f.peer)).workContributions.some(record => record.id === saved.id)).toBe(true);
+    expect((await work.detail(f.projectId, f.peer, saved.id)).outcome).toBe(input.outcome);
+    await work.submit(f.projectId, f.member, saved.id, saved.version);
+    await expect(work.review(f.projectId, f.member, saved.id, { expectedVersion: 1, decision: "ACCEPT", note: "Creator cannot independently confirm" })).rejects.toMatchObject({ statusCode: 403 });
+    const noInfo = await work.review(f.projectId, f.owner, saved.id, { expectedVersion: 1, decision: "INSUFFICIENT_INFORMATION", note: "I was not involved" });
+    expect(noInfo.status).toBe("SUBMITTED"); expect(noInfo.confirmation).toBeNull();
+    await work.review(f.projectId, f.owner, saved.id, { expectedVersion: 1, decision: "ACCEPT", note: "I checked the protocol and contributor scope" });
+    const agreed = await work.review(f.projectId, f.peer, saved.id, { expectedVersion: 1, decision: "ACKNOWLEDGE", note: "I confirm my methodology role" });
+    expect(agreed.reconciliationStatus).toBe("CONFIRMED"); expect(agreed.confirmation).toMatchObject({ userId: f.owner, version: 1, scope: "REPORTED_WORK_ONLY" });
+    expect(agreed.participants[0]?.participation).toEqual({ METHODOLOGY: "LEAD" });
+    expect(agreed.reviews.find(r => r.userId === f.peer)?.scope).toBe("SELF");
+    expect(agreed.reviews.find(r => r.decision === "ACCEPT")?.scope).toBe("INDEPENDENT_PEER");
+    await expect(work.save(f.projectId, f.owner, { ...input, expectedVersion: 1, correctionReason: "Owner cannot overwrite another declaration" }, saved.id)).rejects.toMatchObject({ statusCode: 403 });
+    const same = await work.save(f.projectId, f.member, { ...input, expectedVersion: 1, correctionReason: "No meaningful data changed" }, saved.id);
+    expect(same.version).toBe(1); expect(same.status).toBe("ACCEPTED");
+    const corrected = await work.save(f.projectId, f.member, { ...input, outcome: "Updated protocol with a control group", expectedVersion: 1, correctionReason: "The protocol scope has changed" }, saved.id);
+    expect(corrected.version).toBe(2); expect(corrected.confirmation).toBeNull();
+    expect(corrected.history.some(h => h.version === 1 && h.action === "ACCEPT")).toBe(true);
+    expect((await work.list(f.projectId, f.owner, contributionsPageSchema.parse({ memberId: f.peer, role: "METHODOLOGY" }))).items.map(r => r.id)).toContain(saved.id);
+    expect(await db.projectTask.count({ where: { projectId: f.projectId } })).toBe(0);
+  });
+  it("binds acknowledgement scope to the participants of its own version", async () => {
+    const f = await fixture(), input = claim(f);
+    const saved = await work.save(f.projectId, f.member, input);
+    await work.submit(f.projectId, f.member, saved.id, 1);
+    await work.review(f.projectId, f.member, saved.id, { expectedVersion: 1, decision: "ACKNOWLEDGE", note: "My methodology work" });
+    await work.review(f.projectId, f.peer, saved.id, { expectedVersion: 1, decision: "NEEDS_CHANGES", note: "Please specify the comparison protocol" });
+    await work.save(f.projectId, f.member, { ...input, outcome: "Comparison protocol", expectedVersion: 1, correctionReason: "Clarify the protocol" }, saved.id);
+    await work.submit(f.projectId, f.member, saved.id, 2);
+    const acknowledged = await work.review(f.projectId, f.peer, saved.id, { expectedVersion: 2, decision: "ACKNOWLEDGE", note: "My clarification was addressed" });
+    expect(acknowledged.reviews.find(r => r.userId === f.peer && r.version === 2)?.scope).toBe("AFFECTED_CONTRIBUTOR");
+    await work.review(f.projectId, f.owner, saved.id, { expectedVersion: 2, decision: "ACCEPT", note: "Checked the clarified protocol" });
+    const corrected = await work.save(f.projectId, f.member, { ...input, participants: [{ userId: f.peer, roles: ["METHODOLOGY"] }], expectedVersion: 2, correctionReason: "Correct the named contributor" }, saved.id);
+    expect(corrected.version).toBe(3);
+    expect(corrected.reviews.find(r => r.userId === f.member && r.version === 1)?.scope).toBe("SELF");
+    expect(corrected.reviews.find(r => r.userId === f.peer && r.version === 2)?.scope).toBe("AFFECTED_CONTRIBUTOR");
+    expect(corrected.confirmation).toBeNull();
+  });
+  it("keeps a solo declaration available as a draft without exporting agreed roles", async () => {
+    const f = await fixture();
+    const solo = await createProjectFixture({ data: { ownerId: f.owner, title: "Solo contribution", status: "ACTIVE" } });
+    const d = await draft({ ...f, projectId: solo.id });
+    const saved = await work.save(solo.id, f.owner, { ...claim(f, [{ kind: "MANUSCRIPT", id: d.d.id }]), participants: [{ userId: f.owner, roles: ["METHODOLOGY"] }] });
+    expect((await work.submit(solo.id, f.owner, saved.id, 1)).status).toBe("SELF_RECORDED");
+    const result = await statement(solo.id, f.owner, `DRAFT:${d.d.id}`);
+    expect(result.ready).toBe(false);
+    expect(result.statement).toBeNull();
+    expect(result.pendingCount).toBe(1);
+    expect(result.draftStatement).toContain("SELF_RECORDED");
+    expect(result.recordVersions).toContainEqual({ id: saved.id, version: 1, status: "SELF_RECORDED" });
+    expect(result.determinesAuthorship).toBe(false);
+  });
+  it("preserves unverified declarations and validates milestone and external evidence scope", async () => {
+    const f = await fixture(), other = await fixture();
+    const saved = await work.save(f.projectId, f.member, { ...claim(f), evidence: "", externalEvidence: [] });
+    expect(saved.status).toBe("DRAFT"); await work.submit(f.projectId, f.member, saved.id, 1);
+    await work.review(f.projectId, f.member, saved.id, { expectedVersion: 1, decision: "ACKNOWLEDGE", note: "My own reported work" });
+    await expect(work.review(f.projectId, f.peer, saved.id, { expectedVersion: 1, decision: "ACCEPT", note: "Missing evidence" })).rejects.toMatchObject({ statusCode: 409 });
+    expect((await work.detail(f.projectId, f.member, saved.id)).confirmation).toBeNull();
+    const milestone = await db.projectMilestone.create({ data: { projectId: other.projectId, title: "Other project's phase", createdById: other.owner } });
+    await expect(work.save(f.projectId, f.member, { ...claim(f), milestoneId: milestone.id })).rejects.toMatchObject({ statusCode: 400 });
+    expect(createWorkContributionSchema.safeParse({ ...claim(f), externalEvidence: [{ kind: "LINK", label: "Unsafe link", url: "javascript:alert(1)" }] }).success).toBe(false);
+    expect(createWorkContributionSchema.safeParse({ ...claim(f), participants: [{ userId: f.member, roles: [], participation: { METHODOLOGY: "LEAD" } }] }).success).toBe(false);
+    expect(contributionReviewSchema.safeParse({ expectedVersion: 1, decision: "INSUFFICIENT_INFORMATION" }).success).toBe(true);
+    expect(contributionReviewSchema.safeParse({ expectedVersion: 1, decision: "DISPUTE", note: "" }).success).toBe(false);
+  });
+  it("groups source edits before pagination without multiplying recognition", async () => {
+    const f = await fixture(), resource = randomUUID();
+    await db.projectActivity.createMany({ data: Array.from({ length: 22 }, (_,i) => ({ projectId: f.projectId, actorId: f.member, type: "GAP_REVISED", entityKind: "GAP", entityId: resource, artifactVersion: i+1, idempotencyKey: randomUUID() })) });
+    const grouped = await read(f.projectId, f.owner, query.parse({ grouped: "true", artifactKind: "GAP", artifactId: resource, pageSize: 1 }));
+    expect(grouped.total).toBe(1); expect(grouped.hasNext).toBe(false); expect(grouped.items[0]?.activityCount).toBe(22);
+    expect(grouped.profiles.find(p => p.id === f.member)?.recordCount).toBe(1);
+    expect(grouped.items[0]?.declaredRoles).toEqual([]); expect(grouped.items[0]?.status).toBe("RECORDED");
+    expect(await db.projectContributionProposal.count({ where: { projectId: f.projectId } })).toBe(0);
+    expect((await read(f.projectId, f.owner, query.parse({ grouped: "true", artifactKind: "GAP", artifactId: randomUUID() }))).total).toBe(0);
+  });
+  it.skipIf(process.env.INTEGRITY_CONTRIBUTIONS_BROWSER !== "1")("declares, acknowledges and verifies real contributions through three browser sessions", async () => {
+    const f = await fixture();
+    for (const [id, fullName] of [[f.owner, "Trưởng nhóm"], [f.member, "An Nguyễn"], [f.peer, "Bình Trần"]]) await db.user.update({ where: { id }, data: { fullName } });
+    const app = express(); app.use(express.json()); app.use("/projects", projectRouter); app.use(errorHandler);
+    const server = createServer(app); server.listen(0, "127.0.0.1"); await once(server, "listening");
+    const session = async (id: string) => { const sessionId = randomUUID(); await db.refreshToken.create({ data: { userId: id, familyId: sessionId, tokenHash: hashOpaqueToken(randomUUID()), expiresAt: new Date(Date.now()+3600000) } }); return { user: { id, systemRole: "USER", fullName: (await db.user.findUniqueOrThrow({ where: { id } })).fullName }, tokens: { accessToken: tokenService.signAccessToken({ sub: id, systemRole: "USER", sessionId }).token, refreshToken: "isolated-contribution-test" } }; };
+    const { contributionRecognitionBrowser } = await import("./contribution-recognition.browser.js");
+    try { await contributionRecognitionBrowser({ base: `http://127.0.0.1:${(server.address() as { port: number }).port}`, projectId: f.projectId, owner: await session(f.owner), member: await session(f.member), peer: await session(f.peer) }); }
+    finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
+  }, 180000);
+  it("does not certify an unmatched DOI, stale human checks or a completed AI run", async () => {
+    const f = await fixture(), d = await draft(f), doi = `10.5555/test-${randomUUID()}`;
+    await db.manuscriptFile.create({ data: { workspaceId: d.d.id, createdById: f.owner, kind: "TEXT", path: "main.tex", crdtState: sourceState(String.raw`Research evidence \cite{testref,missingref}.`) } });
+    const bib = await db.manuscriptFile.create({ data: { workspaceId: d.d.id, createdById: f.owner, kind: "TEXT", path: "references.bib", crdtState: sourceState(`@article{testref,title={A reproducible method},year={2026},doi={${doi}}}`) } });
+    const before = await scientificIntegrityService.getOverview(f.projectId, f.owner);
+    expect(before.citations.items.find(i => i.key === "testref")).toMatchObject({ doiStatus: "UNCHECKED", issueKind: "UNVERIFIED" });
+    await expect(scientificIntegrityService.verifyCitation(f.projectId, f.owner, { citationKey: "not-cited", action: "VERIFY" })).rejects.toMatchObject({ statusCode: 404 });
+    await scientificIntegrityService.verifyCitation(f.projectId, f.owner, { citationKey: "testref", action: "VERIFY", note: "Manually inspected the bibliography" });
+    await scientificIntegrityService.verifyCitation(f.projectId, f.owner, { citationKey: "missingref", action: "VERIFY", note: "A manual check cannot repair missing bibliography content" });
+    const manual = await scientificIntegrityService.getOverview(f.projectId, f.owner);
+    expect(manual.citations.items.find(i => i.key === "testref")?.verifiedById).toBe(f.owner);
+    expect(manual.citations.items.find(i => i.key === "missingref")?.issueKind).toBe("MISSING_FROM_BIB");
+    await db.manuscriptFile.update({ where: { id: bib.id }, data: { crdtState: sourceState(`@article{testref,title={Changed bibliographic metadata},year={2025},doi={${doi}}}`), sequence: { increment: 1 } } });
+    expect((await scientificIntegrityService.getOverview(f.projectId, f.owner)).citations.items.find(i => i.key === "testref")?.verifiedById).toBeNull();
+    const paper = await db.paper.create({ data: { title: "A reproducible method", doi, publicationYear: 2026, primaryProvider: "user" } });
+    await db.projectPaper.create({ data: { projectId: f.projectId, paperId: paper.id, addedById: f.owner } });
+    expect((await scientificIntegrityService.getOverview(f.projectId, f.owner)).citations.items.find(i => i.key === "testref")?.issueKind).toBe("METADATA_MISMATCH");
+    await db.aiRun.create({ data: { projectId: f.projectId, ownerId: f.member, jobType: "gap-analysis", status: "completed", prompt: "PRIVATE RESEARCH PROMPT" } });
+    const ai = await scientificIntegrityService.getOverview(f.projectId, f.owner);
+    expect(ai.aiTransparency.items.find(i => i.source === "PLATFORM")?.humanOversightVerified).toBe(false);
+    expect(JSON.stringify(ai)).not.toContain("PRIVATE RESEARCH PROMPT");
+  });
+  it("keeps AI disclosures self-declared and restricts updates and withdrawal to their declarant", async () => {
+    const f = await fixture();
+    const input = declareExternalAiSchema.parse({ toolName: "Research assistant", purpose: "SUMMARY", purposeDescription: "A draft summary for later human review" });
+    expect(input.humanOversightVerified).toBe(false);
+    const declaration = await scientificIntegrityService.declareExternalAi(f.projectId, f.member, input);
+    const id = declaration.entityId!;
+    await expect(scientificIntegrityService.declareExternalAi(f.projectId, f.owner, { ...input, id })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(scientificIntegrityService.deleteExternalAi(f.projectId, f.owner, id)).rejects.toMatchObject({ statusCode: 403 });
+    await scientificIntegrityService.deleteExternalAi(f.projectId, f.member, id);
+    expect(await db.projectActivity.count({ where: { projectId: f.projectId, entityId: id } })).toBe(2);
+    expect((await scientificIntegrityService.getOverview(f.projectId, f.owner)).aiTransparency.items.some(i => i.id === id)).toBe(false);
+  });
   it("accepting mentorship or opening a project creates no research contribution",async()=>{
     const f=await fixture(); const data=await read(f.projectId,f.owner,query.parse({})); expect(data.items).toEqual([]); expect(data.profiles.every(p=>p.recordCount===0)).toBe(true); expect(data.profiles.find(p=>p.id===f.mentor)?.suggestedRoles).toEqual([]);
   });

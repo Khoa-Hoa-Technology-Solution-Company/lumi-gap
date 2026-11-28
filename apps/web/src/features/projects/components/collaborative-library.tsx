@@ -1,4 +1,5 @@
-import { MentorPaperSharing } from "./mentor-paper-sharing";
+import { MentorPaperSharing, PaperMentorComments } from "./mentor-paper-sharing";
+import { ResearchAttribution } from "./research-attribution";
 import { ScreeningStatus } from "./screening-common";
 import { useState, useEffect, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -578,6 +579,8 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
         </nav>
         <ScreeningError error={navigationError} />
         <ScreeningPaperDetail settings={board?.settings} collaborative={board?.settings.reviewMode === "COLLABORATIVE"} key={`detail-${focused.paperId}`} projectId={projectId} paper={focused} people={board?.people ?? []} readOnly={readOnly} />
+        <PaperMentorComments key={`mentor-comments-${focused.paperId}`} projectId={projectId} paperId={focused.paperId} />
+        <ResearchAttribution projectId={projectId} kind="PAPER" resourceId={focused.paperId} />
         <footer className="library-dialog-footer">
           <div className="screening-actions">
             {!readOnly && <MentorPaperSharing projectId={projectId} paperId={focused.paperId} />}

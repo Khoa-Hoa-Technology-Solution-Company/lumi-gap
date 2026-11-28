@@ -59,3 +59,4 @@ export * from "./mentorship-application.js";
 export * from "./manuscript-integrity.js";
 export * from "./research-classification.js";
 export * from "./credit-taxonomy.js";
+export * from "./mentor-recommendation.js";

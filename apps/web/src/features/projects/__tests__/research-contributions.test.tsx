@@ -28,8 +28,8 @@ async function mount(element:React.ReactNode,url="/projects/p"){await act(async(
 async function settle(){for(let i=0;i<3;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,25));});}
 it("uses three evidence-based sections with no percentage allocation as the default",async()=>{
   await mount(<ProjectContributionsWorkspace projectId="p" currentUserId="me" isOwner readOnly={false}/>);
-  const tabs=host.querySelector(".contribution-tabs")!;expect(tabs.querySelectorAll("button")).toHaveLength(3);expect(tabs.querySelector('[aria-current="page"]')?.textContent).toBe("Research activities");expect(tabs.textContent).not.toContain("allocation");
-  expect(host.textContent).toContain("Previous allocation history");expect(host.textContent).not.toContain("100%");
+  const tabs=host.querySelector(".contribution-tabs")!;expect(tabs.querySelectorAll("button")).toHaveLength(3);expect(tabs.querySelector('[aria-current="page"]')?.textContent).toBe("Contributions");expect(tabs.textContent).not.toContain("allocation");
+  expect(tabs.textContent).toContain("Research integrity");expect(tabs.textContent).toContain("Contribution recognition");expect(host.textContent).not.toContain("100%");
 });
 it("separates mentors and members, identifies source provenance, and labels suggestions as unconfirmed",async()=>{
   await mount(<ResearchContributionsPanel projectId="p"/>);

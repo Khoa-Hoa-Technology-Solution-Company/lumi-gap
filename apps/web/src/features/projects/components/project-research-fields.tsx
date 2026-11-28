@@ -4,9 +4,12 @@ import { authApi } from "@/features/auth/api/auth.api";
 import { ResearchAreaSelect } from "./research-area-select";
 import { useI18n } from "@/i18n";
 
-export const RESEARCH_APPROACHES = {
-  UNDECIDED: "Not decided yet", EXPLORATORY: "Exploratory research", LITERATURE_REVIEW: "Literature review", EMPIRICAL: "Empirical research",
-} as const;
+export const RESEARCH_APPROACHES: Record<ResearchApproach, string> = {
+  EXPLORATORY: "Explore topic and define research direction",
+  LITERATURE_REVIEW: "Literature review and synthesis",
+  EMPIRICAL: "Empirical research",
+  UNDECIDED: "Not decided yet",
+};
 
 export function ProjectResearchFields({ areas, approach, onAreasChange, onApproachChange }: {
   areas: string[]; approach: ResearchApproach; onAreasChange: (areas: string[]) => void; onApproachChange: (approach: ResearchApproach) => void;

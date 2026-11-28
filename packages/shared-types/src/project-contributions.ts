@@ -2,6 +2,9 @@ import type { WorkspaceLink, WorkspacePage, WorkspacePerson } from "./project-wo
 
 export const creditRoles = ["CONCEPTUALIZATION", "DATA_CURATION", "FORMAL_ANALYSIS", "FUNDING_ACQUISITION", "INVESTIGATION", "METHODOLOGY", "PROJECT_ADMINISTRATION", "RESOURCES", "SOFTWARE", "SUPERVISION", "VALIDATION", "VISUALIZATION", "WRITING_ORIGINAL_DRAFT", "WRITING_REVIEW_EDITING"] as const;
 export type CreditRole = typeof creditRoles[number];
+export type ContributionParticipation = "LEAD" | "EQUAL" | "SUPPORTING" | "UNSPECIFIED";
+export type ContributionReconciliationStatus = "NOT_REVIEWED" | "PENDING" | "CONFIRMED" | "NEEDS_CLARIFICATION" | "DISPUTED" | "SUPERSEDED";
+export interface ContributionExternalEvidence { kind: "LINK" | "REPOSITORY" | "COMMIT" | "DATASET" | "EXPERIMENT_REPORT"; url: string; label: string; version?: string }
 
 export const contributionCategories = [
   "CONCEPTUALIZATION_METHODOLOGY",
@@ -41,25 +44,34 @@ export interface ResolvedContributionArtifactRef {
 
 export type ContributionStatus = "DRAFT" | "SUBMITTED" | "ACCEPTED" | "NEEDS_CHANGES" | "DISPUTED" | "SELF_RECORDED";
 export interface ContributionInput {
+  outcome?: string; milestoneId?: string | null; externalEvidence?: ContributionExternalEvidence[];
   title: string; description: string; category?: ContributionCategoryKey; source: "MANUAL" | "WORKSPACE"; workDate: string;
-  participants: { userId: string; roles: CreditRole[] }[]; evidence: string; evidenceRefs: ContributionArtifactLink[];
+  participants: { userId: string; roles: CreditRole[]; participation?: Partial<Record<CreditRole, ContributionParticipation>> }[]; evidence: string; evidenceRefs: ContributionArtifactLink[];
 }
 export interface WorkContribution extends Omit<ContributionInput, "participants" | "category"> {
+  recognitionSource?: "SELF_DECLARED" | "MEMBER_DECLARED" | "IMPORTED";
+  reconciliationStatus?: ContributionReconciliationStatus;
+  confirmation?: { userId: string; name: string; version: number; confirmedAt: string; scope: "REPORTED_WORK_ONLY" } | null;
   id: string; projectId: string; category: ContributionCategoryKey; version: number; status: string; createdBy: WorkspacePerson;
-  participants: { userId: string; name: string; roles: CreditRole[] }[];
-  reviews: { userId: string; name: string; version: number; decision: string; note: string; createdAt: string }[];
+  participants: { userId: string; name: string; roles: CreditRole[]; participation?: Partial<Record<CreditRole, ContributionParticipation>> }[];
+  reviews: { userId: string; name: string; version: number; decision: string; note: string; createdAt: string; scope?: "SELF" | "INDEPENDENT_PEER" | "AFFECTED_CONTRIBUTOR" | "UNDETERMINED" }[];
   history: { id: string; action: string; version: number; actorId: string; note: string | null; snapshot: unknown; createdAt: string }[];
   evidenceRefDetails?: ResolvedContributionArtifactRef[];
   createdAt: string; updatedAt: string;
   readOnly: boolean;
   viewerId: string;
-  reviewActions: ("ACKNOWLEDGE" | "ACCEPT" | "NEEDS_CHANGES" | "DISPUTE")[];
+  reviewActions: ("ACKNOWLEDGE" | "ACCEPT" | "NEEDS_CHANGES" | "DISPUTE" | "INSUFFICIENT_INFORMATION")[];
   canManage: boolean;
 }
 export type ContributionPage = WorkspacePage<WorkContribution> & { currentActorId: string };
 export interface ContributionOverview {
   people: Array<{ userId: string; name: string; declaredRoles: CreditRole[]; independentlyAcknowledgedRoles: CreditRole[] }>;
   distinctArtifactCount: number;
+}
+export interface ContributionSummary {
+  totalRecords: number;
+  independentlyAcknowledged: number;
+  pendingForViewer: number;
 }
 export type ActivityCategory = "PLAN" | "LITERATURE" | "SCREENING" | "EVIDENCE" | "GAP" | "TASK" | "DECISION" | "MANUSCRIPT";
 export interface ContributionActivity {
@@ -72,6 +84,7 @@ export interface ActivityResult {
 }
 export type ContributionProvenance = "SYSTEM_RECORDED" | "USER_DECLARED" | "IMPORTED" | "INFERRED";
 export interface ResearchContributionRecord {
+  activityCount?: number;
   id: string; projectId: string; actor: WorkspacePerson; participantKind: "MEMBER" | "MENTOR";
   type: string; category: ActivityCategory; description: string; createdAt: string;
   provenance: ContributionProvenance; sourceType: string; sourceId: string;
@@ -88,6 +101,8 @@ export interface ResearchContributionResult extends WorkspacePage<ResearchContri
   currentActorId: string; mentorScoped: boolean;
 }
 export interface ContributionStatement {
+  generatedAt?: string; draftStatement?: string; consensusScope?: "DECLARED_CONTRIBUTIONS_ONLY";
+  recordVersions?: { id: string; version: number | null; status: string }[];
   scopeKey: string; statement: string | null; ready: boolean; pendingCount: number;
   contributors: { userId: string; name: string; roles: CreditRole[] }[];
   /** CRediT agreement never determines author eligibility or ordering. */
@@ -180,4 +195,135 @@ export interface AllocationDraftInput {
   rationale: string;
   clientKey: string;
   evaluationSnapshotId?: string | null;
+}
+
+export interface ManuscriptContributionDraftInput {
+  title?: string;
+  description?: string;
+  participants?: Array<{ userId: string; roles: CreditRole[] }>;
+  confirmDuplicate?: boolean;
+}
+
+export interface ManuscriptContributionActivitySummary {
+  fileEditsCount: number;
+  editedFilePaths: string[];
+  suggestionsProposed: number;
+  suggestionsAcceptedAsAuthor: number;
+  suggestionsResolvedAsReviewer: number;
+  commentsCount: number;
+  snapshotsCreated: number;
+  formalReviewsCount: number;
+  mentorFeedbackCount: number;
+  lastActivityAt: string | null;
+}
+
+export type ManuscriptContributorAcknowledgementState =
+  | "NONE"
+  | "DRAFT_ONLY"
+  | "PENDING"
+  | "ACKNOWLEDGED"
+  | "SELF_RECORDED"
+  | "DISPUTED"
+  | "NEEDS_CHANGES";
+
+export interface ManuscriptContributorOverviewItem {
+  userId: string;
+  name: string;
+  participantKind: "MEMBER" | "MENTOR";
+  membershipStatus: "ACTIVE" | "FORMER" | "MENTOR";
+  declaredRoles: CreditRole[];
+  acknowledgedRoles: CreditRole[];
+  declarationCount: number;
+  pendingAcknowledgementCount: number;
+  disputedCount: number;
+  acknowledgementState: ManuscriptContributorAcknowledgementState;
+  activity: ManuscriptContributionActivitySummary;
+  retainedWriting: {
+    retainedWordUnits: number;
+    totalWords: number;
+    coverageBasisPoints: number;
+    overallBasisPoints: number;
+    snapshotVersion: number;
+  } | null;
+}
+
+export interface ManuscriptFileContributionItem {
+  fileId: string;
+  path: string;
+  kind: "TEXT" | "ASSET" | "FOLDER";
+  isMain: boolean;
+  totalWords: number | null;
+  unknownWordUnits: number | null;
+  editors: Array<{
+    userId: string;
+    name: string;
+    updateCount: number;
+    lastEditedAt: string | null;
+  }>;
+  suggestions: {
+    total: number;
+    pending: number;
+    accepted: number;
+    rejected: number;
+    proposers: WorkspacePerson[];
+    resolvers: WorkspacePerson[];
+  };
+  comments: {
+    total: number;
+    open: number;
+    resolved: number;
+    authors: WorkspacePerson[];
+  };
+  aiAcceptedEdits: number;
+  granularity: "FILE_LEVEL";
+}
+
+export interface ManuscriptAiReceiptSummary {
+  totalRuns: number;
+  acceptedEditsCount: number;
+  acceptedByFiles: Array<{ fileId: string; path: string; count: number }>;
+  externalDeclarationsCount: number;
+  notice: string;
+}
+
+export interface ManuscriptContributionsSummary {
+  projectId: string;
+  manuscriptId: string;
+  manuscriptTitle: string;
+  currentVersion: number;
+  viewerId: string;
+  canWrite: boolean;
+  latestSnapshot: {
+    id: string;
+    label: string;
+    sourceVersion: number;
+    createdAt: string;
+    isStale: boolean;
+  } | null;
+  latestWritingReport: import("./manuscript-writing.js").ManuscriptWritingReport | null;
+  existingWritingDraftId: string | null;
+  attributionCheck: {
+    snapshotId: string;
+    checkId: string | null;
+    status: string;
+    readyForInternalSubmission: boolean;
+    viewerCanDecide: boolean;
+    pendingDecisionsCount: number;
+    disputedCount: number;
+  } | null;
+  statement: {
+    scopeKey: string;
+    ready: boolean;
+    pendingCount: number;
+    contributorCount: number;
+    statement: string | null;
+  } | null;
+  contributors: ManuscriptContributorOverviewItem[];
+  declarations: WorkContribution[];
+  viewerActionableDeclarations: WorkContribution[];
+  viewerOwnDeclarations: WorkContribution[];
+  disputedOrClarificationDeclarations: WorkContribution[];
+  files: ManuscriptFileContributionItem[];
+  aiReceipts: ManuscriptAiReceiptSummary;
+  granularityNotice: string;
 }

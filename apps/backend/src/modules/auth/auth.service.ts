@@ -15,7 +15,7 @@ import { auditService } from "../audit/audit.service.js";
 import { capabilityService } from "../authorization/capability.service.js";
 import { admissionPolicyService } from "../identity/admission-policy.service.js";
 import { trustedInstitutionForEmail } from "../identity/institution-domain.service.js";
-import { normalizeEmail } from "../identity/identity-foundation.rules.js";
+import { isEligibleVerifiedLecturer, normalizeEmail } from "../identity/identity-foundation.rules.js";
 import { participantScopeForUser } from "../identity/participant-scope.service.js";
 import { applyDisplayNameChangeLimit } from "../academic-profiles/display-name-policy.service.js";
 import { affiliationService } from "../verification/affiliation.service.js";
@@ -187,6 +187,16 @@ async function toUserDto(user: PrismaUser): Promise<User> {
     participantScopeForUser(user.id),
   ]);
   const primaryPosition = profile?.primaryPosition as PrimaryPosition | null ?? undefined;
+  const positionVerificationStatus = profile?.positionStatus as User["positionVerificationStatus"];
+  const lecturerWorkspaceEligible =
+    isEligibleVerifiedLecturer({
+      accountActive: user.isActive && user.accountStatus === "ACTIVE",
+      emailVerified: Boolean(user.emailVerifiedAt),
+      academicRole: profile?.academicRole as AcademicRole | undefined,
+      academicRoleVerificationStatus: profile?.roleVerificationStatus as User["academicRoleVerificationStatus"],
+      positionVerified: profile?.positionStatus === "VERIFIED",
+    })
+    && (capabilities.includes("MENTOR_PROJECT") || capabilities.includes("STRUCTURED_REVIEW"));
   return {
     id: publicDatabaseId(user),
     email: user.email,
@@ -197,6 +207,8 @@ async function toUserDto(user: PrismaUser): Promise<User> {
     academicProfileType: user.academicProfileType as User["academicProfileType"] ?? undefined,
     academicRole: profile?.academicRole as AcademicRole | null ?? undefined,
     academicRoleVerificationStatus: profile?.roleVerificationStatus as User["academicRoleVerificationStatus"],
+    positionVerificationStatus,
+    lecturerWorkspaceEligible,
     primaryPosition,
     participantScope,
     admissionBasis: user.admissionBasis as User["admissionBasis"],
@@ -439,6 +451,9 @@ export const authService = {
       await tx.userEmail.update({ where: { id: linked.id }, data: { verifiedAt: now } });
       verifiedEmail = linked.normalizedEmail;
       if (linked.isPrimary) await tx.user.update({ where: { id: row.userId }, data: { emailVerifiedAt: now } });
+      // NOTE: `identityStatus: "VERIFIED"` here records verified account ownership (email/OAuth control)
+      // for legacy schema compatibility only. It NEVER establishes real-world identity,
+      // institutional affiliation, or Lecturer employment verification.
       await tx.academicProfile.upsert({
         where: { userId: row.userId },
         create: { userId: row.userId, emailStatus: linked.isPrimary ? "VERIFIED" : "NOT_SUBMITTED", identityStatus: "VERIFIED" },

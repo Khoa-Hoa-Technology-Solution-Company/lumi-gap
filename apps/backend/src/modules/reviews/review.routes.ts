@@ -57,12 +57,14 @@ const draftReviewSchema = z.object({
   overallComment: z.string().trim().max(20000).optional(),
   overallAssessment: z.enum(["STRONG", "MINOR_REVISION", "MAJOR_REVISION", "NOT_READY"]).optional(),
   commentOnly: z.boolean().optional(),
+  feedbackOnly: z.boolean().optional(),
+  mentorAction: z.enum(["CONTINUE", "SELF_REVISE", "RESUBMIT"]).optional(),
   responses: z.array(reviewResponseSchema).max(60).refine(
     (items) => new Set(items.map((item) => item.criterionKey)).size === items.length,
     "Each review criterion may only appear once",
   ),
   requiredRevisions: z.array(z.object({
-    priority: z.enum(["MINOR", "MAJOR"]),
+    priority: z.enum(["MAJOR", "MINOR", "SUGGESTION"]),
     description: z.string().trim().min(3).max(5000),
     criterionKey: z.string().max(80).optional(), locator: z.string().trim().max(500).optional(), quotation: z.string().trim().min(1).max(5000).optional(),
   }).strict()).max(30).optional(),
@@ -79,19 +81,36 @@ const templateCriterionSchema = z.object({
   weight: z.number().positive().max(100).optional(), levels: z.array(criterionLevelSchema).min(2).max(10).optional(),
 }).strict();
 const templateVersionSchema = z.object({
+  name: z.string().trim().min(3).max(200).optional(),
+  artifactType: z.string().trim().max(40).nullable().optional(),
   reviewMode: z.enum(["GUIDED_FEEDBACK", "STRUCTURED_REVIEW", "RUBRIC_ASSESSMENT"]),
   description: z.string().trim().max(5000).optional(),
   guidelines: z.array(z.string().trim().min(2).max(1000)).max(30).default([]),
   criteria: z.array(templateCriterionSchema).min(1).max(60),
 }).strict().superRefine((value, context) => {
   if (value.reviewMode === "RUBRIC_ASSESSMENT") value.criteria.forEach((criterion, index) => {
-    if (!criterion.levels?.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ["criteria", index, "levels"], message: "Rubric criteria require performance levels" });
+    if (!criterion.levels?.length || criterion.levels.length < 2) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["criteria", index, "levels"], message: "Rubric criteria require at least 2 performance levels" });
+      return;
+    }
+    const scores = criterion.levels.map(level => level.score);
+    if (new Set(scores).size !== scores.length) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["criteria", index, "levels"], message: "Performance level scores must be unique within a criterion" });
+    }
   });
 });
 const createTemplateSchema = templateVersionSchema.and(z.object({
   name: z.string().trim().min(3).max(200), artifactType: z.string().trim().max(40).optional(),
   source: z.enum(["SYSTEM", "PERSONAL", "PROJECT"]), projectId: objectIdSchema.optional(), publish: z.boolean().optional(),
 }).strict());
+const templateListQuerySchema = z.object({
+  includeArchived: z.enum(["true", "false"]).optional(),
+}).strict();
+const changeReviewTemplateSchema = z.object({
+  templateVersionId: objectIdSchema,
+  confirmDraftReset: z.boolean().optional(),
+  reason: z.string().trim().max(1000).optional(),
+}).strict();
 const templateParamsSchema = z.object({ templateId: objectIdSchema }).strict();
 const MAX_REVIEW_DUE_DAYS = 180;
 // A due date is what lets an abandoned accepted review be cancelled, so it must be a real future date.
@@ -157,6 +176,9 @@ humanReviewRouter.get("/rubric/default", (_req, res) => {
 humanReviewRouter.get("/:assignmentId", validate(assignmentParamsSchema, "params"), async (req, res) => {
   res.json({ success: true, data: await reviewService.getReview(String(req.params.assignmentId), req.user!.sub) });
 });
+humanReviewRouter.get("/:assignmentId/previous-feedback", validate(assignmentParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await reviewService.getPreviousFeedback(String(req.params.assignmentId), req.user!.sub) });
+});
 humanReviewRouter.put("/:assignmentId", validate(assignmentParamsSchema, "params"), validate(draftReviewSchema), async (req, res) => {
   res.json({ success: true, data: await reviewService.saveReview(String(req.params.assignmentId), req.user!.sub, req.body, false) });
 });
@@ -166,15 +188,16 @@ humanReviewRouter.post("/:assignmentId/submit", validate(assignmentParamsSchema,
 
 export const reviewTemplateRouter: Router = Router();
 reviewTemplateRouter.use(requireAuth);
-reviewTemplateRouter.get("/", async (req, res) => {
-  res.json({ success: true, data: await reviewTemplateService.list(req.user!.sub) });
+reviewTemplateRouter.get("/", validate(templateListQuerySchema, "query"), async (req, res) => {
+  const includeArchived = req.query.includeArchived === "true";
+  res.json({ success: true, data: await reviewTemplateService.list(req.user!.sub, { includeArchived, systemRole: req.user!.systemRole }) });
 });
 reviewTemplateRouter.post("/", validate(createTemplateSchema), async (req, res) => {
   const data = await reviewTemplateService.create(req.body, req.user!.sub, req.user!.systemRole);
   res.status(201).json({ success: true, data });
 });
 reviewTemplateRouter.get("/:templateId", validate(templateParamsSchema, "params"), async (req, res) => {
-  res.json({ success: true, data: await reviewTemplateService.detail(String(req.params.templateId), req.user!.sub) });
+  res.json({ success: true, data: await reviewTemplateService.detail(String(req.params.templateId), req.user!.sub, req.user!.systemRole) });
 });
 reviewTemplateRouter.put("/:templateId/versions", validate(templateParamsSchema, "params"), validate(templateVersionSchema), async (req, res) => {
   res.json({ success: true, data: await reviewTemplateService.saveVersion(String(req.params.templateId), req.body, req.user!.sub, req.user!.systemRole) });
@@ -217,6 +240,12 @@ reviewRequestRouter.post("/", requestLimiter, validate(createRequestSchema), asy
 });
 reviewRequestRouter.get("/:requestId", validate(requestParamsSchema, "params"), async (req, res) => {
   res.json({ success: true, data: await reviewRequestService.detail(String(req.params.requestId), req.user!.sub) });
+});
+reviewRequestRouter.get("/:requestId/eligible-templates", validate(requestParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await reviewRequestService.eligibleTemplates(String(req.params.requestId), req.user!.sub) });
+});
+reviewRequestRouter.patch("/:requestId/template", validate(requestParamsSchema, "params"), validate(changeReviewTemplateSchema), async (req, res) => {
+  res.json({ success: true, data: await reviewRequestService.changeTemplate(String(req.params.requestId), req.body, req.user!.sub) });
 });
 reviewRequestRouter.post("/:requestId/accept", validate(requestParamsSchema, "params"), async (req, res) => {
   await reviewRequestService.accept(String(req.params.requestId), req.user!.sub); res.status(204).send();

@@ -15,9 +15,10 @@ import { ScreeningError, ScreeningPager, useScreeningCommand } from "./screening
 import { ScreeningQueueCard } from "./screening-queue-card";
 import "../screening-queue.css";
 
-export function ScreeningQueueView({ projectId, readOnly, onOpenPaper, onAddPaper }: {
+export function ScreeningQueueView({ projectId, readOnly, onOpenPaper, onSequenceChange, onAddPaper }: {
   projectId: string; readOnly: boolean;
   onOpenPaper: (paperId: string, context?: { roundId: string; section: string }) => void;
+  onSequenceChange?: (sequence: Array<{ paperId: string; roundId?: string; section?: string }>) => void;
   onAddPaper?: () => void;
 }) {
   const { t } = useI18n();
@@ -59,7 +60,7 @@ export function ScreeningQueueView({ projectId, readOnly, onOpenPaper, onAddPape
           const status = isAxiosError(failure) ? failure.response?.status : undefined;
           const message = t(status === 409 ? "That slot was just taken. The queue has been refreshed; please choose another paper."
             : status === 403 || status === 404 ? "You cannot claim this paper. Your access or eligibility may have changed."
-            : "Could not claim a review. Please try again.");
+              : "Could not claim a review. Please try again.");
           setNotice(message); toast.error(message);
         }
       }
@@ -67,8 +68,8 @@ export function ScreeningQueueView({ projectId, readOnly, onOpenPaper, onAddPape
   };
   const clearFilters = () => { setSearch(""); setQ(""); setSlotFilter("ALL"); setPage(1); };
   const filters = [{ value: "ALL", label: "All available", count: board?.queueSummary?.available },
-    { value: "UNCLAIMED", label: "No reviewers (0/2)", count: board?.queueSummary?.unclaimed },
-    { value: "LAST_SLOT", label: "Last slot (1/2)", count: board?.queueSummary?.lastSlot }] as const;
+  { value: "UNCLAIMED", label: "No reviewers (0/2)", count: board?.queueSummary?.unclaimed },
+  { value: "LAST_SLOT", label: "Last slot (1/2)", count: board?.queueSummary?.lastSlot }] as const;
   return <section className="screening-queue-container" aria-label={t("Review queue")}>
     <header className="screening-queue-header">
       <div><div className="queue-heading"><h2>{t("Review queue")}</h2>{board && <span className="queue-count-badge">{t("{{count}} papers available", { count: available })}</span>}</div>
@@ -82,12 +83,15 @@ export function ScreeningQueueView({ projectId, readOnly, onOpenPaper, onAddPape
     {notice && <p role="alert" className="queue-command-error">{notice}</p>}
     {boardQuery.isLoading ? <div role="status" aria-label={t("Loading review queue…")} className="queue-paper-grid">{[0, 1, 2].map(i => <div className="queue-card-skeleton" key={i}><Skeleton className="h-4 w-1/3" /><Skeleton className="h-7 w-full" /><Skeleton className="h-14 w-full" /><Skeleton className="h-8 w-1/2" /></div>)}</div>
       : boardQuery.isError ? <ScreeningError error={boardQuery.error} retry={() => void boardQuery.refetch()} />
-      : items.length ? <div aria-busy={boardQuery.isFetching || search.trim() !== q}>
-        {filtered && <p className="queue-results" role="status">{t("{{count}} matching papers", { count: board?.total ?? 0 })}</p>}
-        <div className="queue-paper-grid">{items.map(p => <ScreeningQueueCard key={p.paperId} paper={p} disabled={command.isPending || claimingId !== null} claiming={claimingId === p.round!.id} readOnly={readOnly}
-          onPreview={() => onOpenPaper(p.paperId, { roundId: p.round!.id, section: "source" })} onClaim={() => void claim(p.round!.id)} />)}</div>
-        {board && (page > 1 || board.hasNext) && <ScreeningPager page={page} total={board.total} hasNext={board.hasNext} onPage={setPage} />}
-      </div> : <div className="queue-empty-state"><BookOpen size={28} aria-hidden="true" /><h3 className="queue-empty-title">{t(filtered ? "No papers match these filters" : "No review slots available")}</h3><p className="queue-empty-desc">{t(filtered ? "Try another keyword or clear the filters." : "Your claimed papers and submitted reviews are in My Work.")}</p>
-        {filtered ? <Button type="button" variant="outline" onClick={clearFilters}>{t("Clear filters")}</Button> : onAddPaper && !readOnly && <Button type="button" size="sm" variant="outline" onClick={onAddPaper}>{t("Propose a paper")}</Button>}</div>}
+        : items.length ? <div aria-busy={boardQuery.isFetching || search.trim() !== q}>
+          {filtered && <p className="queue-results" role="status">{t("{{count}} matching papers", { count: board?.total ?? 0 })}</p>}
+          <div className="queue-paper-grid">{items.map(p => <ScreeningQueueCard key={p.paperId} paper={p} disabled={command.isPending || claimingId !== null} claiming={claimingId === p.round!.id} readOnly={readOnly}
+            onPreview={() => {
+              onSequenceChange?.(items.map(item => ({ paperId: item.paperId, roundId: item.round?.id, section: "source" })));
+              onOpenPaper(p.paperId, { roundId: p.round!.id, section: "source" });
+            }} onClaim={() => void claim(p.round!.id)} />)}</div>
+          {board && (page > 1 || board.hasNext) && <ScreeningPager page={page} total={board.total} hasNext={board.hasNext} onPage={setPage} />}
+        </div> : <div className="queue-empty-state"><BookOpen size={28} aria-hidden="true" /><h3 className="queue-empty-title">{t(filtered ? "No papers match these filters" : "No review slots available")}</h3><p className="queue-empty-desc">{t(filtered ? "Try another keyword or clear the filters." : "Your claimed papers and submitted reviews are in My Work.")}</p>
+          {filtered ? <Button type="button" variant="outline" onClick={clearFilters}>{t("Clear filters")}</Button> : onAddPaper && !readOnly && <Button type="button" size="sm" variant="outline" onClick={onAddPaper}>{t("Propose a paper")}</Button>}</div>}
   </section>;
 }

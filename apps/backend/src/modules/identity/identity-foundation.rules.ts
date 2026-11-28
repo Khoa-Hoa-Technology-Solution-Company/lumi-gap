@@ -37,16 +37,38 @@ export interface CapabilityIdentity {
   positionVerified?: boolean;
 }
 
+/**
+ * Authoritative lecturer eligibility predicate.
+ * Requires active account, verified account email, declared LECTURER role,
+ * verified role status, and verified current academic position.
+ * Never grants lecturer eligibility solely from ADMIN system role or self-declared role.
+ */
+export function isEligibleVerifiedLecturer(
+  identity: Pick<
+    CapabilityIdentity,
+    "accountActive" | "emailVerified" | "academicRole" | "academicRoleVerificationStatus" | "positionVerified"
+  >,
+): boolean {
+  return Boolean(
+    identity.accountActive
+    && identity.emailVerified === true
+    && identity.academicRole === "LECTURER"
+    && identity.academicRoleVerificationStatus === "VERIFIED"
+    && identity.positionVerified === true,
+  );
+}
+
 export function policyCapabilities(identity: CapabilityIdentity): UserCapability[] {
   if (!identity.accountActive) return [];
   if (identity.systemRole !== "ADMIN" && !identity.emailVerified) return [];
   const capabilities: UserCapability[] = identity.systemRole === "ADMIN" ? ["MANAGE_SYSTEM"] : ["BASIC_RESEARCH"];
   if (identity.systemRole !== "ADMIN") capabilities.push("CREATE_RESEARCH_PROJECT");
   // These express eligibility; object access still requires an assignment or mentor relationship.
-  if (identity.academicRole === "LECTURER" && identity.academicRoleVerificationStatus === "VERIFIED"
-    && identity.positionVerified === true) {
+  if (isEligibleVerifiedLecturer(identity)) {
     capabilities.push("REVIEW_ARTIFACT", "STRUCTURED_REVIEW", "MENTOR_PROJECT");
-    if (identity.participantScope === "INTERNAL" && identity.currentHostPositionVerified === true) capabilities.push("APPROVE_ACADEMIC_CONTRIBUTION");
+    if (identity.participantScope === "INTERNAL" && identity.currentHostPositionVerified === true) {
+      capabilities.push("APPROVE_ACADEMIC_CONTRIBUTION");
+    }
   }
   return capabilities;
 }

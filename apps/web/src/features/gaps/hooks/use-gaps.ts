@@ -1,12 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { gapsApi } from "../api/gaps.api";
+import { useAuthStore } from "@/stores/auth-store";
 import type { AnalyzeGapRequest, CreateGapCandidateRequest, CreateGapValidationRequest, PreviewGapEvidenceRequest, ReviewForumCitationAsEvidenceRequest } from "@trend/shared-types";
 
 export function useGaps(params?: Parameters<typeof gapsApi.list>[0], enabled = true) {
+  const actorId = useAuthStore((s) => s.user?.id ?? "guest");
+  const projectScope = params?.projectId ?? null;
   return useQuery({
-    queryKey: ["gaps", params],
+    queryKey: ["gaps", actorId, projectScope, params],
     queryFn: () => gapsApi.list(params),
     enabled,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === actorId && previousQuery?.queryKey[2] === projectScope
+        ? previous
+        : undefined,
   });
 }
 
@@ -25,8 +32,9 @@ export function useGapAnalysisStatus(analysisId: string | null) {
 
 /** Latest queued/analyzing run for one project, or the user's personal runs when projectId is omitted. */
 export function useActiveGapAnalysis(projectId?: string) {
+  const actorId = useAuthStore((s) => s.user?.id ?? "guest");
   return useQuery({
-    queryKey: ["activeGapAnalysis", projectId ?? null],
+    queryKey: ["activeGapAnalysis", actorId, projectId ?? null],
     queryFn: () => gapsApi.getActiveAnalysis(projectId),
   });
 }

@@ -1,4 +1,4 @@
-import type { ScreeningPhase } from "./project-research.js";
+import type { FullTextStatus, ScreeningPhase } from "./project-research.js";
 import type { WorkspacePage, WorkspacePerson } from "./project-workspace.js";
 
 export type ScreeningTaskAction = "REVIEW" | "DISCUSSION" | "CONSENSUS" | "STATEMENT" | "ADJUDICATION" | "COORDINATION" | "FULLTEXT" | "INFORMATION";
@@ -368,7 +368,7 @@ export interface ScreeningPaperRow {
   proposer: WorkspacePerson | null; proposedAt: string; proposalReason: string; updatedAt: string; canEditProposal: boolean;
   paperId: string; title: string; abstractText: string | null; doi: string | null; publicationYear: number;
   journalName?: string | null; paperKind?: string;
-  authors?: string[]; paperLink?: string | null; fullTextAvailable?: boolean;
+  authors?: string[]; paperLink?: string | null; fullTextAvailable?: boolean; fullTextStatus?: FullTextStatus;
   citationCount?: number; openAccessStatus?: string; keywords?: string[];
   legacyStatus: string; legacyProvenance: boolean; round: ScreeningRoundView | null;
   evidenceSummary?: {

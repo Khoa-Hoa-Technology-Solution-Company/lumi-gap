@@ -16,9 +16,9 @@ if (enabled) {
 
 describe("mentor workspace routes and filters", () => {
   it("bounds pagination and rejects invalid status, IDs, selectors and unknown flags", () => {
-    for (const value of [{ page: 0 }, { pageSize: 1000 }, { status: "ACCEPTED" }, { item: "TASK:../../../private" }, { assigneeId: randomUUID() }, { projectId: "not-an-id" }]) expect(query.safeParse(value).success).toBe(false);
-    expect(query.parse({ page: "2", pageSize: "10", status: "WAITING" })).toMatchObject({ page: 2, pageSize: 10, status: "WAITING" });
-    expect(query.parse({ status: "OVERDUE" }).status).toBe("OVERDUE");
+    for (const value of [{ page: 0 }, { pageSize: 1000 }, { status: "ACCEPTED" }, { projectFilter: "ACTIVE" }, { projectSort: "urgency" }, { item: "TASK:../../../private" }, { assigneeId: randomUUID() }, { projectId: "not-an-id" }]) expect(query.safeParse(value).success).toBe(false);
+    expect(query.parse({ page: "2", pageSize: "10", status: "WAITING", projectFilter: "ATTENTION", projectSort: "name", projectPage: "3" })).toMatchObject({ page: 2, pageSize: 10, status: "WAITING", projectFilter: "ATTENTION", projectSort: "name", projectPage: 3 });
+    expect(query.parse({ status: "OVERDUE" })).toMatchObject({ status: "OVERDUE", projectFilter: "ALL", projectSort: "attention", projectPage: 1 });
   });
   it("targets an exact review request until it is being edited and keeps task and question routes distinct", () => {
     const row = { kind: "MANUSCRIPT_REVIEW" as const, sourceId: "request", projectId: "project", status: "TODO" as const, assignmentId: "assignment" };

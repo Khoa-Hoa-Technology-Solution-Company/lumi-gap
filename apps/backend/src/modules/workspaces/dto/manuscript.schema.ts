@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MANUSCRIPT_TYPES, MANUSCRIPT_TEMPLATES, isManuscriptTemplateCompatible } from "@trend/shared-types";
+import { creditRoles, MANUSCRIPT_TYPES, MANUSCRIPT_TEMPLATES, isManuscriptTemplateCompatible } from "@trend/shared-types";
 import { databaseIdSchema } from "../../../common/validation/database-id.js";
 export const manuscriptParams = z.object({ projectId: databaseIdSchema, id: z.string().uuid().optional(), fileId: z.string().uuid().optional(), snapshotId: z.string().uuid().optional(), compilationId: z.string().uuid().optional() });
 export const compileSchema = z.object({ engine: z.enum(["pdflatex", "xelatex", "lualatex"]).optional(), texLiveVersion: z.enum(["2022", "2025"]).optional() }).strict();
@@ -23,6 +23,19 @@ export const commentSchema = z.object({ body: z.string().trim().min(1).max(5000)
 export const snapshotQuery = z.object({ snapshotId: z.string().uuid().optional(), compilationId: z.string().uuid().optional() });
 export const writingReportSchema = z.object({ snapshotId: z.string().uuid() }).strict();
 export const writingReportPageSchema = z.object({ page: z.coerce.number().int().min(1).max(10000).default(1) }).strict();
+export const writingContributionDraftSchema = z.object({
+  title: z.string().trim().min(3).max(240).optional(),
+  description: z.string().trim().min(20).max(5000).optional(),
+  participants: z.array(z.object({
+    userId: z.string().uuid(),
+    roles: z.array(z.enum(creditRoles)).max(14).refine(values => new Set(values).size === values.length, "Duplicate CRediT role"),
+  }).strict()).min(1).max(50).optional(),
+  confirmDuplicate: z.boolean().optional(),
+}).strict();
+export const manuscriptContributionsQuerySchema = z.object({
+  memberId: z.string().uuid().optional(),
+  fileId: z.string().uuid().optional(),
+}).strict();
 export const manuscriptLifecycleActionSchema = z.object({ expectedVersion: z.number().int().min(1), reason: z.string().trim().min(1).max(500).optional() }).strict();
 export const restoreSchema = z.object({ title: z.string().trim().min(2).max(160), clientKey: z.string().uuid() }).strict();
 export const suggestionSchema = z.object({ fileId: z.string().uuid(), sourceSequence: z.number().int().nonnegative(), from: z.number().int().nonnegative().max(500000), to: z.number().int().nonnegative().max(500000), original: z.string().max(100000), replacement: z.string().max(100000), note: z.string().trim().max(2000).default(""), clientKey: z.string().uuid() }).strict().refine(value => value.to >= value.from && value.original !== value.replacement, "Choose a changed source range");

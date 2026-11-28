@@ -18,12 +18,24 @@ interface SubmissionVersionPanelProps {
   onSelectVersion: (versionId: string) => void;
   language: string;
   embedded?: boolean;
+  compareOpen?: boolean;
+  onCompareOpenChange?: (open: boolean) => void;
 }
 
 const scoreText = (review?: SubmittedVersionReview) =>
   review?.weightedScore != null ? review.weightedScore.toFixed(1) : "Không dùng điểm";
 
-const compatible = (before: ResearchVersion, after: ResearchVersion) => before.id !== after.id && ((Boolean(before.contentSnapshot?.trim()) && Boolean(after.contentSnapshot?.trim())) || (before.hasPdf && after.hasPdf) || (before.reviews.length > 0 && after.reviews.length > 0));
+export const areVersionsComparable = (before: ResearchVersion, after: ResearchVersion) =>
+  before.id !== after.id &&
+  ((Boolean(before.contentSnapshot?.trim()) && Boolean(after.contentSnapshot?.trim())) ||
+    (before.hasPdf && after.hasPdf) ||
+    (before.reviews.length > 0 && after.reviews.length > 0));
+
+const compatible = areVersionsComparable;
+
+export function hasComparableVersions(versions: ResearchVersion[]): boolean {
+  return versions.filter((version) => versions.some((other) => compatible(version, other))).length >= 2;
+}
 
 export function SubmissionVersionPanel({
   submissionId,
@@ -33,12 +45,16 @@ export function SubmissionVersionPanel({
   onSelectVersion,
   language,
   embedded = false,
+  compareOpen: controlledCompareOpen,
+  onCompareOpenChange,
 }: SubmissionVersionPanelProps) {
   const { t } = useI18n();
   const locale = language === "vi" ? "vi-VN" : "en-US";
   const versions = history.versions ?? [];
 
-  const [compareOpen, setCompareOpen] = useState(false);
+  const [internalCompareOpen, setInternalCompareOpen] = useState(false);
+  const compareOpen = controlledCompareOpen ?? internalCompareOpen;
+  const setCompareOpen = onCompareOpenChange ?? setInternalCompareOpen;
   const [compareTab, setCompareTab] = useState<"content" | "feedback">("content");
   const [beforeId, setBeforeId] = useState("");
   const [afterId, setAfterId] = useState("");

@@ -6,7 +6,14 @@ import { logger } from "../../infrastructure/logger.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { authMailService, buildBrandedMail, webOrigin } from "../auth/auth-mail.service.js";
 
-const events = ["LECTURER_VERIFICATION_SUBMITTED", "LECTURER_VERIFICATION_SUPPLEMENTED", "LECTURER_VERIFICATION_APPROVED", "LECTURER_VERIFICATION_REJECTED", "LECTURER_VERIFICATION_MORE_INFO_REQUIRED"] as const;
+const events = [
+  "LECTURER_VERIFICATION_SUBMITTED",
+  "LECTURER_VERIFICATION_SUPPLEMENTED",
+  "LECTURER_VERIFICATION_APPROVED",
+  "LECTURER_VERIFICATION_REJECTED",
+  "LECTURER_VERIFICATION_MORE_INFO_REQUIRED",
+  "LECTURER_VERIFICATION_REVOKED",
+] as const;
 export type LecturerDeliveryEvent = typeof events[number];
 const payloadSchema = z.object({
   event: z.enum(events), requestId: z.string().uuid(),
@@ -28,6 +35,7 @@ const labels: Record<LecturerDeliveryEvent, [string, string]> = {
   LECTURER_VERIFICATION_APPROVED: ["Lecturer position verified", "Đã xác minh vị trí giảng viên"],
   LECTURER_VERIFICATION_REJECTED: ["Lecturer verification not approved", "Yêu cầu xác minh giảng viên chưa được chấp nhận"],
   LECTURER_VERIFICATION_MORE_INFO_REQUIRED: ["More information required", "Cần bổ sung thông tin xác minh"],
+  LECTURER_VERIFICATION_REVOKED: ["Lecturer verification revoked", "Xác minh vị trí giảng viên đã bị thu hồi"],
 };
 const messages: Record<LecturerDeliveryEvent, [string, string]> = {
   LECTURER_VERIFICATION_SUBMITTED: [
@@ -47,8 +55,12 @@ const messages: Record<LecturerDeliveryEvent, [string, string]> = {
     "Yêu cầu này chưa được chấp nhận. Vui lòng xem lý do bên dưới. Khi đã sửa thông tin hoặc có minh chứng mới, bạn có thể gửi yêu cầu xác minh mới; quyết định này được giữ trong lịch sử.",
   ],
   LECTURER_VERIFICATION_APPROVED: [
-    "Your Lecturer position at the declared institution has been verified. You can open Academic Support to configure mentoring availability. Mentoring requires mutual consent and formal academic review requires an accepted assignment.",
-    "Vị trí giảng viên tại đơn vị đã khai báo của bạn đã được xác minh. Bạn có thể mở Hỗ trợ học thuật để thiết lập khả năng nhận cố vấn. Cố vấn cần sự đồng ý của các bên; phản biện học thuật cần phân công được chấp nhận.",
+    "Your Lecturer position has been verified. You can now use Lecturer Workspace and your authorized academic features. Mentoring requires mutual consent and formal academic review requires an accepted assignment.",
+    "Vị trí giảng viên của bạn đã được xác minh. Bạn có thể sử dụng Không gian giảng viên và các chức năng học thuật được cấp quyền. Cố vấn cần sự đồng thuận hai chiều; phản biện học thuật cần phân công được chấp nhận.",
+  ],
+  LECTURER_VERIFICATION_REVOKED: [
+    "Your Lecturer verification is no longer valid and Lecturer Workspace access has been removed. Historical research contributions and reviews remain preserved. Open Lecturer Verification to submit updated evidence.",
+    "Xác minh vị trí giảng viên của bạn không còn hiệu lực và quyền truy cập Không gian giảng viên đã được thu hồi. Lịch sử đóng góp nghiên cứu và phản biện trước đó vẫn được bảo toàn. Mở trang Xác minh giảng viên để nộp lại minh chứng cập nhật.",
   ],
 };
 
@@ -60,7 +72,7 @@ export async function lecturerVerificationNotification(tx: Prisma.TransactionCli
   const context = mailContext(evidence);
   const vi = profile?.notificationLocale === "vi";
   await notificationService.create({ userId: request.userId, title: labels[event][vi ? 1 : 0],
-    message: [messages[event][vi ? 1 : 0], ...(["LECTURER_VERIFICATION_REJECTED", "LECTURER_VERIFICATION_MORE_INFO_REQUIRED"].includes(event) && context.applicantMessage ? [context.applicantMessage] : [])].join("\n"),
+    message: [messages[event][vi ? 1 : 0], ...(["LECTURER_VERIFICATION_REJECTED", "LECTURER_VERIFICATION_MORE_INFO_REQUIRED", "LECTURER_VERIFICATION_REVOKED"].includes(event) && context.applicantMessage ? [context.applicantMessage] : [])].join("\n"),
     type: event, eventKey: `${event}:${request.id}:${request.userId}`, targetKind: "academic_profile", targetId: request.academicProfileId ?? undefined,
     emailPayload: { event, requestId: request.id, ...context } as Prisma.InputJsonObject, emailStatus: "PENDING",
   }, tx);
@@ -74,7 +86,7 @@ export function buildLecturerVerificationMail(event: LecturerDeliveryEvent, requ
   const url = new URL("/settings/verification/lecturer", origin); url.searchParams.set("requestId", requestId);
   const cta = event === "LECTURER_VERIFICATION_MORE_INFO_REQUIRED" ? vi ? "Xem yêu cầu bổ sung" : "View requested information" : event === "LECTURER_VERIFICATION_REJECTED" ? vi ? "Xem kết quả xét duyệt" : "View review result" : vi ? "Xem trạng thái xác minh" : "View verification status";
   const claim = [context.institutionName, context.position].filter(Boolean).join(" · ");
-  const feedback = ["LECTURER_VERIFICATION_MORE_INFO_REQUIRED", "LECTURER_VERIFICATION_REJECTED"].includes(event) && context.applicantMessage;
+  const feedback = ["LECTURER_VERIFICATION_MORE_INFO_REQUIRED", "LECTURER_VERIFICATION_REJECTED", "LECTURER_VERIFICATION_REVOKED"].includes(event) && context.applicantMessage;
   return { subject, ...buildBrandedMail({ locale, subject, greeting: vi ? `Xin chào ${name},` : `Hi ${name},`,
     paragraphs: [...(claim ? [claim] : []), messages[event][vi ? 1 : 0], ...(feedback ? [`${event === "LECTURER_VERIFICATION_MORE_INFO_REQUIRED" ? vi ? "Nội dung cần bổ sung" : "Requested information" : vi ? "Lý do" : "Reason"}: ${feedback}`] : []), ...(event === "LECTURER_VERIFICATION_SUPPLEMENTED" && context.revision ? [`${vi ? "Phiên bản hồ sơ" : "Request revision"}: ${context.revision}`] : [])],
     cta, url: url.toString(), footer: vi ? "Email tự động về yêu cầu xác minh của bạn trên LumiGap." : "Automated email about your verification request on LumiGap.",
@@ -90,9 +102,24 @@ export async function deliverLecturerVerificationEmail(notificationId: string) {
     await db.notification.updateMany({ where: { id: row.id, emailStatus: "PENDING" }, data: { emailStatus: "SKIPPED" } }); return;
   }
   const request = await db.verificationEvidence.findFirst({ where: { id: parsed.data.requestId, userId: row.userId } });
-  const expectedStatus = parsed.data.event === "LECTURER_VERIFICATION_APPROVED" ? "VERIFIED" : parsed.data.event === "LECTURER_VERIFICATION_REJECTED" ? "REJECTED" : parsed.data.event === "LECTURER_VERIFICATION_MORE_INFO_REQUIRED" ? "NEEDS_MORE_INFORMATION" : "PENDING";
+  const expectedStatus = parsed.data.event === "LECTURER_VERIFICATION_APPROVED"
+    ? "VERIFIED"
+    : parsed.data.event === "LECTURER_VERIFICATION_REJECTED"
+      ? "REJECTED"
+      : parsed.data.event === "LECTURER_VERIFICATION_MORE_INFO_REQUIRED"
+        ? "NEEDS_MORE_INFORMATION"
+        : parsed.data.event === "LECTURER_VERIFICATION_REVOKED"
+          ? "INVALIDATED"
+          : "PENDING";
   // A delayed email must not ask the applicant to act on a superseded request.
-  if (!request || request.invalidatedAt || request.supersededAt || request.status !== expectedStatus) { await db.notification.updateMany({ where: { id: row.id, emailStatus: "PENDING" }, data: { emailStatus: "SKIPPED" } }); return; }
+  if (
+    !request
+    || request.status !== expectedStatus
+    || (parsed.data.event !== "LECTURER_VERIFICATION_REVOKED" && (request.invalidatedAt || request.supersededAt))
+  ) {
+    await db.notification.updateMany({ where: { id: row.id, emailStatus: "PENDING" }, data: { emailStatus: "SKIPPED" } });
+    return;
+  }
   const mail = buildLecturerVerificationMail(parsed.data.event, request.id, user.fullName, profile?.notificationLocale === "vi" ? "vi" : "en", webOrigin(), { ...mailContext(request), ...parsed.data });
   const claim = await db.notification.updateMany({ where: { id: row.id, emailStatus: "PENDING" }, data: { emailStatus: "SENDING", emailClaimedAt: new Date() } });
   if (!claim.count) return;

@@ -13,9 +13,12 @@ import { evaluationStatusLabels, myWorkTasks, completedEvaluationGroups, workPap
 import { EvaluationMetadata, EvaluationSummary, EvaluationPaperCard, ScreeningTaskCard, WorkPaperCard } from "./screening-paper-card";
 import { useScreeningClock } from "../hooks/use-screening-clock";
 
-export function MyWorkView({ projectId, readOnly, onOpenPaper, onSwitchView }: {
+export function MyWorkView({ projectId, readOnly, onOpenPaper, onSequenceChange, onSwitchView }: {
   projectId: string; readOnly: boolean; canManage?: boolean;
-  onOpenPaper: (paperId: string, context?: { roundId: string; section: string }) => void; onSwitchView: (view: string) => void; onAddPaper?: () => void;
+  onOpenPaper: (paperId: string, context?: { roundId: string; section: string }) => void;
+  onSequenceChange?: (sequence: Array<{ paperId: string; roundId?: string; section?: string }>) => void;
+  onSwitchView: (view: string) => void;
+  onAddPaper?: () => void;
 }) {
   const summaryQuery = useResearchResource(projectId, ["screening-workspace-summary"], () => screeningApi.workspaceSummary(projectId), true, () => true, 30000);
   const summary = summaryQuery.data;
@@ -53,9 +56,16 @@ export function MyWorkView({ projectId, readOnly, onOpenPaper, onSwitchView }: {
   if (summaryQuery.isError) return <ScreeningError error={summaryQuery.error} retry={() => void summaryQuery.refetch()} />;
   if (!summary) return null;
   const tasks = myWorkTasks(summary, readOnly, now);
-  const openTask = (task: MyWorkTask) => ["STATEMENT", "ADJUDICATION", "COORDINATION"].includes(task.kind)
-    ? setAdjudication({ roundId: task.roundId, section: sectionForTask(task) })
-    : onOpenPaper(task.paperId, { roundId: task.roundId, section: sectionForTask(task) });
+  const modalTasks = tasks.filter(t => !["STATEMENT", "ADJUDICATION", "COORDINATION"].includes(t.kind));
+  const modalSequence = modalTasks.map(t => ({ paperId: t.paperId, roundId: t.roundId, section: sectionForTask(t) }));
+  const openTask = (task: MyWorkTask) => {
+    if (["STATEMENT", "ADJUDICATION", "COORDINATION"].includes(task.kind)) {
+      setAdjudication({ roundId: task.roundId, section: sectionForTask(task) });
+      return;
+    }
+    onSequenceChange?.(modalSequence);
+    onOpenPaper(task.paperId, { roundId: task.roundId, section: sectionForTask(task) });
+  };
   const evaluations = completedEvaluationGroups(summary);
   const q = searchQuery.trim().toLocaleLowerCase();
   const matches = (title: string) => !q || title.toLocaleLowerCase().includes(q);

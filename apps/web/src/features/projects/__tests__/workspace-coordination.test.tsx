@@ -271,7 +271,7 @@ it("renders discussion content as text and denies mentor editing or team decisio
 });
 it("opens team chat by default and keeps threads and decisions as tools inside it", async () => {
   await render(<WorkspaceDiscussionsPanel projectId="p" readOnly={false} legacyChat={<p>Chat interface</p>} />, "/projects/p?tab=chat");
-  expect(container.querySelector("h2")?.textContent).toBe("Team Chat");
+  expect(container.querySelector("h2")?.textContent).toBe("Research Conversations");
   expect(container.textContent).toContain("Chat interface");
   expect(container.querySelector(".coord-subnav")).toBeNull();
   expect(mocks.discussions).not.toHaveBeenCalled(); expect(mocks.decisions).not.toHaveBeenCalled();

@@ -18,6 +18,14 @@ import { projectsApi } from "../api/projects.api";
 import { useCreateProject } from "../hooks/use-projects";
 
 import { ResearchClassificationFields } from "@/features/academic-profile/components/research-classification-fields";
+import { ResearchAreaSelect } from "./research-area-select";
+import {
+  DEFAULT_MAX_KEYWORD_LENGTH,
+  DEFAULT_MAX_KEYWORDS,
+  KeywordTagInput,
+  mergeKeywordTerms,
+  splitKeywordTerms,
+} from "./keyword-tag-input";
 
 const DEFAULT_RESEARCH_FIELDS = [
   "Artificial Intelligence",
@@ -32,10 +40,11 @@ const DEFAULT_RESEARCH_FIELDS = [
 
 const CUSTOM_FIELD_VALUE = "__custom__";
 
-const PROJECT_GOALS: Array<{ value: ResearchApproach; label: string }> = [
-  { value: "EXPLORATORY", label: "Explore topic and find literature" },
-  { value: "LITERATURE_REVIEW", label: "Write a literature review" },
-  { value: "EMPIRICAL", label: "Conduct research and write a scientific paper" },
+const INITIAL_RESEARCH_APPROACHES: Array<{ value: ResearchApproach; label: string }> = [
+  { value: "EXPLORATORY", label: "Explore topic and define research direction" },
+  { value: "LITERATURE_REVIEW", label: "Literature review and synthesis" },
+  { value: "EMPIRICAL", label: "Empirical research" },
+  { value: "UNDECIDED", label: "Not decided yet" },
 ];
 
 type TeamMode = "SOLO" | "TEAM";
@@ -66,7 +75,9 @@ interface Draft {
   title: string;
   researchField: string;
   customField: string;
+  additionalAreas: string[];
   description: string;
+  keywords: string[];
   keywordsInput: string;
   researchApproach: ResearchApproach;
   visibility: "PRIVATE";
@@ -78,21 +89,6 @@ interface Draft {
   mentorNote?: string;
   idempotencyKey: string;
   submitted?: boolean;
-}
-
-function parseKeywords(raw: string): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const part of raw.split(/[,;\n]+/)) {
-    const trimmed = part.trim().slice(0, 80);
-    if (!trimmed) continue;
-    const key = trimmed.toLocaleLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(trimmed);
-    if (result.length >= 10) break;
-  }
-  return result;
 }
 
 function isValidInvite(item: unknown): item is QueuedInvite {
@@ -121,9 +117,11 @@ function defaultDraft(): Draft {
   return {
     step: 1,
     title: "",
-    researchField: DEFAULT_RESEARCH_FIELDS[0]!,
+    researchField: "",
     customField: "",
+    additionalAreas: [],
     description: "",
+    keywords: [],
     keywordsInput: "",
     researchApproach: "EXPLORATORY",
     visibility: "PRIVATE",
@@ -140,7 +138,17 @@ function readDraft(key: string): Draft {
     if (parsed && typeof parsed === "object") {
       const value = parsed as Record<string, unknown>;
       if (value.step === undefined && typeof value.title === "string" && value.title.length <= 100 && typeof value.description === "string" && value.description.length <= 5000 && typeof value.idempotencyKey === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.idempotencyKey) && Array.isArray(value.researchAreas) && value.researchAreas.every(area => typeof area === "string" && area.length <= 120)) {
-        return { ...defaultDraft(), title: value.title, description: value.description, researchField: value.researchAreas[0] as string || DEFAULT_RESEARCH_FIELDS[0]!, researchApproach: ["UNDECIDED","EXPLORATORY","LITERATURE_REVIEW","EMPIRICAL"].includes(String(value.researchApproach)) ? value.researchApproach as ResearchApproach : "UNDECIDED", idempotencyKey: value.idempotencyKey, visibility: "PRIVATE" };
+        const legacyAreas = (value.researchAreas as string[]).map(a => a.trim()).filter(Boolean);
+        return {
+          ...defaultDraft(),
+          title: value.title,
+          description: value.description,
+          researchField: legacyAreas[0] ?? "",
+          additionalAreas: legacyAreas.slice(1, 3),
+          researchApproach: ["UNDECIDED","EXPLORATORY","LITERATURE_REVIEW","EMPIRICAL"].includes(String(value.researchApproach)) ? value.researchApproach as ResearchApproach : "UNDECIDED",
+          idempotencyKey: value.idempotencyKey,
+          visibility: "PRIVATE",
+        };
       }
       if (
         (value.step === 1 || value.step === 2)
@@ -149,6 +157,8 @@ function readDraft(key: string): Draft {
         && typeof value.customField === "string" && value.customField.length <= 120
         && typeof value.description === "string" && value.description.length <= 5000
         && typeof value.keywordsInput === "string" && value.keywordsInput.length <= 500
+        && (value.keywords === undefined || (Array.isArray(value.keywords) && value.keywords.length <= 10 && value.keywords.every(k => typeof k === "string" && k.length <= 80)))
+        && (value.additionalAreas === undefined || (Array.isArray(value.additionalAreas) && value.additionalAreas.length <= 2 && value.additionalAreas.every(a => typeof a === "string" && a.length <= 120)))
         && typeof value.idempotencyKey === "string"
         && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.idempotencyKey)
         && (value.visibility === "PRIVATE" || value.visibility === "PUBLIC")
@@ -166,7 +176,9 @@ function readDraft(key: string): Draft {
           title: value.title,
           researchField: value.researchField,
           customField: value.customField,
+          additionalAreas: Array.isArray(value.additionalAreas) ? (value.additionalAreas as string[]) : [],
           description: value.description,
+          keywords: Array.isArray(value.keywords) ? (value.keywords as string[]) : [],
           keywordsInput: value.keywordsInput,
           researchApproach: value.researchApproach as ResearchApproach,
           visibility: "PRIVATE",
@@ -186,12 +198,15 @@ function readDraft(key: string): Draft {
 }
 
 export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => void; onBusyChange: (busy: boolean) => void }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const navigate = useNavigate();
   const userId = useAuthStore(state => state.user?.id);
   const currentUserEmail = useAuthStore(state => state.user?.email)?.trim().toLowerCase();
+  const profileInterests = useAuthStore(state => state.user?.researchInterests);
   const storageKey = `lumigap.project-create.v1.${userId}`;
   const [draft, setDraft] = useState(() => readDraft(storageKey));
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{ title?: string; researchField?: string; description?: string; keywords?: string }>({});
   const [inviteEmail, setInviteEmail] = useState("");
@@ -207,9 +222,20 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
   });
 
   const fieldOptions = Array.from(new Set([...DEFAULT_RESEARCH_FIELDS, ...(taxonomy.data?.researchAreas ?? [])]));
+  const profileFieldSuggestions = (profileInterests ?? [])
+    .map(item => item.trim())
+    .filter(item => item.length > 0 && item.length <= 120)
+    .slice(0, 3);
 
   const resolvedField = (draft.researchField === CUSTOM_FIELD_VALUE ? draft.customField : draft.researchField).trim();
-  const parsedKeywords = parseKeywords(draft.keywordsInput);
+  const pendingKeywordResult = draft.keywordsInput.trim()
+    ? mergeKeywordTerms(draft.keywords, splitKeywordTerms(draft.keywordsInput), {
+        max: DEFAULT_MAX_KEYWORDS,
+        maxLength: DEFAULT_MAX_KEYWORD_LENGTH,
+        language,
+      })
+    : { next: draft.keywords };
+  const effectiveKeywords = pendingKeywordResult.next;
   const disabledForm = create.isPending || Boolean(draft.submitted);
 
   const queryEmail = useDebouncedValue(inviteEmail.trim(), 250);
@@ -237,7 +263,8 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
   });
 
   const change = (next: Partial<Draft>) => {
-    const value = { ...draft, ...next };
+    const value = { ...draftRef.current, ...next };
+    draftRef.current = value;
     setDraft(value);
     try { sessionStorage.setItem(storageKey, JSON.stringify(value)); } catch { /* Optional draft storage. */ }
   };
@@ -245,9 +272,13 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
   const validateStep1 = (): boolean => {
     const nextErrors: typeof fieldErrors = {};
     if (!draft.title.trim()) nextErrors.title = t("Enter a project title.");
-    if (!resolvedField) nextErrors.researchField = t("Select a research field.");
+    if (!resolvedField) nextErrors.researchField = t("Select a primary research area.");
     if (!draft.description.trim()) nextErrors.description = t("Enter a topic or research problem.");
-    if (parsedKeywords.length === 0) nextErrors.keywords = t("Enter at least one research keyword.");
+    if (pendingKeywordResult.error) {
+      nextErrors.keywords = pendingKeywordResult.error;
+    } else if (effectiveKeywords.length === 0) {
+      nextErrors.keywords = t("Enter at least one research keyword.");
+    }
     setFieldErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
@@ -255,7 +286,13 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
   const handleContinue = () => {
     if (disabledForm) return;
     if (!validateStep1()) return;
-    change({ step: 2 });
+    // Commit any pending keyword draft cleanly before advancing to Step 2.
+    change({
+      step: 2,
+      keywords: effectiveKeywords,
+      keywordsInput: "",
+      additionalAreas: draft.additionalAreas.filter(a => a.trim().toLocaleLowerCase() !== resolvedField.toLocaleLowerCase()).slice(0, 2),
+    });
   };
 
   const addQueuedInvite = (candidate: QueuedInvite) => {
@@ -283,7 +320,12 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
   };
 
   const buildPayload = (): CreateProjectRequest => {
-    const areas = [resolvedField, ...parsedKeywords.filter(k => k.toLocaleLowerCase() !== resolvedField.toLocaleLowerCase())]
+    // Research areas contain ONLY explicitly selected disciplines — never keywords.
+    const areas = [
+      resolvedField,
+      ...draft.additionalAreas.filter(a => a.trim().toLocaleLowerCase() !== resolvedField.toLocaleLowerCase()),
+    ]
+      .map(a => a.trim())
       .filter(Boolean)
       .slice(0, 3);
     return {
@@ -291,7 +333,7 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
       description: draft.description.trim(),
       researchField: resolvedField || undefined,
       researchAreas: areas,
-      ...(parsedKeywords.length ? { keywords: parsedKeywords } : {}),
+      ...(effectiveKeywords.length ? { keywords: effectiveKeywords } : {}),
       researchApproach: draft.researchApproach,
       visibility: "PRIVATE",
       ...(draft.researchClassification ? { researchClassification: draft.researchClassification } : {}),
@@ -417,9 +459,9 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
                 ) : null}
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="project-create-field" className="text-sm font-medium text-foreground">
-                  {t("Research field")} <span className="text-destructive">*</span>
+                  {t("Primary research area")} <span className="text-destructive">*</span>
                 </Label>
                 <select
                   id="project-create-field"
@@ -428,11 +470,17 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
                   aria-invalid={Boolean(fieldErrors.researchField)}
                   aria-describedby={fieldErrors.researchField ? "project-field-error" : undefined}
                   onChange={event => {
-                    change({ researchField: event.target.value });
+                    const nextField = event.target.value;
+                    const normalizedNext = nextField === CUSTOM_FIELD_VALUE ? draft.customField.trim().toLocaleLowerCase() : nextField.trim().toLocaleLowerCase();
+                    change({
+                      researchField: nextField,
+                      additionalAreas: draft.additionalAreas.filter(area => area.trim().toLocaleLowerCase() !== normalizedNext),
+                    });
                     if (fieldErrors.researchField) setFieldErrors(prev => ({ ...prev, researchField: undefined }));
                   }}
                   className="flex h-11 w-full rounded-full border border-input bg-background px-4 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
+                  <option value="">{t("Select a primary research area")}</option>
                   {fieldOptions.map(area => (
                     <option key={area} value={area}>
                       {t(area)}
@@ -440,6 +488,29 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
                   ))}
                   <option value={CUSTOM_FIELD_VALUE}>{t("Custom research field")}</option>
                 </select>
+                {!resolvedField && profileFieldSuggestions.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <span className="text-xs text-muted-foreground">{t("From your profile")}:</span>
+                    {profileFieldSuggestions.map(suggestion => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => {
+                          const matched = fieldOptions.find(opt => opt.toLocaleLowerCase() === suggestion.toLocaleLowerCase());
+                          change({
+                            researchField: matched ?? CUSTOM_FIELD_VALUE,
+                            customField: matched ? "" : suggestion,
+                            additionalAreas: draft.additionalAreas.filter(area => area.trim().toLocaleLowerCase() !== suggestion.toLocaleLowerCase()),
+                          });
+                          if (fieldErrors.researchField) setFieldErrors(prev => ({ ...prev, researchField: undefined }));
+                        }}
+                        className="rounded-full border border-border/80 bg-muted/40 px-2.5 py-0.5 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
+                      >
+                        {t(suggestion)}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 {draft.researchField === CUSTOM_FIELD_VALUE ? (
                   <Input
                     id="project-create-custom-field"
@@ -459,6 +530,25 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
                     {fieldErrors.researchField}
                   </p>
                 ) : null}
+              </div>
+
+              <div className="space-y-1">
+                <ResearchAreaSelect
+                  values={draft.additionalAreas}
+                  max={2}
+                  label="Additional research areas"
+                  options={fieldOptions.filter(area => area.toLocaleLowerCase() !== resolvedField.toLocaleLowerCase())}
+                  onChange={additionalAreas =>
+                    change({
+                      additionalAreas: additionalAreas.filter(
+                        area => area.trim().toLocaleLowerCase() !== resolvedField.toLocaleLowerCase(),
+                      ),
+                    })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t("Optional. Select up to 2 related disciplines.")}
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -482,7 +572,7 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
                   className="w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
                 />
                 <p className="text-xs text-muted-foreground">
-                  {t("You do not need a complete hypothesis or methodology yet.")}
+                  {t("You do not need a complete research gap, hypothesis, or methodology yet.")}
                 </p>
                 {fieldErrors.description ? (
                   <p id="project-description-error" role="alert" className="text-xs text-destructive">
@@ -491,48 +581,42 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
                 ) : null}
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="project-create-keywords" className="text-sm font-medium text-foreground">
-                  {t("Research keywords")} <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="project-create-keywords"
-                  name="keywords"
-                  autoComplete="off"
-                  maxLength={500}
-                  required
-                  value={draft.keywordsInput}
-                  aria-invalid={Boolean(fieldErrors.keywords)}
-                  aria-describedby={fieldErrors.keywords ? "project-keywords-error" : undefined}
-                  onChange={event => {
-                    change({ keywordsInput: event.target.value });
-                    if (fieldErrors.keywords) setFieldErrors(prev => ({ ...prev, keywords: undefined }));
-                  }}
-                  placeholder="Machine Learning, Vulnerability Detection, LLM..."
-                  className="h-11 rounded-full px-4 text-sm"
-                />
-                {parsedKeywords.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {parsedKeywords.map(kw => (
-                      <span key={kw} className="inline-flex items-center rounded-full border border-border/80 bg-muted/50 px-2.5 py-0.5 text-xs font-medium text-foreground">
-                        {kw}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-                {fieldErrors.keywords ? (
-                  <p id="project-keywords-error" role="alert" className="text-xs text-destructive">
-                    {fieldErrors.keywords}
-                  </p>
-                ) : null}
-              </div>
+              <KeywordTagInput
+                id="project-create-keywords"
+                label={t("Research keywords")}
+                required
+                disabled={disabledForm}
+                values={draft.keywords}
+                draftInput={draft.keywordsInput}
+                onChange={keywords => {
+                  change({ keywords });
+                  if (fieldErrors.keywords) setFieldErrors(prev => ({ ...prev, keywords: undefined }));
+                }}
+                onDraftInputChange={keywordsInput => {
+                  change({ keywordsInput });
+                  if (fieldErrors.keywords) setFieldErrors(prev => ({ ...prev, keywords: undefined }));
+                }}
+                error={fieldErrors.keywords}
+                errorId="project-keywords-error"
+              />
 
-              <details className="project-form-optional"><summary>{t("Research direction (optional)")}</summary><div className="pt-4"><ResearchClassificationFields value={draft.researchClassification} onChange={researchClassification => change({ researchClassification })} /></div></details>
+              <details className="project-form-optional rounded-xl border border-border/80 bg-muted/20 px-4 py-3">
+                <summary className="cursor-pointer text-sm font-medium text-foreground">
+                  {t("Additional research classification")}
+                </summary>
+                <div className="pt-4">
+                  <ResearchClassificationFields
+                    mode="project"
+                    value={draft.researchClassification}
+                    onChange={researchClassification => change({ researchClassification })}
+                  />
+                </div>
+              </details>
 
               <fieldset className="space-y-2.5 pt-1">
-                <legend className="text-sm font-medium text-foreground">{t("Project goal")}</legend>
+                <legend className="text-sm font-medium text-foreground">{t("Initial research approach")}</legend>
                 <div className="space-y-2">
-                  {PROJECT_GOALS.map(goal => (
+                  {INITIAL_RESEARCH_APPROACHES.map(goal => (
                     <label key={goal.value} className="flex cursor-pointer items-center gap-3 text-sm text-foreground">
                       <input
                         type="radio"
@@ -546,6 +630,9 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
                     </label>
                   ))}
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  {t("A starting direction. You can change it later in the Research Plan.")}
+                </p>
               </fieldset>
 
               <div className="rounded-2xl border border-border/80 bg-muted/30 px-4 py-3"><div className="flex items-center gap-2 text-sm font-semibold text-foreground"><LockKeyhole className="h-4 w-4 text-muted-foreground" aria-hidden="true" /><span>{t("Privacy: Private")}</span></div><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("Your project starts private. Invite people when you are ready.")}</p></div>
@@ -899,10 +986,16 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
                 <p className="text-muted-foreground line-clamp-2">
                   {t("Field & topic")}:{" "}
                   <span className="text-foreground">
-                    {resolvedField || "—"}
+                    {[resolvedField, ...draft.additionalAreas].filter(Boolean).map(area => t(area)).join(" · ") || "—"}
                     {draft.description.trim() ? ` — ${draft.description.trim()}` : ""}
                   </span>
                 </p>
+                {effectiveKeywords.length > 0 ? (
+                  <p className="text-muted-foreground line-clamp-2">
+                    {t("Research keywords")}:{" "}
+                    <span className="text-foreground">{effectiveKeywords.join(", ")}</span>
+                  </p>
+                ) : null}
                 <p className="text-muted-foreground">
                   {t("Team size")}: <span className="text-foreground">{teamSummaryLabel}</span>
                 </p>

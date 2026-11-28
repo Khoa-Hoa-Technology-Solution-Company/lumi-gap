@@ -1,12 +1,13 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "@/components/protected-route";
+import { LecturerWorkspaceRoute } from "@/components/lecturer-workspace-route";
 import { ResearchWorkflowRoute } from "@/components/research-workflow-route";
 import { LITERATURE_PATH } from "@/features/home/utils/home-search";
 import { loadForumDetailPage } from "@/features/forum/utils/forum-page-loading";
-import { PageLoading } from "@/components/page-loading";
+import { AppLoading } from "@/components/loading";
+import { MainLayout } from "@/layouts/MainLayout";
 
-const MainLayout = lazy(() => import("@/layouts/MainLayout").then((m) => ({ default: m.MainLayout })));
 const AdminLayout = lazy(() => import("@/layouts/AdminLayout").then((m) => ({ default: m.AdminLayout })));
 const HomePage = lazy(() => import("@/pages/home").then((m) => ({ default: m.HomePage })));
 const LiteraturePage = lazy(() => import("@/pages/literature").then((m) => ({ default: m.LiteraturePage })));
@@ -101,12 +102,17 @@ const ContributionArchivePage = lazy(() => import("@/pages/academics/contributio
 const ResearchGapDiscoverPage = lazy(() => import("@/pages/research-gap-discover").then((m) => ({ default: m.ResearchGapDiscoverPage })));
 
 function RouteLoading() {
-  return <PageLoading className="min-h-screen" />;
+  return <AppLoading />;
 }
 
 function LegacySearchRedirect() {
   const location = useLocation();
   return <Navigate to={{ pathname: LITERATURE_PATH, search: location.search, hash: location.hash }} replace />;
+}
+
+function LecturerWorkspaceAliasRedirect() {
+  const location = useLocation();
+  return <Navigate to={{ pathname: "/mentor-workspace", search: location.search, hash: location.hash }} replace />;
 }
 
 export function AppRoutes() {
@@ -115,9 +121,12 @@ export function AppRoutes() {
       <Routes>
         <Route path="/onboarding/academic-profile" element={<AcademicProfileOnboardingPage />} />
 
-        {/* Standalone Admin Section (No MainLayout header/footer) */}
+        {/* Standalone Admin & Lecturer Workspace Sections (No MainLayout header/footer) */}
         <Route element={<ProtectedRoute />}>
-          <Route path="/mentor-workspace" element={<MentorWorkspacePage />} />
+          <Route element={<LecturerWorkspaceRoute />}>
+            <Route path="/mentor-workspace" element={<MentorWorkspacePage />} />
+            <Route path="/lecturer-workspace" element={<LecturerWorkspaceAliasRedirect />} />
+          </Route>
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminHomePage />} />
             <Route path="users" element={<AdminUsersPage />} />

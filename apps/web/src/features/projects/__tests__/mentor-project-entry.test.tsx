@@ -47,7 +47,7 @@ it("opens the mentor conversation at the original project link despite member de
   await mount();
   expect(host.querySelector(".coord-heading h2")?.textContent).toBe("Trò chuyện nhóm");
   expect(host.textContent).toContain(data.title);
-  expect(host.querySelector('aside [aria-current="page"]')?.textContent).toContain("Team Chat");
+  expect(host.querySelector('aside [aria-current="page"]')?.textContent).toContain("Research Conversations");
   expect(host.querySelector('.project-conversation [role="tabpanel"] .mentor-message-chat')).not.toBeNull();
   expect(host.querySelectorAll('.project-chat-channels [role="tab"]')).toHaveLength(1);
   expect(host.querySelector(".mentor-conversation-workspace ul")).toBeNull();
@@ -68,7 +68,7 @@ it("opens the mentor conversation at the original project link despite member de
 });
 it("keeps mentor chat visible when an internal team or AI channel is requested", async () => {
   await mount("/projects/project?tab=chat&channel=team-ai");
-  expect(host.querySelector('.project-chat-channels [role="tab"][aria-selected="true"]')?.textContent).toBe("With mentors");
+  expect(host.querySelector('.project-chat-channels [role="tab"][aria-selected="true"]')?.textContent).toBe("Mentor Conversations");
   expect(host.querySelector('.mentor-collab-composer textarea')).not.toBeNull();
   expect(host.querySelectorAll('.project-chat-channels [role="tab"]')).toHaveLength(1);
 });

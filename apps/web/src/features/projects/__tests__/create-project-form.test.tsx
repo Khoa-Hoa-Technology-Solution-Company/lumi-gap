@@ -40,8 +40,21 @@ async function fill(selector: string, value: string) {
   const proto = input.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   await act(async () => { Object.getOwnPropertyDescriptor(proto, "value")!.set!.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
 }
-async function fillStep1(title = "An initial idea", description = "Explore security vulnerabilities using LLMs", keywords = "LLM, Vulnerability Detection, Security") {
+async function selectField(value = "Software Engineering") {
+  const select = document.querySelector<HTMLSelectElement>("#project-create-field")!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(select, value);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+async function fillStep1(
+  title = "An initial idea",
+  description = "Explore security vulnerabilities using LLMs",
+  keywords = "LLM, Vulnerability Detection, Security",
+  field = "Software Engineering",
+) {
   await fill("#project-create-title", title);
+  await selectField(field);
   await fill("#project-create-description", description);
   await fill("#project-create-keywords", keywords);
 }
@@ -54,14 +67,16 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); container.remove(); vi.unstubAllGlobals(); });
 
-it("validates step 1 fields, advances to step 2 with private & exploratory defaults, and creates project", async () => {
+it("validates step 1 fields without defaulting to Artificial Intelligence, keeps keywords separate from researchAreas, and creates project", async () => {
   mocks.create.mockResolvedValue({ _id: "created" }); await render();
   expect(document.body.textContent).toContain("Step 1/2");
+  expect(document.querySelector<HTMLSelectElement>("#project-create-field")?.value).toBe("");
   expect(document.querySelector('input[name="visibility"]')).toBeNull();
   expect(document.body.textContent).not.toContain("Public summary");
   await act(async () => { submit(); });
   expect(mocks.create).not.toHaveBeenCalled();
   expect(document.querySelector("#project-title-error")?.textContent).toBe("Enter a project title.");
+  expect(document.querySelector("#project-field-error")?.textContent).toBe("Select a primary research area.");
   expect(document.querySelector("#project-description-error")?.textContent).toBe("Enter a topic or research problem.");
   expect(document.querySelector("#project-keywords-error")?.textContent).toBe("Enter at least one research keyword.");
 
@@ -75,14 +90,36 @@ it("validates step 1 fields, advances to step 2 with private & exploratory defau
   expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
     title: "An initial idea",
     description: "Explore security vulnerabilities using LLMs",
-    researchField: "Artificial Intelligence",
-    researchAreas: ["Artificial Intelligence", "LLM", "Vulnerability Detection"],
+    researchField: "Software Engineering",
+    researchAreas: ["Software Engineering"],
     keywords: ["LLM", "Vulnerability Detection", "Security"],
     visibility: "PRIVATE",
     researchApproach: "EXPLORATORY",
   }));
   expect(container.querySelector("output")?.textContent).toBe("/projects/created?tab=papers&welcome=1");
   expect(sessionStorage.getItem(draftKey)).toBeNull();
+});
+
+it("handles multiline keyword paste cleanly without merging words or polluting researchAreas", async () => {
+  mocks.create.mockResolvedValue({ _id: "pasted" }); await render();
+  await fill("#project-create-title", "LumiGap 2");
+  await selectField("Software Engineering");
+  await fill("#project-create-description", "Research literature synthesis with LLMs");
+  const kwInput = document.querySelector<HTMLInputElement>("#project-create-keywords")!;
+  await act(async () => {
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true }) as ClipboardEvent;
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: { getData: () => "LLM\nLiterature Review\nResearch Gap" },
+    });
+    kwInput.dispatchEvent(pasteEvent);
+  });
+  await act(async () => { submit(); });
+  await act(async () => { submit(); });
+  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
+    researchField: "Software Engineering",
+    researchAreas: ["Software Engineering"],
+    keywords: ["LLM", "Literature Review", "Research Gap"],
+  }));
 });
 
 it("locks repeated clicks while the creation response is pending", async () => {
@@ -99,14 +136,14 @@ it("locks repeated clicks while the creation response is pending", async () => {
 
 it.each([false, true])("restores an older public draft as private (submitted: %s)", async submitted => {
   const idempotencyKey = crypto.randomUUID();
-  sessionStorage.setItem(draftKey, JSON.stringify({ title: "Saved idea", description: "Saved objective", visibility: "PUBLIC", researchAreas: [], researchApproach: "UNDECIDED", idempotencyKey, submitted }));
+  sessionStorage.setItem(draftKey, JSON.stringify({ title: "Saved idea", description: "Saved objective", visibility: "PUBLIC", researchAreas: ["Education"], researchApproach: "UNDECIDED", idempotencyKey, submitted }));
   mocks.create.mockResolvedValue({ _id: "private-project" });
   await render();
   expect(document.querySelector<HTMLInputElement>("#project-create-title")?.value).toBe("Saved idea");
   await fill("#project-create-keywords", "Evidence synthesis");
   await act(async () => { submit(); });
   await act(async () => { submit(); });
-  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ title: "Saved idea", description: "Saved objective", visibility: "PRIVATE", idempotencyKey }));
+  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ title: "Saved idea", description: "Saved objective", researchField: "Education", researchAreas: ["Education"], visibility: "PRIVATE", idempotencyKey }));
 });
 
 it("recovers the same request after a lost response and a form remount", async () => {
@@ -150,11 +187,13 @@ it("blocks self-invite and duplicates, preserves step 1 on back, keeps project i
 
   // Verify summary displays Step 1 title & field before finishing, and Back retains data.
   expect(document.body.textContent).toContain("Team study");
-  expect(document.body.textContent).toContain("Artificial Intelligence");
+  expect(document.body.textContent).toContain("Software Engineering");
   const backButton = [...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Back")!;
   await act(async () => { backButton.click(); });
   expect(document.querySelector<HTMLInputElement>("#project-create-title")?.value).toBe("Team study");
-  expect(document.querySelector<HTMLInputElement>("#project-create-keywords")?.value).toBe("LLM, Vulnerability Detection, Security");
+  expect(document.body.textContent).toContain("LLM");
+  expect(document.body.textContent).toContain("Vulnerability Detection");
+  expect(document.body.textContent).toContain("Security");
   await act(async () => { submit(); });
 
   // Team mode: block self-invite, accept valid teammate, block duplicate, notice consent requirement.

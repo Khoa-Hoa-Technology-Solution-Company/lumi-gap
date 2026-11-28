@@ -59,6 +59,7 @@ export interface VietnameseResearcher {
   awards: string[];
   awardsEn: string[];
   searchQuery: string;
+  openalexId: string;
 }
 
 export const VIETNAMESE_RESEARCHERS: VietnameseResearcher[] = [
@@ -102,7 +103,8 @@ export const VIETNAMESE_RESEARCHERS: VietnameseResearcher[] = [
       "Prime Minister's Certificate of Merit for Science & Tech",
       "VNUHCM Distinguished Scholar of the Decade",
     ],
-    searchQuery: "Tran Minh Triet",
+    searchQuery: "Minh-Triet Tran",
+    openalexId: "A5053495766",
   },
   {
     id: "ha-thi-thanh-huong",
@@ -144,7 +146,8 @@ export const VIETNAMESE_RESEARCHERS: VietnameseResearcher[] = [
       "L'Oréal - UNESCO For Women in Science Fellowship",
       "Asian Scientist 100 Honoree",
     ],
-    searchQuery: "Ha Thi Thanh Huong",
+    searchQuery: "Huong Ha",
+    openalexId: "A5069269172",
   },
   {
     id: "le-hoang-son",
@@ -187,6 +190,7 @@ export const VIETNAMESE_RESEARCHERS: VietnameseResearcher[] = [
       "Vietnam Science & Technology Distinguished Honor",
     ],
     searchQuery: "Le Hoang Son",
+    openalexId: "A5008082871",
   },
   {
     id: "nguyen-xuan-phong",
@@ -228,7 +232,8 @@ export const VIETNAMESE_RESEARCHERS: VietnameseResearcher[] = [
       "Mila AI Institute Research Fellow",
       "Vietnam AI Leadership Honor",
     ],
-    searchQuery: "Nguyen Xuan Phong",
+    searchQuery: "Phong X. Nguyen",
+    openalexId: "A5111234369",
   },
   {
     id: "bui-hai-hung",
@@ -270,7 +275,8 @@ export const VIETNAMESE_RESEARCHERS: VietnameseResearcher[] = [
       "Silver Medalist at the International Mathematical Olympiad",
       "Vietnam Science & Innovation Inspiration Award",
     ],
-    searchQuery: "Bui Hai Hung",
+    searchQuery: "Hung Bui",
+    openalexId: "A5101391750",
   },
   {
     id: "trinh-van-chien",
@@ -313,6 +319,7 @@ export const VIETNAMESE_RESEARCHERS: VietnameseResearcher[] = [
       "Top 10 Promising Young Vietnamese Citizens",
     ],
     searchQuery: "Trinh Van Chien",
+    openalexId: "A5018288108",
   },
   {
     id: "huynh-thi-thanh-binh",
@@ -355,6 +362,7 @@ export const VIETNAMESE_RESEARCHERS: VietnameseResearcher[] = [
       "Minister of Education & Training Certificate of Merit",
     ],
     searchQuery: "Huynh Thi Thanh Binh",
+    openalexId: "A5072105691",
   },
   {
     id: "pham-huy-hieu",
@@ -396,7 +404,8 @@ export const VIETNAMESE_RESEARCHERS: VietnameseResearcher[] = [
       "Top 10 Promising Young Vietnamese Citizens",
       "VinUni Research Excellence Award",
     ],
-    searchQuery: "Pham Huy Hieu",
+    searchQuery: "Huy-Hieu Pham",
+    openalexId: "A5108905044",
   },
 ];
 
@@ -604,7 +613,7 @@ export function HomeFeaturedResearchers() {
                           <ArrowRight aria-hidden="true" />
                         </button>
                         <Link
-                          to={`/literature?q=${encodeURIComponent(researcher.searchQuery)}`}
+                          to={`/literature?q=${encodeURIComponent(researcher.searchQuery)}&mode=keyword&sort=citations`}
                           className="home-scholar-btn-primary"
                         >
                           <span>{t("View papers")}</span>
@@ -751,13 +760,22 @@ export function HomeFeaturedResearchers() {
 
             <div className="home-modal-footer">
               <Link
-                to={`/literature?q=${encodeURIComponent(activeModalResearcher.searchQuery)}`}
+                to={`/literature?q=${encodeURIComponent(activeModalResearcher.searchQuery)}&mode=keyword&sort=citations`}
                 className="academic-button home-modal-search-btn"
                 onClick={() => setActiveModalResearcher(null)}
               >
                 <span>{t("Search their papers in LumiGap")}</span>
-                <ExternalLink aria-hidden="true" />
+                <ArrowUpRight aria-hidden="true" />
               </Link>
+              <a
+                href={`https://openalex.org/authors/${activeModalResearcher.openalexId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="home-modal-openalex-btn"
+              >
+                <span>OpenAlex</span>
+                <ExternalLink aria-hidden="true" />
+              </a>
             </div>
           </DialogContent>
         ) : null}

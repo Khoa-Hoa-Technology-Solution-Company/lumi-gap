@@ -1,9 +1,11 @@
 import type { Request, Response } from "express";
 import { mentorAccessService as service } from "./mentor-access.service.js";
-import { mentorAccessPageSchema, mentorFeedbackPageSchema } from "./dto/mentor-access.schema.js";
+import { mentorAccessPageSchema, mentorFeedbackPageSchema, mentorResourceInboxSchema } from "./dto/mentor-access.schema.js";
 const project = (r: Request) => String(r.params.id), actor = (r: Request) => r.user!.sub, access = (r: Request) => String(r.params.accessId), item = (r: Request) => String(r.params.itemId);
 const send = (r: Response, data: unknown, status = 200) => r.status(status).json({ success: true, data });
 export const mentorAccessController = {
+  paperShares: async (r: Request, res: Response) => send(res, await service.paperShares(project(r), actor(r), String(r.params.paperId), mentorAccessPageSchema.parse(r.query).page)),
+  inbox: async (r: Request, res: Response) => { const query = mentorResourceInboxSchema.parse(r.query); res.set("Cache-Control", "private, no-store"); return send(res, await service.inbox(actor(r), query.page, query)); },
   tasks: async (r: Request, res: Response) => send(res, await service.tasks(project(r), actor(r), mentorAccessPageSchema.parse(r.query).page)),
   workspace: async (r: Request, res: Response) => send(res, await service.workspace(project(r), actor(r), mentorAccessPageSchema.parse(r.query).page, mentorAccessPageSchema.parse(r.query).activeOnly === "true")),
   catalog: async (r: Request, res: Response) => send(res, await service.catalog(project(r), actor(r), mentorAccessPageSchema.parse(r.query))),

@@ -1,0 +1,92 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { expect } from "vitest";
+
+type Session = { user: { id: string; systemRole: string; fullName: string }; tokens: { accessToken: string; refreshToken: string } };
+export async function contributionRecognitionBrowser(input: { base: string; projectId: string; owner: Session; member: Session; peer: Session }) {
+  const { chromium } = await import("playwright");
+  const cache = resolve(process.cwd(), "../web/.cache"), output = resolve(process.cwd(), "../../docs/audits/2026-11-25-integrity-contributions");
+  await mkdir(cache, { recursive: true }); await mkdir(output, { recursive: true });
+  await writeFile(resolve(cache, "recognition-qa.html"), '<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/.cache/recognition-qa.tsx"></script></body></html>');
+  await writeFile(resolve(cache, "recognition-qa.tsx"), `import React from 'react';import{createRoot}from'react-dom/client';import{QueryClient,QueryClientProvider}from'@tanstack/react-query';import{BrowserRouter}from'react-router-dom';import{I18nProvider}from'/src/i18n';import{useAuthStore}from'/src/stores/auth-store';import{ProjectContributionsWorkspace}from'/src/features/projects/components/project-contributions-workspace';import'/src/theme/globals.css';localStorage.setItem('lumigap.uiLanguage','vi');const f=(window as any).__RECOGNITION_QA__;useAuthStore.setState(f.session);createRoot(document.getElementById('root')!).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><BrowserRouter><I18nProvider><main className="mx-auto max-w-6xl bg-background p-5"><ProjectContributionsWorkspace projectId={f.projectId} currentUserId={f.session.user.id} isOwner={f.owner} readOnly={false}/></main></I18nProvider></BrowserRouter></QueryClientProvider>);`);
+  const browser = await chromium.launch({ headless: true });
+  const errors: string[] = [], pages: import("playwright").Page[] = [];
+  const url = "http://127.0.0.1:8091/.cache/recognition-qa.html";
+  try {
+    const setup = async (role: "owner" | "member" | "peer") => {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }), page = await context.newPage(); pages.push(page);
+      page.on("pageerror", e => errors.push(e.message));
+      await page.addInitScript(value => { (globalThis as unknown as { __RECOGNITION_QA__: unknown }).__RECOGNITION_QA__ = value; }, { projectId: input.projectId, session: input[role], owner: role === "owner" });
+      await page.route("**/api/v1/**", async route => { const request = new URL(route.request().url()); const response = await route.fetch({ url: input.base + request.pathname.replace("/api/v1", "") + request.search }); await route.fulfill({ response }); });
+      return page;
+    };
+    const owner = await setup("owner"), member = await setup("member"), peer = await setup("peer");
+    await owner.goto(url, { waitUntil: "networkidle" });
+    await owner.getByRole("button", { name: "Khai báo đóng góp", exact: true }).click();
+    const form = owner.locator("form.contribution-editor");
+    await form.getByLabel("Tiêu đề", { exact: true }).fill("Thực nghiệm kiểm chứng phương pháp");
+    await form.getByLabel("Mô tả", { exact: true }).fill("An thiết kế và thực hiện thí nghiệm đối chứng, lưu quy trình và kết quả để nhóm tái lập.");
+    await form.getByLabel("Sản phẩm hoặc kết quả nghiên cứu").fill("Quy trình có nhóm đối chứng và báo cáo thực nghiệm phiên bản 1");
+    await form.getByRole("checkbox", { name: input.owner.user.fullName, exact: true }).uncheck();
+    await form.getByRole("checkbox", { name: input.member.user.fullName, exact: true }).check();
+    const person = form.locator(".contribution-person").filter({ hasText: input.member.user.fullName });
+    await person.getByRole("checkbox", { name: /^Phương pháp nghiên cứu/ }).check();
+    await person.getByRole("combobox").selectOption("LEAD");
+    await form.locator("textarea").last().fill("Biên bản thực nghiệm và quy trình có phiên bản được nhóm lưu tại kho mã nguồn.");
+    await form.locator("details").filter({ has: owner.locator("summary", { hasText: "Minh chứng bên ngoài" }) }).locator("summary").click();
+    await form.getByLabel("Tên minh chứng", { exact: true }).fill("Quy trình thực nghiệm");
+    await form.getByLabel("Đường dẫn minh chứng", { exact: true }).fill("https://example.org/research/protocol");
+    await form.getByLabel("Commit hoặc phiên bản nguồn (không bắt buộc)").fill("protocol-v1");
+    await form.getByRole("button", { name: "Thêm nguồn bên ngoài" }).click();
+    await owner.screenshot({ path: resolve(output, "declaration-desktop.png"), fullPage: true });
+    await form.getByRole("button", { name: "Lưu bản nháp khai báo" }).click();
+    await owner.getByRole("button", { name: "Gửi để xác nhận", exact: true }).click();
+    const inbox = await owner.request.get(input.base + `/projects/${input.projectId}/contributions/work`, { headers: { authorization: `Bearer ${input.owner.tokens.accessToken}` } });
+    const record = (await inbox.json()).data.items.find((item: { title: string }) => item.title === "Thực nghiệm kiểm chứng phương pháp");
+    expect(record).toBeTruthy();
+    const detailUrl = url + `?contributionTab=declarations&contributionId=${record.id}`;
+    await peer.goto(detailUrl, { waitUntil: "networkidle" });
+    await peer.getByRole("button", { name: "Không đủ thông tin", exact: true }).click();
+    await peer.locator(".contribution-detail li").filter({ hasText: "Không đủ thông tin" }).waitFor();
+    await peer.screenshot({ path: resolve(output, "insufficient-information.png"), fullPage: true });
+    await member.goto(detailUrl, { waitUntil: "networkidle" });
+    await member.getByRole("button", { name: "Xác nhận vai trò của tôi", exact: true }).click();
+    await peer.getByLabel("Ý kiến xác nhận", { exact: true }).fill("Tôi đã đối chiếu quy trình và xác nhận An thực hiện công việc trong phạm vi này.");
+    await peer.getByRole("button", { name: "Xác nhận với tư cách đồng nghiệp độc lập", exact: true }).click();
+    await peer.getByText("Đã xác nhận độc lập trong phạm vi đã ghi", { exact: false }).waitFor();
+    await owner.reload({ waitUntil: "networkidle" });
+    await owner.screenshot({ path: resolve(output, "contributions-desktop.png"), fullPage: true });
+    await owner.getByRole("button", { name: "Ghi nhận công lao", exact: true }).click();
+    await owner.getByRole("table").waitFor(); await owner.screenshot({ path: resolve(output, "recognition-matrix.png"), fullPage: true });
+    await owner.getByRole("link", { name: "Đã được xác nhận độc lập", exact: true }).click();
+    await owner.locator(".contribution-list").getByText("Thực nghiệm kiểm chứng phương pháp", { exact: true }).waitFor();
+    await owner.getByRole("button", { name: "Ghi nhận công lao", exact: true }).click();
+    await owner.getByRole("table").waitFor();
+    await owner.getByRole("button", { name: "Liêm chính", exact: true }).click();
+    await owner.getByText(/Đối soát danh mục trích dẫn/).first().waitFor();
+    await owner.screenshot({ path: resolve(output, "integrity-citations.png"), fullPage: true });
+    await owner.getByRole("button", { name: /Minh bạch AI/ }).click();
+    await owner.getByRole("button", { name: "Thêm khai báo AI", exact: true }).click();
+    const aiDialog = owner.getByRole("dialog");
+    await aiDialog.getByLabel("Tên công cụ AI", { exact: true }).fill("Research assistant");
+    await aiDialog.getByLabel("Mô tả cụ thể cách thức sử dụng", { exact: true }).fill("Hỗ trợ lập dàn ý và hiệu đính ngôn ngữ phần tổng quan, chưa kiểm chứng các kết luận.");
+    await aiDialog.getByLabel("Phạm vi nội dung hoặc phiên bản liên quan").fill("Tổng quan tài liệu · bản nháp 1");
+    expect(await aiDialog.getByRole("checkbox").isChecked()).toBe(false);
+    await aiDialog.getByRole("button", { name: "Lưu khai báo", exact: true }).click();
+    await aiDialog.waitFor({ state: "hidden" });
+    await owner.getByText("Research assistant", { exact: true }).waitFor();
+    await owner.screenshot({ path: resolve(output, "integrity-ai.png"), fullPage: true });
+    await owner.getByRole("button", { name: "Ghi nhận công lao", exact: true }).click();
+    await owner.getByRole("table").waitFor();
+    await owner.setViewportSize({ width: 390, height: 844 });
+    expect(await owner.evaluate(() => { const view = globalThis as unknown as { document: { documentElement: { scrollWidth: number } }; innerWidth: number }; return view.document.documentElement.scrollWidth <= view.innerWidth; })).toBe(true);
+    await owner.screenshot({ path: resolve(output, "recognition-mobile.png"), fullPage: true });
+    await owner.evaluate(() => { const view = globalThis as unknown as { document: { documentElement: { classList: { add: (value: string) => void } } } }; view.document.documentElement.classList.add("dark"); });
+    await owner.screenshot({ path: resolve(output, "recognition-dark-mobile.png"), fullPage: true });
+    expect(errors).toEqual([]);
+    await writeFile(resolve(output, "browser-results.json"), JSON.stringify({ source: "Real project router, PostgreSQL and three authenticated sessions; no API mock data", scope: "Product components in a Vite harness; full application shell and manual sign-in are not covered", steps: ["owner attributes work to another researcher", "external evidence and participation saved", "peer abstains without rejecting", "contributor acknowledges their role", "independent peer verifies", "matrix linked to evidence", "integrity citations panel opened", "AI disclosure saved with scope and human check off by default", "mobile overflow checked", "dark mode checked"], pageErrors: errors }, null, 2));
+  } catch (error) {
+    for (const [index, page] of pages.entries()) { await page.screenshot({ path: resolve(output, `failure-${index}.png`), fullPage: true }); await writeFile(resolve(output, `failure-${index}.txt`), await page.locator("body").innerText()); }
+    throw error;
+  } finally { await browser.close(); }
+}

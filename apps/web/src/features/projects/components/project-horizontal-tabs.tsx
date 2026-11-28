@@ -10,6 +10,7 @@ export function ProjectHorizontalTabs({
   memberCount,
   loading = false,
   allowedTabs,
+  labelOverrides,
   className,
 }: {
   activeTab: ProjectTab;
@@ -18,6 +19,7 @@ export function ProjectHorizontalTabs({
   memberCount: number;
   loading?: boolean;
   allowedTabs?: readonly ProjectTab[];
+  labelOverrides?: Partial<Record<ProjectTab, string>>;
   className?: string;
 }) {
   const { t } = useI18n();
@@ -74,7 +76,7 @@ export function ProjectHorizontalTabs({
               className="project-content-tab"
             >
               <Icon className={cn("h-4 w-4 shrink-0 transition-colors", isSelected ? "text-primary-foreground" : section.iconColor)} />
-              <span>{t(section.label)}</span>
+              <span>{t(labelOverrides?.[section.key] ?? section.label)}</span>
               {count !== undefined && (
                 <span className="project-content-tab-count">
                   {count}

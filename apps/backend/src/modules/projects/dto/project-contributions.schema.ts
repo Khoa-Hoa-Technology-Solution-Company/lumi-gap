@@ -3,25 +3,29 @@ import { contributionCategories, creditRoles } from "@trend/shared-types";
 import { workspaceLinkSchema } from "./project-workspace.schema.js";
 
 const unique = (ids: string[]) => new Set(ids).size === ids.length;
-export const contributionsPageSchema = z.object({ page: z.coerce.number().int().min(1).max(10000).default(1), pageSize: z.coerce.number().int().min(1).max(50).default(20), q: z.string().trim().max(200).default(""), filter: z.enum(["TEAM", "MINE", "PENDING", "DISPUTED"]).default("TEAM") }).strict();
+export const contributionsPageSchema = z.object({ page: z.coerce.number().int().min(1).max(10000).default(1), pageSize: z.coerce.number().int().min(1).max(50).default(20), q: z.string().trim().max(200).default(""), filter: z.enum(["TEAM", "MINE", "PENDING", "DISPUTED"]).default("TEAM"), memberId: z.string().uuid().optional(), role: z.enum(creditRoles).optional(), milestoneId: z.string().uuid().optional(), status: z.enum(["DRAFT", "SUBMITTED", "ACCEPTED", "NEEDS_CHANGES", "DISPUTED", "SELF_RECORDED"]).optional() }).strict();
 export const manuscriptContributionKey = z.string().regex(/^(DRAFT|SUBMISSION):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 export const researchContributionsQuerySchema = z.object({
+  grouped: z.enum(["true", "false"]).optional(),
+  artifactKind: z.enum(["PAPER", "GAP", "TASK", "MANUSCRIPT", "EVIDENCE"]).optional(), artifactId: z.string().uuid().optional(),
   page: z.coerce.number().int().min(1).max(10000).default(1), pageSize: z.coerce.number().int().min(1).max(50).default(20),
   memberId: z.string().uuid().optional(), participantKind: z.enum(["MEMBER", "MENTOR"]).optional(),
   category: z.enum(["PLAN", "LITERATURE", "SCREENING", "EVIDENCE", "GAP", "TASK", "DECISION", "MANUSCRIPT"]).optional(),
   scopeKey: manuscriptContributionKey.optional(),
 }).strict();
 export const contributionFieldsSchema = z.object({
+  outcome: z.string().trim().max(5000).optional(), milestoneId: z.string().uuid().nullable().optional(),
+  externalEvidence: z.array(z.object({ kind: z.enum(["LINK", "REPOSITORY", "COMMIT", "DATASET", "EXPERIMENT_REPORT"]), url: z.string().url().max(2000).refine(value => ["https:", "http:"].includes(new URL(value).protocol), "Use an HTTP(S) evidence link"), label: z.string().trim().min(1).max(240), version: z.string().trim().max(160).optional() }).strict()).max(20).optional(),
   title: z.string().trim().min(3).max(240), description: z.string().trim().min(20).max(5000),
   category: z.enum(contributionCategories).optional(),
   source: z.enum(["MANUAL", "WORKSPACE"]), workDate: z.string().datetime({ offset: true }),
-  participants: z.array(z.object({ userId: z.string().uuid(), roles: z.array(z.enum(creditRoles)).max(14).refine(unique, "Duplicate roles") }).strict()).min(1).max(100).refine(p => unique(p.map(v => v.userId)), "Duplicate participants"),
+  participants: z.array(z.object({ userId: z.string().uuid(), roles: z.array(z.enum(creditRoles)).max(14).refine(unique, "Duplicate roles"), participation: z.record(z.enum(creditRoles), z.enum(["LEAD", "EQUAL", "SUPPORTING", "UNSPECIFIED"])).optional() }).strict().refine(p => Object.keys(p.participation ?? {}).every(role => p.roles.includes(role as typeof creditRoles[number])), "Participation needs its declared CRediT role")).min(1).max(100).refine(p => unique(p.map(v => v.userId)), "Duplicate participants"),
   evidence: z.string().trim().max(5000), evidenceRefs: z.array(z.union([workspaceLinkSchema.unwrap(), z.object({ kind: z.enum(["TASK", "SUBMISSION", "SUBMISSION_REVISION", "HUMAN_REVIEW", "SYNTHESIS", "RESEARCH_DECISION"]), id: z.string().uuid() }).strict()])).max(20),
 }).strict();
 export const createWorkContributionSchema = contributionFieldsSchema.extend({ clientKey: z.string().uuid() }).strict();
 export const editWorkContributionSchema = contributionFieldsSchema.extend({ expectedVersion: z.number().int().positive(), correctionReason: z.string().trim().min(10).max(1000) }).strict();
 export const contributionVersionSchema = z.object({ expectedVersion: z.number().int().positive() }).strict();
-export const contributionReviewSchema = z.object({ expectedVersion: z.number().int().positive(), decision: z.enum(["ACKNOWLEDGE", "ACCEPT", "NEEDS_CHANGES", "DISPUTE"]), note: z.string().trim().max(2000).default("") }).strict().refine(v => !["NEEDS_CHANGES", "DISPUTE"].includes(v.decision) || v.note.length >= 10, "Explain the requested change");
+export const contributionReviewSchema = z.object({ expectedVersion: z.number().int().positive(), decision: z.enum(["ACKNOWLEDGE", "ACCEPT", "NEEDS_CHANGES", "DISPUTE", "INSUFFICIENT_INFORMATION"]), note: z.string().trim().max(2000).default("") }).strict().refine(v => !["NEEDS_CHANGES", "DISPUTE"].includes(v.decision) || v.note.length >= 10, "Explain the requested change");
 export const allocationPeriodSchema = z.object({ title: z.string().trim().min(3).max(240), description: z.string().trim().min(10).max(2000), scope: z.string().trim().min(10).max(500), periodStart: z.string().datetime({ offset: true }), periodEnd: z.string().datetime({ offset: true }), clientKey: z.string().uuid() }).strict().refine(v => new Date(v.periodEnd) >= new Date(v.periodStart), "Invalid date range");
 const shares = z.array(z.object({ userId: z.string().uuid(), basisPoints: z.number().int().min(0).max(10000), rationale: z.string().trim().max(1000) }).strict()).min(1).max(100).refine(v => unique(v.map(p => p.userId)), "Duplicate participants");
 const matrixShareSchema = z.object({

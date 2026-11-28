@@ -55,10 +55,23 @@ export const academicSearchSchema = z.object({
 }).strict();
 export const mentorshipOfferSchema = requestBody.omit({ mentorUserId: true, access: true, candidateId: true, expectedPlanVersion: true, dossier: true, applicationId: true, expectedApplicationVersion: true }).refine(hasContent, "Add a message or an attachment to your invitation");
 
+export const needScopeConfirmationSchema = z.object({
+  needId: z.string().trim().min(1).max(80),
+  needTitle: z.string().trim().min(1).max(160),
+  response: z.enum(["CAN_SUPPORT", "NEEDS_DISCUSSION", "OUTSIDE_SCOPE"]),
+  note: z.string().trim().max(300).optional(),
+}).strict();
+
 export const respondMentorshipSchema = z.object({
   note: z.string().trim().max(1000).optional(),
   expectedAccessVersion: z.number().int().positive().optional(),
   expectedPreviewToken: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  expectedProposalVersion: z.number().int().positive().optional(),
+  needConfirmations: z.array(needScopeConfirmationSchema).max(16).optional(),
+}).strict();
+
+export const explainMentorSchema = z.object({
+  locale: z.enum(["vi", "en"]).optional(),
 }).strict();
 
 export const requestMentorshipInfoSchema = z.object({
@@ -70,7 +83,26 @@ export const projectMentorshipController = {
   async topicSuggestionStatus(req: Request, res: Response) { res.setHeader("Cache-Control", "private, no-store"); res.json({ success: true, data: await projectMentorshipService.topicSuggestions(String(req.params.id), req.user!.sub, { jobId: String(req.params.jobId) }) }); },
   async mentorEvidence(req: Request, res: Response) {
     res.setHeader("Cache-Control", "private, no-store");
-    res.json({ success: true, data: await projectMentorshipService.mentorEvidence(String(req.params.id), req.user!.sub, String(req.params.mentorId)) });
+    const locale = req.query.locale === "en" ? "en" : "vi";
+    res.json({ success: true, data: await projectMentorshipService.mentorEvidence(String(req.params.id), req.user!.sub, String(req.params.mentorId), locale) });
+  },
+  async getResearchNeeds(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const locale = req.query.locale === "en" ? "en" : "vi";
+    res.json({ success: true, data: await projectMentorshipService.getResearchNeeds(String(req.params.id), req.user!.sub, locale) });
+  },
+  async analyzeResearchNeeds(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ success: true, data: await projectMentorshipService.analyzeResearchNeeds(String(req.params.id), req.user!.sub, req.body) });
+  },
+  async saveResearchNeeds(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ success: true, data: await projectMentorshipService.saveResearchNeeds(String(req.params.id), req.user!.sub, req.body) });
+  },
+  async explainMentor(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const locale = req.body?.locale === "en" ? "en" : "vi";
+    res.json({ success: true, data: await projectMentorshipService.explainMentorRecommendation(String(req.params.id), req.user!.sub, String(req.params.mentorId), locale) });
   },
   async detail(req: Request, res: Response) {
     const data = await projectMentorshipService.requestDetail(req.params.id as string, req.params.relationshipId as string, req.user!.sub);
@@ -100,7 +132,71 @@ export const projectMentorshipController = {
       req.body.note,
       req.body.expectedAccessVersion,
       req.body.expectedPreviewToken,
+      req.body.expectedProposalVersion,
+      req.body.needConfirmations,
     );
+    res.json({ success: true, data });
+  },
+
+  async propose(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const data = await projectMentorshipService.propose(req.params.id as string, req.user!.sub, req.body);
+    res.status(201).json({ success: true, data });
+  },
+
+  async counterPropose(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const data = await projectMentorshipService.counterPropose(
+      req.params.id as string,
+      req.params.relationshipId as string,
+      req.user!.sub,
+      req.body,
+    );
+    res.status(201).json({ success: true, data });
+  },
+
+  async listMessages(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const data = await projectMentorshipService.listMessages(
+      req.params.id as string,
+      req.params.relationshipId as string,
+      req.user!.sub,
+    );
+    res.json({ success: true, data });
+  },
+
+  async sendMessage(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const data = await projectMentorshipService.sendMessage(
+      req.params.id as string,
+      req.params.relationshipId as string,
+      req.user!.sub,
+      req.body,
+    );
+    res.status(201).json({ success: true, data });
+  },
+
+  async opportunityDossier(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const data = await projectMentorshipService.opportunityDossier(req.params.id as string, req.user!.sub);
+    res.json({ success: true, data });
+  },
+
+  async previewTeamDossier(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const data = await projectMentorshipService.previewTeamDossier(req.params.id as string, req.user!.sub);
+    res.json({ success: true, data });
+  },
+
+  async getMyProfileConsent(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const data = await projectMentorshipService.myProfileConsent(req.params.id as string, req.user!.sub);
+    res.json({ success: true, data });
+  },
+
+  async updateMyProfileConsent(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const data = await projectMentorshipService.updateMyProfileConsent(req.params.id as string, req.user!.sub, req.body);
     res.json({ success: true, data });
   },
 

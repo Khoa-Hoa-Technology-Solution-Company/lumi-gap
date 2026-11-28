@@ -36,6 +36,7 @@ export const updateProjectSchema = z.object({
   visibility: projectVisibilitySchema.optional(),
   publicSummary: z.string().trim().max(2000).optional(),
   researchAreas: researchAreasSchema.optional(),
+  keywords: z.array(z.string().trim().min(1).max(80)).max(10).optional(),
   researchApproach: approachSchema.optional(),
   expectedVersion: z.number().int().positive().optional(),
   inclusionCriteria: z.array(z.string().trim().min(1).max(240)).max(20).optional(),

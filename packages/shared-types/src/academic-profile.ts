@@ -255,11 +255,17 @@ export interface AcademicAvailability<T extends string> {
   types: T[];
   preferredTopics: string[];
   preferredTopicIds?: string[];
+  preferredRoles?: ("PRIMARY" | "SECONDARY")[];
+  expectedFrequency?: string;
+  expectedDuration?: string;
+  communicationMode?: string;
   requestedEnabled?: boolean;
   note?: string;
   updatedAt?: ISODateString;
   acceptedFields?: string[];
   maximumActiveReviews?: number;
+  maxActiveProjects?: number | null;
+  externalGroupCount?: number | null;
   preferredReviewWorkload?: string;
   temporarilyUnavailableUntil?: ISODateString;
   autoRecommendationEnabled?: boolean;
@@ -284,6 +290,184 @@ export interface AcademicFeaturedWork extends AcademicFeaturedWorkInput {
   canonical: boolean;
   href?: string;
   visibility?: "PUBLIC" | "RESTRICTED";
+}
+
+export type ProfileProjectRole = "OWNER" | "COLLABORATOR" | "MENTOR";
+
+export interface ProfilePortfolioProject {
+  projectId: string;
+  title: string;
+  role: ProfileProjectRole;
+  description?: string;
+  researchField?: string;
+  status: string;
+  visibility: "PUBLIC" | "PUBLIC_SUMMARY" | "PRIVATE";
+  joinedAt?: ISODateString;
+  href: string;
+}
+
+export interface ProfilePortfolioContribution {
+  id: string;
+  projectId: string;
+  projectTitle: string;
+  title: string;
+  description: string;
+  roles: string[];
+  category: string;
+  workDate: ISODateString;
+  confirmedAt?: ISODateString;
+  visibility: "PUBLIC" | "PRIVATE";
+}
+
+export interface MentorPublicProjectItem {
+  projectId: string;
+  title: string;
+  researchField?: string;
+  mentorRole: string;
+  stage: string;
+  mentorshipStatus: "ACTIVE" | "COMPLETED" | "ENDED";
+  publicationStatus?: string | null;
+  updatedAt: ISODateString;
+}
+
+export interface MentorPublicActivitySummary {
+  acceptingNew: boolean;
+  capacityReached?: boolean;
+  activeProjectCount: number;
+  maxActiveProjects: number | null;
+  remainingSlots: number | null;
+  externalGroupCount: number | null;
+  completedMentorshipCount: number;
+  endedMentorshipCount: number;
+  privateActiveCount: number;
+  updatedAt?: ISODateString;
+  currentProjects: MentorPublicProjectItem[];
+}
+
+export interface ProfilePortfolio {
+  projects: ProfilePortfolioProject[];
+  contributions: ProfilePortfolioContribution[];
+  mentoringActivity?: MentorPublicActivitySummary;
+}
+
+export interface NormalizedResearchExpertise {
+  researchAreas: string[];
+  skills: string[];
+  researchMethods: string[];
+}
+
+const KNOWN_RESEARCH_METHOD_TERMS = new Set([
+  "research methods",
+  "research methodology",
+  "systematic review",
+  "systematic literature review",
+  "literature screening",
+  "evidence extraction",
+  "experimental design",
+  "experimental research",
+  "survey design",
+  "survey research",
+  "qualitative analysis",
+  "qualitative coding",
+  "qualitative research",
+  "quantitative analysis",
+  "quantitative research",
+  "mixed methods",
+  "case study",
+  "statistical analysis",
+  "interview analysis",
+  "archival research",
+  "laboratory techniques",
+  "meta-analysis",
+  "meta analysis",
+  "ablation study",
+  "user study",
+  "thiết kế thí nghiệm",
+  "phương pháp nghiên cứu",
+  "phân tích định tính",
+  "phân tích định lượng",
+  "phân tích thống kê",
+  "tổng quan hệ thống",
+  "nghiên cứu khảo sát",
+  "nghiên cứu thực nghiệm",
+  "nghiên cứu tình huống",
+]);
+
+export function dedupeAcademicTerms(values: ReadonlyArray<string | null | undefined>, max = 40): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of values) {
+    if (typeof raw !== "string") continue;
+    const clean = raw.normalize("NFKC").trim().replace(/\s+/g, " ");
+    if (!clean) continue;
+    const key = clean.toLocaleLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(clean);
+    if (result.length >= max) break;
+  }
+  return result;
+}
+
+export function isKnownResearchMethodTerm(term: string): boolean {
+  const key = term.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  return KNOWN_RESEARCH_METHOD_TERMS.has(key);
+}
+
+/**
+ * Canonical 3-group presentation & deduplication across legacy fields
+ * (expertiseAreas, researchSpecializations, researchInterests, skills, researchMethods, researchClassification).
+ * Preserves every unique user term without cross-language guessing or silent deletion.
+ */
+export function normalizeAcademicExpertise(input: {
+  expertiseAreas?: ReadonlyArray<string>;
+  researchSpecializations?: ReadonlyArray<string>;
+  researchInterests?: ReadonlyArray<string>;
+  skills?: ReadonlyArray<string>;
+  researchMethods?: ReadonlyArray<string>;
+  researchKeywords?: ReadonlyArray<string>;
+  classificationNodeNames?: ReadonlyArray<string>;
+  classificationSkillLabels?: ReadonlyArray<string>;
+}): NormalizedResearchExpertise {
+  const explicitMethods = dedupeAcademicTerms(input.researchMethods ?? [], 30);
+  const rawSkills = dedupeAcademicTerms([...(input.skills ?? []), ...(input.classificationSkillLabels ?? [])], 40);
+  const rawAreas = dedupeAcademicTerms([
+    ...(input.expertiseAreas ?? []),
+    ...(input.researchSpecializations ?? []),
+    ...(input.classificationNodeNames ?? []),
+    ...(input.researchInterests ?? []),
+  ], 40);
+
+  // 1. Methods: explicit researchMethods + known method terms extracted from legacy skills/areas
+  const methodsFromLegacy = [...rawSkills, ...rawAreas].filter(isKnownResearchMethodTerm);
+  const researchMethods = dedupeAcademicTerms([...explicitMethods, ...methodsFromLegacy], 30);
+  const methodKeys = new Set(researchMethods.map(item => item.toLocaleLowerCase()));
+
+  // 2. Skills: technical/domain skills excluding terms already placed in Methods
+  const skills = rawSkills.filter(item => !methodKeys.has(item.toLocaleLowerCase()));
+  const skillKeys = new Set(skills.map(item => item.toLocaleLowerCase()));
+
+  // 3. Research Areas: research topics/fields excluding duplicates already in Skills or Methods
+  const researchAreas = rawAreas.filter(item => {
+    const key = item.toLocaleLowerCase();
+    return !methodKeys.has(key) && !skillKeys.has(key);
+  });
+
+  // Preserve any unique legacy keyword that didn't appear in areas/skills/methods
+  const allKeys = new Set([
+    ...researchAreas.map(item => item.toLocaleLowerCase()),
+    ...skills.map(item => item.toLocaleLowerCase()),
+    ...researchMethods.map(item => item.toLocaleLowerCase()),
+  ]);
+  for (const kw of dedupeAcademicTerms(input.researchKeywords ?? [], 40)) {
+    const key = kw.toLocaleLowerCase();
+    if (allKeys.has(key)) continue;
+    allKeys.add(key);
+    if (isKnownResearchMethodTerm(kw)) researchMethods.push(kw);
+    else researchAreas.push(kw);
+  }
+
+  return { researchAreas, skills, researchMethods };
 }
 
 export type VerificationEvidenceType =
@@ -382,10 +566,12 @@ export interface AcademicProfile {
   researchClassification?: import("./research-classification.js").ResearchClassification;
   researchSpecializations?: string[];
   skills: string[];
+  researchMethods?: string[];
   researchKeywords: string[];
   externalIdentities: AcademicExternalIdentity[];
   academicIdentityLinks: AcademicIdentityLink[];
   featuredWorks: AcademicFeaturedWork[];
+  portfolio?: ProfilePortfolio;
   supportAvailability: AcademicAvailability<ResearchSupportType>;
   reviewAvailability: AcademicAvailability<AcademicReviewType>;
   verificationStatus: AcademicVerificationStatus;
@@ -410,6 +596,7 @@ export interface PublicAcademicProfile extends Omit<
   "id" | "institutionalEmail" | "displayNamePolicy" | "verification" | "verificationEvidence" | "verificationRequests" | "profileHistory" | "privacy" | "affiliation" | "affiliationHistory" | "reviewAvailability"
 > {
   affiliation: PublicAcademicAffiliation;
+  previewNotice?: "PRIVATE" | "MEMBERS_ONLY";
   reviewAvailability: Omit<
     AcademicAvailability<AcademicReviewType>,
     "maximumActiveReviews" | "preferredReviewWorkload" | "temporarilyUnavailableUntil" | "autoRecommendationEnabled"
@@ -497,6 +684,7 @@ export interface UpdateAcademicProfileDetailsRequest {
   researchClassification?: import("./research-classification.js").ResearchClassificationInput;
   researchSpecializations?: string[];
   skills?: string[];
+  researchMethods?: string[];
   researchKeywords?: string[];
   externalIdentities?: Array<{
     provider: ExternalIdentityProvider;

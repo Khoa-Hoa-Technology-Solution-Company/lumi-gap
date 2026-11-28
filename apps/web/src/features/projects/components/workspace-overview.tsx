@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import type { IProject, ResearchStage } from "@trend/shared-types";
 import {
   ArrowUpRight,
@@ -23,13 +24,18 @@ import {
   Settings2,
   Info,
   FileBarChart2,
+  Flag,
+  ShieldCheck,
+  AlertCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/i18n";
 import { workspaceApi } from "../api/workspace.api";
+import { contributionsApi } from "../api/contributions.api";
 import { useWorkspaceCommand, useWorkspaceOverview } from "../hooks/use-workspace";
 import { ProjectTrendEvidence } from "@/features/trends/components/project-trend-evidence";
 import { approachLabels, formatRelativeActivity, projectSectionHref, stageLabels, taskLabels, WorkspaceDate, WorkspaceError, WorkspaceLoading } from "./workspace-common";
@@ -46,7 +52,7 @@ export function WorkspaceStageSelector({ projectId }: { projectId: string }) {
   return (
     <div className="coord-stage-inline inline-flex items-center gap-2" data-no-i18n>
       <span className="text-xs font-semibold text-muted-foreground inline-flex items-center gap-1.5 whitespace-nowrap">
-        <Layers className="h-3.5 w-3.5 text-primary" />
+        <Layers className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
         {t("Research stage")}:
       </span>
       {capabilities.manageProject ? (
@@ -55,13 +61,13 @@ export function WorkspaceStageSelector({ projectId }: { projectId: string }) {
           value={project.researchStage ?? ""}
           disabled={update.isPending}
           onChange={e => update.mutate((e.target.value || null) as ResearchStage | null)}
-          className="h-7 rounded-lg border border-border/80 bg-background/90 px-2 py-0 text-xs font-semibold text-foreground shadow-sm focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer hover:border-primary/40 transition-colors"
+          className="h-8 rounded-lg border border-border/80 bg-background/90 px-2.5 py-0 text-xs font-semibold text-foreground shadow-sm focus:ring-2 focus:ring-primary/20 focus:outline-none cursor-pointer hover:border-primary/40 transition-colors"
         >
           <option value="">{t("Not set")}</option>
           {Object.entries(stageLabels).map(([key, value]) => <option key={key} value={key}>{t(value)}</option>)}
         </select>
       ) : (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-primary/10 text-primary">
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold bg-primary/10 text-primary">
           {t(project.researchStage ? stageLabels[project.researchStage] : "Not set")}
         </span>
       )}
@@ -85,7 +91,7 @@ export function WorkspaceStage({ projectId, compact }: { projectId: string; comp
     <div className="coord-stage" data-no-i18n>
       <div className="flex items-center gap-2.5 flex-wrap">
         <span className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-          <Layers className="h-4 w-4 text-primary" />
+          <Layers className="h-4 w-4 text-primary" aria-hidden="true" />
           {t("Research stage")}:
         </span>
         {capabilities.manageProject ? (
@@ -135,12 +141,17 @@ const activityLabels: Record<string, string> = {
   MILESTONE_CREATED: "Created a milestone", MILESTONE_UPDATED: "Updated a milestone", DISCUSSION_CREATED: "Started a discussion", DISCUSSION_UPDATED: "Updated a discussion", DISCUSSION_RESOLVED: "Recorded a discussion conclusion", DISCUSSION_REOPENED: "Reopened a discussion", DISCUSSION_REPLY: "Replied to a discussion", DECISION_CREATED: "Recorded a research decision", DECISION_UPDATED: "Revised a research decision", WORKSPACE_COMMENT_ADDED: "Left a comment", MENTOR_PLAN_FEEDBACK: "Left mentor feedback", PROJECT_CREATED: "Created the project", PROJECT_UPDATED: "Updated project details", PAPER_ADDED: "Added a paper", PAPER_REMOVED: "Removed a paper", MEMBER_JOINED: "Joined the project", MEMBER_INVITED: "Invited a team member",
 };
 
-
 export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
   const { t, language } = useI18n();
   const currentUserId = useAuthStore(state => state.user?.id);
   const id = project._id;
   const overview = useWorkspaceOverview(id);
+  const contributionSummary = useQuery({
+    queryKey: ["project-workspace", currentUserId, id, "contribution-summary", null],
+    queryFn: () => contributionsApi.summary(id),
+    enabled: Boolean(id && currentUserId && typeof contributionsApi.summary === "function"),
+    staleTime: 15_000,
+  });
   const updateStage = useWorkspaceCommand(id, (stage: ResearchStage | null) =>
     workspaceApi.stage(id, { stage, expectedVersion: overview.data!.project.version }),
   );
@@ -150,14 +161,38 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
 
   const data = overview.data;
 
-  const attention = [
-    { count: data.attention.mentorFeedback, label: "Mentor feedback is waiting for a team response", tab: "plan" },
-    { count: data.attention.overdueTasks, label: "Overdue tasks", tab: "tasks" },
-    { count: data.attention.blockedTasks, label: "Blocked tasks", tab: "tasks" },
-    { count: data.attention.reviewResponses, label: "Review responses requiring action", tab: "reviews" },
+  // Shared contribution acknowledgement count used consistently by both Needs Attention and Integrity & Contributions.
+  const pendingForViewer = contributionSummary.data?.pendingForViewer ?? 0;
+
+  const teamAttention = [
+    { count: data.attention.overdueTasks, label: "Overdue tasks", href: projectSectionHref(id, "tasks") },
+    { count: data.attention.blockedTasks, label: "Blocked tasks", href: projectSectionHref(id, "tasks") },
+    { count: data.attention.mentorFeedback, label: "Mentor feedback is waiting for a team response", href: projectSectionHref(id, "plan") },
+    { count: data.attention.reviewResponses, label: "Review responses requiring action", href: "/reviews" },
   ].filter(item => item.count > 0);
 
-  // 6 KPI Metric Cards
+  const personalAttention = pendingForViewer > 0
+    ? [{
+        count: pendingForViewer,
+        label: "Contributions awaiting your acknowledgement",
+        href: projectSectionHref(id, "contributions", { contributionTab: "pending" }),
+      }]
+    : [];
+
+  const hasAnyAttention = teamAttention.length > 0 || personalAttention.length > 0 || data.attention.mentorQuestions > 0;
+
+  // Research Direction derived data
+  const problemText = (data.plan.problem || project.description || "").trim();
+  const savedQuestions = (data.plan.questions ?? []).filter(q => typeof q?.text === "string" && q.text.trim().length > 0);
+  const representativeQuestion = savedQuestions[0] ?? null;
+  const hasResearchDirectionContent = Boolean(problemText || savedQuestions.length > 0 || data.plan.objectives.length > 0);
+
+  // Next Milestone overdue check (UTC date comparison matching backend `now = new Date(iso.slice(0,10))`)
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const nextMilestone = data.nextMilestone;
+  const milestoneOverdue = Boolean(nextMilestone?.dueAt && nextMilestone.dueAt.slice(0, 10) < todayIso);
+
+  // 6 KPI Metric Cards (Research Progress — saved workspace deliverables)
   const kpiItems = [
     {
       key: "papers",
@@ -224,13 +259,13 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="coord-overview space-y-7" data-no-i18n>
+      <div className="coord-overview space-y-6" data-no-i18n>
         {/* Overview Page Header */}
-        <div className="bg-card rounded-2xl border border-border/80 p-5 sm:p-6 shadow-sm relative overflow-hidden">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+        <div className="bg-card rounded-2xl border border-border/80 p-5 sm:p-6 shadow-sm relative">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
             <div className="space-y-2 min-w-0">
               <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground leading-tight">
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground leading-tight break-words">
                   {project.title}
                 </h1>
                 <span className="project-status-tag" data-status={project.status}>
@@ -244,7 +279,7 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
                 ) : null}
               </div>
 
-              <div className="flex items-center gap-3.5 text-xs font-medium text-muted-foreground flex-wrap pt-0.5">
+              <div className="flex items-center gap-3 text-xs font-medium text-muted-foreground flex-wrap pt-0.5">
                 <span className="inline-flex items-center gap-1.5">
                   {["PUBLIC", "PUBLIC_SUMMARY"].includes(project.visibility) ? (
                     <Globe2 className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
@@ -255,19 +290,19 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
                   )}
                   {t(project.visibility === "PRIVATE" ? "Private" : project.visibility === "INVITE_ONLY" ? "Invite only" : "Public summary")}
                 </span>
-                <span>•</span>
+                <span aria-hidden="true">•</span>
                 <span className="inline-flex items-center gap-1.5">
-                  <Clock3 className="h-3.5 w-3.5 text-muted-foreground/70" aria-hidden="true" />
+                  <Clock3 className="h-3.5 w-3.5 text-muted-foreground/80" aria-hidden="true" />
                   {t("Updated {{time}}", { time: formatRelativeActivity(project.updatedAt, language, t) })}
                 </span>
                 {project.accessRole ? (
                   <>
-                    <span>•</span>
+                    <span aria-hidden="true">•</span>
                     <Link
                       to={projectSectionHref(id, "members", { team: "settings" })}
                       className="inline-flex items-center gap-1.5 hover:text-primary transition-colors font-semibold"
                     >
-                      <Settings2 className="h-3.5 w-3.5" />
+                      <Settings2 className="h-3.5 w-3.5" aria-hidden="true" />
                       <span>{t("Project settings")}</span>
                     </Link>
                   </>
@@ -279,8 +314,8 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
               <WorkspaceStageSelector projectId={id} />
               <Button asChild size="default" className="project-primary-action h-9 px-4 text-xs font-semibold shadow-sm">
                 <Link to={projectSectionHref(id, "plan")}>
-                  {t(data.plan.problem ? "About project" : "Describe your research")}
-                  <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" />
+                  {t(hasResearchDirectionContent ? "Open research plan" : "Build research plan")}
+                  <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
                 </Link>
               </Button>
             </div>
@@ -291,93 +326,314 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
             canManage={data.capabilities.manageProject}
             pending={updateStage.isPending}
             onSelect={stage => updateStage.mutate(stage)}
+            hideCurrentBadge
           />
           {updateStage.isError ? <WorkspaceError error={updateStage.error} retry={() => void overview.refetch()} /> : null}
         </div>
 
         {/* Main Grid: Left Column (8 cols) and Right Column (4 cols) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column (8 cols) */}
-          <div className="lg:col-span-8 space-y-7">
+          <div className="lg:col-span-8 space-y-6 min-w-0">
             {/* Card 1: Research Direction */}
-            <section className="bg-card rounded-2xl border border-border/80 p-6 sm:p-7 shadow-sm relative overflow-hidden">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
+            <section className="bg-card rounded-2xl border border-border/80 p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-3 min-w-0">
                   <div className="h-9 w-9 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                    <Compass className="h-5 w-5" />
+                    <Compass className="h-5 w-5" aria-hidden="true" />
                   </div>
-                  <div>
-                    <h3 className="font-bold text-lg text-foreground leading-snug">{t("Research direction")}</h3>
-                    <span className="text-sm text-muted-foreground">{t("Core focus & framing")}</span>
+                  <div className="min-w-0">
+                    <h2 className="font-bold text-lg text-foreground leading-snug">{t("Research direction")}</h2>
+                    <span className="text-xs sm:text-sm text-muted-foreground">{t("Core focus & framing")}</span>
                   </div>
                 </div>
-                <Link to={projectSectionHref(id, "plan")} className="text-sm font-semibold text-primary hover:underline inline-flex items-center gap-1">
-                  {t("Edit plan")}<ArrowUpRight className="h-3.5 w-3.5" />
-                </Link>
+                {hasResearchDirectionContent ? (
+                  <Link
+                    to={projectSectionHref(id, "plan")}
+                    className="text-xs sm:text-sm font-semibold text-primary hover:underline inline-flex items-center gap-1 shrink-0"
+                  >
+                    {t("Edit plan")}
+                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </Link>
+                ) : null}
               </div>
 
-              {data.plan.problem || project.description ? (
-                <div className="bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-transparent dark:from-blue-950/30 dark:via-indigo-950/20 border-l-4 border-blue-600 rounded-r-xl p-4 sm:p-5 text-base text-foreground/90 font-medium leading-relaxed mb-5">
-                  {data.plan.problem || project.description}
+              {hasResearchDirectionContent ? (
+                <div className="space-y-4">
+                  {/* Research Problem */}
+                  {problemText ? (
+                    <div>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1.5">
+                        {t("Research problem")}
+                      </span>
+                      <div className="bg-muted/30 border-l-4 border-primary/70 rounded-r-xl px-4 py-3.5 text-sm sm:text-base text-foreground/95 font-medium leading-relaxed break-words">
+                        {problemText}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Research Question (from Research Plan — never claims primary if schema lacks it) */}
+                  {representativeQuestion ? (
+                    <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
+                          <HelpCircle className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                          {t("Research question")}
+                        </span>
+                        {savedQuestions.length > 1 ? (
+                          <div className="inline-flex items-center gap-2">
+                            <span className="text-xs font-medium text-muted-foreground bg-background border border-border/70 px-2 py-0.5 rounded-full">
+                              {t("+{{count}} more questions", { count: savedQuestions.length - 1 })}
+                            </span>
+                            <Link
+                              to={projectSectionHref(id, "plan")}
+                              className="text-xs font-semibold text-primary hover:underline inline-flex items-center gap-0.5"
+                            >
+                              {t("View all questions")}
+                              <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                            </Link>
+                          </div>
+                        ) : null}
+                      </div>
+                      <p className="text-sm sm:text-base text-foreground leading-relaxed break-words">
+                        {representativeQuestion.text}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {/* Research Objectives — neutral numbered list (never green checkmarks for declared goals) */}
+                  {data.plan.objectives.length > 0 ? (
+                    <div className="pt-3 border-t border-border/60">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2.5">
+                        {t("Research objectives")}
+                      </span>
+                      <ol className="space-y-2">
+                        {data.plan.objectives.map((obj, i) => (
+                          <li key={i} className="text-sm flex items-start gap-2.5 text-foreground/90 leading-relaxed">
+                            <span
+                              className="mt-0.5 h-5 w-5 rounded-full bg-muted text-muted-foreground text-[11px] font-semibold flex items-center justify-center shrink-0 tabular-nums"
+                              aria-hidden="true"
+                            >
+                              {i + 1}
+                            </span>
+                            <span className="break-words">{obj}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
-                <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-4 sm:p-5 mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-4 sm:p-5 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <p className="text-sm text-muted-foreground leading-relaxed">
-                    {t("Start with a question or a problem. You can refine the plan as your research develops.")}
+                    {t("Define the research problem and questions to guide your team's work.")}
                   </p>
                   <Button asChild variant="outline" size="sm" className="shrink-0 font-semibold rounded-lg">
                     <Link to={projectSectionHref(id, "plan")}>
-                      {t("Describe your research")}
-                      <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" />
+                      {t("Build research plan")}
+                      <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
                     </Link>
                   </Button>
                 </div>
               )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/60">
-              <div className="flex items-center gap-2.5 text-sm">
-                <span className="text-muted-foreground font-medium">{t("Approach")}:</span>
-                <span className="px-3 py-1 rounded-md bg-muted font-semibold text-foreground">
-                  {t(approachLabels[data.plan.approach])}
-                </span>
-              </div>
-              {project.researchField && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4 mt-4 border-t border-border/60">
                 <div className="flex items-center gap-2.5 text-sm">
-                  <span className="text-muted-foreground font-medium">{t("Research field")}:</span>
-                  <span className="px-3 py-1 rounded-md bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-semibold">
-                    {project.researchField}
+                  <span className="text-muted-foreground font-medium">{t("Approach")}:</span>
+                  <span className="px-2.5 py-0.5 rounded-md bg-muted font-semibold text-foreground text-xs sm:text-sm">
+                    {t(approachLabels[data.plan.approach])}
                   </span>
                 </div>
-              )}
-            </div>
-
-            {data.plan.objectives.length > 0 && (
-              <div className="mt-5 pt-4 border-t border-border/60">
-                <span className="text-sm font-bold text-foreground block mb-2.5">{t("Objectives")}:</span>
-                <ul className="space-y-2">
-                  {data.plan.objectives.map((obj, i) => (
-                    <li key={i} className="text-sm flex items-start gap-2.5 text-foreground/90 leading-relaxed">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                      <span>{obj}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
-
-          <ProjectTrendEvidence projectId={id} currentUserId={currentUserId} ownerId={project.ownerId} />
-
-            {/* Card 2: Research Progress KPI Metrics Dashboard */}
-            <section className="bg-card rounded-2xl border border-border/80 p-6 sm:p-7 shadow-sm">
-              <div className="flex items-center justify-between mb-5 gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                    <TrendingUp className="h-5 w-5" />
+                {project.researchField ? (
+                  <div className="flex items-center gap-2.5 text-sm">
+                    <span className="text-muted-foreground font-medium">{t("Research field")}:</span>
+                    <span className="px-2.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-semibold text-xs sm:text-sm">
+                      {project.researchField}
+                    </span>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-lg text-foreground leading-snug">{t("Research progress")}</h3>
-                    <span className="text-sm text-muted-foreground">{t("Saved workspace deliverables")}</span>
+                ) : null}
+              </div>
+            </section>
+
+            {/* Research Trend Evidence (preserved) */}
+            <ProjectTrendEvidence projectId={id} currentUserId={currentUserId} ownerId={project.ownerId} />
+
+            {/* Card 2: Continue Working (prioritized above Research Progress for actionability) */}
+            <section className="bg-card rounded-2xl border border-border/80 p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-9 w-9 rounded-xl bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
+                    <CheckSquare className="h-5 w-5" aria-hidden="true" />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="font-bold text-lg text-foreground leading-snug">{t("Continue working")}</h2>
+                    <span className="text-xs sm:text-sm text-muted-foreground">
+                      {t(nextMilestone ? "Next milestone, assigned tasks and recent outputs" : "Assigned tasks and recent artifacts")}
+                    </span>
+                  </div>
+                </div>
+                <Link
+                  to={projectSectionHref(id, "tasks")}
+                  className="text-xs sm:text-sm font-semibold text-primary hover:underline inline-flex items-center gap-1 shrink-0"
+                >
+                  {t("All tasks")}
+                  <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </Link>
+              </div>
+
+              {/* 1. Next Milestone (rendered from real backend data when present; omitted when absent to keep card compact) */}
+              {nextMilestone ? (
+                <div
+                  className={`mb-5 rounded-xl border p-4 ${
+                    milestoneOverdue
+                      ? "border-amber-300/90 bg-amber-50/50 dark:border-amber-800/80 dark:bg-amber-950/20"
+                      : "border-border/80 bg-muted/25"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 space-y-1 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
+                          <Flag className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                          {t("Next milestone")}
+                        </span>
+                        {milestoneOverdue ? (
+                          <Badge variant="destructive" className="text-[11px] font-semibold px-2 py-0">
+                            {t("Overdue")}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-[11px] font-semibold px-2 py-0">
+                            {t("Planned")}
+                          </Badge>
+                        )}
+                      </div>
+                      <h3 className="text-sm sm:text-base font-semibold text-foreground break-words">
+                        {nextMilestone.title}
+                      </h3>
+                      {nextMilestone.description ? (
+                        <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 break-words">
+                          {nextMilestone.description}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <Link
+                      to={projectSectionHref(id, "tasks")}
+                      className="text-xs font-semibold text-primary hover:underline inline-flex items-center gap-1 shrink-0 mt-0.5"
+                    >
+                      {t("View milestone")}
+                      <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Link>
+                  </div>
+
+                  <div className="mt-2.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span>
+                      {nextMilestone.dueAt ? (
+                        <>
+                          {t("Deadline")}: <strong className={milestoneOverdue ? "text-destructive font-semibold" : "text-foreground font-medium"}><WorkspaceDate value={nextMilestone.dueAt} /></strong>
+                        </>
+                      ) : (
+                        t("No deadline")
+                      )}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* 2. My Tasks */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">
+                  {t("My tasks")}
+                </h3>
+                {data.myTasks.length ? (
+                  <ul className="divide-y divide-border/60">
+                    {data.myTasks.map(task => (
+                      <li key={task.id} className="py-3 first:pt-0 last:pb-0">
+                        <Link to={projectSectionHref(id, "tasks", { task: task.id })} className="group flex items-center justify-between gap-4">
+                          <div className="min-w-0">
+                            <strong className="block text-sm sm:text-base font-semibold text-foreground group-hover:text-primary transition-colors truncate">
+                              {task.title}
+                            </strong>
+                            <span className="text-xs sm:text-sm text-muted-foreground">{t(taskLabels[task.status])}</span>
+                          </div>
+                          <div className="text-xs sm:text-sm text-muted-foreground shrink-0 flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                            <WorkspaceDate value={task.dueAt} />
+                          </div>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border/80 p-5 text-center bg-muted/20">
+                    <CheckSquare className="h-8 w-8 text-muted-foreground/60 mx-auto mb-2" aria-hidden="true" />
+                    <p className="text-sm sm:text-base font-semibold text-foreground">{t("No tasks assigned to you")}</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+                      {t("Divide the next research steps into tasks and assign them to your team.")}
+                    </p>
+                    <Button asChild variant="outline" size="sm" className="mt-3.5 text-xs sm:text-sm font-semibold rounded-lg">
+                      <Link to={projectSectionHref(id, "tasks")}>
+                        {t("Plan the next task")}
+                        <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                      </Link>
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Recently Edited Outputs */}
+              {data.recentArtifacts.length > 0 ? (
+                <div className="mt-5 pt-5 border-t border-border/60">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                    <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                    {t("Recently edited outputs")}
+                  </h3>
+                  <ul className="space-y-2">
+                    {data.recentArtifacts.map(item => (
+                      <li key={item.id}>
+                        <Link
+                          to={item.kind === "REPORT" ? `/reports/${encodeURIComponent(item.id)}` : `/projects/${encodeURIComponent(id)}/manuscripts/${encodeURIComponent(item.id)}`}
+                          className="group flex items-center justify-between gap-3 p-3 rounded-xl border border-border/60 hover:border-primary/40 hover:bg-muted/40 transition-colors text-sm"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span
+                              className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${
+                                item.kind === "REPORT"
+                                  ? "bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400"
+                                  : "bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400"
+                              }`}
+                            >
+                              {item.kind === "REPORT" ? <FileBarChart2 className="h-4 w-4" aria-hidden="true" /> : <FileText className="h-4 w-4" aria-hidden="true" />}
+                            </span>
+                            <div className="min-w-0">
+                              <span className="block font-semibold text-foreground group-hover:text-primary truncate">{item.title}</span>
+                              <Badge variant="secondary" className="mt-0.5 text-[10px] px-1.5 py-0 font-semibold">
+                                {t(item.kind === "REPORT" ? "Report" : "Manuscript")}
+                              </Badge>
+                            </div>
+                          </div>
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            <WorkspaceDate value={item.updatedAt} />
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </section>
+
+            {/* Card 3: Research Progress KPI Metrics Dashboard */}
+            <section className="bg-card rounded-2xl border border-border/80 p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4 gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-9 w-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                    <TrendingUp className="h-5 w-5" aria-hidden="true" />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="font-bold text-lg text-foreground leading-snug">{t("Research progress")}</h2>
+                    <span className="text-xs sm:text-sm text-muted-foreground">{t("Saved workspace deliverables")}</span>
                   </div>
                 </div>
                 <Tooltip>
@@ -403,21 +659,21 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
                 included={data.progress.included}
               />
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
                 {kpiItems.map((kpi) => {
                   const Icon = kpi.icon;
                   return (
                     <Link
                       key={kpi.key}
                       to={kpi.href}
-                      className={`group relative rounded-xl border p-4 sm:p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                      className={`group relative rounded-xl border p-4 transition-all duration-150 hover:shadow-sm ${
                         kpi.alert
-                          ? "border-amber-300 bg-gradient-to-br from-amber-50/60 via-amber-50/20 to-card dark:from-amber-950/30 dark:border-amber-800"
-                          : "border-border/80 bg-gradient-to-br from-muted/30 to-card hover:border-primary/40"
+                          ? "border-amber-300 bg-amber-50/40 dark:bg-amber-950/20 dark:border-amber-800"
+                          : "border-border/80 bg-muted/15 hover:border-primary/40 hover:bg-muted/30"
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-2.5">
-                        <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${
+                      <div className="flex items-center justify-between mb-2">
+                        <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${
                           kpi.color === "blue" ? "bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400" :
                           kpi.color === "amber" ? "bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400" :
                           kpi.color === "emerald" ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400" :
@@ -425,216 +681,293 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
                           kpi.color === "rose" ? "bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400" :
                           "bg-sky-100 dark:bg-sky-950 text-sky-600 dark:text-sky-400"
                         }`}>
-                          <Icon className="h-5 w-5" />
+                          <Icon className="h-4 w-4" aria-hidden="true" />
                         </div>
-                        <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
                       </div>
-                      <div className="text-3xl font-black font-mono tracking-tight text-foreground tabular-nums">{kpi.count}</div>
-                      <div className="text-sm font-bold text-foreground mt-1 truncate">{t(kpi.label)}</div>
+                      <div className="text-2xl font-bold font-mono tracking-tight text-foreground tabular-nums">{kpi.count}</div>
+                      <div className="text-sm font-semibold text-foreground mt-0.5 truncate">{t(kpi.label)}</div>
                       {kpi.badge ? (
                         <span className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200">
-                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
                           {t(kpi.badge)}
                         </span>
                       ) : (
-                        <span className="text-xs text-muted-foreground truncate block mt-1">{t(kpi.sublabel)}</span>
+                        <span className="text-xs text-muted-foreground truncate block mt-0.5">{t(kpi.sublabel)}</span>
                       )}
                     </Link>
                   );
                 })}
               </div>
             </section>
+          </div>
 
-            {/* Card 3: Continue Working */}
-            <section className="bg-card rounded-2xl border border-border/80 p-6 sm:p-7 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-xl bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
-                  <CheckSquare className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg text-foreground leading-snug">{t("Continue working")}</h3>
-                  <span className="text-sm text-muted-foreground">{t("Assigned tasks and recent artifacts")}</span>
-                </div>
+          {/* Right Column (4 cols) */}
+          <div className="lg:col-span-4 space-y-6 min-w-0">
+            {/* Card 1: Needs Attention */}
+            <section
+              className={`rounded-2xl border p-5 sm:p-6 shadow-sm transition-colors ${
+                hasAnyAttention
+                  ? "bg-amber-50/40 dark:bg-amber-950/15 border-amber-200/80 dark:border-amber-900/60"
+                  : "bg-card border-border/80"
+              }`}
+            >
+              <div className="flex items-center gap-2.5 mb-3.5">
+                {hasAnyAttention ? (
+                  <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="h-[18px] w-[18px]" aria-hidden="true" />
+                  </div>
+                ) : (
+                  <div className="h-8 w-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="h-[18px] w-[18px]" aria-hidden="true" />
+                  </div>
+                )}
+                <h2 className="font-bold text-base text-foreground">{t("Needs attention")}</h2>
               </div>
-              <Link to={projectSectionHref(id, "tasks")} className="text-sm font-semibold text-primary hover:underline inline-flex items-center gap-1">
-                {t("All tasks")}<ArrowUpRight className="h-3.5 w-3.5" />
-              </Link>
-            </div>
 
-            {data.myTasks.length ? (
-              <ul className="divide-y divide-border/60">
-                {data.myTasks.map(task => (
-                  <li key={task.id} className="py-3.5 first:pt-0 last:pb-0">
-                    <Link to={projectSectionHref(id, "tasks", { task: task.id })} className="group flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <strong className="block text-base font-semibold text-foreground group-hover:text-primary transition-colors truncate">{task.title}</strong>
-                        <span className="text-sm text-muted-foreground">{t(taskLabels[task.status])}</span>
-                      </div>
-                      <div className="text-sm text-muted-foreground shrink-0 flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5" />
-                        <WorkspaceDate value={task.dueAt} />
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="rounded-xl border border-dashed border-border/80 p-6 sm:p-7 text-center bg-muted/20">
-                <CheckSquare className="h-9 w-9 text-muted-foreground/60 mx-auto mb-2" />
-                <p className="text-base font-semibold text-foreground">{t("No tasks assigned to you")}</p>
-                <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">{t("Divide the next research steps into tasks and assign them to your team.")}</p>
-                <Button asChild variant="outline" size="sm" className="mt-4 text-sm font-semibold rounded-lg">
-                  <Link to={projectSectionHref(id, "tasks")}>
-                    {t("Plan the next task")}<ArrowUpRight className="ml-1.5 h-3.5 w-3.5" />
+              {personalAttention.length > 0 ? (
+                <div className="mb-3">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1.5">
+                    {t("Needs your response")}
+                  </span>
+                  <ul className="space-y-2">
+                    {personalAttention.map(item => (
+                      <li key={item.label}>
+                        <Link
+                          to={item.href}
+                          className="flex items-center gap-3 p-2.5 rounded-xl bg-card border border-primary/30 hover:border-primary/60 text-sm text-foreground transition-colors"
+                        >
+                          <span className="h-5 min-w-[22px] px-2 rounded-full bg-primary text-primary-foreground font-bold flex items-center justify-center text-xs tabular-nums">
+                            {item.count}
+                          </span>
+                          <span className="font-medium leading-snug flex-1">{t(item.label)}</span>
+                          <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {teamAttention.length > 0 ? (
+                <div>
+                  {personalAttention.length > 0 ? (
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1.5">
+                      {t("Team follow-ups")}
+                    </span>
+                  ) : null}
+                  <ul className="space-y-2">
+                    {teamAttention.map(item => (
+                      <li key={item.label}>
+                        <Link
+                          to={item.href}
+                          className="flex items-center gap-3 p-2.5 rounded-xl bg-card border border-amber-200 dark:border-amber-800 hover:border-amber-400 text-sm text-foreground transition-colors"
+                        >
+                          <span className="h-5 min-w-[22px] px-2 rounded-full bg-amber-500 text-white font-bold flex items-center justify-center text-xs tabular-nums">
+                            {item.count}
+                          </span>
+                          <span className="font-medium leading-snug flex-1">{t(item.label)}</span>
+                          <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {data.attention.mentorQuestions > 0 ? (
+                <Link
+                  to={projectSectionHref(id, "chat")}
+                  className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
+                >
+                  <span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+                  {t("Open mentor questions")} · {data.attention.mentorQuestions}
+                </Link>
+              ) : null}
+
+              {contributionSummary.isError ? (
+                <div role="status" className="mt-3 rounded-lg border border-border/80 bg-muted/30 p-2.5 text-xs text-muted-foreground flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    {t("Could not check pending contribution acknowledgements.")}
+                  </span>
+                  <button
+                    type="button"
+                    className="font-semibold text-primary hover:underline shrink-0"
+                    onClick={() => void contributionSummary.refetch()}
+                  >
+                    {t("Try again")}
+                  </button>
+                </div>
+              ) : !hasAnyAttention ? (
+                contributionSummary.isLoading ? (
+                  <Skeleton className="h-4 w-48" />
+                ) : (
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {t("No items require your attention right now.")}
+                  </p>
+                )
+              ) : null}
+            </section>
+
+            {/* Card 2: Integrity & Contributions */}
+            <section className="bg-card rounded-2xl border border-border/80 p-5 sm:p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                    <ShieldCheck className="h-[18px] w-[18px]" aria-hidden="true" />
+                  </div>
+                  <h2 className="font-bold text-base text-foreground leading-snug">
+                    {t("Integrity & Contributions")}
+                  </h2>
+                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t("About contribution records")}
+                      className="h-6 w-6 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center justify-center transition-colors shrink-0"
+                    >
+                      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs leading-relaxed">
+                    {t("Recording contributions does not certify research quality or authorship eligibility.")}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed mb-4">
+                {t("Track research credit, evidence, and contributions awaiting review.")}
+              </p>
+
+              {contributionSummary.isLoading ? (
+                <div className="space-y-2 mb-4" role="status" aria-label={t("Loading contribution summary")}>
+                  <Skeleton className="h-9 rounded-lg" />
+                  <Skeleton className="h-9 rounded-lg" />
+                  <Skeleton className="h-9 rounded-lg" />
+                </div>
+              ) : contributionSummary.isError ? (
+                <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 mb-4 space-y-2">
+                  <p className="text-xs text-destructive leading-relaxed">
+                    {t("Could not load contribution summary. Other workspace data remains available.")}
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => void contributionSummary.refetch()}
+                  >
+                    {t("Try again")}
+                  </Button>
+                </div>
+              ) : contributionSummary.data && contributionSummary.data.totalRecords > 0 ? (
+                <dl className="divide-y divide-border/60 rounded-xl border border-border/70 bg-muted/20 mb-4 overflow-hidden">
+                  <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+                    <dt className="text-xs sm:text-sm font-medium text-muted-foreground">
+                      {t("Contribution records")}
+                    </dt>
+                    <dd className="text-sm font-bold font-mono text-foreground tabular-nums shrink-0">
+                      {contributionSummary.data.totalRecords}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+                    <dt className="text-xs sm:text-sm font-medium text-muted-foreground">
+                      {t("Independently acknowledged")}
+                    </dt>
+                    <dd className="text-sm font-bold font-mono text-foreground tabular-nums shrink-0">
+                      {contributionSummary.data.independentlyAcknowledged}
+                    </dd>
+                  </div>
+                  <div
+                    className={`flex items-center justify-between gap-3 px-3.5 py-2.5 ${
+                      contributionSummary.data.pendingForViewer > 0 ? "bg-primary/5" : ""
+                    }`}
+                  >
+                    <dt className="text-xs sm:text-sm font-medium text-muted-foreground">
+                      {t("Awaiting your response")}
+                    </dt>
+                    <dd
+                      className={`text-sm font-bold font-mono tabular-nums shrink-0 ${
+                        contributionSummary.data.pendingForViewer > 0 ? "text-primary" : "text-foreground"
+                      }`}
+                    >
+                      {contributionSummary.data.pendingForViewer}
+                    </dd>
+                  </div>
+                </dl>
+              ) : (
+                <p className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-3 text-xs sm:text-sm text-muted-foreground mb-4 leading-relaxed">
+                  {t("No contribution records recorded yet.")}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button asChild variant="outline" size="sm" className="text-xs font-semibold rounded-lg">
+                  <Link to={projectSectionHref(id, "contributions", { contributionTab: "work" })}>
+                    {t(
+                      contributionSummary.data && contributionSummary.data.totalRecords === 0
+                        ? "Learn how contributions are recorded"
+                        : "View contribution records",
+                    )}
+                    <ArrowUpRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
                   </Link>
                 </Button>
-              </div>
-            )}
-
-            {data.recentArtifacts.length > 0 && (
-              <div className="mt-6 pt-5 border-t border-border/60">
-                <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3.5 flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  {t("Recently edited outputs")}
-                </h4>
-                <ul className="space-y-2.5">
-                  {data.recentArtifacts.map(item => (
-                    <li key={item.id}>
-                      <Link
-                        to={item.kind === "REPORT" ? `/reports/${encodeURIComponent(item.id)}` : `/projects/${encodeURIComponent(id)}/manuscripts/${encodeURIComponent(item.id)}`}
-                        className="group flex items-center justify-between gap-3 p-3 rounded-xl border border-border/60 hover:border-primary/40 hover:bg-muted/40 transition-all text-sm"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${
-                            item.kind === "REPORT"
-                              ? "bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400"
-                              : "bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400"
-                          }`}>
-                            {item.kind === "REPORT" ? <FileBarChart2 className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                          </span>
-                          <div className="min-w-0">
-                            <span className="block font-semibold text-foreground group-hover:text-primary truncate">{item.title}</span>
-                            <Badge variant="secondary" className="mt-0.5 text-[10px] px-1.5 py-0 font-semibold">
-                              {t(item.kind === "REPORT" ? "Report" : "Manuscript")}
-                            </Badge>
-                          </div>
-                        </div>
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          <WorkspaceDate value={item.updatedAt} />
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
-        </div>
-
-        {/* Right Column (4 cols) */}
-        <div className="lg:col-span-4 space-y-7">
-          {/* Card: Needs Attention */}
-          <section className={`rounded-2xl border p-6 shadow-sm transition-colors ${
-            attention.length > 0
-              ? "bg-gradient-to-br from-amber-50/80 to-card dark:from-amber-950/20 border-amber-200/80 dark:border-amber-900/60"
-              : "bg-card border-border/80"
-          }`}>
-            <div className="flex items-center gap-2.5 mb-3.5">
-              {attention.length > 0 ? (
-                <div className="h-8 w-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                  <AlertTriangle className="h-[18px] w-[18px]" />
-                </div>
-              ) : (
-                <div className="h-8 w-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="h-[18px] w-[18px]" />
-                </div>
-              )}
-              <h3 className="font-bold text-base text-foreground">{t("Needs attention")}</h3>
-            </div>
-
-            {attention.length ? (
-              <ul className="space-y-2.5">
-                {attention.map(item => (
-                  <li key={item.label}>
-                    <Link
-                      to={item.tab === "reviews" ? "/reviews" : projectSectionHref(id, item.tab)}
-                      className="flex items-center gap-3 p-2.5 rounded-xl bg-card/80 border border-amber-200 dark:border-amber-800 hover:border-amber-400 text-sm text-foreground transition-all"
-                    >
-                      <span className="h-5 min-w-[22px] px-2 rounded-full bg-amber-500 text-white font-bold flex items-center justify-center text-xs">
-                        {item.count}
-                      </span>
-                      <span className="font-medium truncate flex-1">{t(item.label)}</span>
-                      <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                {pendingForViewer > 0 ? (
+                  <Button asChild size="sm" className="text-xs font-semibold rounded-lg">
+                    <Link to={projectSectionHref(id, "contributions", { contributionTab: "pending" })}>
+                      {t("Respond now ({{count}})", { count: pendingForViewer })}
                     </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {t("No overdue tasks or unanswered mentor feedback right now.")}
-              </p>
-            )}
-
-            {data.attention.mentorQuestions > 0 && (
-              <Link to={projectSectionHref(id, "chat")} className="mt-3.5 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline">
-                <span className="h-2 w-2 rounded-full bg-primary" />
-                {t("Open mentor questions")} · {data.attention.mentorQuestions}
-              </Link>
-            )}
-          </section>
-
-          {/* Card: Top Contributors / Bảng vinh danh đóng góp */}
-          <section className="rounded-xl border bg-card p-6">
-            <h3 className="font-semibold">{t("researchContribution.research")}</h3>
-            <p className="my-3 text-sm leading-6 text-muted-foreground">{t("researchContribution.evidenceHint")}</p>
-            <Button asChild variant="outline"><Link to={projectSectionHref(id, "contributions", { contributionTab: "work" })}>{t("researchContribution.evidenceRecords")}</Link></Button>
-          </section>
-
-          {/* Card: Recent Activity */}
-          <section className="bg-card rounded-2xl border border-border/80 p-6 shadow-sm">
-            <div className="flex items-center gap-2.5 mb-3.5">
-              <div className="h-8 w-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center shrink-0">
-                <Clock className="h-4 w-4" />
+                  </Button>
+                ) : null}
               </div>
-              <h3 className="font-bold text-base text-foreground">{t("Recent activity")}</h3>
-            </div>
+            </section>
 
-            {data.activity.length ? (
-              <ol className="relative border-l border-border/80 ml-3 space-y-4 my-2">
-                {data.activity.slice(0, 6).map(event => {
-                  const isPaper = event.type.startsWith("PAPER_");
-                  const isTask = event.type.startsWith("TASK_") || event.type.startsWith("MILESTONE_");
-                  const isPlan = event.type.startsWith("PLAN_") || event.type.startsWith("RESEARCH_STAGE");
-                  const badgeBg = isPaper
-                    ? "bg-blue-500 ring-blue-100 dark:ring-blue-950"
-                    : isTask
-                      ? "bg-emerald-500 ring-emerald-100 dark:ring-emerald-950"
-                      : isPlan
-                        ? "bg-violet-500 ring-violet-100 dark:ring-violet-950"
-                        : "bg-amber-500 ring-amber-100 dark:ring-amber-950";
-                  return (
-                    <li key={event.id} className="ml-4 relative">
-                      <span className={`absolute -left-[22px] top-1.5 h-2.5 w-2.5 rounded-full ring-4 ${badgeBg}`} />
-                      <p className="text-sm leading-normal">
-                        <strong className="font-semibold text-foreground">{event.actor?.name ?? t("Research team")}</strong> ·{" "}
-                        <span className="text-muted-foreground">{t(activityLabels[event.type] ?? "Updated research work")}</span>
-                      </p>
-                      <span className="text-xs text-muted-foreground block mt-0.5">
-                        <WorkspaceDate value={event.createdAt} />
-                      </span>
-                    </li>
-                  );
-                })}
-              </ol>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                {t("Saved research work and team changes will appear here.")}
-              </p>
-            )}
-          </section>
+            {/* Card 3: Recent Activity */}
+            <section className="bg-card rounded-2xl border border-border/80 p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center gap-2.5 mb-3.5">
+                <div className="h-8 w-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center shrink-0">
+                  <Clock className="h-4 w-4" aria-hidden="true" />
+                </div>
+                <h2 className="font-bold text-base text-foreground">{t("Recent activity")}</h2>
+              </div>
+
+              {data.activity.length ? (
+                <ol className="relative border-l border-border/80 ml-3 space-y-3.5 my-2">
+                  {data.activity.slice(0, 6).map(event => {
+                    const isPaper = event.type.startsWith("PAPER_");
+                    const isTask = event.type.startsWith("TASK_") || event.type.startsWith("MILESTONE_");
+                    const isPlan = event.type.startsWith("PLAN_") || event.type.startsWith("RESEARCH_STAGE");
+                    const badgeBg = isPaper
+                      ? "bg-blue-500 ring-blue-100 dark:ring-blue-950"
+                      : isTask
+                        ? "bg-emerald-500 ring-emerald-100 dark:ring-emerald-950"
+                        : isPlan
+                          ? "bg-violet-500 ring-violet-100 dark:ring-violet-950"
+                          : "bg-amber-500 ring-amber-100 dark:ring-amber-950";
+                    return (
+                      <li key={event.id} className="ml-4 relative">
+                        <span className={`absolute -left-[22px] top-1.5 h-2.5 w-2.5 rounded-full ring-4 ${badgeBg}`} aria-hidden="true" />
+                        <p className="text-sm leading-normal">
+                          <strong className="font-semibold text-foreground">{event.actor?.name ?? t("Research team")}</strong> ·{" "}
+                          <span className="text-muted-foreground">{t(activityLabels[event.type] ?? "Updated research work")}</span>
+                        </p>
+                        <span className="text-xs text-muted-foreground block mt-0.5">
+                          <WorkspaceDate value={event.createdAt} />
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {t("Saved research work and team changes will appear here.")}
+                </p>
+              )}
+            </section>
+          </div>
         </div>
-      </div>
       </div>
     </TooltipProvider>
   );

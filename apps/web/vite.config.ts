@@ -9,6 +9,10 @@ export default defineConfig(({ mode }) => {
   return {
     envDir,
     plugins: [react()],
+    // Generated preview/QA HTML is not an application entry point.
+    optimizeDeps: {
+      entries: ["index.html"],
+    },
     build: {
       manifest: true,
       chunkSizeWarningLimit: 600,
@@ -77,6 +81,14 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 3000,
+      // Development modules change across restarts and dependency optimization.
+      // Do not retain an immutable browser copy of an old dependency chunk.
+      headers: {
+        "Cache-Control": "no-store",
+      },
+      watch: {
+        ignored: ["**/.cache/**", "**/dist/**", "**/dist-*/**", "**/artifacts/**"],
+      },
       proxy: {
         // Optional: proxy /api during dev so cookies work without CORS.
         // Remove if you prefer hitting the backend directly via VITE_API_BASE.

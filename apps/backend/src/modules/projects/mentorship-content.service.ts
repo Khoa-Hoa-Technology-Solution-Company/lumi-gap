@@ -7,7 +7,8 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 import type { MentorRole } from "@trend/shared-types";
-import { assertAcceptingNewMentorships, assertVerifiedLecturer } from "./academic-relationship-access.js";
+import { assertAcceptingNewMentorships, assertVerifiedLecturer, isVerifiedLecturer } from "./academic-relationship-access.js";
+import { parseMentorshipProfile } from "./mentorship-two-way.js";
 
 type Db = Prisma.TransactionClient;
 export const attachmentFields = { id: true, fileName: true, mimeType: true, byteSize: true } as const;
@@ -125,9 +126,26 @@ export const mentorshipContentService = {
       const shared = await tx.mentorshipRequest.count({ where: { id: { in: allowedRequestIds }, projectId: file.projectId,
         ...(project.ownerId === user.id ? {} : { OR: [{ requestedBy: user.id }, { mentorUserId: user.id }] }) } });
       const isOwner = project.ownerId === user.id;
+      // Check if explicitly approved by project owner as a discovery introductory file for verified lecturers
+      const profileData = parseMentorshipProfile(project.mentorshipProfile);
+      let sharedViaDiscovery = false;
+      if (
+        !isOwner &&
+        file.uploadedById === project.ownerId &&
+        project.mentorshipDiscovery === "SEEKING_MENTOR" &&
+        !["ARCHIVED", "COMPLETED"].includes(project.status) &&
+        profileData.sharedAttachmentIds?.includes(file.id)
+      ) {
+        const viewerProfile = await tx.academicProfile.findUnique({
+          where: { userId: user.id },
+          select: { academicRole: true, roleVerificationStatus: true, positionStatus: true, supportAvailability: true, allowCollaborationRequests: true },
+        });
+        const accepting = (viewerProfile?.supportAvailability as { enabled?: boolean } | null)?.enabled === true && viewerProfile?.allowCollaborationRequests !== false;
+        sharedViaDiscovery = isVerifiedLecturer(user, viewerProfile) && accepting;
+      }
       // Staged files are private to their author while authorized for this project.
       const authorMember = file.uploadedById === user.id && await tx.projectMember.count({ where: { projectId: file.projectId, userId: user.id, status: "ACTIVE" } });
-      if (!shared && !(file.uploadedById === user.id && (isOwner || authorMember || project.mentorshipDiscovery === "SEEKING_MENTOR"))) throw AppError.notFound("Invitation file not found");
+      if (!shared && !sharedViaDiscovery && !(file.uploadedById === user.id && (isOwner || authorMember || project.mentorshipDiscovery === "SEEKING_MENTOR"))) throw AppError.notFound("Invitation file not found");
       return invitationAttachmentDto(await tx.mentorshipAttachment.findUniqueOrThrow({ where: { id: attachmentId } }));
     });
   },

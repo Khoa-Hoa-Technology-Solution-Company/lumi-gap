@@ -32,8 +32,11 @@ export const academicConnectionsVi: Record<string, string> = {
   "Expertise is self-declared. Lecturer verification does not certify these topics or skills.": "Chuyên môn do người dùng khai báo. Xác minh giảng viên không chứng nhận các chủ đề hay kỹ năng này.",
   "Shared declared research terms": "Nội dung nghiên cứu khai báo trùng khớp",
   "Shared terms explain relevance, not verified expertise or mentoring quality.": "Các nội dung trùng khớp giải thích sự liên quan, không xác minh chuyên môn hay chất lượng cố vấn.",
-  "View matching evidence": "Xem căn cứ phù hợp",
+  "View matching evidence": "Chuyên môn & hỗ trợ",
   "Review declared expertise and available publication evidence before inviting a mentor.": "Xem chuyên môn khai báo và bằng chứng công bố hiện có trước khi mời cố vấn.",
   "Matching evidence is unavailable or this lecturer is no longer eligible.": "Chưa tải được căn cứ phù hợp hoặc giảng viên không còn đủ điều kiện."
 };
-export const academicConnectionsEn = Object.fromEntries(Object.keys(academicConnectionsVi).map(key => [key, key]));
+export const academicConnectionsEn: Record<string, string> = {
+  ...Object.fromEntries(Object.keys(academicConnectionsVi).map(key => [key, key])),
+  "View matching evidence": "Expertise & scope",
+};

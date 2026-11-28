@@ -25,6 +25,7 @@ import { useCurrentUser } from "@/features/auth";
 import { cn } from "@/utils/cn";
 import { formatNumber, formatQualityTierName } from "@/utils";
 import { formatPaperRequester, type PaperRequesterValue } from "@/features/admin/utils/paper-request";
+import { AdminErrorPanel } from "@/features/admin";
 import { useI18n } from "@/i18n";
 import { isAdminSystemRole, type PaperIngestSource } from "@trend/shared-types";
 
@@ -112,6 +113,7 @@ export function AdminPapersPage() {
 
   const [papers, setPapers] = useState<AdminPaper[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -133,6 +135,7 @@ export function AdminPapersPage() {
   const fetchPapers = async () => {
     if (isUserLoading || !isAdmin) return;
     setLoading(true);
+    setFetchError(null);
     try {
       const params: Record<string, string | number> = {
         adminView: "1",
@@ -149,7 +152,9 @@ export function AdminPapersPage() {
       setPdfTotal(res.data.meta?.pdfTotal ?? 0);
       setSelectedIds([]);
     } catch {
-      toast.error("Failed to load paper submission requests");
+      const message = "Failed to load paper submission requests";
+      setFetchError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -200,11 +205,20 @@ export function AdminPapersPage() {
     if (selectedIds.length === 0) return;
     setIsBulkProcessing(true);
     try {
-      await Promise.all(selectedIds.map((id) => api.patch(`/papers/${id}/status`, { status: "not-downloaded" })));
-      toast.success(`Approved ${selectedIds.length} selected paper requests.`);
-      fetchPapers();
-    } catch {
-      toast.error("Some requests failed to approve.");
+      const results = await Promise.allSettled(
+        selectedIds.map((id) => api.patch(`/papers/${id}/status`, { status: "not-downloaded" })),
+      );
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - succeeded;
+
+      if (failed === 0) {
+        toast.success(`Approved ${succeeded} paper request${succeeded === 1 ? "" : "s"}.`);
+      } else if (succeeded > 0) {
+        toast.warning(`Approved ${succeeded} of ${results.length} requests; ${failed} failed. List refreshed.`);
+      } else {
+        toast.error(`Failed to approve all ${failed} selected requests.`);
+      }
+      await fetchPapers();
     } finally {
       setIsBulkProcessing(false);
     }
@@ -268,7 +282,7 @@ export function AdminPapersPage() {
             ) : (
               <Square className="w-4 h-4 text-slate-400" />
             )}
-            <span className="hidden sm:inline">Select All</span>
+            <span className="hidden sm:inline">{t("Select page")}</span>
           </button>
 
           <div className="h-4 w-px bg-slate-200 dark:bg-zinc-800 hidden sm:block" />
@@ -325,7 +339,9 @@ export function AdminPapersPage() {
       </div>
 
       {/* Main List Section */}
-      {loading ? (
+      {fetchError ? (
+        <AdminErrorPanel message={fetchError} onRetry={() => void fetchPapers()} retrying={loading} />
+      ) : loading ? (
         <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           <p className="text-xs font-medium">Loading submission requests...</p>

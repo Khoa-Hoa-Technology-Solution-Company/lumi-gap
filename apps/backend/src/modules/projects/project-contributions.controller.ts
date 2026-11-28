@@ -14,6 +14,7 @@ export const projectContributionsController = {
   statement: async (req: Request, res: Response) => send(res, await manuscriptContributionStatement(id(req), actor(req), String(req.query.scopeKey))),
   artifact: async (req: Request, res: Response) => send(res, await researchContributionArtifact(id(req), actor(req), String(req.query.kind), String(req.query.id))),
   overview: async (req: Request, res: Response) => send(res, await work.overview(id(req), actor(req))),
+  summary: async (req: Request, res: Response) => send(res, await work.summary(id(req), actor(req))),
   people: async (req: Request, res: Response) => send(res, await work.people(id(req), actor(req))),
   activity: async (req: Request, res: Response) => send(res, await activity.list(id(req), actor(req), req.query as unknown as z.infer<typeof activitySchema>)),
   list: async (req: Request, res: Response) => send(res, await work.list(id(req), actor(req), req.query as unknown as z.infer<typeof contributionsPageSchema>)),

@@ -1,11 +1,28 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  FileText,
+  Info,
+  Pencil,
+  Upload,
+  X,
+} from "lucide-react";
+import { toast } from "sonner";
+import { isAdminSystemRole } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { SkeletonList } from "@/components/loading";
 import { api } from "@/services/api-client";
 import { useAuthStore } from "@/stores/auth-store";
-import { toast } from "sonner";
-import { Loader2, Upload, FileText, X, AlertTriangle, Info } from "lucide-react";
-import { isAdminSystemRole } from "@trend/shared-types";
+import { useI18n } from "@/i18n";
+import { cn } from "@/utils/cn";
+import {
+  SettingsFormField,
+  SettingsPageHeader,
+} from "@/features/settings/components/settings-primitives";
 
 function countWords(str: string) {
   return str
@@ -23,23 +40,30 @@ function isValidHttpUrl(value: string) {
   }
 }
 
+type StepNumber = 1 | 2 | 3 | 4;
+
 export function SubmitPaperPage({ isEmbedded = false }: { isEmbedded?: boolean } = {}) {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get("edit");
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminSystemRole(user?.systemRole);
 
-  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState<StepNumber>(1);
+  const [initializing, setInitializing] = useState(Boolean(editId));
+  const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Form states
+  // Form states preserved across steps
   const [title, setTitle] = useState("");
   const [doi, setDoi] = useState("");
   const [paperLink, setPaperLink] = useState("");
   const [abstractText, setAbstractText] = useState("");
   const [publicationYear, setPublicationYear] = useState<string>(String(new Date().getFullYear()));
-  const [paperKind, setPaperKind] = useState<"article" | "proceedings" | "preprint" | "review" | "book-chapter" | "other">("article");
+  const [paperKind, setPaperKind] = useState<
+    "article" | "proceedings" | "preprint" | "review" | "book-chapter" | "other"
+  >("article");
   const [openAccessUrl, setOpenAccessUrl] = useState("");
   const [authorsStr, setAuthorsStr] = useState("");
   const [keywordsStr, setKeywordsStr] = useState("");
@@ -48,131 +72,160 @@ export function SubmitPaperPage({ isEmbedded = false }: { isEmbedded?: boolean }
   const [existingPdfPath, setExistingPdfPath] = useState<string | null>(null);
 
   useEffect(() => {
-    if (editId) {
-      setLoading(true);
-      api.get(`/papers/${editId}/edit`)
-        .then((res) => {
-          const paper = res.data.data;
-          if (paper) {
-            setTitle(paper.title || "");
-            setDoi(paper.externalIds?.doi || paper.doi || "");
-            setPaperLink(paper.paperLink || "");
-            setAbstractText(paper.abstractText || "");
-            setPublicationYear(paper.publicationYear ? String(paper.publicationYear) : String(new Date().getFullYear()));
-            setPaperKind(paper.paperKind || "article");
-            setOpenAccessUrl(paper.openAccessUrl || "");
-            
-            if (Array.isArray(paper.authors)) {
-              setAuthorsStr(paper.authors.map((a: any) => a.displayName).join(", "));
-            }
-            if (Array.isArray(paper.keywords)) {
-              setKeywordsStr(paper.keywords.map((k: any) => k.keywordName).join(", "));
-            }
-            if (Array.isArray(paper.topics)) {
-              setTopicsStr(paper.topics.map((t: any) => t.topicName).join(", "));
-            }
-            if (paper.pdfPath) {
-              setExistingPdfPath(paper.pdfPath);
-            }
+    if (!editId) return;
+    setInitializing(true);
+    api
+      .get(`/papers/${editId}/edit`)
+      .then((res) => {
+        const paper = res.data.data;
+        if (paper) {
+          setTitle(paper.title || "");
+          setDoi(paper.externalIds?.doi || paper.doi || "");
+          setPaperLink(paper.paperLink || "");
+          setAbstractText(paper.abstractText || "");
+          setPublicationYear(paper.publicationYear ? String(paper.publicationYear) : String(new Date().getFullYear()));
+          setPaperKind(paper.paperKind || "article");
+          setOpenAccessUrl(paper.openAccessUrl || "");
+          if (Array.isArray(paper.authors)) {
+            setAuthorsStr(paper.authors.map((a: { displayName: string }) => a.displayName).join(", "));
           }
-        })
-        .catch((err) => {
-          console.error(err);
-          toast.error("Failed to load paper details for editing");
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    }
-  }, [editId]);
+          if (Array.isArray(paper.keywords)) {
+            setKeywordsStr(paper.keywords.map((k: { keywordName: string }) => k.keywordName).join(", "));
+          }
+          if (Array.isArray(paper.topics)) {
+            setTopicsStr(paper.topics.map((tp: { topicName: string }) => tp.topicName).join(", "));
+          }
+          if (paper.pdfPath) setExistingPdfPath(paper.pdfPath);
+        }
+      })
+      .catch(() => {
+        toast.error(t("Failed to load paper details for editing"));
+      })
+      .finally(() => {
+        setInitializing(false);
+      });
+  }, [editId, t]);
 
   const abstractWordCount = countWords(abstractText);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      if (file && file.type === "application/pdf") {
-        setPdfFile(file);
-        if (errors.pdf) setErrors((prev) => ({ ...prev, pdf: "" }));
-      } else {
-        toast.error("Only PDF files are allowed");
+  const parsedAuthors = authorsStr
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const parsedKeywords = keywordsStr
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const parsedTopics = topicsStr
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  function validateStep(targetStep: StepNumber): Record<string, string> {
+    const next: Record<string, string> = {};
+    if (targetStep === 1 || targetStep === 4) {
+      if (!title.trim() || title.trim().length < 8) {
+        next.title = t("Please enter a clearer paper title (at least 8 characters).");
+      }
+      if (!doi.trim() || !/^10\.\d{4,9}\/\S+$/i.test(doi.trim())) {
+        next.doi = t("Please enter a valid DOI (e.g. 10.1145/3065386).");
+      }
+      if (!paperLink.trim()) {
+        next.paperLink = t("Please enter a valid paper link URL.");
+      } else if (!isValidHttpUrl(paperLink)) {
+        next.paperLink = t("Paper link must start with http:// or https://.");
+      }
+      if (abstractWordCount < 50) {
+        next.abstractText = t("Abstract must contain at least 50 words.");
+      } else if (abstractWordCount > 350) {
+        next.abstractText = t("Abstract must not exceed 350 words.");
+      }
+      const currentYear = new Date().getFullYear();
+      const yearNum = parseInt(publicationYear, 10);
+      if (!publicationYear || Number.isNaN(yearNum) || yearNum < 1900) {
+        next.publicationYear = t("Publication year must be 1900 or later.");
+      } else if (yearNum > currentYear) {
+        next.publicationYear = t("Publication year cannot be in the future.");
       }
     }
+    if (targetStep === 2 || targetStep === 4) {
+      if (parsedAuthors.length === 0) {
+        next.authors = t("Please enter at least one author.");
+      }
+      if (parsedKeywords.length === 0) {
+        next.keywords = t("Please enter at least one keyword.");
+      }
+    }
+    if (targetStep === 3 || targetStep === 4) {
+      if (openAccessUrl.trim() && !isValidHttpUrl(openAccessUrl)) {
+        next.openAccessUrl = t("Open Access URL must start with http:// or https://.");
+      }
+    }
+    return next;
+  }
+
+  function handleNextStep() {
+    const stepErrors = validateStep(step);
+    if (Object.keys(stepErrors).length > 0) {
+      setErrors(stepErrors);
+      return;
+    }
+    setErrors({});
+    setStep((current) => Math.min(4, current + 1) as StepNumber);
+  }
+
+  function handleJumpStep(target: StepNumber) {
+    if (target <= step) {
+      setStep(target);
+      return;
+    }
+    for (let s = step; s < target; s += 1) {
+      const stepErrors = validateStep(s as StepNumber);
+      if (Object.keys(stepErrors).length > 0) {
+        setStep(s as StepNumber);
+        setErrors(stepErrors);
+        return;
+      }
+    }
+    setErrors({});
+    setStep(target);
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      toast.error(t("Only PDF files are allowed"));
+      return;
+    }
+    setPdfFile(file);
+    if (errors.pdf) setErrors((prev) => ({ ...prev, pdf: "" }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const newErrors: Record<string, string> = {};
-
-    if (!title.trim() || title.trim().length < 8) {
-      newErrors.title = "Please enter a clearer paper title (at least 8 characters).";
-    }
-    if (!doi.trim() || !/^10\.\d{4,9}\/\S+$/i.test(doi.trim())) {
-      newErrors.doi = "Please enter a valid DOI (e.g. 10.1145/3065386).";
-    }
-    if (!paperLink.trim()) {
-      newErrors.paperLink = "Please enter a valid paper link URL.";
-    } else if (!isValidHttpUrl(paperLink)) {
-      newErrors.paperLink = "Paper link must start with http:// or https://.";
-    }
-    if (openAccessUrl.trim() && !isValidHttpUrl(openAccessUrl)) {
-      newErrors.openAccessUrl = "Open Access URL must start with http:// or https://.";
-    }
-    if (abstractWordCount < 50) {
-      newErrors.abstractText = "Abstract must contain at least 50 words.";
-    } else if (abstractWordCount > 350) {
-      newErrors.abstractText = "Abstract must not exceed 350 words.";
-    }
-
-    const currentYear = new Date().getFullYear();
-    const yearNum = parseInt(publicationYear, 10);
-    if (!publicationYear || isNaN(yearNum) || yearNum < 1900) {
-      newErrors.publicationYear = "Publication year must be 1900 or later.";
-    } else if (yearNum > currentYear) {
-      newErrors.publicationYear = "Publication year cannot be in the future.";
-    }
-
-    if (authorsStr.trim() === "") {
-      newErrors.authors = "Please enter at least one author.";
-    }
-    if (keywordsStr.trim() === "") {
-      newErrors.keywords = "Please enter at least one keyword.";
-    }
-
-
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      // Scroll to top error
-      window.scrollTo({ top: 0, behavior: "smooth" });
+    const allErrors = validateStep(4);
+    if (Object.keys(allErrors).length > 0) {
+      setErrors(allErrors);
+      if (allErrors.title || allErrors.doi || allErrors.paperLink || allErrors.abstractText || allErrors.publicationYear) {
+        setStep(1);
+      } else if (allErrors.authors || allErrors.keywords) {
+        setStep(2);
+      } else {
+        setStep(3);
+      }
       return;
     }
 
-    setLoading(true);
-
+    setSubmitting(true);
     try {
-      const authors = authorsStr
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .map((displayName, index) => ({
-          displayName,
-          position: index + 1,
-          isCorresponding: index === 0,
-        }));
-
-      const keywords = keywordsStr
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .map((keywordName) => ({ keywordName }));
-
-      const topics = topicsStr
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .map((topicName) => ({ topicName }));
+      const authors = parsedAuthors.map((displayName, index) => ({
+        displayName,
+        position: index + 1,
+        isCorresponding: index === 0,
+      }));
+      const keywords = parsedKeywords.map((keywordName) => ({ keywordName }));
+      const topics = parsedTopics.map((topicName) => ({ topicName }));
 
       const formData = new FormData();
       formData.append("title", title.trim());
@@ -184,7 +237,6 @@ export function SubmitPaperPage({ isEmbedded = false }: { isEmbedded?: boolean }
       formData.append("authors", JSON.stringify(authors));
       formData.append("keywords", JSON.stringify(keywords));
       formData.append("topics", JSON.stringify(topics));
-
       if (openAccessUrl.trim()) formData.append("openAccessUrl", openAccessUrl.trim());
       if (pdfFile) formData.append("pdf", pdfFile);
 
@@ -194,389 +246,486 @@ export function SubmitPaperPage({ isEmbedded = false }: { isEmbedded?: boolean }
 
       if (res.data.success) {
         if (isAdmin) {
-          toast.success(pdfFile
-            ? "Paper and PDF added to the public corpus."
-            : "Metadata-only paper added. A PDF can be uploaded later.");
+          toast.success(
+            pdfFile
+              ? t("Paper and PDF added to the public corpus.")
+              : t("Metadata-only paper added. A PDF can be uploaded later."),
+          );
         } else if (editId) {
-          toast.success("Paper resubmitted successfully! It will be reviewed by the admin.");
+          toast.success(t("Paper resubmitted successfully! It will be reviewed by the admin."));
         } else {
-          toast.success("Paper submitted successfully! It will be reviewed by the admin before being published.");
+          toast.success(t("Paper submitted successfully! It will be reviewed by the admin before being published."));
         }
         navigate(isAdmin ? "/admin/papers" : "/settings/my-papers");
       }
-    } catch (error: any) {
-      console.error("Submit paper failed:", {
-        status: error.response?.status,
-        data: error.response?.data,
-        message: error.message,
-      });
-      const errMsg =
-        error.response?.data?.error?.message ||
-        error.response?.data?.message ||
-        "Failed to submit paper. Please check input parameters.";
-      toast.error(errMsg);
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: { message?: string }; message?: string } } };
+      toast.error(
+        err.response?.data?.error?.message ||
+          err.response?.data?.message ||
+          t("Failed to submit paper. Please check input parameters."),
+      );
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  const formContent = (
-    <form onSubmit={handleSubmit} className={isEmbedded ? "space-y-6" : "p-8 space-y-6"}>
-          {/* Title */}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="title" className="text-sm font-semibold text-slate-900 dark:text-slate-200">
-              Paper Title <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="title"
-              required
-              value={title}
-              onChange={(e) => {
-                setTitle(e.target.value);
-                if (errors.title) setErrors((prev) => ({ ...prev, title: "" }));
-              }}
-              placeholder="e.g. Attention Is All You Need"
-              className={`flex h-10 w-full rounded-md border bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-all ${
-                errors.title
-                  ? "border-red-500 focus:ring-red-500"
-                  : "border-slate-300 dark:border-zinc-800"
-              }`}
-            />
-            {errors.title && <p className="text-xs text-red-500 font-medium mt-1">{errors.title}</p>}
-          </div>
+  const steps: Array<{ num: StepNumber; labelKey: string }> = [
+    { num: 1, labelKey: "settings.submit.step1" },
+    { num: 2, labelKey: "settings.submit.step2" },
+    { num: 3, labelKey: "settings.submit.step3" },
+    { num: 4, labelKey: "settings.submit.step4" },
+  ];
 
-          {/* DOI & Paper Link — both required */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="doi" className="text-sm font-semibold text-slate-900 dark:text-slate-200">
-                DOI <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="doi"
-                required
-                value={doi}
-                onChange={(e) => {
-                  setDoi(e.target.value);
-                  if (errors.doi) setErrors((prev) => ({ ...prev, doi: "" }));
-                }}
-                placeholder="e.g. 10.1145/3065386"
-                className={`flex h-10 w-full rounded-md border bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-all ${
-                  errors.doi
-                    ? "border-red-500 focus:ring-red-500"
-                    : "border-slate-300 dark:border-zinc-800"
-                }`}
-              />
-              {errors.doi && <p className="text-xs text-red-500 font-medium mt-1">{errors.doi}</p>}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="paperLink" className="text-sm font-semibold text-slate-900 dark:text-slate-200">
-                Paper Link <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="paperLink"
-                required
-                value={paperLink}
-                onChange={(e) => {
-                  setPaperLink(e.target.value);
-                  if (errors.paperLink) setErrors((prev) => ({ ...prev, paperLink: "" }));
-                }}
-                placeholder="e.g. https://arxiv.org/abs/1706.03762"
-                className={`flex h-10 w-full rounded-md border bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-all ${
-                  errors.paperLink
-                    ? "border-red-500 focus:ring-red-500"
-                    : "border-slate-300 dark:border-zinc-800"
-                }`}
-              />
-              {errors.paperLink && <p className="text-xs text-red-500 font-medium mt-1">{errors.paperLink}</p>}
-            </div>
-          </div>
+  const clearError = (field: string) => {
+    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: "" }));
+  };
 
-          {/* Open Access URL */}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="openAccessUrl" className="text-sm font-semibold text-slate-900 dark:text-slate-200">
-              Open Access URL <span className="text-slate-400 font-normal text-xs">(optional)</span>
-            </label>
-            <input
-              id="openAccessUrl"
-              value={openAccessUrl}
-              onChange={(e) => {
-                setOpenAccessUrl(e.target.value);
-                if (errors.openAccessUrl) setErrors((prev) => ({ ...prev, openAccessUrl: "" }));
-              }}
-              placeholder="e.g. https://arxiv.org/pdf/1706.03762.pdf"
-              className={`flex h-10 w-full rounded-md border bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-all ${
-                errors.openAccessUrl
-                  ? "border-red-500 focus:ring-red-500"
-                  : "border-slate-300 dark:border-zinc-800"
-              }`}
-            />
-            {errors.openAccessUrl && <p className="text-xs text-red-500 font-medium mt-1">{errors.openAccessUrl}</p>}
-          </div>
+  const content = (
+    <div className="space-y-6" data-no-i18n>
+      <SettingsPageHeader
+        title={editId ? t("settings.submit.editTitle") : isAdmin ? t("Add Paper to Corpus") : t("settings.submit.title")}
+        description={t("settings.submit.subtitle")}
+        action={
+          !isAdmin ? (
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <Link to="/settings/my-papers">
+                <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{t("settings.submit.backToWorks")}</span>
+              </Link>
+            </Button>
+          ) : undefined
+        }
+      />
 
-          {/* Abstract */}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="abstractText" className="text-sm font-semibold text-slate-900 dark:text-slate-200">
-              Abstract <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              id="abstractText"
-              required
-              rows={6}
-              value={abstractText}
-              onChange={(e) => {
-                setAbstractText(e.target.value);
-                if (errors.abstractText) setErrors((prev) => ({ ...prev, abstractText: "" }));
-              }}
-              placeholder="Paste the abstract here (between 50 and 350 words)..."
-              className={`flex w-full rounded-md border bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-all ${
-                errors.abstractText
-                  ? "border-red-500 focus:ring-red-500"
-                  : "border-slate-300 dark:border-zinc-800"
-              }`}
-            />
-            {errors.abstractText && <p className="text-xs text-red-500 font-medium mt-1">{errors.abstractText}</p>}
-            <p className={`text-xs ${
-              abstractWordCount < 50 || abstractWordCount > 350
-                ? "text-red-500"
-                : "text-slate-500"
-            }`}>
-              {abstractWordCount} / 50–350 words
-            </p>
-          </div>
-
-          {/* Kind & Year */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="paperKind" className="text-sm font-semibold text-slate-900 dark:text-slate-200">
-                Paper Kind <span className="text-red-500">*</span>
-              </label>
-              <select
-                id="paperKind"
-                value={paperKind}
-                onChange={(e) => setPaperKind(e.target.value as any)}
-                className="flex h-10 w-full rounded-md border border-slate-300 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-all"
+      {/* 4-step Academic Progress Stepper */}
+      <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Submission steps">
+        {steps.map(({ num, labelKey }) => {
+          const active = step === num;
+          const completed = step > num;
+          return (
+            <li key={num}>
+              <button
+                type="button"
+                onClick={() => handleJumpStep(num)}
+                aria-current={active ? "step" : undefined}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-colors",
+                  active
+                    ? "border-primary bg-primary/8 text-primary"
+                    : completed
+                      ? "border-emerald-500/30 bg-emerald-500/5 text-foreground hover:border-primary/40"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground",
+                )}
               >
-                <option value="article">Article / Research Paper</option>
-                <option value="proceedings">Conference Proceedings</option>
-                <option value="preprint">Preprint</option>
-                <option value="review">Review</option>
-                <option value="book-chapter">Book Chapter</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="publicationYear" className="text-sm font-semibold text-slate-900 dark:text-slate-200">
-                Publication Year <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="publicationYear"
-                type="number"
-                required
-                min={1900}
-                max={new Date().getFullYear()}
-                placeholder={String(new Date().getFullYear())}
-                value={publicationYear}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/^0+(?=\d)/, "");
-                  setPublicationYear(val);
-                  if (errors.publicationYear) setErrors((prev) => ({ ...prev, publicationYear: "" }));
-                }}
-                className={`flex h-10 w-full rounded-md border bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-all ${
-                  errors.publicationYear
-                    ? "border-red-500 focus:ring-red-500"
-                    : "border-slate-300 dark:border-zinc-800"
-                }`}
-              />
-              {errors.publicationYear && <p className="text-xs text-red-500 font-medium mt-1">{errors.publicationYear}</p>}
-            </div>
-          </div>
+                <span
+                  className={cn(
+                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+                    active
+                      ? "bg-primary text-primary-foreground"
+                      : completed
+                        ? "bg-emerald-600 text-white"
+                        : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {completed ? <Check className="h-3 w-3" aria-hidden="true" /> : num}
+                </span>
+                <span className="truncate">{t(labelKey)}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
 
-          {/* Authors */}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="authors" className="text-sm font-semibold text-slate-900 dark:text-slate-200">
-              Authors (comma-separated) <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="authors"
-              required
-              value={authorsStr}
-              onChange={(e) => {
-                setAuthorsStr(e.target.value);
-                if (errors.authors) setErrors((prev) => ({ ...prev, authors: "" }));
-              }}
-              placeholder="e.g. Ashish Vaswani, Noam Shazeer, Niki Parmar"
-              className={`flex h-10 w-full rounded-md border bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-all ${
-                errors.authors
-                  ? "border-red-500 focus:ring-red-500"
-                  : "border-slate-300 dark:border-zinc-800"
-              }`}
-            />
-            {errors.authors && <p className="text-xs text-red-500 font-medium mt-1">{errors.authors}</p>}
-            <p className="text-xs text-slate-500">First author will be marked as corresponding author.</p>
-          </div>
-
-          {/* Keywords & Topics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="keywords" className="text-sm font-semibold text-slate-900 dark:text-slate-200">
-                Keywords <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="keywords"
-                required
-                value={keywordsStr}
-                onChange={(e) => {
-                  setKeywordsStr(e.target.value);
-                  if (errors.keywords) setErrors((prev) => ({ ...prev, keywords: "" }));
-                }}
-                placeholder="e.g. NLP, Transformers, Deep Learning"
-                className={`flex h-10 w-full rounded-md border bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-all ${
-                  errors.keywords
-                    ? "border-red-500 focus:ring-red-500"
-                    : "border-slate-300 dark:border-zinc-800"
-                }`}
-              />
-              {errors.keywords && <p className="text-xs text-red-500 font-medium mt-1">{errors.keywords}</p>}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="topics" className="text-sm font-semibold text-slate-900 dark:text-slate-200">
-                Research Topics <span className="text-slate-400 font-normal text-xs">(optional)</span>
-              </label>
-              <input
-                id="topics"
-                value={topicsStr}
-                onChange={(e) => setTopicsStr(e.target.value)}
-                placeholder="e.g. Computer Science, AI"
-                className="flex h-10 w-full rounded-md border border-slate-300 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent transition-all"
-              />
-            </div>
-          </div>
-
-          {/* PDF Upload — Optional */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-semibold text-slate-900 dark:text-slate-200">
-              PDF Document <span className="text-slate-400 font-normal text-xs">(optional)</span>
-            </label>
-            {pdfFile ? (
-              <div className="flex items-center justify-between p-3 rounded-lg border border-emerald-200 dark:border-emerald-900/30 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-400">
-                <div className="flex items-center gap-2.5">
-                  <FileText className="w-5 h-5 shrink-0" />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium truncate max-w-xs">{pdfFile.name}</span>
-                    <span className="text-xs text-slate-500">{(pdfFile.size / 1024 / 1024).toFixed(2)} MB</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPdfFile(null);
-                    if (errors.pdf) setErrors((prev) => ({ ...prev, pdf: "" }));
+      {initializing ? (
+        <SkeletonList items={3} />
+      ) : (
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-6">
+          {/* STEP 1: Paper details */}
+          {step === 1 ? (
+            <div className="space-y-5">
+              <SettingsFormField id="title" label={t("settings.submit.paperTitle")} required error={errors.title}>
+                <Input
+                  id="title"
+                  value={title}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    clearError("title");
                   }}
-                  className="p-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-full transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ) : existingPdfPath ? (
-              <div className="flex items-center justify-between p-3 rounded-lg border border-indigo-200 dark:border-indigo-900/30 bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-800 dark:text-indigo-400">
-                <div className="flex items-center gap-2.5">
-                  <FileText className="w-5 h-5 shrink-0" />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium truncate max-w-xs">Existing PDF Document</span>
-                    <span className="text-xs text-slate-500">You can upload a new PDF to replace it</span>
-                  </div>
-                </div>
-                <label
-                  htmlFor="pdf-upload"
-                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 cursor-pointer"
-                >
-                  Replace PDF
-                </label>
-                <input id="pdf-upload" type="file" accept="application/pdf" className="hidden" onChange={handleFileChange} />
-              </div>
-            ) : (
-              <label
-                htmlFor="pdf-upload"
-                className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-6 bg-slate-50/50 dark:bg-zinc-900/30 cursor-pointer transition-all group ${
-                  errors.pdf
-                    ? "border-red-500 hover:border-red-600"
-                    : "border-slate-300 dark:border-zinc-800 hover:border-indigo-500 dark:hover:border-indigo-400/50"
-                }`}
-              >
-                <Upload className="w-8 h-8 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 mb-2 transition-colors" />
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Click to upload PDF</span>
-                <span className="text-xs text-slate-500 mt-1">PDF only (Max 10MB)</span>
-                <input id="pdf-upload" type="file" accept="application/pdf" className="hidden" onChange={handleFileChange} />
-              </label>
-            )}
-            {errors.pdf && <p className="text-xs text-red-500 font-medium mt-1">{errors.pdf}</p>}
-          </div>
+                  placeholder="e.g. Attention Is All You Need"
+                  className="h-10"
+                />
+              </SettingsFormField>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-zinc-800">
-            <Button type="button" variant="outline" disabled={loading} onClick={() => navigate(-1)}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={loading}
-              className="bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 text-white shadow-md transition-all hover:scale-[1.02] disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {editId ? "Resubmitting..." : isAdmin ? "Creating..." : "Submitting..."}
-                </>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <SettingsFormField id="doi" label="DOI" required error={errors.doi}>
+                  <Input
+                    id="doi"
+                    value={doi}
+                    onChange={(e) => {
+                      setDoi(e.target.value);
+                      clearError("doi");
+                    }}
+                    placeholder="e.g. 10.1145/3065386"
+                    className="h-10 font-mono text-xs"
+                  />
+                </SettingsFormField>
+
+                <SettingsFormField id="paperLink" label={t("settings.submit.paperLink")} required error={errors.paperLink}>
+                  <Input
+                    id="paperLink"
+                    value={paperLink}
+                    onChange={(e) => {
+                      setPaperLink(e.target.value);
+                      clearError("paperLink");
+                    }}
+                    placeholder="https://arxiv.org/abs/1706.03762"
+                    className="h-10"
+                  />
+                </SettingsFormField>
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                <SettingsFormField id="paperKind" label={t("settings.submit.paperKind")} required>
+                  <select
+                    id="paperKind"
+                    value={paperKind}
+                    onChange={(e) => setPaperKind(e.target.value as typeof paperKind)}
+                    className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="article">{t("Article / Research Paper")}</option>
+                    <option value="proceedings">{t("Conference Proceedings")}</option>
+                    <option value="preprint">{t("Preprint")}</option>
+                    <option value="review">{t("Review")}</option>
+                    <option value="book-chapter">{t("Book Chapter")}</option>
+                    <option value="other">{t("Other")}</option>
+                  </select>
+                </SettingsFormField>
+
+                <SettingsFormField
+                  id="publicationYear"
+                  label={t("Publication Year")}
+                  required
+                  error={errors.publicationYear}
+                >
+                  <Input
+                    id="publicationYear"
+                    type="number"
+                    min={1900}
+                    max={new Date().getFullYear()}
+                    value={publicationYear}
+                    onChange={(e) => {
+                      setPublicationYear(e.target.value.replace(/^0+(?=\d)/, ""));
+                      clearError("publicationYear");
+                    }}
+                    className="h-10"
+                  />
+                </SettingsFormField>
+              </div>
+
+              <SettingsFormField
+                id="abstractText"
+                label={t("Abstract")}
+                required
+                error={errors.abstractText}
+                helper={
+                  <span
+                    className={
+                      abstractWordCount < 50 || abstractWordCount > 350
+                        ? "text-amber-700 dark:text-amber-400"
+                        : "text-emerald-700 dark:text-emerald-400"
+                    }
+                  >
+                    {abstractWordCount} / 50–350 {t("settings.submit.words")}
+                  </span>
+                }
+              >
+                <textarea
+                  id="abstractText"
+                  rows={6}
+                  value={abstractText}
+                  onChange={(e) => {
+                    setAbstractText(e.target.value);
+                    clearError("abstractText");
+                  }}
+                  placeholder={t("Paste the abstract here (between 50 and 350 words)...")}
+                  className="flex w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm leading-6 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </SettingsFormField>
+            </div>
+          ) : null}
+
+          {/* STEP 2: Authors & topics */}
+          {step === 2 ? (
+            <div className="space-y-5">
+              <SettingsFormField
+                id="authors"
+                label={t("Authors (comma-separated)")}
+                required
+                error={errors.authors}
+                helper={t("First author will be marked as corresponding author.")}
+              >
+                <Input
+                  id="authors"
+                  value={authorsStr}
+                  onChange={(e) => {
+                    setAuthorsStr(e.target.value);
+                    clearError("authors");
+                  }}
+                  placeholder="e.g. Ashish Vaswani, Noam Shazeer, Niki Parmar"
+                  className="h-10"
+                />
+              </SettingsFormField>
+
+              {parsedAuthors.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {parsedAuthors.map((author, idx) => (
+                    <span
+                      key={`${author}-${idx}`}
+                      className="rounded-md border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium text-foreground"
+                    >
+                      {idx + 1}. {author}
+                      {idx === 0 ? ` (${t("Corresponding")})` : ""}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                <SettingsFormField
+                  id="keywords"
+                  label={t("Keywords")}
+                  required
+                  error={errors.keywords}
+                  helper={t("Separate multiple keywords with commas.")}
+                >
+                  <Input
+                    id="keywords"
+                    value={keywordsStr}
+                    onChange={(e) => {
+                      setKeywordsStr(e.target.value);
+                      clearError("keywords");
+                    }}
+                    placeholder="e.g. NLP, Transformers, Deep Learning"
+                    className="h-10"
+                  />
+                </SettingsFormField>
+
+                <SettingsFormField
+                  id="topics"
+                  label={t("Research Topics")}
+                  helper={t("Optional comma-separated research domains.")}
+                >
+                  <Input
+                    id="topics"
+                    value={topicsStr}
+                    onChange={(e) => setTopicsStr(e.target.value)}
+                    placeholder="e.g. Computer Science, AI"
+                    className="h-10"
+                  />
+                </SettingsFormField>
+              </div>
+            </div>
+          ) : null}
+
+          {/* STEP 3: Documents & links */}
+          {step === 3 ? (
+            <div className="space-y-5">
+              <SettingsFormField
+                id="openAccessUrl"
+                label={t("Open Access URL")}
+                error={errors.openAccessUrl}
+                helper={t("Optional direct link to an open-access PDF or preprint.")}
+              >
+                <Input
+                  id="openAccessUrl"
+                  value={openAccessUrl}
+                  onChange={(e) => {
+                    setOpenAccessUrl(e.target.value);
+                    clearError("openAccessUrl");
+                  }}
+                  placeholder="https://arxiv.org/pdf/1706.03762.pdf"
+                  className="h-10"
+                />
+              </SettingsFormField>
+
+              <SettingsFormField label={t("PDF Document")} error={errors.pdf}>
+                {pdfFile ? (
+                  <div className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-emerald-700 dark:text-emerald-300">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <FileText className="h-5 w-5 shrink-0" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{pdfFile.name}</p>
+                        <p className="text-xs opacity-80">{(pdfFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPdfFile(null)}
+                      aria-label={t("Remove")}
+                      className="rounded-lg p-1.5 hover:bg-emerald-500/15"
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : existingPdfPath ? (
+                  <div className="flex items-center justify-between rounded-xl border border-primary/25 bg-primary/5 px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <FileText className="h-5 w-5 text-primary" aria-hidden="true" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{t("Existing PDF Document")}</p>
+                        <p className="text-xs text-muted-foreground">{t("You can upload a new PDF to replace it")}</p>
+                      </div>
+                    </div>
+                    <label
+                      htmlFor="pdf-upload"
+                      className="cursor-pointer rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+                    >
+                      {t("Replace PDF")}
+                    </label>
+                    <input id="pdf-upload" type="file" accept="application/pdf" className="hidden" onChange={handleFileChange} />
+                  </div>
+                ) : (
+                  <label
+                    htmlFor="pdf-upload"
+                    className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/20 px-6 py-8 text-center transition-colors hover:border-primary/50 hover:bg-muted/35"
+                  >
+                    <Upload className="mb-2 h-7 w-7 text-muted-foreground" aria-hidden="true" />
+                    <span className="text-sm font-medium text-foreground">{t("Click to upload PDF")}</span>
+                    <span className="mt-1 text-xs text-muted-foreground">{t("PDF only (Max 10MB) · Optional")}</span>
+                    <input id="pdf-upload" type="file" accept="application/pdf" className="hidden" onChange={handleFileChange} />
+                  </label>
+                )}
+              </SettingsFormField>
+
+              <div className="flex items-start gap-2.5 rounded-xl border border-border/80 bg-muted/25 px-4 py-3 text-xs leading-5 text-muted-foreground">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                <p>{t("settings.works.statusDisclaimer")}</p>
+              </div>
+            </div>
+          ) : null}
+
+          {/* STEP 4: Review & submit */}
+          {step === 4 ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">{t("settings.submit.reviewHint")}</p>
+
+              <div className="divide-y divide-border/70 rounded-xl border border-border/85">
+                <div className="p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      1. {t("settings.submit.step1")}
+                    </h3>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => setStep(1)}>
+                      <Pencil className="h-3 w-3" aria-hidden="true" />
+                      <span>{t("Edit")}</span>
+                    </Button>
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">{title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {publicationYear} · {paperKind} · DOI: <span className="font-mono">{doi}</span>
+                  </p>
+                  <p className="line-clamp-3 text-xs leading-5 text-muted-foreground">{abstractText}</p>
+                </div>
+
+                <div className="p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      2. {t("settings.submit.step2")}
+                    </h3>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => setStep(2)}>
+                      <Pencil className="h-3 w-3" aria-hidden="true" />
+                      <span>{t("Edit")}</span>
+                    </Button>
+                  </div>
+                  <p className="text-xs text-foreground">
+                    <strong>{t("Authors")}:</strong> {parsedAuthors.join(", ")}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    <strong>{t("Keywords")}:</strong> {parsedKeywords.join(", ")}
+                  </p>
+                </div>
+
+                <div className="p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      3. {t("settings.submit.step3")}
+                    </h3>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => setStep(3)}>
+                      <Pencil className="h-3 w-3" aria-hidden="true" />
+                      <span>{t("Edit")}</span>
+                    </Button>
+                  </div>
+                  <p className="text-xs text-foreground">
+                    <strong>PDF:</strong>{" "}
+                    {pdfFile ? pdfFile.name : existingPdfPath ? t("Existing PDF Document") : t("Metadata only (no PDF)")}
+                  </p>
+                  {openAccessUrl ? (
+                    <p className="truncate text-xs text-muted-foreground">
+                      <strong>Open Access:</strong> {openAccessUrl}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Step Footer Actions */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/75 pt-5">
+            <div>
+              {step > 1 ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={submitting}
+                  onClick={() => setStep((s) => Math.max(1, s - 1) as StepNumber)}
+                  className="gap-1.5"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{t("settings.submit.back")}</span>
+                </Button>
               ) : (
-                <>{editId ? "Resubmit Paper" : isAdmin ? "Create Paper" : "Submit Paper"}</>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={submitting}
+                  onClick={() => navigate(isAdmin ? "/admin/papers" : "/settings/my-papers")}
+                >
+                  {t("Cancel")}
+                </Button>
               )}
-            </Button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {step < 4 ? (
+                <Button type="button" size="sm" onClick={handleNextStep} className="gap-1.5">
+                  <span>{t("settings.submit.next")}</span>
+                  <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  size="sm"
+                  loading={submitting}
+                  loadingText={editId ? t("Resubmitting...") : isAdmin ? t("Creating...") : t("Submitting...")}
+                >
+                  {editId ? t("Resubmit Paper") : isAdmin ? t("Create Paper") : t("Submit Paper")}
+                </Button>
+              )}
+            </div>
           </div>
         </form>
-      );
+      )}
+    </div>
+  );
 
-      if (isEmbedded) {
-        return (
-          <div className="space-y-6">
-            <div className="mb-6 pb-2 border-b border-slate-100 dark:border-slate-800">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Upload className="w-5 h-5 text-blue-600" />
-                {editId ? "Edit & Resubmit Paper" : isAdmin ? "Add Paper to Corpus" : "Direct Submission"}
-              </h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                {editId
-                  ? "Edit your paper details and re-upload the PDF to address admin feedback."
-                  : isAdmin
-                    ? "Create a public paper from metadata now. The PDF is optional and can be attached from Paper Detail later."
-                    : "Directly submit scientific papers with PDF files. Papers will be automatically scored upon submission and points rewarded once approved by the Admin."}
-              </p>
-            </div>
-            {formContent}
-          </div>
-        );
-      }
+  if (isEmbedded) return content;
 
-      return (
-        <main className="container py-8 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Header */}
-          <div className="text-center space-y-3 mb-10">
-            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
-              {editId ? "Edit & Resubmit Paper" : isAdmin ? "Add Paper to Corpus" : "Direct Submission"}
-            </h1>
-            <p className="text-slate-500 dark:text-slate-400 max-w-xl mx-auto text-sm sm:text-base leading-relaxed">
-              {editId
-                ? "Edit your paper details and re-upload the PDF to address admin feedback."
-                : isAdmin
-                  ? "Create a public metadata-only paper, or attach a PDF now. No admin credit is charged."
-                  : "Directly submit scientific papers with PDF files. Papers will be automatically scored upon submission and points rewarded once approved by the Admin."}
-            </p>
-          </div>
-
-          {/* Form */}
-          <div className="relative bg-white dark:bg-[#0e0e11] border border-slate-200/80 dark:border-zinc-800/80 rounded-2xl shadow-xl overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-600 via-[#001b69] to-indigo-600" />
-            {formContent}
-          </div>
-        </main>
-      );
-    }
+  return (
+    <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="rounded-xl border border-border/85 bg-card p-6 sm:p-8">{content}</div>
+    </main>
+  );
+}

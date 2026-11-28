@@ -1,8 +1,17 @@
 /* Shared across Home and every MainLayout route. */
+:root:has(.lumi-app-shell) {
+  scroll-padding-top: 120px;
+}
+@media (max-width: 767px) {
+  :root:has(.lumi-app-shell) {
+    scroll-padding-top: 96px;
+  }
+}
 .lumi-app-shell {
   --app-header-height: 80px;
   --app-header-top: 20px;
   --app-header-offset: calc(var(--app-header-height) + var(--app-header-top) + 20px);
+  scroll-padding-top: var(--app-header-offset);
 }
 .lumi-app-header {
   top: var(--app-header-top);

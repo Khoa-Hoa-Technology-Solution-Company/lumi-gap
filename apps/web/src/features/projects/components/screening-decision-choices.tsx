@@ -11,20 +11,21 @@ export const screeningReviewOptions = (["INCLUDE", "EXCLUDE", "UNSURE"] as Scree
 
 /** One native radio pattern for initial ballots, revisions and final decisions. */
 export function ScreeningDecisionChoices<Value extends string>({
-  legend, value, options, onChange, disabled = false, required = false, currentValue,
+  legend, value, options, onChange, disabled = false, required = false, currentValue, hideLegend = false,
 }: {
   legend: string;
   value: Value | "";
-  options: readonly { value: Value; label: string; tone: ScreeningTone; disabled?: boolean }[];
+  options: readonly { value: Value; label: string; description?: string; tone: ScreeningTone; disabled?: boolean }[];
   onChange: (value: Value) => void;
   disabled?: boolean;
   required?: boolean;
   currentValue?: Value;
+  hideLegend?: boolean;
 }) {
   const name = useId();
   return <fieldset className="screening-decision-choices" disabled={disabled}>
-    <legend>{legend}</legend>
-    <div className="screening-decision-options">
+    <legend className={hideLegend ? "sr-only" : undefined}>{legend}</legend>
+    <div className="screening-decision-options" data-count={options.length}>
       {options.map(option => <label
         key={option.value}
         className="screening-decision-option screening-check screening-tone"
@@ -34,7 +35,11 @@ export function ScreeningDecisionChoices<Value extends string>({
       >
         <input type="radio" name={name} value={option.value} checked={value === option.value}
           disabled={option.disabled} required={required} onChange={() => onChange(option.value)} />
-        <span>{option.label}{currentValue === option.value && <small>Hiện tại</small>}</span>
+        <span>
+          <span className="screening-decision-option-label">{option.label}</span>
+          {currentValue === option.value && <small>Hiện tại</small>}
+          {option.description && <small className="screening-decision-option-desc">{option.description}</small>}
+        </span>
       </label>)}
     </div>
   </fieldset>;

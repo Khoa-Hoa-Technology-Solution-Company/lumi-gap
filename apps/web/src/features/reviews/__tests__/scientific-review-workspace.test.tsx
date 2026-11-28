@@ -20,7 +20,16 @@ beforeEach(async()=>{
   await act(async()=>root.render(<QueryClientProvider client={new QueryClient()}><MemoryRouter future={{v7_startTransition:true,v7_relativeSplatPath:true}}><ReviewWorkspacePage/></MemoryRouter></QueryClientProvider>));
 });
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();vi.useRealTimers();vi.unstubAllGlobals();});
-async function write(value:string){const field=host.querySelectorAll("textarea")[4]!;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(field,value);await act(async()=>field.dispatchEvent(new Event("input",{bubbles:true})));}
+async function write(value:string){
+  let field=host.querySelector<HTMLTextAreaElement>("#review-overall-comment");
+  if(!field){
+    const summaryTab=[...host.querySelectorAll<HTMLButtonElement>('button[role="tab"]')].find(btn=>btn.textContent?.includes("reviewWorkspace.subTab.summary"));
+    if(summaryTab) await act(async()=>summaryTab.click());
+    field=host.querySelector<HTMLTextAreaElement>("#review-overall-comment");
+  }
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(field!,value);
+  await act(async()=>field!.dispatchEvent(new Event("input",{bubbles:true})));
+}
 it("does not preselect scores or create mentor approval when the workspace opens",()=>{
   expect(host.textContent).toContain("Not assessed");expect(host.querySelector('[aria-pressed="true"]')).toBeNull();expect(mocks.save).not.toHaveBeenCalled();expect(mocks.submit).not.toHaveBeenCalled();
 });
@@ -66,7 +75,7 @@ it("preserves edits after an autosave failure and waits for an explicit retry or
   expect(host.textContent).toContain("reviewWorkspace.autosaveFailed");
   await act(async () => { vi.advanceTimersByTime(12000); });
   expect(mocks.save).toHaveBeenCalledTimes(1);
-  expect(host.querySelectorAll("textarea")[4]!.value).toBe("Keep my feedback after an error");
+  expect(host.querySelector<HTMLTextAreaElement>("#review-overall-comment")!.value).toBe("Keep my feedback after an error");
   await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes("reviewWorkspace.saveDraft"))!.click());
   expect(mocks.save).toHaveBeenCalledTimes(2);
   expect(host.textContent).toContain("reviewWorkspace.draftSaved");
@@ -82,4 +91,80 @@ it("does not block newer edits when an earlier autosave fails", async () => {
   await act(async () => { vi.advanceTimersByTime(1200); });
   expect(mocks.save).toHaveBeenLastCalledWith(expect.objectContaining({overallComment: "New feedback typed while the earlier request was pending"}));
   expect(host.textContent).toContain("reviewWorkspace.draftSaved");
+});
+
+it("keeps PEER_REVIEW locked to rubric mode without exposing feedback-only toggle", () => {
+  expect(host.textContent).not.toContain("reviewWorkspace.modeTab.feedback");
+});
+
+it("defaults fresh MENTOR_GUIDANCE reviews to Feedback-First mode and saves feedbackOnly payload", async () => {
+  const prev = mocks.workspace.data;
+  mocks.workspace.data = {
+    ...prev,
+    request: { id: "req-1", status: "IN_REVIEW", origin: "MENTOR_GUIDANCE", message: "Please check section 3" },
+    artifactRevision: { ...prev.artifactRevision, id: "v-guidance" },
+  } as typeof prev;
+
+  await act(async () =>
+    root.render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <ReviewWorkspacePage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  );
+
+  expect(host.textContent).toContain("reviewWorkspace.modeTab.feedback");
+  expect(host.textContent).toContain("Please check section 3");
+  const commentBox = host.querySelector("textarea")!;
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(commentBox, "Great progress on methods");
+  await act(async () => commentBox.dispatchEvent(new Event("input", { bubbles: true })));
+  await act(async () => {
+    [...host.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.includes("reviewWorkspace.saveDraft"))!.click();
+  });
+  expect(mocks.save).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      feedbackOnly: true,
+      overallComment: "Great progress on methods",
+    }),
+  );
+  mocks.workspace.data = prev;
+});
+
+it("shows previous round feedback tab when previousRevisionItems exist", async () => {
+  const prev = mocks.workspace.data;
+  mocks.workspace.data = {
+    ...prev,
+    roundNumber: 2,
+    artifactRevision: { ...prev.artifactRevision, id: "v2-prev" },
+    previousRevisionItems: [
+      {
+        id: "rev-item-1",
+        priority: "MAJOR",
+        description: "Add ablation table",
+        status: "ADDRESSED",
+        responses: [{ submissionRevisionId: "v2-prev", responseText: "Added Table 3 in Section 4", status: "SUBMITTED" }],
+      },
+    ],
+  } as typeof prev;
+
+  await act(async () =>
+    root.render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <ReviewWorkspacePage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  );
+
+  const prevTab = [...host.querySelectorAll<HTMLButtonElement>("button")].find(b =>
+    b.textContent?.includes("reviewWorkspace.roundTab.previous"),
+  );
+  expect(prevTab).toBeTruthy();
+  await act(async () => prevTab!.click());
+  expect(host.textContent).toContain("Add ablation table");
+  expect(host.textContent).toContain("Added Table 3 in Section 4");
+  mocks.workspace.data = prev;
 });

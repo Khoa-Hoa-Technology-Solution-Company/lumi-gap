@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
+import { MANUSCRIPT_PDF_MAX_MB } from "@trend/shared-types";
 import { AppError } from "../exceptions/app-error.js";
 import { logger } from "../../infrastructure/logger.js";
 
@@ -16,17 +17,21 @@ export function notFoundHandler(req: Request, res: Response): void {
 
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
   if (isMulterError(err)) {
+    const isSubmissionPdf = _req.originalUrl.includes("/submissions");
+    const code = err.code === "LIMIT_FILE_SIZE" && isSubmissionPdf ? "PDF_TOO_LARGE" : "BAD_REQUEST";
     const message =
       err.code === "LIMIT_FILE_SIZE"
         ? _req.originalUrl.includes("/academic-support/content/attachments")
           ? "Use PDF, DOCX, JPEG, PNG or WebP files up to 5 MB"
           : _req.originalUrl.includes("/academic-profiles/me/cover")
           ? "Cover image is too large. Maximum size is 5MB."
+          : isSubmissionPdf
+          ? `Bản PDF vượt giới hạn dung lượng cho phép (tối đa ${MANUSCRIPT_PDF_MAX_MB} MB).`
           : "PDF file is too large. Maximum size is 10MB."
         : `Invalid file upload: ${err.message}`;
     res.status(400).json({
       success: false,
-      error: { code: "BAD_REQUEST", message },
+      error: { code, message },
     });
     return;
   }

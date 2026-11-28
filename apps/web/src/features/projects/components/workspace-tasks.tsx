@@ -1,5 +1,6 @@
+import { ResearchAttribution } from "./research-attribution";
 import { lazy, Suspense, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import type { SaveWorkspaceTask, WorkspaceLink, WorkspaceTask, WorkspaceTaskStatus } from "@trend/shared-types";
 import { ArrowLeft, Check, CheckCheck, ChevronRight, MessagesSquare, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { useI18n } from "@/i18n";
 import { useQuickChatStore } from "../stores/quick-chat-store";
 import { workspaceApi } from "../api/workspace.api";
 import { useWorkspaceCommand, useWorkspaceResource } from "../hooks/use-workspace";
-import { canLeaveWorkspace, linkLabels, taskLabels, useUnsavedWorkspace, WorkspaceArtifactLink, WorkspaceArtifactPicker, WorkspaceComments, WorkspaceDate, WorkspaceEmpty, WorkspaceError, WorkspaceHeading, WorkspaceLoading, WorkspacePager, WorkspacePeoplePicker } from "./workspace-common";
+import { canLeaveWorkspace, linkLabels, taskLabels, useUnsavedWorkspace, WorkspaceArtifactLink, WorkspaceArtifactPicker, WorkspaceComments, WorkspaceDate, WorkspaceError, WorkspaceHeading, WorkspaceLoading, WorkspacePager, WorkspacePeoplePicker } from "./workspace-common";
 import { taskPriorities, taskStatuses, taskToForm } from "./workspace-task-utils";
 const TaskBoardView = lazy(() => import("./workspace-task-board").then(module => ({ default: module.TaskBoardView })));
 import { WorkspaceTaskHistory } from "./workspace-task-history";
@@ -80,6 +81,7 @@ function TaskDetail({ projectId, selected, readOnly, onClose, onSaved, onSelect,
       )}
       {task.parentTaskId ? <button type="button" className="task-parent-link" onClick={() => onSelect(task.parentTaskId!)}><ArrowLeft size={14} />{t("Open parent task")}</button> : <TaskSubtasks projectId={projectId} task={task} readOnly={readOnly} onSelect={onSelect} />}
       <WorkspaceComments projectId={projectId} targetKind="TASK" targetId={task.id} readOnly={readOnly} />
+      <ResearchAttribution projectId={projectId} kind="TASK" resourceId={task.id} />
       <details className="coord-history-panel"><summary>{t("Activity history")}</summary><WorkspaceTaskHistory items={detail.data?.history.items ?? []} /><WorkspacePager data={detail.data?.history} page={page} onPage={setPage} /></details>
       {!readOnly && detail.data?.canDelete && <div className="coord-delete-area">{confirmDelete ? <><p>{t("Delete this task? Its history will be kept.")}</p><Button size="sm" variant="destructive" disabled={remove.isPending} onClick={async () => { if (!(await canLeaveWorkspace())) return; try { await remove.mutateAsync(); onSaved(""); } catch { /* Error remains visible. */ } }}>{t("Confirm delete")}</Button><Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>{t("Cancel")}</Button></> : <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(true)}><Trash2 className="mr-2 h-4 w-4" />{t("Delete task")}</Button>}{remove.error && <WorkspaceError error={remove.error} />}</div>}
     </>}

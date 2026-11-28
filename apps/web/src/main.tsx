@@ -8,11 +8,29 @@ import { queryClient } from "./services/query-client";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
-import { I18nProvider } from "@/i18n";
+import { I18nProvider, preloadInitialDictionary } from "@/i18n";
 import { AppErrorBoundary } from "@/components/app-error-boundary";
+import { RouteProgress } from "@/components/loading";
+import { useAuthStore } from "@/stores/auth-store";
+import { authApi } from "@/features/auth/api/auth.api";
 import { reloadOnceForStaleChunk } from "@/utils/stale-chunk";
 import "./theme/globals.css";
 import "./theme/lumi-surface.css";
+
+// Kick off locale dictionary + active session validation in parallel before React paints
+// to eliminate the serial i18n -> layout -> /auth/me cold-start waterfall.
+preloadInitialDictionary();
+if (useAuthStore.getState().tokens?.accessToken) {
+  void queryClient.prefetchQuery({
+    queryKey: ["current-user"],
+    queryFn: async () => {
+      const data = await authApi.me();
+      useAuthStore.setState({ user: data.user });
+      return data;
+    },
+    staleTime: 30_000,
+  });
+}
 
 const LecturerDeliveryNotice = lazy(() =>
   import("@/features/academic-profile/components/lecturer-delivery-notice").then((module) => ({
@@ -39,36 +57,37 @@ if (!root) throw new Error("Missing #root element");
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <AppErrorBoundary>
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider delayDuration={150}>
-          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <I18nProvider>
-              <App />
-              <Suspense fallback={null}>
-                <LecturerDeliveryNotice />
-              </Suspense>
-              <Toaster
-                closeButton
-                position="bottom-right"
-                duration={2400}
-                visibleToasts={2}
-                expand={false}
-                gap={8}
-                offset={16}
-                mobileOffset={12}
-                swipeDirections={["right", "bottom"]}
-              />
-            </I18nProvider>
-          </BrowserRouter>
-        </TooltipProvider>
-        {ReactQueryDevtools ? (
-          <Suspense fallback={null}>
-            <ReactQueryDevtools initialIsOpen={false} />
-          </Suspense>
-        ) : null}
-      </QueryClientProvider>
-    </ThemeProvider>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider delayDuration={150}>
+            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <RouteProgress />
+              <I18nProvider>
+                <App />
+                <Suspense fallback={null}>
+                  <LecturerDeliveryNotice />
+                </Suspense>
+                <Toaster
+                  closeButton
+                  position="bottom-right"
+                  duration={2400}
+                  visibleToasts={2}
+                  expand={false}
+                  gap={8}
+                  offset={16}
+                  mobileOffset={12}
+                  swipeDirections={["right", "bottom"]}
+                />
+              </I18nProvider>
+            </BrowserRouter>
+          </TooltipProvider>
+          {ReactQueryDevtools && import.meta.env.VITE_SHOW_QUERY_DEVTOOLS === "true" ? (
+            <Suspense fallback={null}>
+              <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
+            </Suspense>
+          ) : null}
+        </QueryClientProvider>
+      </ThemeProvider>
     </AppErrorBoundary>
   </React.StrictMode>,
 );

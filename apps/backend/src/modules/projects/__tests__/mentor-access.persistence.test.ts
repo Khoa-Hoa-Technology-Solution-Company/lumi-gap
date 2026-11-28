@@ -20,7 +20,7 @@ import { manuscriptService as writing } from "../../workspaces/manuscript.servic
 import { requireAuth } from "../../../common/middleware/auth.js";
 import { errorHandler } from "../../../common/middleware/error-handler.js";
 import { tokenService, hashOpaqueToken } from "../../auth/token.service.js";
-import { mentorPolicySchema, mentorShareSchema, mentorAgreementSchema, mentorFeedbackSchema } from "../dto/mentor-access.schema.js";
+import { mentorPolicySchema, mentorShareSchema, mentorAgreementSchema, mentorFeedbackSchema, mentorResourceInboxSchema, mentorPaperShareSchema } from "../dto/mentor-access.schema.js";
 import { projectMentorshipController, mentorshipParamsSchema, respondMentorshipSchema } from "../project-mentorship.controller.js";
 import { validate } from "../../../common/middleware/validate.js";
 
@@ -156,13 +156,71 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
     expect((await service.inbox(f.mentor)).items.map(i=>i.id)).not.toContain(second.id);
     await expect(service.resource(f.id,f.mentor,f.access.id,second.id)).rejects.toMatchObject({statusCode:404});
   });
+  it("searches every authorized page by title, author and DOI and preserves project scopes", async () => {
+    const f = await fixture(), p = await paper(f, "Oldest shared methodology");
+    await db.paper.update({ where: { id: p.id }, data: { doi: "10.5555/mentor-search-" + p.id, journalName: "Methods Journal", paperLink: "https://example.org/research" } });
+    await db.paperAuthor.create({ data: { paperId: p.id, displayName: "Nguyen Searchable Author", position: 1 } });
+    const old = await simpleShare(f, p.id);
+    const extra = Array.from({ length: 21 }, (_, i) => ({ id: randomUUID(), title: `Recent unrelated paper ${i}`, publicationYear: 2026, primaryProvider: "user" }));
+    await db.paper.createMany({ data: extra });
+    await db.projectPaper.createMany({ data: extra.map(paper => ({ projectId: f.id, paperId: paper.id, addedById: f.owner })) });
+    await db.mentorResourceShare.createMany({ data: extra.map(paper => ({ projectId: f.id, accessId: f.access.id, kind: "PAPER", resourceId: paper.id, title: paper.title, content: "Shared abstract", sharedById: f.owner, accessMode: "VIEW" })) });
+    expect((await service.inbox(f.mentor)).items.map(i => i.id)).not.toContain(old.id);
+    for (const q of ["oldest shared", "SEARCHABLE AUTHOR", p.id]) {
+      const result = await service.inbox(f.mentor, 1, { q });
+      expect(result.items.map(i => i.id)).toEqual([old.id]);
+      expect(result.unfilteredTotal).toBe(22);
+      expect(result.items[0]?.resource.paper?.authors).toEqual(["Nguyen Searchable Author"]);
+      expect(result.items[0]?.sharedByName).toBe("Chủ dự án");
+    }
+    expect((await service.inbox(f.mentor, 1, { q: "%" })).total).toBe(0);
+    expect((await service.inbox(f.mentor, 1, { projectId: randomUUID() })).total).toBe(0);
+    const other = await createProjectFixture({ data: { title: "Second research team", ownerId: f.owner, status: "ACTIVE", mentorshipSummary: "Published research abstract about evaluation methods and study design", mentorshipNeeds: "Study design", mentorshipDiscovery: "SEEKING_MENTOR" } });
+    const request = await consent.request(other.id, f.owner, { message: "Please advise our other research team", idempotencyKey: randomUUID(), mentorUserId: f.mentor, access: advisor() });
+    await consent.accept(other.id, request.id, f.mentor, "Agreed", request.accessPolicy?.version);
+    const access = await db.mentorAccess.findUniqueOrThrow({ where: { requestId: request.id } });
+    await db.projectPaper.create({ data: { projectId: other.id, paperId: p.id, addedById: f.owner } });
+    const second = await service.share(other.id, f.owner, access.id, { kind: "PAPER", resourceId: p.id, accessMode: "VIEW", expectedVersion: access.version });
+    expect((await service.inbox(f.mentor, 1, { q: "searchable author" })).items.map(i => i.id).sort()).toEqual([old.id, second.id].sort());
+    expect((await service.inbox(f.mentor, 1, { projectId: other.id })).items.map(i => i.id)).toEqual([second.id]);
+    await service.comment(f.id, f.mentor, f.access.id, message({ shareId: old.id, kind: "COMMENT" }));
+    expect((await service.feedback(other.id, f.mentor, access.id, 1, second.id)).total).toBe(0);
+    await expect(service.comment(other.id, f.mentor, access.id, message({ shareId: old.id, kind: "COMMENT" }))).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service.paperShares(f.id, f.mentor, p.id)).rejects.toMatchObject({ statusCode: 404 });
+    expect(mentorResourceInboxSchema.safeParse({ projectId: "bad" }).success).toBe(false);
+    expect(mentorPaperShareSchema.safeParse({ kind: "PAPER", resourceId: p.id, accessMode: "COMMENT", expectedVersion: 1, message: "x".repeat(2001) }).success).toBe(false);
+  });
+  it("keeps the share note and paper conversation, notifies each recipient once and preserves history on revoke", async () => {
+    const f = await fixture(), p = await paper(f);
+    const shared = await service.share(f.id, f.owner, f.access.id, { kind: "PAPER", resourceId: p.id, accessMode: "COMMENT", message: "Please assess this method", expectedVersion: (await policy(f)).version });
+    expect((await service.resource(f.id, f.mentor, f.access.id, shared.id)).message).toBe("Please assess this method");
+    expect((await service.inbox(f.mentor)).items[0]?.resource.message).toBe("Please assess this method");
+    const input = message({ shareId: shared.id, kind: "COMMENT", creditRoles: [], body: "This method fits your research question." });
+    const comment = await service.comment(f.id, f.mentor, f.access.id, input);
+    await service.comment(f.id, f.mentor, f.access.id, input);
+    const notifications = await db.notification.findMany({ where: { type: "MENTOR_PAPER_COMMENT", targetUuid: f.id } });
+    expect(notifications.map(n => n.userId).sort()).toEqual([f.owner, f.member].sort());
+    expect(notifications.every(n => n.paperId === p.id)).toBe(true);
+    await service.comment(f.id, f.member, f.access.id, message({ shareId: shared.id, kind: "COMMENT", creditRoles: [], replyToId: comment.id }));
+    expect(await db.notification.count({ where: { type: "MENTOR_PAPER_REPLY", userId: f.mentor, targetUuid: f.id } })).toBe(1);
+    await expect(simpleShare(f, p.id, "VIEW", f.member)).rejects.toMatchObject({ statusCode: 403 });
+    await simpleShare(f, p.id, "VIEW");
+    expect((await service.resource(f.id, f.mentor, f.access.id, shared.id)).message).toBe("Please assess this method");
+    expect((await service.resource(f.id, f.owner, f.access.id, shared.id)).canComment).toBe(true);
+    await service.unshare(f.id, f.owner, f.access.id, shared.id, { expectedVersion: (await policy(f)).version, confirmed: true, reason: "Stop this direct share" });
+    expect((await service.paperShares(f.id, f.owner, p.id)).items.map(i => i.resource.id)).toContain(shared.id);
+    expect((await service.feedback(f.id, f.owner, f.access.id, 1, shared.id)).total).toBe(2);
+    expect((await service.resource(f.id, f.owner, f.access.id, shared.id)).canComment).toBe(false);
+    expect(await db.projectTask.count({ where: { projectId: f.id } })).toBe(0);
+    expect(await db.paper.count({ where: { id: p.id } })).toBe(1);
+  });
   it.skipIf(process.env.MENTOR_SHARING_BROWSER !== "1")("shares, comments, downgrades and revokes a real resource through two browser sessions", async () => {
     const f=await fixture(), p=await paper(f,"Browser evaluation methods");
     const {PDFDocument,StandardFonts}=await import("pdf-lib"); const pdf=await PDFDocument.create();const font=await pdf.embedFont(StandardFonts.Helvetica);const page=pdf.addPage([595,842]);page.drawText("Pinned research paper for mentor review",{x:50,y:760,size:18,font});page.drawText("Methods and evaluation evidence. This exact PDF was shared by the team.",{x:50,y:720,size:11,font});const content=new Uint8Array(await pdf.save());
     await db.projectPaperFile.create({data:{projectId:f.id,paperId:p.id,uploadedById:f.owner,content,sha256:"c".repeat(64),byteSize:content.length}});
     const { runMentorSharingBrowser } = await import("./mentor-sharing.browser.js");
     const app=express();app.use(express.json());app.use("/projects/:id/mentor-access",requireAuth,mentorAccessRouter);
-    app.get("/projects/academic-support/resources",requireAuth,async(req,res)=>res.json({data:await service.inbox(req.user!.sub)}));app.use(errorHandler);
+    app.get("/projects/academic-support/resources",requireAuth,validate(mentorResourceInboxSchema,"query"),async(req,res)=>{const query=mentorResourceInboxSchema.parse(req.query);res.json({data:await service.inbox(req.user!.sub,query.page,query)});});app.use(errorHandler);
     const server=createServer(app);server.listen(0,"127.0.0.1");await once(server,"listening");
     const session=async(id:string)=>{const sessionId=randomUUID();await db.refreshToken.create({data:{userId:id,familyId:sessionId,tokenHash:hashOpaqueToken(randomUUID()),expiresAt:new Date(Date.now()+3600000)}});return {user:{id,systemRole:"USER",fullName:id===f.owner?"Nhóm nghiên cứu":"Cố vấn"},tokens:{accessToken:tokenService.signAccessToken({sub:id,systemRole:"USER",sessionId}).token,refreshToken:"isolated-test-session"}};};
     try { await runMentorSharingBrowser({base:"http://127.0.0.1:"+(server.address() as {port:number}).port,projectId:f.id,paperId:p.id,title:p.title,owner:await session(f.owner),mentor:await session(f.mentor)});expect(await db.mentorFeedback.count({where:{projectId:f.id,body:"Evidence-based browser feedback"}})).toBe(1); }
@@ -496,6 +554,10 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
       expect(filteredFeedback.status).toBe(200); expect(filteredFeedback.headers.get("cache-control")).toBe("private, no-store");
       const feedbackData = (await filteredFeedback.json()).data;
       expect(feedbackData.total).toBe(1); expect(feedbackData.items[0].shareId).toBe(sharedPaper.id);
+      expect((await fetch(`${base}/papers/${sharedPaper.resourceId}/shares`, { headers })).status).toBe(404);
+      await simpleShare(f, sharedPaper.resourceId, "VIEW");
+      expect((await fetch(feedbackUrl, { method: "POST", headers, body: JSON.stringify(message({ shareId: sharedPaper.id, kind: "COMMENT" })) })).status).toBe(403);
+      expect((await fetch(`${base}/${f.access.id}/shares/${randomUUID()}`, { headers })).status).toBe(404);
       const response = await fetch(base, { headers }); expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toContain("no-store");
       expect(JSON.stringify(await response.json())).not.toContain("PRIVATE-TEAM");
       expect((await fetch(`${base}/catalog`, { headers })).status).toBe(404);

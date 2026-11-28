@@ -1,4 +1,4 @@
-import type { ManuscriptManifest, ManuscriptWritingCalculation, ManuscriptWritingReport, ManuscriptWritingReference, EvaluationSource } from "@trend/shared-types";
+import type { ManuscriptContributionDraftInput, ManuscriptManifest, ManuscriptWritingCalculation, ManuscriptWritingReport, ManuscriptWritingReference, EvaluationSource } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { withWorkspace, jsonSnapshot, workspacePeople, type WorkspaceContext } from "../projects/workspace-access.js";
@@ -37,7 +37,7 @@ async function reportView(c: WorkspaceContext, row: ReportRow): Promise<Manuscri
     inputHash: row.inputHash, result: row.result as unknown as ManuscriptWritingCalculation | null, isStale: manuscript.version !== snapshot.sourceVersion };
 }
 export const manuscriptWritingService = {
-  async contributionDraft(project: string, actor: string, id: string, reportId: string) {
+  async contributionDraft(project: string, actor: string, id: string, reportId: string, input?: ManuscriptContributionDraftInput) {
     const data = await withWorkspace(project, actor, { write: true }, async c => {
       await draft(c, id);
       const row = await c.tx.manuscriptWritingReport.findFirst({ where: { id: reportId, projectId: c.project.id, workspaceId: id, status: "COMPLETED" } });
@@ -45,15 +45,61 @@ export const manuscriptWritingService = {
       const result = row.result as unknown as ManuscriptWritingCalculation;
       if (!result.attributedWordUnits) throw AppError.conflict("No attributable writing is available");
       const snapshot = await c.tx.manuscriptSnapshot.findUniqueOrThrow({ where: { id: row.snapshotId } });
+      const sameReportDraft = await c.tx.projectContributionProposal.findFirst({
+        where: { projectId: c.project.id, proposedById: c.actorId, clientKey: reportId },
+        select: { id: true },
+      });
+      if (!sameReportDraft && !input?.confirmDuplicate) {
+        const manuscriptSnapshots = await c.tx.manuscriptSnapshot.findMany({
+          where: { projectId: c.project.id, workspaceId: id },
+          select: { id: true },
+        });
+        const snapIds = new Set(manuscriptSnapshots.map(s => s.id));
+        const existingDrafts = await c.tx.projectContributionProposal.findMany({
+          where: {
+            projectId: c.project.id,
+            proposedById: c.actorId,
+            status: "DRAFT",
+            evidence: { startsWith: "RETAINED_WRITING_V1" },
+          },
+          select: { id: true, clientKey: true, evidenceRefs: true },
+          take: 50,
+        });
+        const duplicate = existingDrafts.find(existing =>
+          existing.clientKey !== reportId &&
+          Array.isArray(existing.evidenceRefs) &&
+          existing.evidenceRefs.some(ref =>
+            ref && typeof ref === "object" && !Array.isArray(ref) &&
+            (ref as { kind?: unknown }).kind === "MANUSCRIPT_SNAPSHOT" &&
+            typeof (ref as { id?: unknown }).id === "string" &&
+            snapIds.has((ref as { id: string }).id),
+          ),
+        );
+        if (duplicate) {
+          throw AppError.conflict("A writing contribution draft already exists for this manuscript. Review the existing draft or confirm creating another.");
+        }
+      }
       return { actorId: c.actorId, title: (snapshot.manifest as unknown as ManuscriptManifest).title, row, result, snapshot };
     });
     const ids = [...new Set([...data.result.members.map(m => m.userId), data.actorId])];
+    // Retained writing is technical text-insertion evidence only.
+    // Never auto-assign WRITING_ORIGINAL_DRAFT; roles must be explicitly chosen and acknowledged by humans.
+    const participants = input?.participants?.length
+      ? input.participants.map(p => ({ userId: p.userId, roles: [...p.roles] }))
+      : ids.map(userId => ({ userId, roles: [] }));
+    const defaultDescription = `Technical retained-writing evidence for "${data.title}" at version ${data.snapshot.sourceVersion}. Retained text records account text insertions only — it does not prove intellectual authorship, scientific quality, or total research effort. Choose applicable CRediT roles and review participants before submitting.`;
     return workContributionsService.save(project, actor, {
-      clientKey: reportId, title: `Writing: ${data.title}`.slice(0, 240), source: "WORKSPACE", workDate: data.snapshot.createdAt.toISOString(),
-      description: `Retained manuscript writing at version ${data.snapshot.sourceVersion}. This records text insertion, not scientific quality or total research effort. Review and confirm the participants before submitting.`,
-      participants: ids.map(userId => ({ userId, roles: data.result.members.some(m => m.userId === userId) ? ["WRITING_ORIGINAL_DRAFT" as const] : [] })),
-      evidence: `RETAINED_WRITING_V1 report ${reportId}; snapshot ${data.row.snapshotId}; fingerprint ${data.row.inputHash}; attributed ${data.result.attributedWordUnits / 1000}/${data.result.totalWords} words; unknown ${data.result.unknownWordUnits / 1000}. Participation requires explicit team confirmation.`,
-      evidenceRefs: [{ kind: "MANUSCRIPT_SNAPSHOT", id: data.row.snapshotId }],
+      clientKey: reportId,
+      title: (input?.title?.trim() || `Writing evidence: ${data.title}`).slice(0, 240),
+      source: "WORKSPACE",
+      workDate: data.snapshot.createdAt.toISOString(),
+      description: (input?.description?.trim() || defaultDescription).slice(0, 5000),
+      participants,
+      evidence: `RETAINED_WRITING_V1 report ${reportId}; snapshot ${data.row.snapshotId}; fingerprint ${data.row.inputHash}; attributed ${data.result.attributedWordUnits / 1000}/${data.result.totalWords} words; unknown ${data.result.unknownWordUnits / 1000}. Technical text-insertion evidence only; CRediT roles require explicit selection and team acknowledgement.`,
+      evidenceRefs: [
+        { kind: "MANUSCRIPT", id },
+        { kind: "MANUSCRIPT_SNAPSHOT", id: data.row.snapshotId },
+      ],
     });
   },
   async request(project: string, actor: string, id: string, snapshotId: string) {

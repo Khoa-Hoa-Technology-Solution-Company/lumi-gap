@@ -36,6 +36,7 @@ import { projectSectionHref } from "./workspace-common";
 
 interface Props {
   project: IProject;
+  section?: "all" | "security" | "audit";
 }
 
 const advancedValue = (p: IProject) => ({
@@ -45,9 +46,11 @@ const advancedValue = (p: IProject) => ({
   status: p.status,
 });
 
-export function ProjectSecurityPanel({ project }: Props) {
+export function ProjectSecurityPanel({ project, section = "all" }: Props) {
   const { t, language } = useI18n();
   const queryClient = useQueryClient();
+  const showSecurity = section === "all" || section === "security";
+  const showAudit = section === "all" || section === "audit";
   const isOwner = project.accessRole === "OWNER";
   const isArchived = project.status === "ARCHIVED";
   const writable = isOwner && !isArchived;
@@ -63,11 +66,13 @@ export function ProjectSecurityPanel({ project }: Props) {
   const securitySummary = useQuery({
     queryKey: ["project-security-summary", project._id],
     queryFn: () => projectsApi.securityOverview(project._id, { limit: 0 }),
+    enabled: showAudit,
   });
 
   const cases = useQuery({
     queryKey: ["project-integrity-cases", project._id],
     queryFn: () => projectsApi.integrityCases(project._id),
+    enabled: showAudit,
   });
 
   const [reportModalOpen, setReportModalOpen] = useState(false);
@@ -170,139 +175,174 @@ export function ProjectSecurityPanel({ project }: Props) {
   const allCases = cases.data ?? [];
   const activeCasesCount = allCases.filter(c => c.status !== "RESOLVED" && c.status !== "CLOSED").length;
   const totalEvents = securitySummary.data?.totalEventCount ?? 0;
+  const securityErrorStatus = (securitySummary.error as { response?: { status?: number } } | null)?.response?.status;
   const latestEventDate = securitySummary.data?.latestEventAt
     ? new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(
         new Date(securitySummary.data.latestEventAt),
       )
     : null;
 
+  const securityFormContent = (
+    <form
+      onSubmit={handleSaveAdvanced}
+      aria-label={t(section === "security" ? "Security & AI controls" : "Advanced settings")}
+      className={section === "security" ? "space-y-5" : "border-t border-border/60 p-5 sm:p-6 space-y-5"}
+    >
+      <ChangedNotice visible={advancedState.latest} reload={advancedState.reload} />
+
+      <fieldset disabled={!writable || updateProject.isPending} className="min-w-0 space-y-5">
+        <div className="space-y-1.5">
+          <Label htmlFor="sec-ai-policy" className="text-sm font-medium">
+            {t("Use AI to assist research")}
+          </Label>
+          <select
+            id="sec-ai-policy"
+            className="project-form-select"
+            value={draft.aiDataPolicy}
+            onChange={e => setDraft({ ...draft, aiDataPolicy: e.target.value as ProjectAiDataPolicy })}
+          >
+            <option value="ALLOW_PERSONAL_AI">{t("Allow personal AI & platform AI")}</option>
+            <option value="PLATFORM_AI_ONLY">{t("Platform AI only")}</option>
+            <option value="DISABLED">{t("Disable external AI processing")}</option>
+          </select>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {t("Controls whether project content can be processed by personal AI keys, LumiGap platform AI only, or disabled for external AI.")}
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="sec-lookup-policy" className="text-sm font-medium">
+            {t("External academic metadata lookup (OpenAlex)")}
+          </Label>
+          <select
+            id="sec-lookup-policy"
+            className="project-form-select"
+            value={draft.externalLookupPolicy}
+            onChange={e => setDraft({ ...draft, externalLookupPolicy: e.target.value as ProjectExternalLookupPolicy })}
+          >
+            <option value="ALLOW_PUBLIC_INDEX">{t("Allow OpenAlex metadata lookup")}</option>
+            <option value="LOCAL_CORPUS_ONLY">{t("Local project library only")}</option>
+          </select>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {t("Allows querying public bibliographic metadata from OpenAlex during gap analysis. Does not upload private PDFs or full manuscript text.")}
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="sec-export-policy" className="text-sm font-medium">
+            {t("LaTeX source export permissions")}
+          </Label>
+          <select
+            id="sec-export-policy"
+            className="project-form-select"
+            value={draft.exportPolicy}
+            onChange={e => setDraft({ ...draft, exportPolicy: e.target.value as ProjectExportPolicy })}
+          >
+            <option value="ALL_MEMBERS">{t("All project members")}</option>
+            <option value="OWNER_ONLY">{t("Owner only")}</option>
+          </select>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {t("Controls who can export LaTeX source bundles, manuscript files, or sync to GitHub. Compiled PDF preview remains available to active members.")}
+          </p>
+        </div>
+
+        {section === "all" && !isArchived ? (
+          <div className="space-y-1.5 border-t border-border/60 pt-4">
+            <Label htmlFor="project-lifecycle-status" className="text-sm font-medium">
+              {t("Project lifecycle")}
+            </Label>
+            <select
+              id="project-lifecycle-status"
+              className="project-form-select"
+              value={draft.status}
+              onChange={e => setDraft({ ...draft, status: e.target.value as ProjectStatus })}
+            >
+              {Object.entries({
+                PLANNING: "Planning",
+                ACTIVE: "Active",
+                ON_HOLD: "On hold",
+                COMPLETED: "Completed",
+              }).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {t(label)}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs leading-5 text-muted-foreground">
+              {t("Research stage is managed in Overview. Lifecycle controls whether the project is ongoing, paused or completed.")}
+            </p>
+          </div>
+        ) : null}
+      </fieldset>
+
+      {advancedError ? <p role="alert" className="text-sm text-destructive">{advancedError}</p> : null}
+
+      {writable ? (
+        <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2 border-t border-border/60">
+          {advancedState.dirty ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={updateProject.isPending}
+              onClick={() => {
+                setDraft(advancedValue(baseline));
+                setAdvancedError("");
+              }}
+            >
+              {t("Discard changes")}
+            </Button>
+          ) : null}
+          <Button type="submit" disabled={!advancedState.dirty || updateProject.isPending}>
+            {t(updateProject.isPending ? "Saving…" : "Save changes")}
+          </Button>
+        </div>
+      ) : null}
+    </form>
+  );
+
   return (
     <div className="space-y-6" data-no-i18n>
-      {/* Section 3: Advanced Settings — Collapsed by default */}
-      <details className="group rounded-xl border border-border/80 bg-card shadow-xs">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-5 sm:px-6 select-none [&::-webkit-details-marker]:hidden">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-              <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-base font-semibold text-foreground">{t("Advanced settings")}</h3>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                {t("Optional controls for AI processing, external academic lookup, LaTeX source exports, and project lifecycle.")}
+      {showSecurity ? (
+        section === "security" ? (
+          <section
+            aria-labelledby="project-security-controls-heading"
+            className="rounded-xl border border-border/80 bg-card p-5 sm:p-6 shadow-xs space-y-5"
+          >
+            <div className="space-y-1">
+              <h3 id="project-security-controls-heading" className="text-base font-semibold text-foreground">
+                {t("Security & AI controls")}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {t("Configure AI processing, external bibliographic lookup, and source export permissions for this project.")}
               </p>
             </div>
-          </div>
-          <ChevronDown
-            className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180"
-            aria-hidden="true"
-          />
-        </summary>
-
-        <form
-          onSubmit={handleSaveAdvanced}
-          aria-label={t("Advanced settings")}
-          className="border-t border-border/60 p-5 sm:p-6 space-y-5"
-        >
-          <ChangedNotice visible={advancedState.latest} reload={advancedState.reload} />
-
-          <fieldset disabled={!writable || updateProject.isPending} className="min-w-0 space-y-5">
-            <div className="space-y-1.5">
-              <Label htmlFor="sec-ai-policy" className="text-sm font-medium">
-                {t("Use AI to assist research")}
-              </Label>
-              <select
-                id="sec-ai-policy"
-                className="project-form-select"
-                value={draft.aiDataPolicy}
-                onChange={e => setDraft({ ...draft, aiDataPolicy: e.target.value as ProjectAiDataPolicy })}
-              >
-                <option value="ALLOW_PERSONAL_AI">{t("Allow personal AI & platform AI")}</option>
-                <option value="PLATFORM_AI_ONLY">{t("Platform AI only")}</option>
-                <option value="DISABLED">{t("Disable external AI processing")}</option>
-              </select>
-              <p className="text-xs leading-5 text-muted-foreground">
-                {t("Controls whether project content can be processed by personal AI keys, LumiGap platform AI only, or disabled for external AI.")}
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="sec-lookup-policy" className="text-sm font-medium">
-                {t("External academic metadata lookup (OpenAlex)")}
-              </Label>
-              <select
-                id="sec-lookup-policy"
-                className="project-form-select"
-                value={draft.externalLookupPolicy}
-                onChange={e => setDraft({ ...draft, externalLookupPolicy: e.target.value as ProjectExternalLookupPolicy })}
-              >
-                <option value="ALLOW_PUBLIC_INDEX">{t("Allow OpenAlex metadata lookup")}</option>
-                <option value="LOCAL_CORPUS_ONLY">{t("Local project library only")}</option>
-              </select>
-              <p className="text-xs leading-5 text-muted-foreground">
-                {t("Allows querying public bibliographic metadata from OpenAlex during gap analysis. Does not upload private PDFs or full manuscript text.")}
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="sec-export-policy" className="text-sm font-medium">
-                {t("LaTeX source export permissions")}
-              </Label>
-              <select
-                id="sec-export-policy"
-                className="project-form-select"
-                value={draft.exportPolicy}
-                onChange={e => setDraft({ ...draft, exportPolicy: e.target.value as ProjectExportPolicy })}
-              >
-                <option value="ALL_MEMBERS">{t("All project members")}</option>
-                <option value="OWNER_ONLY">{t("Owner only")}</option>
-              </select>
-              <p className="text-xs leading-5 text-muted-foreground">
-                {t("Controls who can export LaTeX source bundles, manuscript files, or sync to GitHub. Compiled PDF preview remains available to active members.")}
-              </p>
-            </div>
-
-            {!isArchived ? (
-              <div className="space-y-1.5 border-t border-border/60 pt-4">
-                <Label htmlFor="project-lifecycle-status" className="text-sm font-medium">
-                  {t("Project lifecycle")}
-                </Label>
-                <select
-                  id="project-lifecycle-status"
-                  className="project-form-select"
-                  value={draft.status}
-                  onChange={e => setDraft({ ...draft, status: e.target.value as ProjectStatus })}
-                >
-                  {Object.entries({
-                    PLANNING: "Planning",
-                    ACTIVE: "Active",
-                    ON_HOLD: "On hold",
-                    COMPLETED: "Completed",
-                  }).map(([key, label]) => (
-                    <option key={key} value={key}>
-                      {t(label)}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs leading-5 text-muted-foreground">
-                  {t("Research stage is managed in Overview. Lifecycle controls whether the project is ongoing, paused or completed.")}
-                </p>
+            {securityFormContent}
+          </section>
+        ) : (
+          <details className="group rounded-xl border border-border/80 bg-card shadow-xs">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-5 sm:px-6 select-none [&::-webkit-details-marker]:hidden">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                  <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold text-foreground">{t("Advanced settings")}</h3>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    {t("Optional controls for AI processing, external academic lookup, LaTeX source exports, and project lifecycle.")}
+                  </p>
+                </div>
               </div>
-            ) : null}
-          </fieldset>
+              <ChevronDown
+                className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180"
+                aria-hidden="true"
+              />
+            </summary>
+            {securityFormContent}
+          </details>
+        )
+      ) : null}
 
-          {advancedError ? <p role="alert" className="text-sm text-destructive">{advancedError}</p> : null}
-
-          {writable ? (
-            <div className="flex justify-end pt-1 border-t border-border/60">
-              <Button type="submit" disabled={!advancedState.dirty || updateProject.isPending}>
-                {t(updateProject.isPending ? "Saving…" : "Save changes")}
-              </Button>
-            </div>
-          ) : null}
-        </form>
-      </details>
-
-      {/* Section 4: Research Integrity & Audit History Summary */}
+      {showAudit ? (
       <section
         aria-labelledby="project-integrity-history-heading"
         className="rounded-xl border border-border/80 bg-card p-5 sm:p-6 shadow-xs space-y-4"
@@ -313,7 +353,7 @@ export function ProjectSecurityPanel({ project }: Props) {
           </div>
           <div className="min-w-0">
             <h3 id="project-integrity-history-heading" className="text-base font-semibold text-foreground">
-              {t("Research integrity & history")}
+              {t("Activity log & research integrity")}
             </h3>
             <p className="mt-0.5 text-sm text-muted-foreground">
               {t("Review recorded project activity or report an integrity concern without cluttering daily settings.")}
@@ -324,20 +364,45 @@ export function ProjectSecurityPanel({ project }: Props) {
         <div className="divide-y divide-border/60 rounded-lg border border-border/70 bg-background">
           {/* Audit History Row */}
           <div className="flex flex-wrap items-center justify-between gap-4 p-4">
-            <div className="min-w-0 space-y-1">
+            <div className="min-w-0 space-y-1 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-foreground">{t("Audit history")}</span>
-                {securitySummary.data ? (
+                {securitySummary.isLoading ? (
+                  <span className="text-xs text-muted-foreground">{t("Loading activity summary…")}</span>
+                ) : securitySummary.isError ? null : securitySummary.data ? (
                   <Badge variant="secondary" className="font-normal">
                     {t("{{count}} recorded events", { count: totalEvents })}
                   </Badge>
                 ) : null}
               </div>
-              <p className="text-xs text-muted-foreground">
-                {latestEventDate
-                  ? t("Last recorded activity: {{date}}", { date: latestEventDate })
-                  : t("Important project actions will appear here automatically.")}
-              </p>
+              {securitySummary.isError ? (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-destructive" role="alert">
+                  <span>
+                    {t(
+                      securityErrorStatus === 403
+                        ? "You do not have permission to view this audit log."
+                        : "Could not load activity summary.",
+                    )}
+                  </span>
+                  {securityErrorStatus !== 403 ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => void securitySummary.refetch()}
+                    >
+                      {t("Try again")}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-xs leading-5 text-muted-foreground">
+                  {latestEventDate
+                    ? t("Last recorded activity: {{date}}", { date: latestEventDate })
+                    : t("Governance, security, membership, visibility, and export events are recorded here automatically. Everyday workspace edits are tracked separately in project activity.")}
+                </p>
+              )}
             </div>
             <Button
               type="button"
@@ -553,11 +618,12 @@ export function ProjectSecurityPanel({ project }: Props) {
         ) : null}
 
         <p className="text-xs text-muted-foreground pt-1">
-          <Link to={projectSectionHref(project._id, "support")} className="text-primary underline-offset-4 hover:underline">
-            {t("Looking for a mentor? Manage discovery in Academic Support → Mentor.")}
+          <Link to={projectSectionHref(project._id, "contributions")} className="text-primary underline-offset-4 hover:underline">
+            {t("Manage authorship, contribution records, and verification in Integrity & Contributions.")}
           </Link>
         </p>
       </section>
+      ) : null}
 
       {/* Dedicated Audit History Dialog */}
       <ProjectAuditHistoryDialog

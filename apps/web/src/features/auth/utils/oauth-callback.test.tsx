@@ -60,7 +60,7 @@ async function renderCallback() {
 
 describe("Google OAuth callback after an account reset", () => {
   it("lands lecturers in their workspace instead of a previously signed-out project", async () => {
-    const lecturer = { ...member, academicRole: "LECTURER" as const };
+    const lecturer = { ...member, academicRole: "LECTURER" as const, academicRoleVerificationStatus: "VERIFIED" as const, positionVerificationStatus: "VERIFIED" as const };
     storePostLogoutProjectPath(lecturer.id, "/projects/previous?tab=tasks");
     mocks.exchange.mockResolvedValue({ user: lecturer, tokens });
     await renderCallback();
