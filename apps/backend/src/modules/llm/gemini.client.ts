@@ -5,6 +5,8 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { aiModel, personalAiRuntime, resolveAiConnection } from "../user-ai/user-ai.runtime.js";
 import { refreshPlatformAi } from "../user-ai/platform-ai.runtime.js";
 import { personalGenerate, personalOpenAiTools } from "../user-ai/personal-ai.client.js";
+import { withApiKey } from "../api-keys/api-key-pool.js";
+import { classifyGeminiKeyError } from "../api-keys/api-key-errors.js";
 
 /**
  * Thin singleton wrapper around the Google GenAI SDK.
@@ -14,8 +16,34 @@ import { personalGenerate, personalOpenAiTools } from "../user-ai/personal-ai.cl
  *
  * Always go through `generateText` / `generateJSON` so retries, logging, and
  * future cost tracking live in one place.
+ *
+ * The platform key comes from the admin-managed key pool (Admin → API Keys), falling back to GEMINI_API_KEY. When
+ * Gemini rejects a key (invalid, billing, daily quota) the call is repeated with the next key, so one bad key does
+ * not stop reports, analysis or embeddings.
  */
-const client = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY, httpOptions: { baseUrl: env.GEMINI_BASE_URL } });
+const clients = new Map<string, GoogleGenAI>();
+function clientFor(apiKey: string): GoogleGenAI {
+  let client = clients.get(apiKey);
+  if (!client) {
+    client = new GoogleGenAI({ apiKey, httpOptions: { baseUrl: env.GEMINI_BASE_URL } });
+    clients.set(apiKey, client);
+  }
+  return client;
+}
+
+/** Runs a Gemini SDK call with the platform key pool, rotating to the next key when Gemini rejects one. */
+export function withGeminiKey<T>(call: (client: GoogleGenAI) => Promise<T>): Promise<T> {
+  return withApiKey("GEMINI", (key) => call(clientFor(key.secret)), classifyGeminiKeyError);
+}
+
+type GeminiModels = GoogleGenAI["models"];
+/** SDK-shaped client over the key pool; every call picks the current key and fails over like `withGeminiKey`. */
+const client = {
+  models: {
+    generateContent: (params: Parameters<GeminiModels["generateContent"]>[0]) => withGeminiKey((c) => c.models.generateContent(params)),
+    embedContent: (params: Parameters<GeminiModels["embedContent"]>[0]) => withGeminiKey((c) => c.models.embedContent(params)),
+  },
+};
 
 function exhaustedQuota(error: unknown, model: string): LlmQuotaError | undefined {
   const providerError = (error ?? {}) as { status?: number; message?: string };
@@ -286,3 +314,13 @@ export async function generateWithTools(
 }
 
 export { client as geminiClient };
+
+/**
+ * Checks one key outside the pool (Admin → API Keys → Test): an embedding with GEMINI_EMBEDDING_MODEL and a one-token
+ * generation with GEMINI_MODEL_FAST, the two capabilities the platform depends on. Throws the provider error.
+ */
+export async function probeGeminiKey(apiKey: string): Promise<void> {
+  const probe = new GoogleGenAI({ apiKey, httpOptions: { baseUrl: env.GEMINI_BASE_URL, timeout: 20_000 } });
+  await probe.models.embedContent({ model: env.GEMINI_EMBEDDING_MODEL, contents: "ping", config: { outputDimensionality: env.GEMINI_EMBEDDING_DIMENSIONS } });
+  await probe.models.generateContent({ model: env.GEMINI_MODEL_FAST, contents: "ping", config: { maxOutputTokens: 1 } });
+}

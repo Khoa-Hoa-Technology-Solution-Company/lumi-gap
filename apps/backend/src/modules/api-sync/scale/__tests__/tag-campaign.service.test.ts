@@ -9,6 +9,8 @@ const m = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../../config/env.js", () => ({ env: m.env }));
+// No pool keys in these tests: a key is available exactly when the env key is set.
+vi.mock("../../../api-keys/api-key-pool.js", () => ({ hasApiKey: async () => Boolean(m.env.OPENALEX_API_KEY) }));
 vi.mock("../../../../infrastructure/database/prisma.js", () => ({
   getPrisma: () => ({
     openAlexIngestCampaign: { findFirst: m.campaignFindFirst, findMany: m.campaignFindMany },

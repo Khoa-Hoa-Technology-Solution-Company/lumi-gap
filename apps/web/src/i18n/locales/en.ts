@@ -44,6 +44,7 @@ import { trendResearchLinkStrings } from "./trend-research-links";
 import { trendPeriodsStrings } from "./trend-periods";
 import { qualityEvaluationEn } from "./quality-evaluation";
 import { adminCatalogEn } from "./admin-catalog";
+import { adminApiKeysEn } from "./admin-api-keys";
 import { personalizationStrings } from "./personalization";
 import { loadingUxEn } from "./loading-ux";
 import { settingsRedesignEn } from "./settings-redesign";
@@ -59,6 +60,7 @@ export const en = {
   ...registrationEn,
   ...personalizationStrings,
   ...adminCatalogEn,
+  ...adminApiKeysEn,
   ...qualityEvaluationEn,
   ...researchTasksEn,
   ...livingPlanEn,

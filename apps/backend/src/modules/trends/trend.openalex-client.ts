@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { env } from "../../config/env.js";
+import { openAlexFetch } from "../api-keys/openalex-key-fetch.js";
 import { cache, hashKey } from "../../infrastructure/cache.js";
 import { logger } from "../../infrastructure/logger.js";
 
@@ -85,7 +86,6 @@ export async function openAlexGet<T>(path: string, params: Record<string, string
   const url = new URL(`${BASE_URL}/${path.replace(/^\/+/, "")}`);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   if (env.OPENALEX_MAILTO) url.searchParams.set("mailto", env.OPENALEX_MAILTO);
-  if (env.OPENALEX_API_KEY) url.searchParams.set("api_key", env.OPENALEX_API_KEY);
 
   const json = (await fetchJson(url)) as T;
   await cache.set(cacheKey, json, CACHE_TTL_SECONDS);
@@ -106,7 +106,7 @@ type GroupByResponse = {
 async function fetchJson(url: URL, attempt = 1): Promise<unknown> {
   try {
     await waitForRequestSlot();
-    const res = await fetch(url, {
+    const res = await openAlexFetch(url, {
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: { Accept: "application/json" },
     });

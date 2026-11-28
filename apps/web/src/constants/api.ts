@@ -202,6 +202,11 @@ export const API_ROUTES = {
       embeddingConnection: (id: string) => `/admin/ai-connections/embedding/connections/${id}`,
       embeddingActive: "/admin/ai-connections/embedding/active",
     },
+    apiKeys: {
+      root: "/admin/api-keys",
+      key: (id: string) => `/admin/api-keys/${id}`,
+      test: (id: string) => `/admin/api-keys/${id}/test`,
+    },
     sync: "/admin/sync",
     syncRuns: "/admin/sync/runs",
     syncOptions: "/admin/sync/options",

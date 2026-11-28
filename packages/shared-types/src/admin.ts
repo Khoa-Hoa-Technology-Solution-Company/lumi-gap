@@ -527,3 +527,53 @@ export interface PlatformEmbeddingSettings {
   activeConnectionId: string | null;
   environmentDefaults: { provider: "gemini"; model: string; dimensions: number };
 }
+
+/** Provider whose platform API keys an admin manages in the key pool. */
+export type PlatformApiKeyProvider = "GEMINI" | "OPENALEX";
+
+/**
+ * ACTIVE: usable. COOLDOWN: the provider rejected it for quota or billing; retried after `cooldownUntil`.
+ * INVALID: the provider rejected the key itself; skipped until an admin tests or replaces it. DISABLED: turned off.
+ */
+export type PlatformApiKeyStatus = "ACTIVE" | "COOLDOWN" | "INVALID" | "DISABLED";
+
+/** A pooled platform API key as shown to admins; the secret is never returned, only its last characters. */
+export interface PlatformApiKey {
+  id: string;
+  provider: PlatformApiKeyProvider;
+  label: string;
+  keyHint: string;
+  /** Lower is tried first. */
+  priority: number;
+  isEnabled: boolean;
+  status: PlatformApiKeyStatus;
+  /** True for the key calls currently go to (the first usable key in priority order). */
+  inUse: boolean;
+  cooldownUntil: string | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  lastUsedAt: string | null;
+  successCount: number;
+  failureCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** GET /admin/api-keys: the pool per provider and whether the env key is the last-resort fallback. */
+export interface PlatformApiKeySettings {
+  providers: Array<{
+    provider: PlatformApiKeyProvider;
+    keys: PlatformApiKey[];
+    /** GEMINI_API_KEY / OPENALEX_API_KEY is set; it is used when no pool key is usable. */
+    hasEnvKey: boolean;
+    /** Calls currently use the env key (no usable pool key). */
+    usingEnvKey: boolean;
+  }>;
+}
+
+/** POST /admin/api-keys/:id/test result. */
+export interface PlatformApiKeyTestResult {
+  ok: boolean;
+  message: string;
+  key: PlatformApiKey;
+}

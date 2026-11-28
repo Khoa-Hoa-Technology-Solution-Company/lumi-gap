@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({ env: { SYNC_FREE_TEXT_ENABLED: false }, add: vi.fn() }));
 
 vi.mock("../../../config/env.js", () => ({ env: m.env }));
+vi.mock("../../api-keys/api-key-pool.js", () => ({ hasApiKey: async () => Boolean((m.env as { OPENALEX_API_KEY?: string }).OPENALEX_API_KEY) }));
 vi.mock("../../../infrastructure/queue.js", () => ({
   apiSyncQueue: { add: m.add }, corpusValidationQueue: {}, openAlexIngestQueue: {},
 }));

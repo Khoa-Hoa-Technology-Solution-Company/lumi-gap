@@ -67,6 +67,7 @@ const AdminKeywordsPage = lazy(() => import("@/pages/admin/keywords").then((m) =
 const AdminTagsPage = lazy(() => import("@/pages/admin/tags").then((m) => ({ default: m.AdminTagsPage })));
 const AdminTagDetailPage = lazy(() => import("@/pages/admin/tag-detail").then((m) => ({ default: m.AdminTagDetailPage })));
 const AdminSettingsPage = lazy(() => import("@/pages/admin/settings").then((m) => ({ default: m.AdminSettingsPage })));
+const AdminApiKeysPage = lazy(() => import("@/pages/admin/api-keys").then((m) => ({ default: m.AdminApiKeysPage })));
 const AdminHomePage = lazy(() => import("@/pages/admin").then((m) => ({ default: m.AdminHomePage })));
 const NotFoundPage = lazy(() => import("@/pages/not-found").then((m) => ({ default: m.NotFoundPage })));
 const RankingsPage = lazy(() => import("@/pages/rankings").then((m) => ({ default: m.RankingsPage })));
@@ -147,6 +148,7 @@ export function AppRoutes() {
             <Route path="audit-logs" element={<AdminAuditLogsPage />} />
             <Route path="trust-safety" element={<AdminTrustSafetyPage />} />
             <Route path="workers" element={<AdminWorkersPage />} />
+            <Route path="api-keys" element={<AdminApiKeysPage />} />
             <Route path="settings" element={<AdminSettingsPage />} />
             <Route path="analytics" element={<DashboardPage />} />
           </Route>

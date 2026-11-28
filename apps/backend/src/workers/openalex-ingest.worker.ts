@@ -10,6 +10,7 @@ import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { isNonRetryableOpenAlexError } from "../modules/api-sync/providers/openalex.client.js";
 import { runCampaignPartitionPage } from "../modules/api-sync/scale/campaign-partition-runner.js";
 import { ingestCampaignService } from "../modules/api-sync/scale/ingest-campaign.service.js";
+import { hasApiKey } from "../modules/api-keys/api-key-pool.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -23,18 +24,24 @@ interface CampaignPageJob {
  * radius bounded to a single idempotent page attempt.
  */
 async function main() {
-  if (!env.OPENALEX_API_KEY) {
-    // The worker is part of the default stack, so a missing key must not crash-loop the container. It stays idle and
-    // reports no heartbeat: the admin pages then show the ingest worker as offline, and campaigns cannot be planned.
-    logger.warn("OPENALEX_API_KEY is not set: the OpenAlex campaign worker is idle. Set the key and restart it to run campaigns");
-    const idle = setInterval(() => undefined, 60 * 60_000);
-    const stop = () => { clearInterval(idle); process.exit(0); };
-    process.on("SIGINT", stop);
-    process.on("SIGTERM", stop);
-    return;
-  }
-
   await connectPostgres();
+  if (!await hasApiKey("OPENALEX")) {
+    // The worker is part of the default stack, so a missing key must not crash-loop the container. It waits without a
+    // heartbeat (the admin pages show the ingest worker as offline) and starts once a key is added in Admin → API Keys
+    // or OPENALEX_API_KEY is set.
+    logger.warn("No OpenAlex API key: the OpenAlex campaign worker waits until one is added in Admin → API Keys or OPENALEX_API_KEY is set");
+    let stopped = false;
+    const stop = () => { stopped = true; void disconnectPostgres().finally(() => process.exit(0)); };
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+    while (!await hasApiKey("OPENALEX")) {
+      await new Promise((resolve) => setTimeout(resolve, 60_000));
+      if (stopped) return;
+    }
+    process.off("SIGINT", stop);
+    process.off("SIGTERM", stop);
+    logger.info("OpenAlex API key found: starting the OpenAlex campaign worker");
+  }
   const stopHeartbeat = startWorkerHeartbeat({
     workerName: "worker:openalex-ingest",
     queueName: QUEUE_NAMES.openAlexIngest,
